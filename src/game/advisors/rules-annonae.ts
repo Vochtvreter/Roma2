@@ -261,7 +261,7 @@ const goodsRule: AdvisorRule = {
   text(_s, _v, a) {
     const p = a.params;
     const src = p.res === 'oil' ? `our groves press ${num(P(p.prod))}` : 'wine comes only by caravan';
-    return `${P(p.houses)} houses use ${num(P(p.demand))} amphorae a day; ${src}. A house without its ${p.res} falls back a tier.`;
+    return `${P(p.houses)} ${P(p.houses) === 1 ? 'house uses' : 'houses use'} ${num(P(p.demand))} amphorae a day; ${src}. A house without its ${p.res} falls back a tier.`;
   },
   remedies(s, _v, a) {
     const res = a.params.res === 'wine' ? 'wine' : 'oil';

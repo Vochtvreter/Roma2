@@ -161,7 +161,7 @@ function checkEdict(s: GameState, id: EdictId, option: string): ActionResult {
   const opt = def?.options.find((o) => o.id === option);
   if (!def || !opt) return fail('invalid', 'No such edict.');
   if (!isUnlocked(s, { kind: 'edict', id })) return fail('locked', unlockReason(def.unlock));
-  if (edictOption(s, id) === option) return fail('chosen', `${def.latin} ${opt.name} is already in force.`);
+  if (edictOption(s, id) === option) return fail('chosen', `${def.latin.split(' ')[0]} ${opt.name} is already in force.`);
   const w = edictWindow(s, id);
   if (!w.open) return fail('window', `Next edict window: ${formatRoman(w.next)} (in ${days(w.next - s.day)}).`);
   return OK;
@@ -233,7 +233,7 @@ function label(s: GameState, r: Remedy): string {
     case 'assign': return `Put ${r.n} more ${r.n === 1 ? 'hand' : 'hands'} on ${CAT_ON[r.cat]}`;
     case 'edict': {
       const d = EDICT_DEFS[r.edict];
-      return `Edict: ${d.latin} ${d.options.find((o) => o.id === r.option)?.name ?? r.option}`;
+      return `Edict: ${d.latin.split(' ')[0]} ${d.options.find((o) => o.id === r.option)?.name ?? r.option}`;
     }
     case 'setting': return `${SETTING_DEFS[r.setting].name} → ${settingWord(r.setting, r.value)}`;
     case 'switch': return `${SWITCH_DEFS[r.sw].name}: ${r.value ? 'on' : 'off'}`;

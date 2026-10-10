@@ -239,10 +239,11 @@ export function tidy(text: string): string {
   return text.replace(/\.\./g, '.');
 }
 
-/** "a, b and c". */
+/** "a, b and c" (with a serial comma when an item has its own "and"). */
 export function listJoin(xs: readonly string[]): string {
   if (xs.length <= 1) return xs[0] ?? '';
-  return `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
+  const serial = xs.length > 2 && xs.some((x) => x.includes(' and ')) ? ',' : '';
+  return `${xs.slice(0, -1).join(', ')}${serial} and ${xs[xs.length - 1]}`;
 }
 
 /** Whole number with thousands separators (display only). */

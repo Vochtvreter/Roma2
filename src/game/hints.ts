@@ -11,6 +11,7 @@ import { siteMult } from './site';
 import { HUB_DEFS } from './data/hubs';
 import { BUILDING_DEFS, BUILD_ORDER } from './data/buildings';
 import { RANK_DEFS } from './data/ranks';
+import { TIER_DEFS } from './data/housing';
 import { RESOURCE_DEFS } from './data/resources';
 import { aName, bestHub, int, listJoin, num, rankWord } from './advisors/util';
 
@@ -67,6 +68,7 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     }
   }
   if (res === 'grain') out.push(`Idle hands forage ${num(B.economy.IDLE_FORAGE)} a day each.`);
+  if (res === 'denarii') out.push(...coinLines(s));
   if ((TRADE_RES as readonly string[]).includes(res)) {
     const tr = res as TradeRes;
     const h = bestHub(s, tr, 'buy', B.ordo.CARGO);
@@ -81,6 +83,19 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
   const store = STORE[res];
   if (store && s.res[res] >= 0.95 * v.c.caps[res]) out.push(`The stores are full (${int(s.res[res])} of ${int(v.c.caps[res])}): ${aName(store)} adds room.`);
   return out;
+}
+
+/** Where coin comes from: taxes by tier, market tax, Rome's stipend, sales — and this month's accrued taxes. */
+function coinLines(s: GameState): string[] {
+  const t = TIER_DEFS;
+  const sub = RANK_DEFS[s.rank].subsidy;
+  return [
+    `Households pay taxes on the Kalends, more as their houses rise: ${t.casa.tax} a soul a day in a hut, ${t.domus.tax} in an atrium house.`,
+    `Shop rows and market halls add ${B.economy.MARKET_TAX.taberna} and ${B.economy.MARKET_TAX.macellum} a covered soul a day.`,
+    sub > 0 ? `Rome pays a stipend of ${num(sub)} a day while we are ${rankWord(s.rank)}.` : 'Rome pays no stipend any more.',
+    'Caravans and merchants pay for our surplus.',
+    `This month's taxes so far: ${int(s.taxAccrued)} denarii.`,
+  ];
 }
 
 /** "You have 2 fields (11 of 12 hands). Next: staff 1 more, or raise a 3rd (50 den, 20 timber)." */
