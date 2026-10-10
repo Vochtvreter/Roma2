@@ -109,7 +109,8 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   const def = BUILDING_DEFS[p.type];
   const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
     : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
-      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
+      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
+      check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
     ? h('button', { class: 'btn small primary', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
