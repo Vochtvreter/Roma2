@@ -19,7 +19,7 @@ import { RESOURCE_DEFS } from '../../game/data/resources';
 import { confirm2 } from '../modals';
 import { agendaEl, bar, btn, fresh, lackLine, lacking, newMark, rankReason, section, typeSprite } from './common';
 import type { TabPanel } from './common';
-import { labourEl } from './labour';
+import { labourEl, labourKey, labourShown } from './labour';
 
 const TOOLS: { id: Exclude<ToolId, 'pin'>; label: string; tip: string }[] = [
   { id: 'road', label: 'Road', tip: 'Drag dirt roads across the land (R). Inside the pomerium streets follow the survey.' },
@@ -151,7 +151,7 @@ export const panel: TabPanel = {
       (['pin', 'road', 'pave', 'reserve', 'demolish'] as const).map((t) => +toolRevealed(s, t)).join(''),
       worksQueue(s).map((b) => `${b.id}:${b.status}:${b.owner}`).join(','),
       BUILD_ORDER.map((t) => `${d.counts[t] ?? 0}.${d.all[t] ?? 0}`).join(','),
-      +s.ordo.on.build, +s.ordo.on.labour, s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
+      +s.ordo.on.build, labourKey(s), s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
       placing?.kind === 'building' ? placing.type : placing?.kind ?? '',
       BUILD_ORDER.map((t) => +fresh(s, rankDay(s, BUILDING_DEFS[t].rank))).join(''),
     ].join('|');
@@ -165,7 +165,7 @@ export const panel: TabPanel = {
     const works = section('Opera', queue.length ? `Works queue · ${queue.length}` : 'Works queue', { anchor: 'works',
       note: queue.length ? 'Builders work down the queue: your works first, then the Ordo\'s. Click a row to see it.' : 'Nothing is being built.' });
     queue.forEach((b, i) => works.append(queueRow(g, b, i === 0, up)));
-    works.append(labourEl(g, up, ['builders']));
+    if (labourShown(s, 'builders')) works.append(labourEl(g, up, ['builders']));
     body.append(works);
     const tools = TOOLS.filter((t) => toolRevealed(s, t.id));
     if (tools.length) {

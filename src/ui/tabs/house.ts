@@ -17,7 +17,7 @@ import { BUILDING_DEFS } from '../../game/data/buildings';
 import { NEED_META, TIER_DEFS } from '../../game/data/housing';
 import { RANK_DEFS } from '../../game/data/ranks';
 import { feminine } from '../../game/data/names';
-import { btn, rankReason, seg } from './common';
+import { article, btn, rankReason, seg } from './common';
 
 /** The service a want asks for (water becomes a fountain once a castellum flows). */
 const SERVICE: Partial<Record<NeedId, BuildingId>> = {
@@ -55,7 +55,7 @@ function fix(g: Game, need: NeedId): Kid[] {
   if (type) {
     const reason = rankReason(s, type);
     if (s.ordo.on.build) out.push(btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason, tip: `The Ordo raises ${BUILDING_DEFS[type].name.toLowerCase()} at its best site.` }));
-    out.push(btn(g, `Place ${BUILDING_DEFS[type].name.toLowerCase()}`, () => { g.startPlacing({ kind: 'building', type }); }, { cls: 'primary', reason }));
+    out.push(btn(g, `Place ${article(BUILDING_DEFS[type].name.toLowerCase())}`, () => { g.startPlacing({ kind: 'building', type }); }, { cls: 'primary', reason }));
   }
   if (need === 'desirability' && overlayRevealed(s, 'desir')) out.push(btn(g, 'Show on map', () => { g.view.setOverlay('desir'); }, { cls: 'ghost' }));
   if (need === 'fed') out.push(btn(g, 'Rations', () => { g.openTab('council', 'edict-rationes'); }, { cls: 'ghost' }));

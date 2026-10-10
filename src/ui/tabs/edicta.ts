@@ -168,7 +168,8 @@ function edictsSec(g: Game, up: Updater[]): HTMLElement | null {
   const s = g.state;
   const open = EDICTS.filter((e) => isUnlocked(s, { kind: 'edict', id: e }));
   if (!open.length) return null;
-  const sec = section('Edicta', 'Edicts', { guide: 'edicts', anchor: 'edicts', note: 'Each edict trades one good for another. It may change once a season; the window opens on the season\'s Kalends.' });
+  const sec = section('Edicta', 'Edicts', { guide: 'edicts', anchor: 'edicts',
+    note: `Each edict trades one good for another. It may change once a season; a change holds until the next season's Kalends (${formatRoman(edictWindow(s, open[0]).next)}).` });
   for (const id of open) {
     const def = EDICT_DEFS[id];
     const cur = edictOption(s, id);
@@ -187,11 +188,13 @@ function edictsSec(g: Game, up: Updater[]): HTMLElement | null {
     if (id === 'rationes' && s.ordo.emergency.rations !== 'none') {
       box.append(h('div', { class: 'ed-warn' }, `Lex de annona: rations are cut to ${s.ordo.emergency.rations === 'arctae' ? 'Arctae' : 'Parcae'} until grain recovers.`));
     }
-    const wl = h('div', { class: `ed-window ${w.open ? '' : 'locked'}` });
-    const refresh = (): void => { wl.textContent = windowLine(g.state, id); };
-    refresh();
-    up.push(refresh);
-    box.append(wl);
+    if (!w.open) {
+      const wl = h('div', { class: 'ed-window' });
+      const refresh = (): void => { wl.textContent = windowLine(g.state, id); };
+      refresh();
+      up.push(refresh);
+      box.append(wl);
+    }
     sec.append(box);
   }
   return sec;

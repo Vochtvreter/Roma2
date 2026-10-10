@@ -2,11 +2,12 @@
 // "Ordo would", Apply once, and "first for 30 days" priorities (DESIGN §10.2, §10.4, §15.3). Shared by Populus and
 // Aedificia (builders). Owner: WP-I.
 import { LABOR_CATS } from '../../game/types';
-import type { LaborCat } from '../../game/types';
+import type { GameState, LaborCat } from '../../game/types';
 import type { Game, Updater } from '../types';
 import { h, tip } from '../dom';
 import * as A from '../../game/actions';
 import { census } from '../../game/census';
+import { derived } from '../../game/derived';
 import { councilReport } from '../../game/ordo/index';
 import { reasonText } from '../../game/ordo/reasons';
 import { B } from '../../game/balance';
@@ -19,11 +20,25 @@ export const CAT_LABEL: Record<LaborCat, [string, string]> = {
 };
 const SHIFT_STEP = 5;
 
+/** Whether a category has anything to show: posts, hands, a target, or (builders) works in hand; manual shows all. */
+export function labourShown(s: GameState, cat: LaborCat): boolean {
+  if (!s.ordo.on.labour) return true;
+  const c = census(s);
+  if (cat === 'builders') return c.catStaffed.builders > 0 || derived(s).sites.length > 0;
+  return c.catSlots[cat] > 0 || c.catStaffed[cat] > 0;
+}
+
+/** The discrete key of the labour block (which lines show) for panel signatures. */
+export function labourKey(s: GameState): string {
+  return `${+s.ordo.on.labour}${LABOR_CATS.map((c) => +labourShown(s, c)).join('')}`;
+}
+
 /** Labour lines for `cats`; in manual labour each line gets ± targets and the Ordo's ghost, and the block an Apply once. */
 export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LABOR_CATS): HTMLElement {
   const manual = !g.state.ordo.on.labour;
   const box = h('div', { class: 'tab-labour', 'data-guide': 'labour' });
-  for (const cat of cats) {
+  const hidden = cats.filter((c) => !labourShown(g.state, c));
+  for (const cat of cats.filter((c) => labourShown(g.state, c))) {
     const count = h('span', { class: 'tab-lab-count num' });
     const why = h('div', { class: 'tab-why' });
     const prio = h('span', { class: 'tab-lab-prio' });
@@ -57,6 +72,7 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
     refresh();
     up.push(refresh);
   }
+  if (hidden.length && cats.length > 1) box.append(h('div', { class: 'tab-note' }, `No posts yet for ${hidden.map((c) => CAT_LABEL[c][1].toLowerCase()).join(', ')}.`));
   const idle = h('div', { class: 'tab-note' });
   const refreshIdle = (): void => {
     const n = census(g.state).idle.length;

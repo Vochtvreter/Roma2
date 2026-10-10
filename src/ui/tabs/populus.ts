@@ -18,7 +18,7 @@ import { feminine } from '../../game/data/names';
 import { houseSprite } from '../../render/art/index';
 import { section } from './common';
 import type { TabPanel } from './common';
-import { labourEl } from './labour';
+import { labourEl, labourKey } from './labour';
 
 const STAGE_NAME = ['Children', 'Youths', 'Adults', 'Elders'] as const;
 const HUNGER = ['Sated', 'Peckish', 'Hungry', 'Starving'] as const;
@@ -28,6 +28,7 @@ const ROSTER = 60;
 const GENTES_SHOWN = 12;
 
 let rosterOpen = false;
+let moreGentes = false;
 
 function band(v: number): number {
   const [a, b, c] = B.needs.BAND;
@@ -77,7 +78,7 @@ function stats(g: Game, up: Updater[]): HTMLElement {
   const roll = cell('Rome\'s roll', () => 'Immigration never takes us above Rome\'s roll; a petition for the next rank raises it.');
   const spirits = cell('Spirits', () => 'Laetitia: happy people work harder (×0.85–1.15), marry, and draw newcomers.');
   const work = cell('Able hands', () => 'Adults and elders under 65, not patricii, not sick.');
-  const life = cell('Births · deaths', () => `Since the founding: ${g.state.stats.births} births, ${g.state.stats.deaths} deaths, ${g.state.stats.immigrants} arrivals, ${g.state.stats.emigrants} departures.`);
+  const life = cell('Births · deaths a year', () => `Since the founding: ${g.state.stats.births} births, ${g.state.stats.deaths} deaths, ${g.state.stats.immigrants} arrivals, ${g.state.stats.emigrants} departures.`);
   const stage = h('div', { class: 'pop-stages' });
   const legend = h('div', { class: 'pop-legend' });
   const refresh = (): void => {
@@ -90,7 +91,7 @@ function stats(g: Game, up: Updater[]): HTMLElement {
     spirits.textContent = `${Math.round(s.morale)} · ${moraleLabel(s.morale)}`;
     work.textContent = `${c.workforce} · ${c.idle.length} idle`;
     const years = Math.max(1, elapsed(s) / B.time.YEAR_DAYS);
-    life.textContent = `${fmt(s.stats.births / years)} · ${fmt(s.stats.deaths / years)} a year`;
+    life.textContent = `${fmt(s.stats.births / years)} · ${fmt(s.stats.deaths / years)}`;
     stage.replaceChildren(...c.byStage.map((n, i) => h('i', { class: `pop-st${i}`, style: { flexGrow: String(n) } })));
     legend.textContent = c.byStage.map((n, i) => `${STAGE_NAME[i]} ${n}`).join(' · ');
   };
@@ -153,10 +154,14 @@ function gentes(g: Game, up: Updater[]): HTMLElement {
       const head = s.people.find((p) => p.id === f.head);
       const home = f.home !== null ? getBuilding(s, f.home) : undefined;
       return h('div', { class: 'pop-gens' }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
-        h('span', { class: 'muted' }, ` ${head ? personName(head) : '—'} · ${size[f.id]} souls · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
+        h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${size[f.id]} souls · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
     };
     list.replaceChildren(...fams.slice(0, GENTES_SHOWN).map(row));
-    if (fams.length > GENTES_SHOWN) list.append(h('details', null, h('summary', { class: 'muted' }, `${fams.length - GENTES_SHOWN} more households`), fams.slice(GENTES_SHOWN).map(row)));
+    if (fams.length > GENTES_SHOWN) {
+      const more = h('details', { open: moreGentes }, h('summary', { class: 'muted' }, `${fams.length - GENTES_SHOWN} more households`), fams.slice(GENTES_SHOWN).map(row));
+      more.addEventListener('toggle', () => { moreGentes = more.open; });
+      list.append(more);
+    }
   };
   refresh();
   up.push(refresh);
@@ -183,7 +188,7 @@ export const panel: TabPanel = {
   signature(g: Game): string {
     const s = g.state;
     const c = census(s);
-    return [HOUSE_TIERS.map((t) => c.byTier[t]).join(','), c.declining, +s.ordo.on.labour, s.families.length,
+    return [HOUSE_TIERS.map((t) => c.byTier[t]).join(','), c.declining, labourKey(s), s.families.length,
       watch(s).length, s.ordo.priorities.map((p) => p.cat).join(',')].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {

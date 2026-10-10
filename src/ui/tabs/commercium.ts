@@ -37,6 +37,13 @@ export function prefill(spec: ContractSpec): void {
   formVersion++;
 }
 
+/** Why a hub does not trade with us yet, or null when it does. */
+function hubLock(s: GameState, hub: HubId): string | null {
+  if (hubOpen(s, hub)) return null;
+  const r = HUB_DEFS[hub].rank;
+  return r > s.rank ? `opens at ${RANK_DEFS[r].name}` : 'trade opens at Vicus, or with the Emporium castrense charter';
+}
+
 function resName(r: TradeRes): string {
   return RESOURCE_DEFS[r].name.toLowerCase();
 }
@@ -59,7 +66,8 @@ function priceEl(p: number | null, res: TradeRes, side: 'buy' | 'sell'): HTMLEle
 /** The live preview of a contract: price, value, trip days, profit against the base price, whether it leaves now. */
 function preview(g: Game, spec: ContractSpec): { lines: string[]; reason: string | null } {
   const s = g.state;
-  if (!hubOpen(s, spec.hub)) return { lines: [], reason: `${HUB_DEFS[spec.hub].name} does not yet trade with us (opens at ${RANK_DEFS[HUB_DEFS[spec.hub].rank].name}).` };
+  const lock = hubLock(s, spec.hub);
+  if (lock) return { lines: [], reason: `${HUB_DEFS[spec.hub].name} does not yet trade with us: ${lock}.` };
   const side = spec.mode === 'import' ? 'buy' : 'sell';
   const p = price(s, spec.hub, spec.res, side);
   if (p === null) return { lines: [], reason: `${HUB_DEFS[spec.hub].name} will not ${spec.mode === 'import' ? 'sell us' : 'buy'} ${resName(spec.res)}.` };
@@ -90,7 +98,7 @@ function form(g: Game, up: Updater[]): HTMLElement {
     const set = (patch: Partial<ContractSpec>): void => { draft = { ...(draft ?? d), ...patch }; g.sfx('click'); render(); };
     const hubSel = h('select', { class: 'tr-select', 'aria-label': 'Market', onchange: (e: Event) => set({ hub: (e.target as HTMLSelectElement).value as HubId }) },
       HUBS.map((x) => h('option', { value: x, selected: x === d.hub, disabled: !hubOpen(s, x) },
-        `${HUB_DEFS[x].name} · ${HUB_DEFS[x].days} d${hubOpen(s, x) ? '' : ` · opens at ${RANK_DEFS[HUB_DEFS[x].rank].name}`}`)));
+        `${HUB_DEFS[x].name} · ${HUB_DEFS[x].days} d${HUB_DEFS[x].rank > s.rank ? ` · opens at ${RANK_DEFS[HUB_DEFS[x].rank].name}` : ''}`)));
     const mode = h('div', { class: 'tab-seg' }, (['export', 'import'] as const).map((m) =>
       h('button', { class: `btn small tab-seg-btn${d.mode === m ? ' sel' : ''}`, type: 'button', onclick: () => set({ mode: m }) }, m === 'export' ? 'Sell (export)' : 'Buy (import)')));
     const goods = h('div', { class: 'tr-goods' }, TRADE_RES.map((r) => {
@@ -195,9 +203,9 @@ function hubCard(g: Game, hub: HubId): HTMLElement {
   const open = hubOpen(s, hub);
   return h('div', { class: `tr-hub${open ? '' : ' locked'}`, 'data-anchor': `hub-${hub}` },
     h('div', { class: 'tr-hub-head' }, h('b', null, d.name), h('span', { class: 'muted' }, ` · ${d.days} days each way`),
-      open ? null : h('span', { class: 'chip' }, `opens at ${RANK_DEFS[d.rank].name}`)),
+      open ? null : h('span', { class: 'chip' }, hubLock(s, hub) ?? '')),
     h('div', { class: 'tr-sub' }, d.desc),
-    h('div', { class: 'tr-prices' }, h('span', { class: 'pop-k' }, ''), h('span', { class: 'pop-k' }, 'WE BUY'), h('span', { class: 'pop-k' }, 'THEY PAY'),
+    !open ? null : h('div', { class: 'tr-prices' }, h('span', { class: 'pop-k' }, ''), h('span', { class: 'pop-k' }, 'WE BUY'), h('span', { class: 'pop-k' }, 'THEY PAY'),
       TRADE_RES.flatMap((r) => [h('span', { class: 'tr-good-n' }, img(resIcon(r), 1, 'chip-ico'), RESOURCE_DEFS[r].name), priceEl(price(s, hub, r, 'buy'), r, 'buy'), priceEl(price(s, hub, r, 'sell'), r, 'sell')])));
 }
 

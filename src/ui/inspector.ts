@@ -9,6 +9,7 @@ import { getBuilding } from '../game/state';
 import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
 import { derived } from '../game/derived';
 import { canPlace } from '../game/place';
+import { worksQueue } from '../game/construction';
 import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
@@ -17,7 +18,7 @@ import { outputChain } from '../game/hints';
 import { isAquae, nextTier, unmetNeeds } from '../game/housing';
 import { reasonText } from '../game/ordo/reasons';
 import { seasonOf, formatRoman } from '../game/calendar';
-import { buildingVisible } from '../game/reveal';
+import { buildingVisible, toolRevealed } from '../game/reveal';
 import { B } from '../game/balance';
 import { BUILD_ORDER, BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META, TIER_DEFS } from '../game/data/housing';
@@ -165,7 +166,8 @@ export class Inspector {
     const out = [line, pb.el];
     if (b.reason) out.push(h('div', { class: 'ins-why' }, img('i_seal', 1), reasonText(b.reason)));
     if (b.notes?.length) out.push(h('div', { class: 'ins-small muted' }, `Why here: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}.`));
-    const btns = h('div', { class: 'ins-btns' }, btn(g, '↑ Build first', () => A.prioritise(g.state, b.id)));
+    const first = worksQueue(g.state)[0]?.id === b.id;
+    const btns = h('div', { class: 'ins-btns' }, btn(g, '↑ Build first', () => A.prioritise(g.state, b.id), { reason: first ? 'Already first in the queue.' : null }));
     if (b.status === 'staked' && b.owner === 'ordo') btns.append(btn(g, 'Move', () => { g.startPlacing({ kind: 'building', type: b.type, replaceId: b.id }); }, { tip: 'Place it elsewhere yourself; the stake is refunded.' }));
     if (b.type !== 'capitolium') {
       const full = b.status === 'plan' || (g.state.day - b.placed <= B.construction.FULL_REFUND_DAYS && b.progress <= 0);
@@ -255,14 +257,16 @@ export class Inspector {
     const active = RANK_DEFS[s.rank].rings.includes(blk.ring);
     const plots = [0, 1, 2, 3].map((i) => derived(s).plotOwner[id * 4 + i]);
     const free = plots.filter((p) => !p).length;
-    const status = blk.masked ? 'The surveyors left this block to the fields.' : blk.reserved ? `Reserved by the groma for the ${blk.reserved}.`
+    const status = blk.masked ? 'The surveyors left this block to the fields.' : blk.reserved ? `Kept by the groma for the ${blk.reserved}.`
       : !active ? `Surveyed for later: it joins the pomerium at ${RANK_DEFS[blk.ring].name}.` : `${free} of 4 plots free.`;
-    card.append(h('div', { class: 'ins-line' }, status),
-      h('div', { class: 'ins-small muted' }, plots.map((p, i) => `plot ${i + 1}: ${p ? BUILDING_DEFS[getBuilding(s, p)?.type ?? 'area'].name.toLowerCase() : 'free'}`).join(' · ')));
+    card.append(h('div', { class: 'ins-line' }, status));
+    const usable = !blk.masked && !blk.reserved && active;
+    if (usable) card.append(h('div', { class: 'ins-small muted' }, plots.map((p, i) => `plot ${i + 1}: ${p ? BUILDING_DEFS[getBuilding(s, p)?.type ?? 'area'].name.toLowerCase() : 'free'}`).join(' · ')));
     if (reserved) card.append(h('div', { class: 'ins-good' }, 'Reserved: the Ordo leaves it alone.'));
     card.append(h('div', { class: 'ins-btns' },
-        btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area' }); }, { cls: 'primary', reason: blk.masked || blk.reserved || !active || !free ? 'No free plot to build on here.' : null }),
-        btn(g, reserved ? 'Release the block' : 'Reserve the block', () => A.toggleReserveBlock(g.state, id), { tip: 'The Ordo never builds in a reserved block.' })));
+        btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area' }); }, { cls: 'primary', reason: usable && free ? null : 'No free plot to build on here.' }),
+        btn(g, reserved ? 'Release the block' : 'Reserve the block', () => A.toggleReserveBlock(g.state, id),
+          { tip: 'The Ordo never builds in a reserved block.', reason: blk.masked || blk.reserved ? 'Only surveyed house blocks can be reserved.' : !toolRevealed(s, 'reserve') ? 'The Reserve-block tool comes with Oppidum.' : null })));
   }
 
   private tile(card: HTMLElement, tile: number, sticky: boolean): void {
@@ -275,7 +279,7 @@ export class Inspector {
     if (this.collapsed) return;
     const d = derived(s);
     const facts: string[] = [];
-    if (isFertile(ter as Terrain)) facts.push(`fertile ×${fmt(fertility(ter as Terrain))}`);
+    if (isFertile(ter as Terrain)) facts.push(`fertile ground ×${fertility(ter as Terrain).toFixed(2)}`);
     if (map.woodMax[tile] > 0) facts.push(`timber ${Math.round(woodAt(s, tile))} of ${Math.round(map.woodMax[tile])}`);
     if (map.vein[tile] > 0) facts.push(`ore quality ×${fmt(map.vein[tile])}`);
     if (map.waterTable[tile]) facts.push('on the water table');
