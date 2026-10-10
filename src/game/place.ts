@@ -202,7 +202,7 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
   const route = type === 'castellum' ? aqueductRoute(s, at.x, at.y, w, h) : null;
   if (type === 'castellum' && !route) return fail('noFons', RULE_REASON.noFons);
   // 12 · a road can reach a rural work
-  let lines: number[] = [];
+  let lines: readonly number[] = [];
   if (cls === 'rural') {
     const road = autoRoad(s, at.x, at.y, w, h);
     if (road === null) return fail('noRoad', R.noRoad);
@@ -450,7 +450,7 @@ export function roadPathFor(s: GameState, footprint: number[]): number[] | null 
 
 /** Street tiles a block needs (its unbuilt sides plus the connection along survey lines to the network). */
 export function streetsForBlock(s: GameState, blockId: number): number[] {
-  return blockStreetTiles(s, blockId);
+  return blockStreetTiles(s, blockId).slice();
 }
 
 /** The aqueduct route from the nearest reachable free spring to a castellum at (x, y), spring first, or null. */

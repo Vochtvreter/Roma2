@@ -93,8 +93,20 @@ export function autoRoad(s: GameState, x: number, y: number, w: number, h: numbe
   return path.sort((a, b) => a - b);
 }
 
-/** A block's unbuilt street sides plus the shortest connection along survey streets to the network (new tiles, sorted). */
-export function blockStreetTiles(s: GameState, blockId: number): number[] {
+/** A block's unbuilt street sides plus the shortest connection along survey streets to the network (new tiles, sorted).
+ *  Memoised per block on the structure epoch (placement checks and coverage previews ask for the same blocks over and
+ *  over); the array is shared, callers only read it. */
+export function blockStreetTiles(s: GameState, blockId: number): readonly number[] {
+  const m = memo(s, 'blockStreetTiles', structEpoch(s), () => new Map<number, readonly number[]>());
+  let out = m.get(blockId);
+  if (!out) {
+    out = computeBlockStreets(s, blockId);
+    m.set(blockId, out);
+  }
+  return out;
+}
+
+function computeBlockStreets(s: GameState, blockId: number): number[] {
   const sv = getMap(s.seed).survey;
   const blk = sv.blocks[blockId];
   if (!blk) return [];

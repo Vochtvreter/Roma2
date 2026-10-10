@@ -8,7 +8,7 @@ import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, O
 import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
 import { dayEpoch, memo, structEpoch } from './memo';
-import { coverage, desirability, previewCovered, previewDesir } from './coverage';
+import { coverage, desirability, previewCovered, previewDesir, type PreviewLayer } from './coverage';
 import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
 import { getBuilding } from './state';
@@ -201,27 +201,89 @@ export function siteMult(s: GameState, b: Building): number {
   return v;
 }
 
-/** Per-call scoring context: house wants and current coverage, gathered once for many candidate slots. */
+/** Per-call scoring context: house wants and current coverage, gathered once for many candidate slots. `wantMask` holds
+ *  the coverage layers that answer the house's first want (0 when it wants none, or when the scored type reads no wants). */
 interface ScoreCtx {
-  houses: { id: number; rect: Rect; want: NeedId | null; level: number; desir: number; mask: number }[];
+  houses: { id: number; rect: Rect; want: NeedId | null; wantMask: number; level: number; desir: number; mask: number }[];
   byId: Map<number, ScoreCtx['houses'][number]>;
 }
 
-function scoreCtx(s: GameState): ScoreCtx {
+const TIER_LEVEL: readonly string[] = ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'];
+const LAYER_BIT = new Map<CoverageLayerId, number>(LAYERS.map((l, k) => [l, 1 << k]));
+
+/** Layer bits of a list of layers. */
+function layerBits(ls: readonly CoverageLayerId[]): number {
+  let m = 0;
+  for (const l of ls) m |= LAYER_BIT.get(l) as number;
+  return m;
+}
+
+/** The context for scoring `type` (every field when no type is given): only services read the houses' wants and only
+ *  the hortus their desirability, so the other types skip those per-house reckonings. */
+function scoreCtx(s: GameState, type?: BuildingId): ScoreCtx {
   const d = derived(s);
-  const desir = desirability(s);
+  const withWants = type === undefined || SERVICE_TYPES.includes(type);
+  const withDesir = type === undefined || type === 'hortus';
+  const desir = withDesir ? desirability(s) : null;
   const houses: ScoreCtx['houses'] = [];
   const masks = coverage(s).houseMask;
   for (const id of d.houses) {
     const b = getBuilding(s, id);
     if (!b || !b.house) continue;
     const rect = rectOf(s, b.type, b.x, b.y);
-    let sum = 0;
-    const tiles = rectTiles(rect.x, rect.y, rect.w, rect.h);
-    for (const i of tiles) sum += desir[i];
-    houses.push({ id, rect, want: needWant(s, b), level: ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'].indexOf(b.house.tier), desir: tiles.length ? sum / tiles.length : 0, mask: masks.get(id) ?? 0 });
+    let avg = 0;
+    if (desir) {
+      let sum = 0;
+      const tiles = rectTiles(rect.x, rect.y, rect.w, rect.h);
+      for (const i of tiles) sum += desir[i];
+      avg = tiles.length ? sum / tiles.length : 0;
+    }
+    const want = withWants ? needWant(s, b) : null;
+    houses.push({ id, rect, want, wantMask: want ? layerBits(NEED_LAYERS[want] ?? []) : 0, level: TIER_LEVEL.indexOf(b.house.tier), desir: avg, mask: masks.get(id) ?? 0 });
   }
   return { houses, byId: new Map(houses.map((hh) => [hh.id, hh])) };
+}
+
+/** A preview as (house, layer bits) pairs: every house a would-be work covers, with the layers it would bring there. */
+interface CoverList { ids: number[]; bits: number[] }
+const coverLists = new WeakMap<readonly PreviewLayer[], CoverList>();
+
+function coverList(s: GameState, type: BuildingId, x: number, y: number): CoverList {
+  const pv = previewCovered(s, type, x, y);
+  let out = coverLists.get(pv);
+  if (!out) {
+    const at = new Map<number, number>();
+    const ids: number[] = [], bits: number[] = [];
+    for (const p of pv) {
+      const bit = LAYER_BIT.get(p.layer) as number;
+      for (const id of p.houses) {
+        const k = at.get(id);
+        if (k === undefined) { at.set(id, ids.length); ids.push(id); bits.push(bit); }
+        else bits[k] |= bit;
+      }
+    }
+    out = { ids, bits };
+    coverLists.set(pv, out);
+  }
+  return out;
+}
+
+/** What a house plot's score reads of the other works: the blocks holding a house plot (built or not) and the footprints
+ *  of the workshops and material works (memo on structEpoch: one pass over the buildings, not one per candidate slot). */
+function plotLayout(s: GameState): { houseBlocks: Set<number>; industry: Rect[] } {
+  return memo(s, 'site.plotLayout', structEpoch(s), () => {
+    const houseBlocks = new Set<number>();
+    const industry: Rect[] = [];
+    for (const b of s.buildings) {
+      if (b.type === 'area') {
+        const blk = blockOfTile(s, b.y * GW + b.x);
+        if (blk) houseBlocks.add(blk.id);
+      }
+      const cat = BUILDING_DEFS[b.type].cat;
+      if (cat === 'officinae' || cat === 'materia') industry.push(rectOf(s, b.type, b.x, b.y));
+    }
+    return { houseBlocks, industry };
+  });
 }
 
 /** Road steps from the forum to a footprint: the nearest built road beside it, else the grid distance to the forum. */
@@ -249,13 +311,13 @@ function score(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: numb
   const housesWithin = (gap: number): number => housesNear(s, r, gap);
   const cover = (): { unblock: number; newly: number; t4: number } => {
     let unblock = 0, newly = 0, t4 = 0;
-    const covered = new Map<number, CoverageLayerId[]>();
-    for (const p of previewCovered(s, type, x, y)) for (const id of p.houses) covered.set(id, [...(covered.get(id) ?? []), p.layer]);
-    for (const [id, ls] of covered) {
-      const hh = ctx.byId.get(id);
+    const { ids, bits } = coverList(s, type, x, y);
+    for (let k = 0; k < ids.length; k++) {
+      const hh = ctx.byId.get(ids[k]);
       if (!hh) continue;
-      if (hh.want && (NEED_LAYERS[hh.want] ?? []).some((l) => ls.includes(l))) unblock++;
-      if (ls.some((l) => ((hh.mask >> LAYERS.indexOf(l)) & 1) === 0)) { newly++; if (hh.level >= 4) t4++; }
+      const ls = bits[k];
+      if ((hh.wantMask & ls) !== 0) unblock++;                    // a layer that answers its first want
+      if ((ls & ~hh.mask) !== 0) { newly++; if (hh.level >= 4) t4++; }   // a layer it lacks today
     }
     return { unblock, newly, t4 };
   };
@@ -265,8 +327,9 @@ function score(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: numb
     const dz = desirability(s);
     for (const i of rectTiles(r.x, r.y, r.w, r.h)) desir += dz[i];
     desir /= r.w * r.h;
-    const withHouses = blk !== null && s.buildings.some((b) => b.type === 'area' && blockOfTile(s, b.y * GW + b.x)?.id === blk.id);
-    const industry = s.buildings.some((b) => ['officinae', 'materia'].includes(BUILDING_DEFS[b.type].cat) && rectGap(r, rectOf(s, b.type, b.x, b.y)) <= SC.HOUSE.INDUSTRY_R);
+    const lay = plotLayout(s);
+    const withHouses = blk !== null && lay.houseBlocks.has(blk.id);
+    const industry = lay.industry.some((f) => rectGap(r, f) <= SC.HOUSE.INDUSTRY_R);
     sc += SC.HOUSE.STEPS * steps + SC.HOUSE.DESIR * desir + (withHouses ? SC.HOUSE.BLOCK_HOUSES : 0)
       + (blk?.district === 'retentura' ? SC.HOUSE.RETENTURA : 0) + (industry ? SC.HOUSE.INDUSTRY : 0);
     notes.push({ code: 'forum', value: steps });
@@ -330,7 +393,7 @@ function score(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: numb
 
 /** The Ordo's score for a type at (x, y) for a purpose (DESIGN §10.5); higher is better. */
 export function siteScore(s: GameState, type: BuildingId, x: number, y: number, purpose?: ReasonCode): { score: number; notes: SiteNote[] } {
-  return score(s, scoreCtx(s), type, x, y, purpose);
+  return score(s, scoreCtx(s, type), type, x, y, purpose);
 }
 
 /** The best valid slot for a type (highest score, ties by lowest tile); null when there is none (memo on the epochs and day). */
@@ -340,7 +403,7 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
   return memo(s, `bestSlot:${type}:${owner}:${purpose ?? ''}`, dayEpoch(s), () => {
     const slots = validSlots(s, type, owner);
     if (slots.size === 0) return null;
-    const ctx = scoreCtx(s);
+    const ctx = scoreCtx(s, type);
     let best: { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null = null;
     for (const tile of [...slots.keys()].sort((a, b) => a - b)) {
       const x = tile % GW, y = Math.floor(tile / GW);

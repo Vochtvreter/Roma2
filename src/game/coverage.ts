@@ -4,7 +4,7 @@
 // a house is covered when a road tile beside it is. The flood reruns only when the structure or a radius changes.
 // Desirability: Σ v · (1 − d/(r + 1)) over every source within its range (Chebyshev d from the source's footprint).
 import { B } from './balance';
-import { F, LAYERS, T } from './types';
+import { BUILDINGS, F, LAYERS, T } from './types';
 import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
 import { getMap } from './map';
 import { dayEpoch, memo, structEpoch } from './memo';
@@ -166,10 +166,40 @@ function reachWithin(road: Uint8Array, sources: number[], r: number): number[] {
   return out;
 }
 
-/** Sparse preview: per service layer of a would-be building at (x, y), the covered road tiles and the houses they serve. */
-export function previewCovered(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: number[]; houses: number[] }[] {
+/** One service layer of a would-be building: the covered road tiles and the houses they serve (sorted ids). */
+export interface PreviewLayer { layer: CoverageLayerId; tiles: number[]; houses: number[] }
+
+// The previews of one structure: everything previewCovered reads (roads, blocks, auto-roads, the houses beside each road
+// tile, the rank's placement classes) moves only with the structure epoch, and the radius bonuses with the paths and
+// modifiers, so a slot's preview is computed once per structure (the Ordo rescores its candidate slots every day).
+interface PreviewCache { e: number; rank: number; shrine: number; market: number; baths: number; m: Map<number, readonly PreviewLayer[]> }
+const previews = new WeakMap<GameState, PreviewCache>();
+const TYPE_INDEX = new Map<BuildingId, number>(BUILDINGS.map((t, k) => [t, k]));
+
+/** Sparse preview: per service layer of a would-be building at (x, y), the covered road tiles and the houses they serve.
+ *  Memoised per structure epoch, rank and radius bonuses: the arrays are shared, callers only read them. */
+export function previewCovered(s: GameState, type: BuildingId, x: number, y: number): readonly PreviewLayer[] {
   const svc = BUILDING_DEFS[type].service ?? [];
   if (svc.length === 0) return [];
+  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= GW || y >= GH) return computePreview(s, type, x, y);
+  const e = structEpoch(s);
+  const shrine = fxAdd(s, 'shrineRadius'), market = fxAdd(s, 'marketRadius'), baths = fxAdd(s, 'bathsRadius');
+  let c = previews.get(s);
+  if (!c || c.e !== e || c.rank !== s.rank || c.shrine !== shrine || c.market !== market || c.baths !== baths) {
+    c = { e, rank: s.rank, shrine, market, baths, m: new Map() };
+    previews.set(s, c);
+  }
+  const k = (TYPE_INDEX.get(type) as number) * GN + y * GW + x;
+  let out = c.m.get(k);
+  if (!out) {
+    out = computePreview(s, type, x, y);
+    c.m.set(k, out);
+  }
+  return out;
+}
+
+function computePreview(s: GameState, type: BuildingId, x: number, y: number): PreviewLayer[] {
+  const svc = BUILDING_DEFS[type].service ?? [];
   const d = derived(s);
   const cls = classAt(s, type, x, y);
   const [w, h] = sizeOf(type, cls);
