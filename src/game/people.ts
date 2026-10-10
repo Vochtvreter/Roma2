@@ -9,7 +9,7 @@ import { derived as derived$, roadNeighbors as roadNeighbors$ } from './derived'
 import { toRoman as toRoman$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, touchPeople as touchPeople$ } from './memo';
-import { careShare } from './civic';
+import { careShare, dignitas } from './civic';
 import { log, nextId } from './state';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
@@ -586,11 +586,22 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 
 // ───────────────────────────── immigration (DESIGN §6.6) ─────────────────────────────
 
-/** Today's chance of a new household: IMM_RATE[rank] × attract (morale, food, water, fx immigration). */
+/** Rome's favour (DESIGN §6.6, §8.11): Rome sends colonists faster to a town of renown. A Vicus, Oppidum or Municipium
+ *  is measured against the dignitas the next charter asks: every share of that bar it clears raises immigration by
+ *  RENOWN.K × that share, up to ×RENOWN.MAX; at or below the bar it is ×1. The camp is settled by Rome's roll alone and
+ *  the Colonia, with no charter left to seek, by Rome's last wave (×1). Houses, services, gardens, the domus, paving,
+ *  deeds and fama all count. */
+export function renownFactor(s: GameState): number {
+  if (s.rank < 1 || s.rank >= RANK_DEFS.length - 1) return 1;
+  const R = P.RENOWN;
+  return Math.min(R.MAX, 1 + R.K * Math.max(0, dignitas(s).value / RANK_DEFS[s.rank + 1].dignitas - 1));
+}
+
+/** Today's chance of a new household: IMM_RATE[rank] × attract (morale, food, water, renown, fx immigration). */
 export function immigrationChance(s: GameState): number {
   const A = P.ATTRACT;
   const moraleF = Math.min(A.MAX, Math.max(0, (s.morale - A.MORALE) / A.SPAN));
-  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * dohFactor(s, 'water', P.WATER_F) * fx(s, 'immigration');
+  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * dohFactor(s, 'water', P.WATER_F) * renownFactor(s) * fx(s, 'immigration');
 }
 
 /** Gentes of a pool not yet present in the colony (the whole pool when every one is). */

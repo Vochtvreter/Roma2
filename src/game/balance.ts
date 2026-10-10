@@ -72,7 +72,7 @@ export const B = {
     HAZARD: { infant: 0.04, child: 0.006, adult: 0.004, a: 0.01, mid: 55, scale: 7.5, care: 0.35 },
     STARVE_P: 0.012, THIRST_P: 0.015, OFFLINE_STARVE: 0.4, SKILL_XP: 0.004, SKILL_BONUS: 0.04, SKILL_MAX: 10,
     SKILL_LIFETIME: 20, ELDER_OUT: 0.7, HOUSEHOLD_MIX: [0.7, 0.2, 0.1],
-    IMM_RATE: [0.014, 0.011, 0.0075, 0.003, 0.04],   // mirror of RANK_DEFS[].immRate (households/day; tuned to the §18.4 curve)
+    IMM_RATE: [0.014, 0.011, 0.0053, 0.0019, 0.04],  // mirror of RANK_DEFS[].immRate (households/day; tuned to the §18.4 curve with RENOWN)
     CEILING: [100, 260, 560, 900, 1500],              // mirror of RANK_DEFS[].ceiling (Rome's roll)
     DEATH_AT: 75,                                     // hunger/thirst above this kill (§6.5)
     FOOD_F: [[20, 1], [10, 0.5], [0, 0.1]],           // grain DoH ≥ x → factor (births, immigration)
@@ -81,6 +81,7 @@ export const B = {
     BIRTH_BEDS: [[2, 1], [1, 0.5], [0, 0]],           // free beds ≥ x → factor
     ATTRACT: { MORALE: 30, SPAN: 40, MAX: 1.25 },     // clamp((morale − 30) / 40, 0, 1.25)
     CALL: { SOULS: 3, FROM: 1.5, TO: 4.5 },           // Rome's call: households of ~3 souls; a daily roll past 1.5 souls, certain at 4.5
+    RENOWN: { K: 1.5, MAX: 2 },                       // Rome's favour (§6.6, Vicus–Municipium): immigration × min(MAX, 1 + K × max(0, dignitas / next charter's − 1))
     COUPLE_KIDS: [0, 3], KID_AGE: [0, 14], CRAFT_SKILL: [1, 3], WIDOW_KIDS: [1, 3],
     // household shapes (§6.6) and the veterans at the gate (§12.2)
     AGES: { coupleHead: [20, 40], coupleWife: [18, 36], craftsman: [18, 40], widow: [24, 45],

@@ -7,7 +7,7 @@ import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
 import { census, canWork, houseBeds, residents } from '../src/game/census';
 import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
-import { assignJobs, immigrationDay, peopleDay, personName } from '../src/game/people';
+import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
 import { forecast } from '../src/game/forecast';
@@ -350,6 +350,32 @@ describe('people (DESIGN §6)', () => {
     }
     expect(s.stats.births).toBeGreaterThanOrEqual(1);
     expect(s.counters.lastBirthBlocked).toBe(blocked);
+  });
+
+  it('Rome\'s favour: a Vicus to Municipium above its next charter\'s dignitas draws colonists faster, ×1 at the camp and the Colonia', () => {
+    const s = fresh();
+    s.morale = 70;
+    const fame = (v: number): void => {
+      s.modifiers = s.modifiers.filter((m) => m.id !== 'test.fama');
+      s.modifiers.push({ id: 'test.fama', label: 'fama', until: 1e9, fx: { add: { fama: v } }, benign: true, source: 'stage' });
+    };
+    const at = (rank: number, dig: number): number => {
+      s.rank = rank as GameState['rank'];
+      fame(0);
+      fame(dig - dignitas(s).value);
+      expect(dignitas(s).value).toBeCloseTo(dig, 6);
+      return renownFactor(s);
+    };
+    const R = B.people.RENOWN;
+    expect(at(0, 60)).toBe(1);                                   // the camp: Rome's roll alone
+    expect(at(1, 40)).toBe(1);                                   // a Vicus at the Oppidum bar
+    expect(at(1, 44)).toBeCloseTo(1 + R.K * 0.1, 9);              // a tenth above it
+    expect(at(2, 150)).toBeCloseTo(1 + R.K * 0.5, 9);             // an Oppidum against the Municipium's 100
+    expect(at(3, 1000)).toBe(R.MAX);
+    expect(at(4, 1000)).toBe(1);                                  // the Colonia: Rome's last wave
+    const base = (at(1, 30), immigrationChance(s));
+    expect(at(1, 60)).toBeCloseTo(1 + R.K * 0.5, 9);
+    expect(immigrationChance(s) / base).toBeCloseTo(1 + R.K * 0.5, 9);
   });
 
   it('marries, bears children and buries over the years without NaN', () => {
