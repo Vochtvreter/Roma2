@@ -49,7 +49,7 @@ function m(id: MilestoneId, text: string, hint: string, progress: (s: GameState)
 
 /** The 24 milestones in order (DESIGN §9.4): 20 to the Capitolium, then 4 post-victory goals. */
 export const MILESTONES: MilestoneDef[] = [
-  m('firstWork', 'Raise your first building', 'Place a work from Aedificia, or let the Ordo raise one.', (s) => upTo(raised(s), 1),
+  m('firstWork', 'Raise your first building', 'The Ordo is already raising one; Aedificia opens once it stands.', (s) => upTo(raised(s), 1),
     [{ kind: 'setting', id: 'spareBeds' }, { kind: 'tool', id: 'pin' }, { kind: 'overlay', id: 'domus' }]),
   m('charter', 'Proclaim the Lex coloniae', 'Choose the founding law in Edicta. It is permanent.', (s) => flag(s.decisions.paths.charter !== undefined),
     [{ kind: 'section', id: 'focus' }]),
@@ -132,21 +132,36 @@ export function milestoneUnlocking(ref: UnlockRef): MilestoneDef | null {
   return MILESTONES.find((x) => x.unlocks.some((u) => key(u) === k)) ?? null;
 }
 
-/** Completes the current milestone(s) while their progress is met (loops); logs, fx milestone. */
+/** Completes the current milestone(s) while their progress is met (loops); logs, fx milestone. The 20 goals to the
+ *  Capitolium complete strictly in order; once they are done, every post-victory goal whose progress is met completes
+ *  (in list order), and the objective moves past every goal already done (DESIGN §9.4). */
 export function checkObjectives(s: GameState, ctx: TickContext): void {
   for (;;) {
     const cur = currentMilestone(s);
     if (!cur) return;
+    if (cur.postVictory) break;
     const [have, goal] = cur.progress(s);
     if (have < goal) return;
-    const n = milestoneIndex(cur.id);
-    s.guidance.milestoneDays[cur.id] = s.day;
-    s.guidance.objective = n + 1;
-    const unlocks = cur.unlocks.map(unlockLabel);
-    const what = unlocks.length > 0 ? ` Unlocked: ${unlocks.join(', ')}.` : '';
-    log(s, 'milestone', `Res Gestae ${toRoman(n + 1)}: ${cur.text}.${what}`, ['highlight']);
-    ctx.fx.push({ kind: 'milestone', id: cur.id });
+    complete(s, ctx, cur);
+    s.guidance.objective = milestoneIndex(cur.id) + 1;
   }
+  for (let i = s.guidance.objective; i < MILESTONES.length; i++) {
+    const ms = MILESTONES[i];
+    if (!ms.postVictory || milestoneDone(s, ms.id)) continue;
+    const [have, goal] = ms.progress(s);
+    if (have >= goal) complete(s, ctx, ms);
+  }
+  while (s.guidance.objective < MILESTONES.length && milestoneDone(s, MILESTONES[s.guidance.objective].id)) s.guidance.objective++;
+}
+
+/** Records a milestone as done today; logs it with its unlocks, fx milestone. */
+function complete(s: GameState, ctx: TickContext, ms: MilestoneDef): void {
+  const n = milestoneIndex(ms.id);
+  s.guidance.milestoneDays[ms.id] = s.day;
+  const unlocks = ms.unlocks.map(unlockLabel);
+  const what = unlocks.length > 0 ? ` Unlocked: ${unlocks.join(', ')}.` : '';
+  log(s, 'milestone', `Res Gestae ${toRoman(n + 1)}: ${ms.text}.${what}`, ['highlight']);
+  ctx.fx.push({ kind: 'milestone', id: ms.id });
 }
 
 /** The milestone currently pursued, or null when all are done. */

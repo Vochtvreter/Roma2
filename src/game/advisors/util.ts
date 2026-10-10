@@ -13,7 +13,7 @@ import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } fr
 import { memo as memo$, structEpoch as structEpoch$ } from '../memo';
 import { personName } from '../people';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup';
-import { nextTier, unmetNeeds } from '../housing';
+import { nextTier, shownWant, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { NEED_META as NEED_META$, TIER_DEFS as TIER_DEFS$ } from '../data/housing';
@@ -168,7 +168,7 @@ export function houseWants(s: GameState, v: SimView): HouseWant[] {
       if (!b || !h) continue;
       const next = nextTier(s, b);
       const unmet = next ? unmetNeeds(s, b, next) : [];
-      out.push({ id, tile: b.y * W + b.x, tier: h.tier, next, unmet, want: unmet[0] ?? null, declining: h.declining, lapsed: h.declining ? unmetNeeds(s, b, h.tier) : [] });
+      out.push({ id, tile: b.y * W + b.x, tier: h.tier, next, unmet, want: shownWant(s, unmet), declining: h.declining, lapsed: h.declining ? unmetNeeds(s, b, h.tier) : [] });
     }
     return out;
   });

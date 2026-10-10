@@ -181,14 +181,14 @@ const veterani: EventDef = {
     const title = `Veterans at the gate (${plural(party.length, 'family', 'families')})`;
     if (key === 'grant') {
       let joined = 0;
-      for (const fam of party) if (admitFamily(s, ev.tc, fam, false)) joined++;
+      for (const fam of party) if (s.people.length + fam.people.length <= B.people.POP_CAP && admitFamily(s, ev.tc, fam, false)) joined++;
       s.res.denarii += EV.VET.GRANT * (party.length - joined);        // pay only for the land granted
       if (joined > 0) mod(s, 'veterani', 'Veterans welcomed', EV.VET.MORALE_DAYS, { add: { morale: Math.min(EV.VET.MORALE_MAX, EV.VET.MORALE_PER * joined) } }, 'veterani', true);
       return `${title}: land granted to ${joined}${joined < party.length ? `; ${party.length - joined} found no beds and moved on` : ''}.`;
     }
     if (key === 'craft') {
       const best = party.slice().sort((a, b) => bestSkill(headOf(b)).level - bestSkill(headOf(a)).level)[0];
-      if (best && admitFamily(s, ev.tc, best, false)) {
+      if (best && s.people.length + best.people.length <= B.people.POP_CAP && admitFamily(s, ev.tc, best, false)) {
         mod(s, 'veterani', 'Veterans welcomed', EV.VET.MORALE_DAYS, { add: { morale: EV.VET.MORALE_PER } }, 'veterani', true);
         return `${title}: the ${best.family.gens.replace(/us$/, 'i')} stay; the others move on.`;
       }

@@ -225,9 +225,15 @@ describe('the Legate\'s relief', () => {
     triggerRelief(s, ctx(true), view(s));
     expect(s.trade.caravans.filter((x) => x.kind === 'relief').length).toBe(1);   // cooldown
     s.day = car.arrive;
-    const g = s.res.grain;
+    const cap = census(s).caps.grain;
+    s.res.grain = cap - Math.floor(car.qty / 4);              // the stores hold only a quarter of it (R44)
+    const g = s.res.grain, debt = s.trade.debt;
     tradeDay(s, ctx(), new Rng(1), view(s));
-    expect(s.res.grain).toBe(g + car.qty);
+    const got = Math.min(cap, g + car.qty) - g;
+    expect(got).toBeLessThan(car.qty);
+    expect(s.res.grain).toBe(Math.min(cap, g + car.qty));
+    expect(s.trade.debt).toBeCloseTo(debt - car.value * (car.qty - got) / car.qty);
+    expect(s.log.at(-1)?.text).toContain('Rome forgives');
   });
 
   it('online it is a card that makes way for nothing else; Annona publica makes it free once a year', () => {

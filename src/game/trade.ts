@@ -73,10 +73,15 @@ export function slotsInUse(s: GameState): number {
   return n;
 }
 
-/** A hub trades with us once our rank reaches its rank, from Vicus on (at Castra only with the Mercatores charter). */
+/** Trade is open from Vicus on, at Castra only with the Mercatores charter (DESIGN §13; the Commercium tab's reveal). */
+export function tradeOpen(s: GameState): boolean {
+  return s.rank >= VICUS || s.decisions.paths.charter === 'mercatores';
+}
+
+/** A hub trades with us once our rank reaches its rank and trade is open (tradeOpen). */
 export function hubOpen(s: GameState, hub: HubId): boolean {
   if (HUB_DEFS[hub].rank > s.rank) return false;
-  return s.rank >= VICUS || s.decisions.paths.charter === 'mercatores';
+  return tradeOpen(s);
 }
 
 /** The open hub that sells a good cheapest (ties by hub order), or null. */
@@ -149,7 +154,7 @@ export function createContract(s: GameState, spec: ContractSpec, owner?: 'player
   if (reason) c.reason = reason;
   s.trade.contracts.push(c);
   const verb = spec.mode === 'import' ? `buy ${qty} ${resName(spec.res)} from` : `sell ${qty} ${resName(spec.res)} to`;
-  log(s, 'trade', `Contract${c.repeat ? ' (standing)' : ''}: ${verb} ${HUB_DEFS[spec.hub].name}.`, owner === 'ordo' ? ['decided'] : undefined, id);
+  log(s, 'trade', `Contract${c.repeat ? ' (standing)' : ''}: ${verb} ${HUB_DEFS[spec.hub].name}.`, undefined, id);   // an Ordo contract is tagged 'decided' by chronicle() only when due
   return { ok: true, id };
 }
 
@@ -240,9 +245,15 @@ function deliver(s: GameState, ctx: TickContext, car: Caravan): void {
     s.res.denarii += coin;
     ctx.rates.prod.denarii.trade = (ctx.rates.prod.denarii.trade ?? 0) + coin;
   } else if (car.kind === 'relief') {
-    s.res[car.res] += car.qty;
-    ctx.rates.prod[car.res].relief = (ctx.rates.prod[car.res].relief ?? 0) + car.qty;
-    log(s, 'good', `The legion's grain arrives: ${Math.round(car.qty)} modii.`, ['highlight']);
+    // only what the stores can hold is taken; Rome forgives the debt on the rest (it is never charged for spilt grain)
+    const room = Math.max(0, census(s).caps[car.res] - s.res[car.res]);
+    const got = Math.min(car.qty, room);
+    const forgiven = car.qty > 0 ? Math.min(s.trade.debt, car.value * (car.qty - got) / car.qty) : 0;
+    s.res[car.res] += got;
+    s.trade.debt -= forgiven;
+    ctx.rates.prod[car.res].relief = (ctx.rates.prod[car.res].relief ?? 0) + got;
+    const rest = forgiven > 0 ? ` (the stores could hold no more; Rome forgives ${Math.round(forgiven)} denarii)` : got < car.qty ? ' (the stores could hold no more)' : '';
+    log(s, 'good', `The legion's grain arrives: ${Math.round(got)} modii${rest}.`, ['highlight']);
     return;
   } else {
     const room = Math.max(0, census(s).caps[car.res] - s.res[car.res]);
@@ -309,6 +320,7 @@ function merchantDay(s: GameState, rng: Rng): void {
   const m = s.trade.merchant;
   if (m && s.day >= m.until) merchantLeaves(s, 'break camp and take the via');
   if (s.trade.merchant) return;
+  if (!tradeOpen(s)) return;              // no visits while the colony cannot trade (spawnMerchant itself stays ungated)
   if (elapsed(s) < E.START || s.day - s.trade.lastMerchant < E.MERCHANT_GAP) return;
   if (s.morale < B.morale.MERCHANTS_MIN || s.people.length < E.MERCHANT_POP) return;
   const mansiones = Math.min(E.MERCHANT_MANSIO_MAX, derived(s).counts.mansio ?? 0);

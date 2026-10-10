@@ -16,7 +16,8 @@ import { bestSlot, siteMultAt, siteScore } from '../src/game/site';
 import { fx } from '../src/game/fx';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
-import { fresh } from './util';
+import { askOrdo } from '../src/game/ordo/actions';
+import { fresh, run } from './util';
 
 const N = W * H;
 
@@ -269,7 +270,7 @@ describe('placeBuilding: plans, stakes and sites per PlaceOpts', () => {
     const b = s.buildings[s.buildings.length - 1];
     expect([b.status, b.owner, b.reason?.code]).toEqual(['staked', 'ordo', 'aestasWater']);
     const line = s.log[s.log.length - 1];
-    expect([line.kind, line.ref, line.tags]).toEqual(['ordo', b.id, ['decided']]);
+    expect([line.kind, line.ref, line.tags]).toEqual(['ordo', b.id, undefined]);   // chronicle() tags it only when decided in our name (R18)
     const r2 = placeBuilding(s, 'lararium', tileFor(s, 'lararium', 'ordo'), { owner: 'ordo', noStake: true });
     expect(r2.ok && s.buildings[s.buildings.length - 1].status).toBe('building');
     s.res.denarii = 0;
@@ -291,6 +292,23 @@ describe('placeBuilding: plans, stakes and sites per PlaceOpts', () => {
     expect(s.buildings[s.buildings.length - 1].owner).toBe('player');
     const notStake = placeBuilding(s, 'cisterna', a[a.length - 1], { replaceId: s.buildings[0].id });
     expect(notStake.ok).toBe(false);
+  });
+
+  it('placing by hand what was asked of the Ordo withdraws the request, so the work is raised once (R14)', () => {
+    const s = fresh(42);
+    const wells0 = s.buildings.filter((b) => b.type === 'puteus').length;
+    s.res.stone = 0;
+    expect(askOrdo(s, 'puteus').ok).toBe(true);
+    run(s, 4);
+    expect(s.ordo.requests.map((r) => r.type)).toEqual(['puteus']);
+    expect(placeBuilding(s, 'puteus', tileFor(s, 'puteus')).ok).toBe(true);    // a plan: the stores lack the stone
+    expect(s.ordo.requests).toEqual([]);
+    expect(s.log[s.log.length - 1].text).toBe('You raise a well yourself; the Ordo lets your request go.');
+    s.res.stone = 100;
+    run(s, 6);
+    const wells = s.buildings.filter((b) => b.type === 'puteus');
+    expect(wells.length).toBe(wells0 + 1);
+    expect(wells.some((b) => b.reason?.code === 'request')).toBe(false);
   });
 
   it('ignoreCost places without paying; ids ascend', () => {

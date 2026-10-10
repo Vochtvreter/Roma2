@@ -43,6 +43,18 @@ export const TIER_DEFS: Record<HouseTierId, HouseTierDef> = {
   },
 };
 
+/** A tier in running text with its article: "tents" (a plural, no article), "a tiled cottage", "an apartment block". */
+export function aTier(t: HouseTierId): string {
+  const name = TIER_DEFS[t].name.toLowerCase();
+  if (t === 'tentoria') return name;
+  return `${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+/** "The tiled cottage of …" as a subject, with its verb agreeing ("The tents … become", "The hut … becomes"). */
+export function theTier(t: HouseTierId, rest: string, verb: { one: string; many: string }): string {
+  return `The ${TIER_DEFS[t].name.toLowerCase()} ${rest} ${t === 'tentoria' ? verb.many : verb.one}`;
+}
+
 /** Labels and want-bubble icons for every house need (DESIGN §7.7; icon sprites `i_want_<needId>`). */
 export const NEED_META: Record<NeedId, { label: string; icon: string }> = {
   street: { label: 'Street access', icon: 'i_want_street' },

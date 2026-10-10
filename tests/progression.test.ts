@@ -385,6 +385,30 @@ describe('Res Gestae', () => {
     expect(s.log.find((e) => e.text.startsWith('Res Gestae VI:'))?.text).toContain('Hospites edict');
   });
 
+  it('after the Capitolium, every post-victory goal already met completes; the objective skips the done ones (R45)', () => {
+    const s = fresh();
+    const pv = MILESTONES.findIndex((m) => m.postVictory);
+    for (const m of MILESTONES.slice(0, pv)) s.guidance.milestoneDays[m.id] = s.day;
+    s.guidance.objective = pv;
+    satisfy(s, 'capitolium');
+    satisfy(s, 'sixHubs');
+    satisfy(s, 'saturnalia10');                            // met while pop1200 and allT3 are not
+    const c = ctx();
+    checkObjectives(s, c);
+    expect(milestoneDone(s, 'sixHubs')).toBe(true);
+    expect(milestoneDone(s, 'saturnalia10')).toBe(true);
+    expect(c.fx).toEqual([{ kind: 'milestone', id: 'sixHubs' }, { kind: 'milestone', id: 'saturnalia10' }]);
+    expect(milestoneDone(s, 'pop1200')).toBe(false);
+    expect(currentMilestone(s)?.id).toBe('pop1200');
+    satisfy(s, 'pop1200');
+    checkObjectives(s, ctx());
+    expect(currentMilestone(s)?.id).toBe('allT3');
+    satisfy(s, 'allT3');
+    checkObjectives(s, ctx());
+    expect(currentMilestone(s)).toBeNull();
+    expect(s.guidance.objective).toBe(MILESTONES.length);
+  });
+
   it('counts the fed and stable streaks', () => {
     const s = fresh();
     const v = view(s);

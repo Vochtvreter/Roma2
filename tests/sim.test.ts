@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { BUILDER } from '../src/game/types';
 import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
-import { census, canWork } from '../src/game/census';
+import { census, canWork, houseBeds, residents } from '../src/game/census';
 import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
-import { assignJobs, immigrationDay, peopleDay, personName } from '../src/game/people';
+import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
 import { forecast } from '../src/game/forecast';
@@ -18,6 +18,7 @@ import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
 import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run } from './util';
+import { play } from './autoplayer';
 
 const pins = vi.hoisted(() => new Map<number, number>());
 vi.mock('../src/game/site', async (importOriginal) => {
@@ -329,6 +330,54 @@ describe('people (DESIGN §6)', () => {
     expect(ids.every((v, i) => i === 0 || ids[i - 1] < v)).toBe(true);
   });
 
+  it('no births past the hard cap of 1,500 souls, and the cap is no blocked birth (R43)', () => {
+    const s = fresh();
+    for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
+    s.modifiers.push({ id: 'test.fertile', label: 'fertile', until: 1e9, fx: { mul: { births: 5000 } }, benign: true, source: 'stage' });
+    const mothers = s.people.filter((w) => w.female && w.spouse !== null).length;
+    expect(mothers).toBeGreaterThanOrEqual(2);
+    const extra = B.people.POP_CAP - 1 - s.people.length;
+    s.people.push(...Array.from({ length: extra }, (_, k) => ({ ...s.people[2], id: 10_000 + k, spouse: null, home: null, female: false,
+      born: s.day - 30 * B.time.YEAR_DAYS, mother: null, father: null, work: null, skills: {} })));
+    s.nextId = 20_000;
+    touchPeople(s);
+    const blocked = s.counters.lastBirthBlocked;
+    const rng = new Rng(3);
+    for (let d = 0; d < 5; d++) {
+      s.day++;
+      peopleDay(s, newCtx(), rng);
+      expect(s.people.length).toBeLessThanOrEqual(B.people.POP_CAP);
+    }
+    expect(s.stats.births).toBeGreaterThanOrEqual(1);
+    expect(s.counters.lastBirthBlocked).toBe(blocked);
+  });
+
+  it('Rome\'s favour: a Vicus above the Oppidum\'s dignitas draws colonists faster, capped; ×1 at the other ranks', () => {
+    const s = fresh();
+    s.morale = 70;
+    const fame = (v: number): void => {
+      s.modifiers = s.modifiers.filter((m) => m.id !== 'test.fama');
+      s.modifiers.push({ id: 'test.fama', label: 'fama', until: 1e9, fx: { add: { fama: v } }, benign: true, source: 'stage' });
+    };
+    const at = (rank: number, dig: number): number => {
+      s.rank = rank as GameState['rank'];
+      fame(0);
+      fame(dig - dignitas(s).value);
+      expect(dignitas(s).value).toBeCloseTo(dig, 6);
+      return renownFactor(s);
+    };
+    const R = B.people.RENOWN;
+    expect([R.FROM, R.TO]).toEqual([1, 1]);
+    expect(at(0, 60)).toBe(1);                                   // the camp: Rome's roll alone
+    expect(at(1, 40)).toBe(1);                                   // a Vicus at the Oppidum bar
+    expect(at(1, 44)).toBeCloseTo(1 + R.K * 0.1, 9);              // a tenth above it
+    expect(at(1, 400)).toBe(R.MAX);
+    for (const rank of [2, 3, 4]) expect(at(rank, 1000)).toBe(1);
+    const base = (at(1, 30), immigrationChance(s));
+    expect(at(1, 60)).toBeCloseTo(1 + R.K * 0.5, 9);
+    expect(immigrationChance(s) / base).toBeCloseTo(1 + R.K * 0.5, 9);
+  });
+
   it('marries, bears children and buries over the years without NaN', () => {
     const s = fresh();
     for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
@@ -537,5 +586,49 @@ describe.runIf(INTEGRATED)('the opening with the real map, coverage and Ordo (in
     let low = Infinity;
     run(s, 160, (st) => { low = Math.min(low, st.res.water / census(st).need.water); });
     expect(Math.abs(Math.min(...f.water.months.slice(0, aestasEnd + 1).map((m) => m.minDoh)) - low)).toBeLessThanOrEqual(10);
+  });
+});
+
+describe.runIf(INTEGRATED)("the away report's \"decided in your name\" (R18)", () => {
+  const offline = (s: GameState, days: number): void => { for (let i = 0; i < days; i++) tick(s, newCtx(true)); };
+  const decidedWorks = (s: GameState): string[] => s.log.filter((e) => e.kind === 'ordo' && e.ref !== undefined && e.tags?.includes('decided')
+    && s.buildings.some((b) => b.id === e.ref && b.owner === 'ordo')).map((e) => e.text);
+
+  it('the Ordo building with its toggle on is not tagged; with the toggle off and Govern while away, it is', () => {
+    const on = fresh(42);
+    offline(on, 120);
+    expect(on.buildings.some((b) => b.owner === 'ordo')).toBe(true);
+    expect(decidedWorks(on)).toEqual([]);
+    const off = fresh(42);
+    off.ordo.on.build = false;
+    offline(off, 120);
+    expect(off.buildings.some((b) => b.owner === 'ordo')).toBe(true);
+    expect(decidedWorks(off).length).toBeGreaterThan(0);
+  });
+});
+
+describe.runIf(INTEGRATED)('re-housing the crowd of a full home (R29)', () => {
+  it('the decision bot to elapsed 2,000: no house stays over its beds while the colony has the beds for its overflow', { timeout: 120_000 }, () => {
+    let worst = 0, violations = 0, births = 0;
+    const r = play(1, 'decision', {
+      days: 2000, onDay: (s) => {
+        births = s.stats.births;
+        let free = 0;
+        const over: number[] = [];
+        for (const b of s.buildings) {
+          if (!b.house || b.status !== 'done') continue;
+          const n = residents(s, b.id).length - houseBeds(s, b);
+          if (n > 0 && !(b.damagedUntil !== undefined && b.damagedUntil > s.day)) over.push(n);
+          else if (n < 0) free -= n;
+        }
+        for (const n of over) {
+          worst = Math.max(worst, n);
+          if (free >= n) violations++;
+        }
+      },
+    });
+    expect(r.nan).toEqual([]);
+    expect(births).toBeGreaterThan(5);
+    expect(violations, `worst overflow ${worst}`).toBe(0);
   });
 });

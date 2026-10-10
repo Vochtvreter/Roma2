@@ -9,18 +9,18 @@ import { derived as derived$, roadNeighbors as roadNeighbors$ } from './derived'
 import { toRoman as toRoman$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, touchPeople as touchPeople$ } from './memo';
-import { careShare } from './civic';
+import { careShare, dignitas } from './civic';
 import { log, nextId } from './state';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
-import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { aTier } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, PRAENOMINA as PRAENOMINA$, feminine as feminine$ } from './data/names';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
   toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
-  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
+  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$,
   DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$,
   getBuilding = getBuilding$, getPerson = getPerson$;
 
@@ -209,14 +209,20 @@ export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Fami
   s.stats.immigrants += n;
   ctx.fx.push({ kind: 'arrive', family: fam.family.id, n, home });
   const tier = getBuilding(s, home)?.house?.tier;
-  const where = tier ? ` in a ${TIER_DEFS[tier].name.toLowerCase()}` : '';
+  const where = tier ? ` in ${aTier(tier)}` : '';
   log(s, 'good', `The ${gentilic(fam.family.gens)} arrive along the via: ${n} ${n === 1 ? 'soul settles' : 'souls settle'}${where}.`, undefined, home);
   touchPeople(s);
   return true;
 }
 
-/** Moves homeless people into free beds, family by family (together where one house holds them). */
+/** Moves homeless people into free beds, family by family (together where one house holds them), then relieves the
+ *  over-full houses (relieveCrowding). */
 export function rehouse(s: GameState): void {
+  housePeople(s);
+  relieveCrowding(s);
+}
+
+function housePeople(s: GameState): void {
   const homeless = peopleIndex(s).homeless;
   if (homeless.length === 0) return;
   const byFamily = new Map<number, Person[]>();
@@ -229,6 +235,69 @@ export function rehouse(s: GameState): void {
     const f = s.families.find((x) => x.id === fid);
     const home = houseGroup(s, byFamily.get(fid) as Person[], f?.home ?? null);
     if (f && home !== null && f.home === null) f.home = home;
+  }
+}
+
+/** The residents of one house split into households: each adult with the spouse living there, and the children under
+ *  ADULT with a parent's household (a child without a parent in the house is a household of its own). */
+function households(s: GameState, res: readonly Person[]): Person[][] {
+  const here = new Map<number, Person>();
+  for (const p of res) here.set(p.id, p);
+  const unitOf = new Map<number, Person[]>();
+  const units: Person[][] = [];
+  for (const p of res) {
+    if (unitOf.has(p.id) || ageOf(p, s.day) < P.ADULT) continue;
+    const u = [p];
+    unitOf.set(p.id, u);
+    const sp = p.spouse !== null ? here.get(p.spouse) : undefined;
+    if (sp && !unitOf.has(sp.id)) { u.push(sp); unitOf.set(sp.id, u); }
+    units.push(u);
+  }
+  for (const p of res) {
+    if (unitOf.has(p.id)) continue;
+    const parent = [p.mother, p.father].find((id) => id !== null && unitOf.has(id));
+    let u = parent !== undefined && parent !== null ? unitOf.get(parent) : undefined;
+    if (!u) { u = []; units.push(u); }
+    u.push(p);
+    unitOf.set(p.id, u);
+  }
+  return units;
+}
+
+/** Moves the overflow of over-full houses (a child born into a full home, a fire's halved beds) into free beds elsewhere:
+ *  in evictOverflow's order (newest family first, then newest members), whole households where one house holds them,
+ *  else the overflow alone, split across the best houses. Nobody is made homeless for it, and nobody moves when the
+ *  colony lacks the beds. One pass over the houses a day; the moves themselves are rare. */
+function relieveCrowding(s: GameState): void {
+  const ix = peopleIndex(s);
+  let over: { res: Person[]; n: number }[] | null = null;
+  for (const id of derived(s).houses) {
+    const res = ix.byHome.get(id);
+    if (!res) continue;
+    const b = getBuilding(s, id);
+    const n = b ? res.length - houseBeds(s, b) : 0;
+    if (n > 0) (over ??= []).push({ res, n });
+  }
+  if (!over) return;
+  const moved = new Set<number>();
+  const settle = (group: Person[]): boolean => {
+    const home = houseGroup(s, group);
+    if (home === null) return false;
+    for (const p of group) moved.add(p.id);
+    for (const f of s.families) if (group.some((p) => p.id === f.head)) f.home = getPerson(s, f.head)?.home ?? f.home;
+    return true;
+  };
+  const newest = (a: Person, c: Person): number => c.family - a.family || c.id - a.id;
+  for (const { res, n } of over) {
+    let left = n;
+    const units = households(s, res).map((u) => ({ u, key: u.reduce((x, p) => (newest(x, p) > 0 ? p : x)) }))
+      .sort((a, c) => newest(a.key, c.key)).map((x) => x.u);
+    for (const u of units) {
+      if (left <= 0) break;
+      const room = houseRanking(s)[0]?.free ?? 0;
+      if (u.length <= room && settle(u)) left -= u.length;
+    }
+    if (left > 0) settle(res.filter((p) => !moved.has(p.id)).sort(newest).slice(0, left));
   }
 }
 
@@ -433,6 +502,7 @@ function nameChild(s: GameState, father: Person | null, mother: Person, female: 
 }
 
 function births(s: GameState, ctx: TickContext, rng: Rng): void {
+  if (s.people.length >= P.POP_CAP) return;   // the hard cap (DESIGN §18.3); not a blocked birth for the Aedilis
   const c = census(s);
   const moraleF = Math.min(P.BIRTH_MORALE[2], Math.max(P.BIRTH_MORALE[1], s.morale / P.BIRTH_MORALE[0]));
   const base = (P.BIRTH_RATE * foodFactor(s) * moraleF * fx(s, 'births')) / YEAR;
@@ -459,6 +529,7 @@ function births(s: GameState, ctx: TickContext, rng: Rng): void {
     ctx.fx.push({ kind: 'birth', home: kid.home });
     const parents = father ? `${personName(father)} and ${personName(w)}` : personName(w);
     log(s, 'birth', `${female ? 'A daughter' : 'A son'}, ${personName(kid)}, is born to ${parents}.`, undefined, kid.home ?? undefined);
+    if (s.people.length >= P.POP_CAP) break;
   }
 }
 
@@ -515,11 +586,21 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 
 // ───────────────────────────── immigration (DESIGN §6.6) ─────────────────────────────
 
-/** Today's chance of a new household: IMM_RATE[rank] × attract (morale, food, water, fx immigration). */
+/** Rome's favour (DESIGN §6.6, §8.11): Rome sends colonists faster to a town of renown. At ranks RENOWN.FROM..TO (the
+ *  Vicus) the colony is measured against the dignitas its next charter asks: every share of that bar it clears raises
+ *  immigration by RENOWN.K × that share, up to ×RENOWN.MAX; at or below the bar, and at other ranks, it is ×1. Houses,
+ *  services, gardens, paving, deeds and fama all count, so what the player builds beyond the Ordo draws colonists. */
+export function renownFactor(s: GameState): number {
+  const R = P.RENOWN;
+  if (s.rank < R.FROM || s.rank > R.TO || s.rank >= RANK_DEFS.length - 1) return 1;
+  return Math.min(R.MAX, 1 + R.K * Math.max(0, dignitas(s).value / RANK_DEFS[s.rank + 1].dignitas - 1));
+}
+
+/** Today's chance of a new household: IMM_RATE[rank] × attract (morale, food, water, renown, fx immigration). */
 export function immigrationChance(s: GameState): number {
   const A = P.ATTRACT;
   const moraleF = Math.min(A.MAX, Math.max(0, (s.morale - A.MORALE) / A.SPAN));
-  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * dohFactor(s, 'water', P.WATER_F) * fx(s, 'immigration');
+  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * dohFactor(s, 'water', P.WATER_F) * renownFactor(s) * fx(s, 'immigration');
 }
 
 /** Gentes of a pool not yet present in the colony (the whole pool when every one is). */

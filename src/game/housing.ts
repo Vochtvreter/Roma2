@@ -17,7 +17,7 @@ import { view } from './sim';
 import { log } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
-import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { TIER_DEFS as TIER_DEFS$, aTier, theTier } from './data/housing';
 import { feminine as feminine$ } from './data/names';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -34,6 +34,18 @@ const LAYER_NEEDS: Record<CoverageLayerId, readonly NeedId[]> = {
   water: ['water'], fountain: ['water'], shrine: ['religion'], temple: ['temple', 'religion'],
   market: ['market'], macellum: ['macellum', 'market'], baths: ['baths'], culture: [],
 };
+/** The lowest rank at which the player can raise a work that meets each coverage need (a need no work meets is absent). */
+const NEED_RANK: Partial<Record<NeedId, number>> = {};
+for (const d of Object.values(BUILDING_DEFS)) {
+  if (d.place.includes('fixed')) continue;
+  for (const sv of d.service ?? []) for (const n of LAYER_NEEDS[sv.layer]) NEED_RANK[n] = Math.min(NEED_RANK[n] ?? Infinity, d.rank);
+}
+
+/** The want a house shows (bubble, Populus, tips, the Aedilis): the first unmet need the colony's rank can answer, so a
+ *  service Rome has not yet granted falls through to 'rank' (DESIGN §7.7); `unmet` keeps its order for the Ordo. */
+export function shownWant(s: GameState, unmet: readonly NeedId[]): NeedId | null {
+  return unmet.find((n) => (NEED_RANK[n] ?? 0) <= s.rank) ?? unmet[0] ?? null;
+}
 
 function level(t: HouseTierId): number {
   return TIER_DEFS[t].level;
@@ -95,13 +107,13 @@ function covers(pool: Cost, cost: Cost): boolean {
   return true;
 }
 
-/** The first unmet need of the next tier (the want bubble); 'materials' when every need holds but the renovation pool
- *  lacks the materials; null when nothing is wanted. */
+/** The shown unmet need of the next tier (the want bubble; shownWant); 'materials' when every need holds but the
+ *  renovation pool lacks the materials; null when nothing is wanted. */
 export function firstWant(s: GameState, b: Building): NeedId | null {
   const next = targetTier(s, b);
   if (!next) return null;
   const unmet = unmetNeeds(s, b, next);
-  if (unmet.length > 0) return unmet[0];
+  if (unmet.length > 0) return shownWant(s, unmet);
   const pool = memo(s, 'renovationPool', dayEpoch(s), () => renovationPool(s, view(s)));
   return covers(pool, TIER_DEFS[next].renovation) ? null : 'materials';
 }
@@ -190,7 +202,7 @@ function finishRenovation(s: GameState, ctx: TickContext, b: Building): void {
     s.stats.evolvedBy[to] = (s.stats.evolvedBy[to] ?? 0) + 1;
   }
   ctx.fx.push({ kind: 'evolved', id: b.id, tier: to });
-  log(s, 'good', `The ${TIER_DEFS[from].name.toLowerCase()} ${householdName(s, b)} becomes a ${TIER_DEFS[to].name.toLowerCase()}.`, undefined, b.id);
+  log(s, 'good', `${theTier(from, householdName(s, b), { one: 'becomes', many: 'become' })} ${aTier(to)}.`, undefined, b.id);
   evictOverflow(s, b.id);
 }
 
@@ -205,7 +217,7 @@ function dropTier(s: GameState, ctx: TickContext, b: Building): void {
   h.recoverDays = 0;
   s.stats.devolved++;
   ctx.fx.push({ kind: 'declined', id: b.id });
-  log(s, 'bad', `The ${TIER_DEFS[from].name.toLowerCase()} ${householdName(s, b)} falls back to a ${TIER_DEFS[h.tier].name.toLowerCase()}.`, ['highlight'], b.id);
+  log(s, 'bad', `${theTier(from, householdName(s, b), { one: 'falls', many: 'fall' })} back to ${aTier(h.tier)}.`, ['highlight'], b.id);
   evictOverflow(s, b.id);
 }
 
@@ -238,7 +250,7 @@ export function housingDay(s: GameState, ctx: TickContext): void {
           h.declining = true;
           h.declineDays = 0;
           ctx.fx.push({ kind: 'declined', id });
-          log(s, 'bad', `The ${TIER_DEFS[h.tier].name.toLowerCase()} ${householdName(s, b)} is declining.`, undefined, id);
+          log(s, 'bad', `${theTier(h.tier, householdName(s, b), { one: 'is', many: 'are' })} declining.`, undefined, id);
           touchPeople(s);
         }
       } else {
@@ -255,7 +267,7 @@ export function housingDay(s: GameState, ctx: TickContext): void {
         h.declineDays = 0;
         h.badDays = 0;
         h.recoverDays = 0;
-        log(s, 'good', `The ${TIER_DEFS[h.tier].name.toLowerCase()} ${householdName(s, b)} is in good repair again.`, undefined, id);
+        log(s, 'good', `${theTier(h.tier, householdName(s, b), { one: 'is', many: 'are' })} in good repair again.`, undefined, id);
         touchPeople(s);
       }
       continue;

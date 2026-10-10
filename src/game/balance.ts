@@ -81,6 +81,7 @@ export const B = {
     BIRTH_BEDS: [[2, 1], [1, 0.5], [0, 0]],           // free beds ≥ x → factor
     ATTRACT: { MORALE: 30, SPAN: 40, MAX: 1.25 },     // clamp((morale − 30) / 40, 0, 1.25)
     CALL: { SOULS: 3, FROM: 1.5, TO: 4.5 },           // Rome's call: households of ~3 souls; a daily roll past 1.5 souls, certain at 4.5
+    RENOWN: { K: 1.25, MAX: 2, FROM: 1, TO: 1 },     // Rome's favour (§6.6), ranks FROM..TO: immigration × min(MAX, 1 + K × max(0, dignitas / next charter's − 1))
     COUPLE_KIDS: [0, 3], KID_AGE: [0, 14], CRAFT_SKILL: [1, 3], WIDOW_KIDS: [1, 3],
     // household shapes (§6.6) and the veterans at the gate (§12.2)
     AGES: { coupleHead: [20, 40], coupleWife: [18, 36], craftsman: [18, 40], widow: [24, 45],

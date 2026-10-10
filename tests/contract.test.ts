@@ -193,6 +193,7 @@ describe('balance.ts mirrors the contract (ARCHITECTURE §7, DESIGN §18.3)', ()
       ['rings by rank [0],[0,1],[0,1,2]…', m.RINGS, [[0], [0, 1], [0, 1, 2], [0, 1, 2], [0, 1, 2]]],
       ['NEED child .6 youth .85 adult 1 elder .75', p.NEED, [0.6, 0.85, 1, 0.75]], ['BIRTH 0.09/yr', p.BIRTH_RATE, 0.09],
       ['MARRY 1/400', p.MARRY_P, 1 / 400], ['IMM_RATE [0.014,0.011,0.0075,0.003,0.04]', p.IMM_RATE, [0.014, 0.011, 0.0075, 0.003, 0.04]],
+      ['RENOWN Vicus 1 + 1.25 × (dignitas / 40 − 1), ≤ ×2', [p.RENOWN.K, p.RENOWN.MAX, p.RENOWN.FROM, p.RENOWN.TO], [1.25, 2, 1, 1]],
       ['CEILING [100,260,560,900,1500]', p.CEILING, [100, 260, 560, 900, 1500]], ['POP_CAP 1500', p.POP_CAP, 1500],
       ['SKILL_XP 0.004', p.SKILL_XP, 0.004], ['SKILL_BONUS 0.04', p.SKILL_BONUS, 0.04], ['ELDER_OUT 0.7', p.ELDER_OUT, 0.7],
       ['RETIRE 65', p.RETIRE, 65], ['MULT_CAP 2.5', e.MULT_CAP, 2.5], ['PRODUCTIVITY 0.85 + 0.30·m', [e.PROD_BASE, e.PROD_MORALE], [0.85, 0.3]],
