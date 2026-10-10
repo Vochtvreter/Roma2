@@ -1,38 +1,52 @@
-// src/ui/hud.ts — the HUD bar: brand, vital tablets, coin, souls, spirits, resources, date, speed, menu (DESIGN §15.2). Owner: WP-H.
-// SCAFFOLD: every element with live numbers; dignitas, stage bars, flashes and rich tooltips are WP-H's.
-import { RESOURCES } from '../game/types';
+// src/ui/hud.ts — the HUD bar (DESIGN §15.2): brand, vital tablets, coin, souls, spirits, dignitas, resource strip, date,
+// speed and menu. Owner: WP-H. Built once; numbers are patched in place every UI tick; tooltips are lazy (hud-tips.ts).
 import type { ResId, Speed } from '../game/types';
 import type { Game } from './types';
 import { clear, fmt, fmtRate, h, img, tip } from './dom';
 import { Vitals } from './vitals';
+import { caps } from './tipkit';
+import { STRIP_RES, coinTip, dateTip, dignitasTip, moraleTip, netRate, resourceTip, seasonFrac, soulsTip } from './hud-tips';
 import { openMenu, openRename } from './modals';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
+import { dignitas } from '../game/civic';
 import { resourceRevealed } from '../game/reveal';
-import { aucYear, formatRoman, formatRomanLong, formatModern, seasonOf, SEASON_NAMES, toRoman } from '../game/calendar';
+import { aucYear, formatRoman, seasonOf, SEASON_NAMES, toRoman } from '../game/calendar';
 import { RANK_DEFS } from '../game/data/ranks';
-import { RESOURCE_DEFS } from '../game/data/resources';
 import { B } from '../game/balance';
 import { faceIcon, resIcon } from '../render/art/index';
+import { spriteURL } from '../render/sprites';
 
-const SPEEDS: readonly Speed[] = B.time.SPEEDS as readonly Speed[];
-const STRIP: readonly ResId[] = RESOURCES.filter((r) => r !== 'denarii' && r !== 'grain' && r !== 'water');
+const DEV = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search);
+const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DEV ? [B.time.DEV_SPEED as Speed] : [])];
+const FLASH_MS = 600;
+const FLASH_MIN = 10;          // a stock jump of max(10, 25%) flashes its chip
+const FLASH_SHARE = 0.25;
 
-const caps = (s: string): string => s.toUpperCase().replace(/U/g, 'V');
+type Up = () => void;
 
-function net(g: Game, r: ResId): number {
-  let p = 0, c = 0;
-  for (const v of Object.values(g.rates.prod[r])) p += v ?? 0;
-  for (const v of Object.values(g.rates.cons[r])) c += v ?? 0;
-  return p - c;
+/** Restarts an element's flash animation. */
+function flash(el: HTMLElement): void {
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  window.setTimeout(() => el.classList.remove('flash'), FLASH_MS);
+}
+
+/** Swaps an <img>'s sprite only when the name changes. */
+function spriteSwap(el: HTMLImageElement, scale: number): (name: string) => void {
+  let cur = '';
+  return (name) => { if (name !== cur) { cur = name; el.src = spriteURL(name, scale); } };
 }
 
 /** The HUD in #hud. */
 export class Hud {
   private readonly vitals: Vitals;
-  private readonly up: (() => void)[] = [];
+  private readonly up: Up[] = [];
+  private readonly strip = h('div', { class: 'hud-strip', role: 'list', 'aria-label': 'Materials' });
   private stripKey = '';
-  private readonly strip = h('div', { class: 'hud-strip' });
+  private readonly last: Partial<Record<ResId, number>> = {};
+  private coinEl: HTMLElement | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.vitals = new Vitals(g);
@@ -40,99 +54,195 @@ export class Hud {
 
   /** Builds the HUD once. */
   build(): void {
-    const g = this.g;
     clear(this.root);
     this.up.length = 0;
-    const name = h('button', { class: 'hud-name', onclick: () => openRename(g) }, '');
-    const rank = h('span', { class: 'hud-rank kicker' }, '');
-    const brand = h('div', { class: 'hud-brand' }, img('f_aquila', 1, 'hud-aquila'), h('div', null, name, h('div', null, rank)));
-    this.up.push(() => {
-      name.textContent = g.state.name;
-      const r = RANK_DEFS[g.state.rank];
-      rank.textContent = `${caps(r.name)} · ${r.title}`;
-    });
+    this.root.append(this.brand(), this.vitals.el, this.coin(), this.souls(), this.spirits(), this.dignitas(),
+      h('div', { class: 'hud-break' }), this.date(), this.strip, this.speed(), this.menu());
+    this.update();
+  }
 
-    const coin = h('span', { class: 'num' }), coinSub = h('span', { class: 'hud-sub num' });
-    const coinEl = h('div', { class: 'hud-chip hud-coin' }, img(resIcon('denarii'), 2), coin, coinSub);
-    tip(coinEl, () => `Coin in the aerarium (taxes accrue daily, paid on the Kalends). Accrued: ${fmt(g.state.taxAccrued)}.`);
-    this.up.push(() => {
-      const f = forecast(g.state).coin;
-      coin.textContent = fmt(g.state.res.denarii);
-      const lasts = f.runout !== null ? f.runout - g.state.day : null;
-      coinSub.textContent = lasts !== null ? `lasts ${lasts} d` : fmtRate(f.net30);
-      coinSub.classList.toggle('bad', lasts !== null);
-    });
+  /** Refreshes every number (throttled by the UI root). */
+  update(): void {
+    this.vitals.update();
+    for (const u of this.up) u();
+    this.updateStrip();
+  }
 
-    const souls = h('span', { class: 'num' });
-    const soulsEl = h('div', { class: 'hud-chip hud-souls' }, img('i_souls', 2), souls);
-    tip(soulsEl, () => { const c = census(g.state); return `${c.pop} souls · ${c.beds} beds · ${c.homeless} homeless · Rome's roll ${c.roll}`; });
+  /** Flashes the coin chip (Kalends taxes, caravans). */
+  flashCoin(): void {
+    if (this.coinEl) flash(this.coinEl);
+  }
+
+  private brand(): HTMLElement {
+    const g = this.g;
+    const rename = (): void => { g.sfx('click'); openRename(g); };
+    const name = h('button', { class: 'hud-name', 'aria-label': 'Rename the colony', onclick: rename });
+    const rank = h('span', { class: 'hud-rank' });
+    const title = h('span', { class: 'hud-title' });
+    const stars = h('span', { class: 'hud-stars' });
+    const el = h('div', { class: 'hud-brand' },
+      h('button', { class: 'hud-aquila', 'aria-label': 'Rename the colony', onclick: rename }, img('f_aquila', 1)),
+      h('div', { class: 'hud-brand-text' }, name, h('div', { class: 'hud-rankline' }, rank, title, stars)));
+    tip(el, () => {
+      const s = g.state, r = RANK_DEFS[s.rank];
+      return `${s.name} · ${r.name}, governed by the ${r.title}${s.legacy ? ` · Legacy ${s.legacy}: +${s.legacy * 10}% output` : ''}. Click to rename.`;
+    });
+    this.up.push(() => {
+      const s = g.state;
+      const r = RANK_DEFS[s.rank];
+      if (name.textContent !== s.name) name.textContent = s.name;
+      rank.textContent = caps(r.name);
+      title.textContent = r.title;
+      stars.textContent = s.legacy > 0 ? '★'.repeat(Math.min(5, s.legacy)) + (s.legacy > 5 ? String(s.legacy) : '') : '';
+    });
+    return el;
+  }
+
+  private coin(): HTMLElement {
+    const g = this.g;
+    const n = h('span', { class: 'hud-n num' });
+    const sub = h('span', { class: 'hud-sub num' });
+    const el = h('div', { class: 'hud-chip hud-coin', role: 'group', 'aria-label': 'Coin' }, img(resIcon('denarii'), 2), h('div', { class: 'hud-stack' }, n, sub));
+    tip(el, () => coinTip(g), { wide: true });
+    this.coinEl = el;
+    this.up.push(() => {
+      const s = g.state;
+      const f = forecast(s).coin;
+      n.textContent = fmt(s.res.denarii);
+      const lasts = f.runout !== null ? Math.max(0, f.runout - s.day) : null;
+      sub.textContent = lasts !== null ? `lasts ${lasts} d` : `${f.net30 > 0.05 ? '▲' : f.net30 < -0.05 ? '▼' : '■'} ${fmtRate(f.net30)}`;
+      sub.classList.toggle('bad', lasts !== null);
+      sub.classList.toggle('good', lasts === null && f.net30 > 0.05);
+    });
+    return el;
+  }
+
+  private souls(): HTMLElement {
+    const g = this.g;
+    const n = h('span', { class: 'hud-n num' });
+    const segs = [0, 1, 2, 3].map((i) => h('i', { class: `hud-stage st${i}` }));
+    const el = h('div', { class: 'hud-chip hud-souls', role: 'group', 'aria-label': 'Souls and beds' },
+      img('i_souls', 2), h('div', { class: 'hud-stack' }, n, h('div', { class: 'hud-stages' }, segs)));
+    tip(el, () => soulsTip(g), { wide: true });
     this.up.push(() => {
       const c = census(g.state);
-      souls.textContent = `${c.pop} / ${c.beds}`;
-      soulsEl.classList.toggle('warn', c.freeBeds < 2);
+      n.textContent = `${c.pop}/${c.beds}`;
+      el.classList.toggle('warn', c.freeBeds < 2);
+      const tot = Math.max(1, c.pop);
+      c.byStage.forEach((v, i) => { segs[i].style.flexGrow = String(v / tot); });
     });
+    return el;
+  }
 
-    const morale = h('span', { class: 'num' });
+  private spirits(): HTMLElement {
+    const g = this.g;
+    const n = h('span', { class: 'hud-n num' });
     const face = img(faceIcon(65), 2);
-    const moraleEl = h('div', { class: 'hud-chip hud-morale' }, face, morale);
-    tip(moraleEl, 'Spirits (laetitia), 0–100.');
-    let faceName = '';
+    const swap = spriteSwap(face, 2);
+    const el = h('div', { class: 'hud-chip hud-morale', role: 'group', 'aria-label': 'Spirits' }, face, n);
+    tip(el, () => moraleTip(g), { wide: true });
     this.up.push(() => {
       const m = g.state.morale;
-      morale.textContent = String(Math.round(m));
-      const f = faceIcon(m);
-      if (f !== faceName) { faceName = f; face.replaceWith(img(f, 2)); }
+      n.textContent = String(Math.round(m));
+      swap(faceIcon(m));
+      el.classList.toggle('bad', m < 35);
     });
+    return el;
+  }
 
-    this.up.push(() => this.updateStrip());
-
-    const date = h('span', { class: 'hud-date-main' }), year = h('span', { class: 'hud-sub' });
-    const dateEl = h('div', { class: 'hud-date' }, date, year);
-    tip(dateEl, () => `${formatRomanLong(g.state.day)} · ${formatModern(g.state.day)}`);
+  private dignitas(): HTMLElement {
+    const g = this.g;
+    const n = h('span', { class: 'hud-n num' });
+    const el = h('div', { class: 'hud-chip hud-dignitas', role: 'group', 'aria-label': 'Dignitas' }, img('i_laurel', 2), n);
+    tip(el, () => dignitasTip(g), { wide: true });
     this.up.push(() => {
-      const d = g.state.day;
-      date.textContent = formatRoman(d);
-      year.textContent = `AUC ${toRoman(aucYear(d))} · ${SEASON_NAMES[seasonOf(d)]}`;
+      const d = Math.round(dignitas(g.state).value);
+      n.textContent = String(d);
+      const next = RANK_DEFS[g.state.rank + 1];
+      el.classList.toggle('gold', !!next && d >= next.dignitas);
     });
-
-    const pause = h('button', { class: 'btn small hud-speed-btn', 'aria-label': 'Pause', onclick: () => { g.sfx('click'); g.togglePause(); } }, '❚❚');
-    const speedBtns = SPEEDS.map((sp) => h('button', { class: 'btn small hud-speed-btn', onclick: () => { g.sfx('click'); g.setSpeed(sp); } }, `${sp}×`));
-    this.up.push(() => {
-      pause.classList.toggle('on', g.paused);
-      speedBtns.forEach((b, i) => b.classList.toggle('on', !g.paused && g.speed === SPEEDS[i]));
-    });
-    const menu = h('button', { class: 'btn small hud-menu', 'aria-label': 'Menu', onclick: () => { g.sfx('click'); openMenu(g); } }, '☰');
-
-    this.root.append(brand, this.vitals.el, coinEl, soulsEl, moraleEl, this.strip, dateEl,
-      h('div', { class: 'hud-speed' }, pause, speedBtns), menu);
-    this.update();
+    return el;
   }
 
   private updateStrip(): void {
     const g = this.g;
-    const shown = STRIP.filter((r) => resourceRevealed(g.state, r));
+    const s = g.state;
+    const shown = STRIP_RES.filter((r) => resourceRevealed(s, r) || s.res[r] > 0);
     const key = shown.join(',');
     if (key !== this.stripKey) {
       this.stripKey = key;
       clear(this.strip);
       for (const r of shown) {
-        const el = h('div', { class: 'hud-res', dataset: { res: r } }, img(resIcon(r), 2), h('span', { class: 'num hud-res-n' }));
-        tip(el, () => `${RESOURCE_DEFS[r].name} (${RESOURCE_DEFS[r].latin}) · ${fmt(g.state.res[r])} of ${fmt(census(g.state).caps[r])} · ${fmtRate(net(g, r))}`);
+        const el = h('div', { class: 'hud-res', role: 'listitem', dataset: { res: r } }, img(resIcon(r), 2),
+          h('div', { class: 'hud-stack' }, h('span', { class: 'hud-res-n num' }), h('span', { class: 'hud-res-r num' })));
+        tip(el, () => resourceTip(g, r), { wide: true });
         this.strip.appendChild(el);
       }
     }
-    const caps2 = census(g.state).caps;
-    for (const el of this.strip.children) {
-      const r = (el as HTMLElement).dataset.res as ResId;
+    const capsNow = census(s).caps;
+    for (const child of Array.from(this.strip.children)) {
+      const el = child as HTMLElement;
+      const r = el.dataset.res as ResId;
+      const v = s.res[r];
+      const prev = this.last[r];
+      if (prev !== undefined && Math.abs(v - prev) > Math.max(FLASH_MIN, prev * FLASH_SHARE)) flash(el);
+      this.last[r] = v;
+      const net = netRate(g, r);
       const n = el.querySelector('.hud-res-n');
-      if (n) n.textContent = `${fmt(g.state.res[r])}`;
-      el.classList.toggle('full', g.state.res[r] >= caps2[r] - 0.5);
+      const rate = el.querySelector('.hud-res-r');
+      if (n) n.textContent = fmt(v);
+      if (rate) {
+        rate.textContent = fmtRate(net);
+        rate.className = `hud-res-r num${net > 0.05 ? ' good' : net < -0.05 ? ' bad' : ''}`;
+      }
+      el.classList.toggle('full', v >= capsNow[r] - 0.5);
+      el.classList.toggle('empty', v < 1 && net < 0);
     }
   }
 
-  /** Refreshes every number (throttled by the UI root). */
-  update(): void {
-    for (const u of this.up) u();
-    this.vitals.update();
+  private date(): HTMLElement {
+    const g = this.g;
+    const main = h('span', { class: 'hud-date-main' });
+    const sub = h('span', { class: 'hud-sub' });
+    const bar = h('i');
+    const ico = img('i_season_0', 2, 'hud-season');
+    const swap = spriteSwap(ico, 2);
+    const el = h('div', { class: 'hud-date', role: 'group', 'aria-label': 'Date' }, ico,
+      h('div', { class: 'hud-stack' }, main, sub, h('div', { class: 'hud-seasonbar' }, bar)));
+    tip(el, () => dateTip(g), { wide: true });
+    this.up.push(() => {
+      const d = g.state.day;
+      const se = seasonOf(d);
+      main.textContent = formatRoman(d);
+      sub.textContent = `AUC ${toRoman(aucYear(d))} · ${SEASON_NAMES[se]}`;
+      bar.style.width = `${Math.round(seasonFrac(d) * 100)}%`;
+      bar.className = `s${se}`;
+      swap(`i_season_${se}`);
+    });
+    return el;
+  }
+
+  private speed(): HTMLElement {
+    const g = this.g;
+    const pause = h('button', { class: 'hud-sp', 'aria-label': 'Pause (Space)', onclick: () => { g.sfx('click'); g.togglePause(); } }, '❚❚');
+    const btns = SPEEDS.map((sp, i) => h('button', {
+      class: 'hud-sp num', 'aria-label': `Speed ${sp}× (key ${i + 1})`, onclick: () => { g.sfx('click'); g.setSpeed(sp); },
+    }, `${sp}×`));
+    tip(pause, 'Pause or resume (Space). Open dialogs pause the colony too.');
+    this.up.push(() => {
+      pause.classList.toggle('on', g.paused);
+      pause.setAttribute('aria-pressed', String(g.paused));
+      btns.forEach((b, i) => {
+        const on = !g.paused && g.speed === SPEEDS[i];
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    });
+    return h('div', { class: 'hud-speed', id: 'speed', role: 'group', 'aria-label': 'Speed' }, pause, btns);
+  }
+
+  private menu(): HTMLElement {
+    const g = this.g;
+    return h('button', { class: 'hud-menu', 'aria-label': 'Menu (Esc)', onclick: () => { g.sfx('click'); openMenu(g); } }, '☰');
   }
 }

@@ -45,7 +45,8 @@ class App implements Game {
   speed: Speed;
   paused = true;
   mode: Mode = 'title';
-  private readonly ui: UI;
+  /** The UI root (public for ?dev inspection). */
+  readonly ui: UI;
   private acc = 0;
   private last = 0;
   private saveTimer = 0;
@@ -415,7 +416,7 @@ class App implements Game {
   private onVictory(): void {
     const s = this.state;
     addFasti({
-      name: s.name, seed: s.seed, legacy: s.legacy, founded: s.stats.startedAt, dedicated: s.stats.victoryDay ?? s.day,
+      name: s.name, seed: s.seed, legacy: s.legacy, founded: B.time.START_DAY, dedicated: s.stats.victoryDay ?? s.day,
       peakPop: s.stats.peakPop, paths: Object.values(s.decisions.paths).filter((p): p is NonNullable<typeof p> => !!p), playMs: s.stats.playMs,
     });
     this.save();

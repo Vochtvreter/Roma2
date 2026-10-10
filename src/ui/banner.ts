@@ -1,28 +1,36 @@
-// src/ui/banner.ts — rank and stage banners: non-blocking, 8 s (DESIGN §15.4). Owner: WP-H.
-// SCAFFOLD: one banner at a time in #banner; unlock chips and the meander frame are WP-H's.
-import { clear, h } from './dom';
+// src/ui/banner.ts — rank and Capitolium-stage banners (DESIGN §15.4): non-blocking, B.ui.RANK_BANNER_S seconds, click to
+// dismiss, meander frame, path line and unlock chips. One banner at a time in #banner. Owner: WP-H.
+import { clear, h, img } from './dom';
+import { B } from '../game/balance';
 
-const BANNER_MS = 8000;
 let timer = 0;
 
-/** Shows the banner ("AUC DCCCVII · CASTRA VALERIA FIT OPPIDVM") with an optional sub-line; replaces any current one. */
-export function showBanner(kicker: string, title: string, sub?: string, ms: number = BANNER_MS): void {
+/** What a banner shows. */
+export interface BannerSpec { kicker: string; title: string; sub?: string; chips?: string[]; icon?: string; ms?: number }
+
+/** Shows the banner ("AUC DCCCVII · CASTRA VALERIA FIT OPPIDVM"); replaces any current one. */
+export function showBanner(b: BannerSpec): void {
   const root = document.getElementById('banner');
   if (!root) return;
   window.clearTimeout(timer);
   clear(root);
-  root.appendChild(h('div', { class: 'banner-box', onclick: () => hideBanner() },
-    h('div', { class: 'kicker banner-kicker' }, kicker),
-    h('div', { class: 'banner-title' }, title),
-    sub ? h('div', { class: 'banner-sub' }, sub) : null));
+  root.appendChild(h('div', { class: 'banner-box meander-frame', role: 'status', onclick: () => hideBanner() },
+    h('div', { class: 'banner-inner' },
+      b.icon ? img(b.icon, 2, 'banner-ico') : null,
+      h('div', { class: 'banner-kicker' }, b.kicker),
+      h('div', { class: 'banner-title' }, b.title),
+      b.sub ? h('div', { class: 'banner-sub' }, b.sub) : null,
+      b.chips?.length ? h('div', { class: 'banner-chips' }, b.chips.map((c) => h('span', { class: 'chip gold' }, c))) : null)));
+  root.classList.remove('out');
   root.classList.add('show');
-  timer = window.setTimeout(hideBanner, ms);
+  timer = window.setTimeout(hideBanner, b.ms ?? B.ui.RANK_BANNER_S * 1000);
 }
 
-/** Hides the banner. */
+/** Hides the banner (fades out). */
 export function hideBanner(): void {
   const root = document.getElementById('banner');
-  if (!root) return;
-  root.classList.remove('show');
-  clear(root);
+  if (!root || !root.classList.contains('show')) return;
+  window.clearTimeout(timer);
+  root.classList.add('out');
+  timer = window.setTimeout(() => { root.classList.remove('show', 'out'); clear(root); }, 450);
 }
