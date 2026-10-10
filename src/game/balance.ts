@@ -88,6 +88,7 @@ export const B = {
     SERVICE_FULL: 0.5,                                // ≥ ceil(slots × 0.5) workers → full radius
     SERVICE_PARTIAL: 0.6,                             // otherwise floor(0.6 × r)
     SPILL_LOG_DAYS: 30,                               // overflow logged at most once per 30 days per resource
+    OPERIBUS_CONCRETE: 1.05,                          // Aquae: Operibus prius — concrete ×1.05 (off the effect bus, §10.9)
   },
 
   // ───────── houses (DESIGN §7) ─────────
@@ -144,13 +145,15 @@ export const B = {
   ordo: {
     BUILD_EVERY: 2, TRADE_EVERY: 10, TRADE_OFFSET: 5, SITES_PER: 40, SITES_MAX: 4, FOOD_CAP: 0.75, FOOD_CAP_HUNGRY: 0.9,
     BUILDERS_MIN: 2, BUILDERS_MAX: 0.3, WATER_BASE: 1.05, WATER_LOW: 1.2, WATER_THIRST: 1.5, WATER_PREFILL: 1.3,
-    FOOD_LOW: 1.2, FOOD_HUNGRY: 2, FOOD_HIEMS: 1.4, FOOD_FULL: 0.85, WINTER_FILL: 1.35, REQUESTS_MAX: 3,
+    FOOD_BASE: 1, FOOD_LOW: 1.2, FOOD_HUNGRY: 2, FOOD_HIEMS: 1.4, FOOD_FULL: 0.85, WINTER_FILL: 1.35, REQUESTS_MAX: 3,
     REQUEST_DAYS: 180, TOOLS_PER: 0.5, LUXURY: 1.2, EVOLVE_MIN: 2, EVOLVE_MIN_BLOCK: 3,
     EXPORT_CAP: 0.8, EXPORT_CAP_MERCATURA: 0.6, IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80,
     HUNGER_AT: 25, THIRST_AT: 25,                     // any group above → hungry/thirsty bases
     FOOD_HIEMS_DOH: 10, WINTER_LEAD: 30,              // Hiems base when DoH < 10; stockpile in the last 30 days of Aestas
     PRIORITY_DAYS: 30, ASK_DAYS: 2,
     SURVIVAL_DOH: 30, STORE_FULL: 0.95, MATERIALS_ETA: 30, CAP_RESERVE_DAYS: 30,
+    ACCESS_MIN: 2,                                    // wish 5: ≥ 2 houses whose first unmet need is water
+    DEFICIT_RESERVE: 0.5,                             // trade 1: grain DoH < Grain reserve × 0.5 with max potential < need
     LUXURY_RUNWAY: 60, MERCHANT_DEAL: 1.1,
     FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
   },
@@ -158,6 +161,7 @@ export const B = {
   // ───────── Ordo site scoring (DESIGN §10.5) ─────────
   score: {
     FELL: -0.12,
+    NOTES_MAX: 3,                                     // an Ordo site keeps 2–3 "why here?" notes (§10.6)
     HOUSE: { STEPS: -1, DESIR: 0.5, BLOCK_HOUSES: 2, RETENTURA: 2, INDUSTRY: -3, INDUSTRY_R: 3 },
     SERVICE: { UNBLOCK: 3, COVER: 1, STEPS: -0.3, DISTRICT: 3, TEMPLE_FORUM: 5 },
     STORE: { PRAETENTURA: 3, VIA: 2, HOUSE: -1, HOUSE_R: 3 },
@@ -171,7 +175,10 @@ export const B = {
   },
 
   // ───────── forecast (DESIGN §11.11) ─────────
-  forecast: { GRAIN: 1.35, WATER: 1.1, CELLS: 12, BANDS: [30, 15, 7] },
+  forecast: {
+    GRAIN: 1.35, WATER: 1.1, CELLS: 12, BANDS: [30, 15, 7],
+    DOH_NONE: 9999,                                   // days on hand reported when nobody needs the essential (finite)
+  },
 
   // ───────── Lex de annona (DESIGN §8.12) ─────────
   emergency: {
@@ -189,6 +196,7 @@ export const B = {
     HARMFUL_YEAR: 365,                                // a harmful instant event fires at most once a year
     MERCHANT_MANSIO: 1.5, MERCHANT_MANSIO_MAX: 2, MERCHANT_OFFERS: [2, 4], MERCHANT_POP: 20,
     LUSTRUM: { PER_POP: 0.5, EVERY: 5, FROM_AUC: 805 },
+    REACT_MIN: 25,                                    // anything that asks the player to react lasts ≥ 25 days (§2.3)
   },
 
   // ───────── trade (DESIGN §13) ─────────
@@ -196,6 +204,8 @@ export const B = {
     REVERT: 0.02, IMPACT: 0.0015, CLAMP: [0.6, 1.6], CARGO_PER_DAY: 40, MIN_LEG: 3,
     MERCHANT_BUY: 0.85, MERCHANT_SELL: 1.15, MERCHANT_QTY: [10, 60], MERCHANT_SELL_QTY: [10, 80],
     SLOTS_BASE: 1, SLOTS_MAX: 7, MANSIO_SLOTS: 2, MANSIO_DAYS: 1,
+    SLOTS_RANK: [0, 1, 2, 2, 2],                      // extra caravan slots by rank: +1 Vicus, +1 Oppidum (§13.4)
+    CARGO_MAX: 80,                                    // a caravan carries at most 80 (§13.4)
   },
 
   // ───────── advisors (DESIGN §11.3–11.6) ─────────
@@ -217,6 +227,8 @@ export const B = {
       BEDS_FREE: 2, BEDS_WINDOW: 30,
       MORALE: [50, 35, 25], MORALE_FALL: 0.3, MORALE_FALL_DAYS: 10,
       CHOICE_SOON: 7, REMEDY_DAYS: 30, BUY_DAYS: 20,
+      // remedy steps: Spare beds +4 · Builder share +5 points · Trade reserve −10 · Ask/Place house plots ×2
+      SPARE_BEDS_STEP: 4, BUILDER_SHARE_STEP: 0.05, TRADE_RESERVE_STEP: -10, PLOTS: 2,
     },
   },
 
@@ -251,5 +263,10 @@ export const B = {
     TOASTS_MAX: 4, TICKER_S: 6, RANK_BANNER_S: 8, LONG_PRESS_MS: 450, TOOLTIP_MS: 80, CLICK_GUARD_MS: 300,
     SFX_GAIN: 0.22, SFX_THROTTLE_MS: 70, NAME_MAX: 24, FASTI_MAX: 50, LIFE_SFX_S: 10, MINIMAP_MS: 500,
     PARTICLES: [600, 300], WALKERS: [220, 120], SIDE_W: 380, SHEET_VH: 46, DESKTOP: 1100, MOBILE: 900, COMPACT: 560,
+    ZOOM_LEVELS: [1, 2, 3, 4, 5], ZOOM_DEFAULT: 3, ZOOM_SMALL: 2, ZOOM_SMALL_W: 700,   // §3.1 (× devicePixelRatio)
+    RUNWAY_WEEKS: 21, RUNWAY_MONTHS: 120,             // stores shown in days < 3 weeks ≤ weeks < 4 months ≤ months (§8.6)
+    NEWS_SPEED: 2,                                    // "Slow for news": a new choice card drops the speed to 2× (§2.1)
+    FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 3000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
+    ROSTER: 60, BEDS_LOW: 2,                          // Populus roster of the 60 oldest; souls chip amber below 2 free beds
   },
 } as const;
