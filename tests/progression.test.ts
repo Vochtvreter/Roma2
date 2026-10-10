@@ -17,7 +17,8 @@ import {
 } from '../src/game/reveal';
 import { hubOpen } from '../src/game/trade';
 import { PATH_DEFS } from '../src/game/data/decisions';
-import { ctx, fresh } from './util';
+import { B } from '../src/game/balance';
+import { INTEGRATED, ctx, fresh, run } from './util';
 
 // Phase 1 stubs: dignitas and coverage are WP-B / WP-A's. The checklist logic is tested with them pinned.
 const hooks = vi.hoisted(() => ({ dignitas: null as number | null, covered: false }));
@@ -461,5 +462,26 @@ describe('progressive reveal', () => {
     expect(t.at).toBe('Res Gestae I: Raise your first building');
     finish(s, ...MILESTONE_IDS);
     expect(nextTeaser(s)).toBeNull();
+  });
+});
+
+describe.runIf(INTEGRATED)('with the real simulation', () => {
+  it('a charter and petitions when ready: the early Res Gestae complete in order and Vicus comes inside its band', () => {
+    const s = fresh(42);
+    let vicusDay: number | null = null;
+    run(s, 4000, (st) => {
+      if (st.day - B.time.START_DAY === 10) choosePath(st, 'charter', 'agricolae');
+      const pn = petitionNeeds(st, view(st));
+      if (pn && pn.rank !== null && pn.ready && pn.affordable) {
+        choosePath(st, pn.decision, PATH_DEFS[pn.decision].options[0].id);
+        if (st.rank === 1 && vicusDay === null) vicusDay = st.day - B.time.START_DAY;
+      }
+    });
+    const order = MILESTONES.filter((m) => milestoneDone(s, m.id)).map((m) => s.guidance.milestoneDays[m.id] as number);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(milestoneDone(s, 'hiems')).toBe(true);
+    expect(vicusDay).not.toBeNull();
+    expect(vicusDay!).toBeGreaterThanOrEqual(420);
+    expect(vicusDay!).toBeLessThanOrEqual(780);
   });
 });

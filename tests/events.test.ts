@@ -14,7 +14,7 @@ import { banditCheck, chooseOption, eventsDay, fireEvent, silentOption, triggerR
 import { EVENT_DEFS } from '../src/game/events-catalogue';
 import { festivalKept, festivalsDay, nextFestival } from '../src/game/events-festivals';
 import { tradeDay } from '../src/game/trade';
-import { ctx, forceEvent, fresh, noNaN } from './util';
+import { INTEGRATED, ctx, forceEvent, fresh, noNaN, run } from './util';
 
 const START = B.time.START_DAY;
 
@@ -427,5 +427,17 @@ describe('fireEvent', () => {
     expect(fireEvent(s, ctx(), new Rng(3), v, 'mercator')).toBe(true);
     expect(s.trade.merchant).not.toBeNull();
     expect(fireEvent(s, ctx(), new Rng(3), v, 'mercator')).toBe(false);
+  });
+});
+
+describe.runIf(INTEGRATED)('with the real simulation', () => {
+  it('a 3,000-day Ordo run keeps the pacing rules and never produces NaN', () => {
+    const s = fresh(1);
+    const fired: { id: EventId; day: number }[] = [];
+    run(s, 3000, (st) => { for (const id of EVENTS) if (st.eventDays[id] === st.day) fired.push({ id, day: st.day }); });
+    const cards = fired.filter((f) => EVENT_DEFS[f.id].kind === 'choice' && f.id !== 'mutuum');
+    for (let i = 1; i < cards.length; i++) expect(cards[i].day - cards[i - 1].day).toBeGreaterThanOrEqual(B.events.CHOICE_GAP);
+    expect(fired.every((f) => f.id === 'coloni' || f.id === 'mutuum' || f.day - START >= B.events.START)).toBe(true);
+    expect(noNaN(s)).toEqual([]);
   });
 });
