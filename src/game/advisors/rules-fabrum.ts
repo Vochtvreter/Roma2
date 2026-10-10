@@ -214,7 +214,7 @@ const capitolium: AdvisorRule = {
     if (f.eta !== null && f.eta <= limit) return null;
     return {
       rule: 'fabrum.capitolium', severity: 1, metric: f.eta !== null ? { label: 'Next stage', value: Math.ceil(f.eta), unit: 'days' } : undefined,
-      params: { stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', rate: f.rate, need: f.need },
+      params: { stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand },
     };
   },
   title(_s, a) {
@@ -222,7 +222,7 @@ const capitolium: AdvisorRule = {
     const stage = STAGES[Math.min(STAGES.length - 1, P(p.stage))];
     const when = P(p.eta) >= 0 ? `the ${stage} rises in ${days(P(p.eta))}` : `the ${stage} will not rise`;
     if (p.res === 'crew' || p.res === '') return `At this flow ${when}; the crew is the bottleneck (${B.construction.CAP_CREW} fabri at most).`;
-    return `At this flow ${when}; ${resName(p.res as ResId)} is the bottleneck (${num(P(p.rate))}/day of ${num(P(p.need))}).`;
+    return `At this flow ${when}; ${resName(p.res as ResId)} is the bottleneck (${num(P(p.supply))}/day of ${num(P(p.demand))}).`;
   },
   text: (_s, _v, a) => `The Capitolium stands at stage ${toRoman(P(a.params.stage)) || 'nought'} of IV. Its materials are drawn as the work proceeds.`,
   remedies(s, _v, a) {

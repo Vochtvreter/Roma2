@@ -1128,7 +1128,7 @@ export function startStaked(s: GameState): void;                      // staked 
 export function payPlans(s: GameState, ctx: TickContext): void;       // plans become sites when the stock covers them (ignores reservations except the petition fee)
 export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats
 export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4;
-export function capitoliumFlow(s: GameState): { stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number } | null;
+export function capitoliumFlow(s: GameState): { stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number; supply: number; demand: number } | null;   // rate/need in work units; supply/demand the bottleneck material per day (0 when the crew binds)
 export function startCapitolium(s: GameState): void;                 // creates the Capitolium site on the Area Capitolina
 export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid)
 export function prioritise(s: GameState, id: number): ActionResult;

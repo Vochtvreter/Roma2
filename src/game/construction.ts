@@ -197,8 +197,12 @@ export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4 {
 }
 
 /** The Capitolium's flow: completed stage, days to the next stage at today's flow, the bottleneck (a material or the
- *  crew), work per day and the work still needed for the next stage; null when it is not under way. */
-export function capitoliumFlow(s: GameState): { stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number } | null {
+ *  crew), work per day and the work still needed for the next stage; and, for a material bottleneck, that material
+ *  per day: what comes in (`supply`) against what the crew would use (`demand`), 0 and 0 when the crew binds. Work and
+ *  material are different units: "concrete 1.7/day of 3.8", never "30/day of 40,000". Null when it is not under way. */
+export function capitoliumFlow(s: GameState): {
+  stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number; supply: number; demand: number;
+} | null {
   const b = s.buildings.find((x) => x.type === 'capitolium' && x.status !== 'done');
   if (!b) return null;
   const stage = capitoliumStage(b);
@@ -220,13 +224,15 @@ export function capitoliumFlow(s: GameState): { stage: number; eta: number | nul
   }
   made.denarii = Math.max(0, s.counters.coinEma);
   const avail = capAvailable(s);
+  let supply = 0;
   for (const r of CAP_RES) {
     if (!(per[r] > 0)) continue;
-    const supply = (made[r] ?? 0) + (avail[r] ?? 0) / B.ordo.CAP_RESERVE_DAYS;
-    const allow = supply / per[r];
-    if (allow < rate) { rate = allow; bottleneck = r; }
+    const comes = (made[r] ?? 0) + (avail[r] ?? 0) / B.ordo.CAP_RESERVE_DAYS;
+    const allow = comes / per[r];
+    if (allow < rate) { rate = allow; bottleneck = r; supply = comes; }
   }
-  return { stage, eta: rate > EPS ? Math.ceil(need / rate) : null, bottleneck, rate, need };
+  const demand = bottleneck === 'crew' ? 0 : per[bottleneck] * crew;
+  return { stage, eta: rate > EPS ? Math.ceil(need / rate) : null, bottleneck, rate, need, supply, demand };
 }
 
 /** Creates the Capitolium site on the Area Capitolina (once); its materials are drawn as the work proceeds. */

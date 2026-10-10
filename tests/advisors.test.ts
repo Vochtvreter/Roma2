@@ -146,7 +146,10 @@ const FIX: Record<RuleId, Fix> = {
     clear: () => ({ c: { idle: [], catSlots: ZERO, catStaffed: ZERO } }),
   },
   'fabrum.stalled': { levels: [[1, (s) => site(s, 25)], [2, (s) => site(s, 45)]], clear: (s) => site(s, null) },
-  'fabrum.capitolium': { levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 11 }; }]], clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 11 }; } },
+  'fabrum.capitolium': {
+    levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 }; }]],
+    clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 1100, supply: 0, demand: 0 }; },
+  },
   'quaestor.coin': {
     levels: [[3, () => ({ coin: { stock: 1000, net30: -100 } })], [2, () => ({ coin: { stock: 3000, net30: -100 } })], [1, () => ({ coin: { stock: 8000, net30: -100 } })],
       [3, (s) => { s.buildings[1].unpaid = true; }]],
@@ -443,6 +446,16 @@ describe('the Legate\'s relief remedy (R20) and dates in remedy reasons (R48)', 
     const c = checkRemedy(s, { kind: 'priority', cat: 'food', days: 30 });
     expect(c.ok ? '' : c.reason).toMatch(/^Food already comes first until .+\.$/);
     expect(c.ok ? '' : c.reason).not.toMatch(/\.\.$/);
+  });
+});
+
+describe('fabrum.capitolium in the bottleneck material\'s own units (R23)', () => {
+  it('reads "stone is the bottleneck (1.7/day of 3.8)"', () => {
+    const s = base();
+    ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 };
+    day(s);
+    const m = s.guidance.advisories['fabrum.capitolium']!;
+    expect(renderAdvisory(s, view(s), { rule: 'fabrum.capitolium', advisor: 'fabrum', memo: m }).title).toBe('At this flow the Cella rises in 400 days; stone is the bottleneck (1.7/day of 3.8).');
   });
 });
 
