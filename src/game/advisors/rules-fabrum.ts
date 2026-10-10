@@ -136,7 +136,7 @@ const labour: AdvisorRule = {
   },
 };
 
-/** ": water lasts 9 days at this rate" — what the open posts leave short (render time, live numbers). */
+/** ", and water lasts 9 days at this rate" — what the open posts leave short (render time, live numbers). */
 function lackWhy(v: SimView, why: unknown): string {
   if (why === 'water' || why === 'food') {
     const e = why === 'water' ? v.f.water : v.f.grain;
