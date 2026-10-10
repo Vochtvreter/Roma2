@@ -13,9 +13,10 @@ import { bestSlot } from '../site';
 import { BUILDING_DEFS } from '../data/buildings';
 import { SETTING_DEFS } from '../data/decisions';
 import {
-  CLEAR, R, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
+  CLEAR, HOUSE_CADENCE, R, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
   placeName, runway, serviceFor, three,
 } from './util';
+import type { CadencedRule } from './util';
 
 const AESTAS = 1;
 const MUNICIPIUM = 3, COLONIA = 4;
@@ -107,7 +108,8 @@ const aestas: AdvisorRule = {
 
 // ───────────────────────────── 9 · aquarum.access ─────────────────────────────
 
-const access: AdvisorRule = {
+const access: CadencedRule = {
+  every: HOUSE_CADENCE,
   id: 'aquarum.access', advisor: 'aquarum',
   evaluate(s, v) {
     const all = houseWants(s, v);

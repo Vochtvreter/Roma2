@@ -2,9 +2,9 @@
 // memo, and the words that name people, places, markets and fractions (DESIGN §11.1, §11.4–11.6). Owner: WP-E.
 // Load order: only function bodies here touch other game modules, so any file may import this one.
 import { B } from '../balance';
-import { HUBS } from '../types';
+import { HOUSE_TIERS, HUBS } from '../types';
 import type {
-  BuildingId, ContractSpec, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
+  AdvisorRule, BuildingId, ContractSpec, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
   SkillId, TradeRes,
 } from '../types';
 import { seasonOf } from '../calendar';
@@ -13,7 +13,7 @@ import { distToRect, getMap, tx, ty } from '../map';
 import { censusEpoch, memo, structEpoch } from '../memo';
 import { personName } from '../people';
 import { getBuilding, getPerson } from '../state';
-import { firstWant, nextTier, unmetNeeds } from '../housing';
+import { nextTier, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { BUILDING_DEFS } from '../data/buildings';
 import { NEED_META, TIER_DEFS } from '../data/housing';
@@ -24,6 +24,11 @@ import { RESOURCE_DEFS } from '../data/resources';
 export const CLEAR = B.advisors.CLEAR;
 /** Per-rule thresholds (DESIGN §11.6). */
 export const R = B.advisors.RULES;
+
+/** A rule the engine evaluates only every `every` days (day % every == 0); on other days it is left exactly as it stands. */
+export type CadencedRule = AdvisorRule & { every?: number };
+/** The house rules follow the sim's own house-check cadence (DESIGN §7.2): houses change state only on their check days. */
+export const HOUSE_CADENCE = B.housing.CHECK_EVERY;
 
 // ───────────────────────────── ladders and hysteresis ─────────────────────────────
 
@@ -120,15 +125,29 @@ export function bestFood(s: GameState): BuildingId {
 
 // ───────────────────────────── houses ─────────────────────────────
 
-/** One house's view for the Aedilis and the Curator: tiers, the next tier's unmet needs, decline. */
-export interface HouseWant {
-  id: number; tile: number; tier: HouseTierId; next: HouseTierId | null;
-  unmet: NeedId[]; want: NeedId | null; declining: boolean; declineDays: number; lapsed: NeedId[]; age: number;
+/** One house's view for the Aedilis and the Curator: its tier, the next tier and its unmet needs (in need order), decline. */
+export interface HouseWant { id: number; tile: number; tier: HouseTierId; next: HouseTierId | null; unmet: NeedId[]; want: NeedId | null; declining: boolean; lapsed: NeedId[] }
+
+const PREFS = ['auto', 'insula', 'domus'] as const;
+
+/** Everything a house's needs read besides the structure: coverage, the fed index, rank, and per house its tier, decline, goods and preference. */
+function houseSig(s: GameState, v: SimView): string {
+  return memo(s, 'adv.houseSig', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
+    const S = B.housing.SUPPLIED;
+    const codes: number[] = [];
+    for (const id of v.d.houses) {
+      const h = getBuilding(s, id)?.house;
+      if (!h) continue;
+      const bits = (h.declining ? 4 : 0) + (h.oil >= S ? 2 : 0) + (h.wine >= S ? 1 : 0);
+      codes.push(48 + (HOUSE_TIERS.indexOf(h.tier) * 8 + bits) * 3 + PREFS.indexOf(h.pref));
+    }
+    return `${structEpoch(s)}|${v.cov.key}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
+  });
 }
 
-/** Every finished house with its wants (memo per day and epochs; shared by the house rules and the appointments). */
+/** Every finished house with its wants. Pure, and memoised on everything the needs read (houseSig), so it is recomputed only when the structure, coverage, fed index or a house changes — not every day. */
 export function houseWants(s: GameState, v: SimView): HouseWant[] {
-  return memo(s, 'adv.houses', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
+  return memo(s, 'adv.houses', houseSig(s, v), () => {
     const out: HouseWant[] = [];
     const W = getMap(s.seed).W;
     for (const id of v.d.houses) {
@@ -136,20 +155,19 @@ export function houseWants(s: GameState, v: SimView): HouseWant[] {
       const h = b?.house;
       if (!b || !h) continue;
       const next = nextTier(s, b);
-      out.push({
-        id, tile: b.y * W + b.x, tier: h.tier, next,
-        unmet: next ? unmetNeeds(s, b, next) : [], want: firstWant(s, b),
-        declining: h.declining, declineDays: h.declineDays, lapsed: h.declining ? unmetNeeds(s, b, h.tier) : [],
-        age: s.day - (b.doneDay ?? b.placed),
-      });
+      const unmet = next ? unmetNeeds(s, b, next) : [];
+      out.push({ id, tile: b.y * W + b.x, tier: h.tier, next, unmet, want: unmet[0] ?? null, declining: h.declining, lapsed: h.declining ? unmetNeeds(s, b, h.tier) : [] });
     }
     return out;
   });
 }
 
-/** Houses whose next tier has waited on an unmet want for at least `days` days. */
+/** Houses whose next tier has waited on an unmet need for at least `days` days (finished that long ago, no OK days). */
 export function blockedHouses(s: GameState, v: SimView, days: number): HouseWant[] {
-  return houseWants(s, v).filter((w) => w.want !== null && w.age >= days && (getBuilding(s, w.id)?.house?.okDays ?? 0) === 0);
+  return houseWants(s, v).filter((w) => {
+    const b = getBuilding(s, w.id);
+    return w.want !== null && b !== undefined && s.day - (b.doneDay ?? b.placed) >= days && (b.house?.okDays ?? 0) === 0;
+  });
 }
 
 /** The building that answers a house need, by what the colony can raise now (null: no building answers it). */

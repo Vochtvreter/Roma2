@@ -9,13 +9,14 @@ import { moraleTarget } from '../civic';
 import { previewCoverage } from '../coverage';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { bestSlot } from '../site';
+import { getBuilding } from '../state';
 import { RANK_DEFS } from '../data/ranks';
 import { SETTING_DEFS } from '../data/decisions';
 import { TIER_DEFS } from '../data/housing';
 import {
-  CLEAR, R, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
+  CLEAR, HOUSE_CADENCE, R, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
 } from './util';
-import type { HouseWant } from './util';
+import type { CadencedRule, HouseWant } from './util';
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 const COVERED: readonly NeedId[] = ['water', 'religion', 'market', 'temple', 'baths', 'macellum'];
@@ -53,7 +54,8 @@ function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<nu
 
 // ───────────────────────────── 17 · aedilis.evolve ─────────────────────────────
 
-const evolve: AdvisorRule = {
+const evolve: CadencedRule = {
+  every: HOUSE_CADENCE,
   id: 'aedilis.evolve', advisor: 'aedilis',
   evaluate(s, v): AdvisoryEval | null {
     const by = oneShort(s, v);
@@ -97,14 +99,15 @@ const evolve: AdvisorRule = {
 
 // ───────────────────────────── 18 · aedilis.declining ─────────────────────────────
 
-const declining: AdvisorRule = {
+const declining: CadencedRule = {
+  every: HOUSE_CADENCE,
   id: 'aedilis.declining', advisor: 'aedilis',
   evaluate(s, v): AdvisoryEval | null {
     const all = houseWants(s, v);
     const dec = all.filter((w) => w.declining);
     if (dec.length === 0) return null;
     const lapsed = dec.flatMap((w) => w.lapsed);
-    const first = Math.min(...dec.map((w) => B.housing.DROP_AFTER - w.declineDays));
+    const first = Math.min(...dec.map((w) => B.housing.DROP_AFTER - (getBuilding(s, w.id)?.house?.declineDays ?? 0)));
     return {
       rule: 'aedilis.declining', severity: dec.length >= R.DECLINING_P * all.length ? 3 : 2, metric: { label: 'Declining', value: dec.length, unit: 'houses' },
       params: { n: dec.length, need: lapsed.length > 0 ? mode(lapsed, NEEDS) : '', d: Math.max(0, first) },

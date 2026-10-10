@@ -215,6 +215,7 @@ interface Goods { res: 'oil' | 'wine'; R: number | null; supply: number; houses:
 
 /** Oil and wine for the T4 houses: daily demand, local production, mean supply, and whether a house declines for want of it. */
 function goods(s: GameState, v: SimView): Goods[] {
+  if (v.c.byTier.insula + v.c.byTier.domus === 0) return [];
   const per: Record<number, number> = {};
   for (const p of s.people) if (p.home !== null) per[p.home] = (per[p.home] ?? 0) + 1;
   const season = seasonOf(s.day);

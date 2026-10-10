@@ -13,6 +13,7 @@
 //    already raised FLAP_MAX times in the window is not cleared but kept on the tablets as a quiet Nota
 //    (`params.watch`), so no rule is raised more than FLAP_MAX times in any window and a real danger is never
 //    suppressed.
+//  · cadence: a rule with `every` (the house rules) is evaluated only when day % every == 0 and left untouched between.
 import { B } from '../balance';
 import { ADVISORS, RULES } from '../types';
 import type {
@@ -24,6 +25,7 @@ import { view } from '../sim';
 import { ADVISOR_DEFS } from '../data/advisors';
 import { checkRemedy, remedyLabel } from './remedies';
 import { blockedHouses, lendRates, markAway, tidy } from './util';
+import type { CadencedRule } from './util';
 import { ANNONAE_RULES } from './rules-annonae';
 import { AQUARUM_RULES } from './rules-aquarum';
 import { FABRUM_RULES } from './rules-fabrum';
@@ -64,8 +66,9 @@ export function advisorsDay(s: GameState, ctx: TickContext, v: SimView): void {
   }
 }
 
-function step(s: GameState, ctx: TickContext, v: SimView, rule: AdvisorRule): void {
+function step(s: GameState, ctx: TickContext, v: SimView, rule: CadencedRule): void {
   const day = s.day;
+  if (rule.every && day % rule.every !== 0) return;
   const appointed = s.guidance.appointed.includes(rule.advisor);
   const e = appointed || APPOINTING.includes(rule.id) ? attempt(() => rule.evaluate(s, v), null) : null;   // a faulty rule never stops the tick
   const m = s.guidance.advisories[rule.id];

@@ -143,10 +143,10 @@ const FIX: Record<RuleId, Fix> = {
     clear: (s) => { s.trade.contracts = []; },
   },
   'quaestor.merchant': { levels: [[0, merchant], [1, (s) => { merchant(s); return { grain: ess(1000, -100) }; }]], clear: (s) => { s.trade.merchant = null; } },
-  'aedilis.evolve': {
-    levels: [[1, (s) => { setTier(s, 'casa'); s.rank = 1; ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple'); }],
-      [2, (s) => { setTier(s, 'casa'); s.rank = 1; ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple'); ctl.pet = pet(false, '10 houses at T2+'); }]],
-    clear: () => { ctl.covered = ALL_LAYERS; },
+  'aedilis.evolve': {   // coverage is mocked here, so each setup bumps the structure epoch as a real coverage change would
+    levels: [[1, (s) => { setTier(s, 'casa'); s.rank = 1; ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple'); invalidate(s); }],
+      [2, (s) => { setTier(s, 'casa'); s.rank = 1; ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple'); ctl.pet = pet(false, '10 houses at T2+'); invalidate(s); }]],
+    clear: (s) => { ctl.covered = ALL_LAYERS; invalidate(s); },
   },
   'aedilis.declining': { levels: [[2, (s) => extraHouses(s, 1)], [3, (s) => extraHouses(s, 2)]], clear: (s) => extraHouses(s, 0) },
   'aedilis.beds': {
@@ -163,8 +163,10 @@ const FIX: Record<RuleId, Fix> = {
   'augur.petition': { levels: [[1, () => { ctl.pet = pet(true); }]], clear: () => { ctl.pet = pet(false); } },
 };
 
-const LIFE = A.MIN_LIFE + A.DOWNGRADE_DAYS + 2;
 const ruleDef = (id: RuleId) => RULE_DEFS.find((r) => r.id === id)!;
+const every = (id: RuleId): number => (ruleDef(id) as { every?: number }).every ?? 1;   // the house rules follow the house checks
+const life = (id: RuleId): number => (A.MIN_LIFE + A.DOWNGRADE_DAYS + 2) * every(id);
+const LIFE = life('annonae.grain.runout');
 
 beforeEach(() => { ctl.pet = null; ctl.flow = null; ctl.morale = null; ctl.covered = null; });
 
@@ -174,10 +176,10 @@ describe('rule fixtures', () => {
     for (const r of RULE_DEFS) expect(r.id.startsWith(`${r.advisor}.`)).toBe(true);
   });
   for (const id of RULES) {
-    FIX[id].levels.forEach(([sev, setup, n = 1], k) => {
+    FIX[id].levels.forEach(([sev, setup, hold = 1], k) => {
       it(`${id} raises at severity ${sev} (#${k}) with 1–3 remedies, then clears`, () => {
         const s = base();
-        for (let i = 0; i < n; i++) day(s, setup(s) ?? {});
+        for (let i = 0; i < Math.max(hold, every(id)); i++) day(s, setup(s) ?? {});
         const m = s.guidance.advisories[id]!;
         expect(m?.active).toBe(true);
         expect(m.sev).toBe(sev);
@@ -186,7 +188,7 @@ describe('rule fixtures', () => {
         expect(r.remedies.length).toBeLessThanOrEqual(3);
         expect(r.title.length).toBeGreaterThan(8);
         expect(`${r.title} ${r.text} ${r.remedies.map((x) => x.label).join()}`).not.toMatch(/undefined|NaN|\[object|\.\./);
-        for (let i = 0; i < LIFE; i++) day(s, FIX[id].clear(s) ?? {});
+        for (let i = 0; i < life(id); i++) day(s, FIX[id].clear(s) ?? {});
         expect(s.guidance.advisories[id]!.active).toBe(false);
       });
     });
@@ -220,7 +222,8 @@ describe('hysteresis', () => {
   for (const id of RULES) {
     it(`${id} is raised at most FLAP_MAX times in any ${A.FLAP_WINDOW} days on a sawtooth`, () => {
       const s = base();
-      const [, on, n = 1] = FIX[id].levels[FIX[id].levels.length - 1];
+      const [, on, hold = 1] = FIX[id].levels[FIX[id].levels.length - 1];
+      const n = Math.max(hold, every(id));
       const raises: number[] = [];
       for (let d = 0; d < 240; d++) {
         const was = s.guidance.advisories[id]?.active === true;
