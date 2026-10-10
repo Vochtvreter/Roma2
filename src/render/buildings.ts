@@ -32,10 +32,16 @@ export const TIER_COLOR: Readonly<Record<HouseTierId, string>> = {
 };
 
 /** A building as drawn this frame: its visible box (world px) and the sprite origin inside it, for picking. */
-export interface Drawn { b: Building; r: Rect; name: string | null; x: number; y: number; w: number; h: number; sx: number; sy: number; sw: number }
+export interface Drawn {
+  b: Building; r: Rect; name: string | null; x: number; y: number; w: number; h: number; sx: number; sy: number; sw: number;
+  mark?: number;                     // where status marks start (world y), when the sprite box's top is not it (the Capitolium)
+}
 
 const GROUND_TYPES: readonly string[] = ['ager', 'olivetum'];            // fields lie flat: drawn before y-sorting
 const CROWNS: readonly string[] = ['iuppiter', 'aeternitas', 'imperium'];
+const NO_SHADOW: readonly string[] = ['principia'];                     // flat ground plans (the forum) cast no wall shadow
+const LANTERNS = 'saturnalia.lanterns';
+const CAP_MARK_IN = 7;                                                   // the Capitolium's bar sits this far inside its area
 const ORDO_SEAL_DAYS = 10;                                               // an Ordo site shows its seal this long
 const TRENCH_UNTIL = 0.12;
 const SHADOW = { alpha: 0.2, lean: 0.45, flat: 0.32 } as const;
@@ -122,7 +128,7 @@ export class BuildingPainter {
         if (look && GROUND_TYPES.includes(b.type)) {
           if (b.status === 'done') g.drawImage(look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height);
           else rise(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height, b.progress);
-        } else if (look) castShadow(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h, b.status === 'done' ? 1 : b.progress);
+        } else if (look && !NO_SHADOW.includes(b.type)) castShadow(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h, b.status === 'done' ? 1 : b.progress);
       }
       if (b.id === sel || b.id === hover) ring(g, X, Y, w, h, b.id === sel ? C.ember : 'rgba(244,234,214,0.8)', b.id === sel ? time : 0);
     }
@@ -180,6 +186,11 @@ export class BuildingPainter {
     const chosen: string[] = Object.values(s.decisions.paths);
     const crown = b.status === 'done' ? CROWNS.find((c) => chosen.includes(c)) : undefined;
     this.record(b, r, (done ?? up).name, left, top, up.cv.width, up.cv.height, up.cv.width);
+    // status marks start at the stone actually standing (not the canvas top with its 32 px overhang, which reaches the
+    // wall and the north gate), and never above the Area Capitolina's own first row
+    let stands = top + Math.max(opaqueTop(up), Math.round(up.cv.height * (1 - within)));
+    if (done) stands = Math.min(stands, top + opaqueTop(done));
+    this.drawn[this.drawn.length - 1].mark = Math.max(stands, r.y * TILE + CAP_MARK_IN);
     push(bottom, X, (g) => {
       if (done) g.drawImage(done.cv, left, top);
       if (b.status !== 'done') { rise(g, up.cv, left, top, within); scaffold(g, left, up.cv.width, bottom, Math.round(up.cv.height * within)); }
@@ -196,12 +207,12 @@ export class BuildingPainter {
     const c = census(s);
     const key = `${structEpoch(s)}|${s.day}`;
     if (key !== this.wantKey) { this.wantKey = key; this.wants.clear(); }
-    const saturnalia = s.modifiers.some((m) => m.source === 'saturnalia') && hasSprite('ov_lanterns');
+    const saturnalia = s.modifiers.some((m) => m.id === LANTERNS) && hasSprite('ov_lanterns');   // the 7-day lanterns, not the feast's other modifiers
     for (const d of this.drawn) {
       const b = d.b, def = BUILDING_DEFS[b.type];
-      const cx = d.sx + d.sw / 2, top = Math.min(d.sy, d.y);
+      const cx = d.sx + d.sw / 2, top = d.mark ?? Math.min(d.sy, d.y);
       if (b.status === 'building') {
-        const bw = Math.min(d.sw - 4, 40), bx = Math.round(cx - bw / 2), by = d.sy - 5;
+        const bw = Math.min(d.sw - 4, 40), bx = Math.round(cx - bw / 2), by = (d.mark ?? d.sy) - 5;
         g.fillStyle = C.bar; g.fillRect(bx - 1, by - 1, bw + 2, 4);
         g.fillStyle = C.gold; g.fillRect(bx, by, Math.max(1, Math.round(bw * b.progress)), 2);
       }
@@ -249,6 +260,20 @@ export class BuildingPainter {
     }
     return null;
   }
+}
+
+const tops = new Map<string, number>();
+/** The first row of a look that has an opaque pixel (0 for a stand-in silhouette); cached per sprite name. */
+function opaqueTop(look: { name: string | null; cv: HTMLCanvasElement }): number {
+  if (!look.name) return 0;
+  let t = tops.get(look.name);
+  if (t === undefined) {
+    const m = alphaMask(look.name), w = look.cv.width;
+    t = 0;
+    while (t < look.cv.height && !m.subarray(t * w, (t + 1) * w).some((v) => v > 0)) t++;
+    tops.set(look.name, t);
+  }
+  return t;
 }
 
 const shadows = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
