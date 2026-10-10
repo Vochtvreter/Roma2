@@ -300,15 +300,6 @@ function drawWood(s: GameState, b: Building, want: number): number {
   return got;
 }
 
-/** Standing timber a camp could still draw today (sum over its catchment). */
-export function catchmentWood(s: GameState, b: Building): number {
-  const tiles = woods(s).catchment.get(b.id) ?? [];
-  const max = getMap(s.seed).woodMax;
-  let sum = 0;
-  for (const i of tiles) sum += woodOf(s, i, max[i]);
-  return sum;
-}
-
 function regrowWoods(s: GameState, season: SeasonIndex): void {
   const map = getMap(s.seed);
   const d = derived(s);
@@ -396,9 +387,9 @@ export function produce(s: GameState, ctx: TickContext, rng: Rng): void {
     if (ph === 'process' && !waterPaused(s, b)) industryWater += (def.inputs?.water ?? 0) * (ix.byWork.get(b.id)?.length ?? 0);
   }
 
-  const worked = (b: Building, p: Person, f: number): void => {
+  const worked = (b: Building, p: Person, frac: number): void => {
     const sk = BUILDING_DEFS[b.type].skill;
-    if (sk && f > 0) gainSkill(p, sk, B.people.SKILL_XP * f);
+    if (sk && frac > 0) gainSkill(p, sk, B.people.SKILL_XP * frac);
   };
   const runStaffed = (b: Building, perWorkerFrac: (p: Person) => number): number => {
     const workers = b.open ? ix.byWork.get(b.id) ?? [] : [];
@@ -407,10 +398,10 @@ export function produce(s: GameState, ctx: TickContext, rng: Rng): void {
     const base = cappedBase(s, b, f);
     let total = 0;
     for (const p of workers) {
-      const f = perWorkerFrac(p);
-      if (f <= 0) continue;
-      total += f * outputWith(s, b, p, base, outside);
-      worked(b, p, f);
+      const frac = perWorkerFrac(p);
+      if (frac <= 0) continue;
+      total += frac * outputWith(s, b, p, base, outside);
+      worked(b, p, frac);
     }
     return total;
   };
@@ -431,14 +422,14 @@ export function produce(s: GameState, ctx: TickContext, rng: Rng): void {
     const def = BUILDING_DEFS[b.type];
     const inputs = def.inputs ?? {};
     const v = runStaffed(b, () => {
-      let f = 1;
-      for (const r of RESOURCES) { const k = inputs[r] ?? 0; if (k > 0) f = Math.min(f, pool[r] / k); }
-      f = Math.max(0, f);
+      let frac = 1;
+      for (const r of RESOURCES) { const k = inputs[r] ?? 0; if (k > 0) frac = Math.min(frac, pool[r] / k); }
+      frac = Math.max(0, frac);
       for (const r of RESOURCES) {
-        const k = (inputs[r] ?? 0) * f;
+        const k = (inputs[r] ?? 0) * frac;
         if (k > 0) { pool[r] -= k; draw(r, b.type, k); }
       }
-      return f;
+      return frac;
     });
     gain(def.output!.res, b.type, v);
     if (def.output!.res === 'iron') s.counters.ironMade += v;

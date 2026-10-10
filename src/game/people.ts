@@ -4,7 +4,7 @@ import { B } from './balance';
 import { BUILDER, SKILLS } from './types';
 import type { Building, DeathCause, Family, GameState, LabourPlan, Person, SkillId, TickContext } from './types';
 import type { Rng } from './rng';
-import { ageOf, canWork, census, houseBeds, peopleIndex, stageOf } from './census';
+import { ageOf, canWork, census, houseBeds, peopleIndex } from './census';
 import { derived, roadNeighbors } from './derived';
 import { toRoman } from './calendar';
 import { fx } from './fx';
@@ -102,25 +102,17 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
     while (e.at < e.list.length && e.list[e.at].work !== null) e.at++;
     return e.at < e.list.length ? e.list[e.at++] : null;
   };
-  const order = s.buildings.filter((b) => target(b) > (at.get(b.id)?.length ?? 0)).sort((a, b) => b.prio - a.prio || a.id - b.id);
-  for (const b of order) {
-    let need = target(b) - (at.get(b.id)?.length ?? 0);
-    while (need > 0) {
-      const p = pick(BUILDING_DEFS[b.type].skill);
-      if (!p) break;
-      p.work = b.id;
+  const fill = (n: number, skill: SkillId | null, work: number): void => {
+    for (; n > 0; n--) {
+      const p = pick(skill);
+      if (!p) return;
+      p.work = work;
       changed = true;
-      need--;
     }
-  }
-  let want = nb - Math.min(builders.length, nb);
-  while (want > 0) {
-    const p = pick('fabri');
-    if (!p) break;
-    p.work = BUILDER;
-    changed = true;
-    want--;
-  }
+  };
+  const order = s.buildings.filter((b) => target(b) > (at.get(b.id)?.length ?? 0)).sort((a, b) => b.prio - a.prio || a.id - b.id);
+  for (const b of order) fill(target(b) - (at.get(b.id)?.length ?? 0), BUILDING_DEFS[b.type].skill, b.id);
+  fill(nb - Math.min(builders.length, nb), 'fabri', BUILDER);
   if (changed) touchPeople(s);
 }
 
@@ -152,14 +144,14 @@ function houseRanking(s: GameState): { b: Building; free: number }[] {
   return out.sort((a, c) => c.free - a.free || forumSteps(s, a.b) - forumSteps(s, c.b) || a.b.id - c.b.id);
 }
 
-/** Houses a group together in the best house that holds all of it, else splits it across the best houses. Returns the
- *  house holding the most of the group, or null when the colony lacks the beds (nothing changes then). */
-function houseGroup(s: GameState, group: Person[]): number | null {
+/** Houses a group together (in `prefer` if it holds them all, else the best house that does), else splits it across
+ *  the best houses. Returns the house holding the most of the group, or null when the colony lacks the beds. */
+function houseGroup(s: GameState, group: Person[], prefer: number | null = null): number | null {
   const ranking = houseRanking(s);
   let total = 0;
   for (const h of ranking) total += h.free;
   if (group.length === 0 || total < group.length) return null;
-  const whole = ranking.find((h) => h.free >= group.length);
+  const whole = ranking.find((h) => h.b.id === prefer && h.free >= group.length) ?? ranking.find((h) => h.free >= group.length);
   let main = -1, mainN = 0, k = 0;
   for (const h of whole ? [whole] : ranking) {
     let n = 0;
@@ -214,8 +206,8 @@ export function rehouse(s: GameState): void {
     else byFamily.set(p.family, [p]);
   }
   for (const fid of [...byFamily.keys()].sort((a, c) => a - c)) {
-    const home = houseGroup(s, byFamily.get(fid) as Person[]);
     const f = s.families.find((x) => x.id === fid);
+    const home = houseGroup(s, byFamily.get(fid) as Person[], f?.home ?? null);
     if (f && home !== null && f.home === null) f.home = home;
   }
 }
@@ -307,7 +299,7 @@ function deaths(s: GameState, ctx: TickContext, rng: Rng): void {
   const gone = new Set<number>();
   for (const p of s.people) {
     const a = (day - p.born) / YEAR;
-    const g = stageOf(p, day);
+    const g = a < P.YOUTH ? 0 : a < P.ADULT ? 1 : a < P.ELDER ? 2 : 3;
     const pH = hunger[g] > P.DEATH_AT ? P.STARVE_P * off : 0;
     const pT = thirst[g] > P.DEATH_AT ? P.THIRST_P * off : 0;
     const pF = p.sickUntil !== undefined && p.sickUntil > day ? fever : 0;
@@ -390,19 +382,16 @@ function marriages(s: GameState, rng: Rng): void {
   }
 }
 
-/** Food factor for births and immigration: grain DoH ≥ 20 → 1, ≥ 10 → 0.5, else 0.1. */
-export function foodFactor(s: GameState): number {
-  const need = census(s).need.grain;
-  const doh = need > 0 ? s.res.grain / need : Infinity;
-  for (const [at, f] of P.FOOD_F) if (doh >= at) return f;
-  return P.FOOD_F[P.FOOD_F.length - 1][1];
+/** Days-on-hand factor of an essential from a [threshold, factor] table (first threshold met wins). */
+function dohFactor(s: GameState, res: 'grain' | 'water', table: readonly (readonly number[])[]): number {
+  const need = census(s).need[res];
+  const doh = need > 0 ? s.res[res] / need : Infinity;
+  return (table.find(([at]) => doh >= at) ?? table[table.length - 1])[1];
 }
 
-function waterFactor(s: GameState): number {
-  const need = census(s).need.water;
-  const doh = need > 0 ? s.res.water / need : Infinity;
-  for (const [at, f] of P.WATER_F) if (doh >= at) return f;
-  return P.WATER_F[P.WATER_F.length - 1][1];
+/** Food factor for births and immigration: grain DoH ≥ 20 → 1, ≥ 10 → 0.5, else 0.1. */
+export function foodFactor(s: GameState): number {
+  return dohFactor(s, 'grain', P.FOOD_F);
 }
 
 function bedsFactor(free: number): number {
@@ -510,7 +499,7 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 export function immigrationChance(s: GameState): number {
   const A = P.ATTRACT;
   const moraleF = Math.min(A.MAX, Math.max(0, (s.morale - A.MORALE) / A.SPAN));
-  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * waterFactor(s) * fx(s, 'immigration');
+  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * dohFactor(s, 'water', P.WATER_F) * fx(s, 'immigration');
 }
 
 /** Gentes of a pool not yet present in the colony (the whole pool when every one is). */
