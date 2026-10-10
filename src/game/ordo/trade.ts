@@ -123,7 +123,8 @@ function wantedGoods(s: GameState): Set<ResId> {
   return out;
 }
 
-/** On the merchant's last council day: sell him surplus at ≥ 1.1 × base, buy what an urgent advisory names (coin runway > 60 days). */
+/** On the merchant's last council day: sell him surplus at ≥ 1.1 × base, buy what an urgent advisory names (coin runway > 60 days).
+ *  MerchantOffer.kind is the colony's side (WP-D): 'buy' = we buy from him, 'sell' = we sell to him; price is per unit. */
 function merchantDeals(s: GameState, v: SimView, decided: boolean): void {
   const m = s.trade.merchant;
   if (!m || m.until - s.day > B.ordo.TRADE_EVERY) return;
@@ -131,11 +132,11 @@ function merchantDeals(s: GameState, v: SimView, decided: boolean): void {
   for (const o of m.offers) {
     if (o.taken) continue;
     const cost = o.price * o.qty;
-    const good = o.kind === 'buy'
+    const good = o.kind === 'sell'
       ? o.price >= B.ordo.MERCHANT_DEAL * TRADE_BASE[o.res] && surplus(s, v, o.res) >= o.qty
       : wanted.has(o.res) && v.c.caps[o.res] - s.res[o.res] >= o.qty && canSpend(s, { denarii: cost }, v) && runway(v, cost) > B.ordo.MERCHANT_RUNWAY;
     if (!good || !takeOffer(s, o.id).ok) continue;
-    chronicle(s, 'ordo', { code: 'merchantDeal', params: { res: o.res, qty: o.qty, price: o.price, why: o.kind === 'buy' ? 'sold' : 'bought' } }, { decided });
+    chronicle(s, 'ordo', { code: 'merchantDeal', params: { res: o.res, qty: o.qty, price: o.price, why: o.kind === 'sell' ? 'sold' : 'bought' } }, { decided });
   }
 }
 
