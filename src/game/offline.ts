@@ -1,6 +1,11 @@
 // src/game/offline.ts — offline catch-up: literally N ticks with ctx.offline, and the away report (ARCHITECTURE §11.5, DESIGN §14). Owner: WP-D.
 import { B } from './balance';
+import { BUILDINGS, HOUSE_TIERS } from './types';
 import type { AwayReport, GameState, LogEntry, OfflineRun, RankIndex, Snapshot } from './types';
+import { formatRoman } from './calendar';
+import { BUILDING_DEFS } from './data/buildings';
+import { TIER_DEFS } from './data/housing';
+import { RANK_DEFS } from './data/ranks';
 import { newCtx, tick, view } from './sim';
 import { census } from './census';
 import { activeAdvisories } from './advisors/engine';
@@ -97,4 +102,45 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
   if (!run) return null;
   run.step(run.days);
   return run.report();
+}
+
+/** "7 min 22 s", "2 h 05 min": a real-time duration in words. */
+export function awayDuration(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), r = sec % 60;
+  if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min`;
+  return m > 0 ? `${m} min ${r} s` : `${r} s`;
+}
+
+const signed = (n: number): string => (n >= 0 ? `+${Math.round(n)}` : `−${Math.round(-n)}`);
+const days = (d: number): string => (Number.isFinite(d) ? `${Math.round(d)} days` : 'plenty');
+
+/** The Litterae Ordinis as text lines (DESIGN §14), built from a report: the dispatch renders these as it likes. */
+export function describeAway(r: AwayReport): { heading: string; city: string; stores: string; works: string; homes: string; decided: string[]; lowest: string; awaiting: string | null } {
+  const b = r.before, a = r.after;
+  const heading = `Litterae Ordinis · from ${formatRoman(b.day + 1)} to ${formatRoman(a.day, { year: true })} (${r.days} days · you were away ${awayDuration(r.awayMs)})`;
+  const births = a.births - b.births, deaths = a.deaths - b.deaths, arr = a.immigrants - b.immigrants, left = a.emigrants - b.emigrants;
+  const city = `Souls ${b.pop} → ${a.pop} (+${births} births, +${arr} arrivals, −${deaths} deaths, −${left} departed) · Rank ${RANK_DEFS[a.rank].name} · Spirits ${Math.round(b.morale)} → ${Math.round(a.morale)}`;
+  const coin = a.res.denarii - b.res.denarii;
+  const stores = `Grain ${days(b.grainDoh)} → ${days(a.grainDoh)} · Water ${days(b.waterDoh)} → ${days(a.waterDoh)} · Coin ${Math.round(b.res.denarii)} → ${Math.round(a.res.denarii)} (${signed(coin)})`;
+  const works: string[] = [];
+  for (const t of BUILDINGS) {
+    const n = (a.builtBy[t] ?? 0) - (b.builtBy[t] ?? 0);
+    if (n > 0) works.push(n === 1 ? BUILDING_DEFS[t].name : `${n} × ${BUILDING_DEFS[t].name}`);
+  }
+  const homes: string[] = [];
+  for (const t of HOUSE_TIERS) {
+    const n = (a.evolvedBy[t] ?? 0) - (b.evolvedBy[t] ?? 0);
+    if (n > 0) homes.push(`${n} ${n === 1 ? 'home' : 'homes'} became ${TIER_DEFS[t].latin}`);
+  }
+  const g = r.lowest.grain, w = r.lowest.water;
+  const low = g.doh <= w.doh ? { what: 'Grain', ...g } : { what: 'Water', ...w };
+  const lowest = Number.isFinite(low.doh) ? `${low.what} fell to ${Math.round(low.doh)} days on ${formatRoman(low.day)}.` : 'Grain and water never ran short.';
+  const awaiting = r.awaiting.petition !== null ? `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.` : null;
+  return {
+    heading, city, stores,
+    works: works.length ? works.join(' · ') : 'No works finished.',
+    homes: homes.length ? homes.join(' · ') : 'No home changed its roof.',
+    decided: r.decided, lowest, awaiting,
+  };
 }
