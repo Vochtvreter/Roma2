@@ -8,7 +8,7 @@
 import { B as B$ } from '../balance';
 import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
 import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
-import { dateOf as dateOf$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
+import { dateOf as dateOf$, seasonOf as seasonOf$ } from '../calendar';
 import { addCost, canAfford, log, missing } from '../state';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
@@ -16,7 +16,7 @@ import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
 import { desirability, houseDesir, previewCovered } from '../coverage';
-import { buildingRateOf, maxPotential, seasonMult } from '../economy';
+import { buildingRateOf, seasonMult } from '../economy';
 import { fxAdd as fxAdd$ } from '../fx';
 import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
@@ -24,13 +24,14 @@ import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { canSpend, capitoliumAhead, etaDays, floorOk, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
+import { aestasWork } from './water';
 import { houseWants as eachHouseWant } from '../advisors/util';
 import { peopleIndex } from '../census';
 import { classAt as classAt$, sizeOf as sizeOf$ } from '../derived';
 import { rectGap as rectGap$ } from '../world/grid';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$, seasonLength = seasonLength$,
+const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$,
   seasonOf = seasonOf$, memo = memo$, structEpoch = structEpoch$, dayEpoch = dayEpoch$, dayStruct = dayStruct$,
   layoutEpoch = layoutEpoch$,
   fxAdd = fxAdd$, idx = idx$, tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
@@ -200,18 +201,16 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     for (const t of best) { const w = make(t, 'survivalFood', { doh: Math.floor(f.grain.doh) }, { survival: true }); if (w) { yield w; break; } }
   }
   if (f.water.structural && f.water.doh < B.ordo.SURVIVAL_DOH) {
+    // a well; a cistern only when no well can be raised (not while one already rises: its rain is little and slow)
     const p = { doh: Math.floor(f.water.doh) };
-    yield* yieldOf(make('puteus', 'survivalWater', p, { survival: true }) ?? make('cisterna', 'survivalWater', p, { survival: true }));
+    yield* yieldOf(make('puteus', 'survivalWater', p, { survival: true }) ?? (unfinished(v, 'puteus') ? null : make('cisterna', 'survivalWater', p, { survival: true })));
   }
-  // 2 · Aestas: the summer forecast falls below the water reserve
+  // 2 · Aestas: the summer forecast falls below the water reserve (aestasWork: a cistern while room is what is short)
   const wr = settingValue(s, 'waterReserve');
   const wc = f.water.crunch;
   if (wc && wc.startsIn <= B.advisors.RULES.AESTAS_LEAD && wc.lowestDoh < wr && !unfinished(v, 'cisterna') && !unfinished(v, 'puteus')) {
-    // storage helps only while a full store (and one cistern more) carries the Aestas deficit above the water reserve;
-    // past that a well's yield does (a store that merely covered the deficit raised 25 cisterns in five years)
-    const deficit = f.water.cons - maxPotential(s, 'water', 1);
-    const helps = deficit <= 0 || deficit * seasonLength(s.day + wc.startsIn) + wr * f.water.need <= f.water.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
-    yield* yieldOf(make(helps ? 'cisterna' : 'puteus', 'aestasWater', { days: wc.startsIn, low: Math.floor(wc.lowestDoh), keep: wr }));
+    const t = aestasWork(s, v, f.water, wc, wr);
+    if (t) yield* yieldOf(make(t, 'aestasWater', { ...(wc.startsIn > 0 ? { days: wc.startsIn } : {}), low: Math.floor(wc.lowestDoh), keep: wr }));
   }
   // 3 · Hiems store, then stores that are full. A horreum only when the Hiems need exceeds what our stores can hold: a
   //     shortfall the stores could already hold is the fields' and the hunters' to fix (a horreum every build day while

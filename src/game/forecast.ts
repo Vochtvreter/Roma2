@@ -1,7 +1,8 @@
 // src/game/forecast.ts — the essentials forecast and the 12-month prospectus (ARCHITECTURE §8.3, DESIGN §11.11). Owner: WP-B.
 // A pure day-by-day projection from today's stock to the end of the 12th month cell, using the economy module:
-// production per season (Ordo labour on: min(maxPotential, need × 1.35 grain / × 1.10 water), the crunch season at
-// maxPotential; Ordo labour off: today's staffing), consumption = today's need + industry draws, caps, rot, evaporation.
+// production per season (Ordo labour on: min(maxPotential, need × 1.35 grain / × 1.10 water, plus what the works draw,
+// as the labour plan staffs the wells for them), the crunch season at maxPotential; Ordo labour off: today's staffing),
+// consumption = today's need + industry draws, caps, rot, evaporation.
 import { B as B$ } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
 import { dayEpoch as dayEpoch$, memo as memo$ } from './memo';
@@ -69,11 +70,13 @@ export function projectEssential(s: GameState, res: Essential): EssentialForecas
   const doh = (x: number): number => (need > 0 ? x / need : DOH_NONE);
   const ordo = s.ordo.on.labour;
 
-  // production per season under the projection rule
+  // production per season under the projection rule. The Ordo staffs the wells for the need and for what the works
+  // draw (ordo/labour.ts step 1): a fill on the need alone projected a grown city's bathhouses and concrete works
+  // draining the store through Ver, and the Aestas wish raised a cistern for that phantom every build day
   const prodBy: number[] = SEASONS.map((q) => {
     if (!ordo) return currentFlows(s, res, q).prod;
     const pot = maxPotential(s, res, q);
-    return q === CRUNCH[res] ? pot : Math.min(pot, need * ORDO_FILL[res]);
+    return q === CRUNCH[res] ? pot : Math.min(pot, need * ORDO_FILL[res] + today.draw);
   });
 
   const d0 = dateOf(s.day);

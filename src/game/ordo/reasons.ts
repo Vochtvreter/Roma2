@@ -104,6 +104,14 @@ const FLIPPED: Partial<Record<ReasonCode, [string, string]>> = {
   priority: ['By your hand: {n} on {cat}.', '{Cat}: {n} by your hand'],
 };
 
+/** Sentences for a case of a code its params name: Aestas already upon us (no `days` ahead). */
+const VARIANT: Partial<Record<ReasonCode, { when: (p: Reason['params']) => boolean; text: [string, string] }>> = {
+  aestasWater: {
+    when: (p) => !(typeof p.days === 'number' && p.days > 0),
+    text: ['Aestas is upon us and our water would fall to {low} days; we keep {keep}, so {a:type} is raised.', '{Type} — Aestas: water would fall to {low} d, we keep {keep}'],
+  },
+};
+
 /** Display name of a work in running text ('house plot', 'horreum', 'shrine', …). */
 export function workName(type: BuildingId): string {
   return WORK[type] ?? BUILDING_DEFS[type].name.toLowerCase();
@@ -159,7 +167,10 @@ function template(r: Reason, short: boolean): string {
   const p = r.params;
   const flip = FLIPPED[r.code];
   const flipped = flip !== undefined && (r.code === 'priority' ? p.manual !== undefined : p.level === 'none' || p.paused === 0);
-  return flipped ? flip[short ? 1 : 0] : (short ? SHORT : TEXT)[r.code] ?? r.code;
+  if (flipped) return flip[short ? 1 : 0];
+  const variant = VARIANT[r.code];
+  if (variant?.when(p)) return variant.text[short ? 1 : 0];
+  return (short ? SHORT : TEXT)[r.code] ?? r.code;
 }
 
 /** "1 homes" → "1 home" (the templates count homes in the plural). */

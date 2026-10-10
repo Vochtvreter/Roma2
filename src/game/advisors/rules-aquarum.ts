@@ -4,12 +4,13 @@
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B as B$ } from '../balance';
 import type { AdvisorRule, Building, GameState, Remedy, Severity, SimView } from '../types';
-import { formatRoman as formatRoman$, seasonLength as seasonLength$ } from '../calendar';
+import { formatRoman as formatRoman$ } from '../calendar';
 import { previewCoverage } from '../coverage';
 import { petitionNeeds, settingValue } from '../decisions';
-import { maxPotential, seasonMult } from '../economy';
+import { seasonMult } from '../economy';
 import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } from '../map';
 import { routeAqueduct } from '../place';
+import { aestasWork } from '../ordo/water';
 import { bestSlot } from '../site';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
@@ -20,7 +21,7 @@ import {
 import type { CadencedRule } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, formatRoman = formatRoman$, seasonLength = seasonLength$, distToRect = distToRect$, getMap = getMap$,
+const B = B$, formatRoman = formatRoman$, distToRect = distToRect$, getMap = getMap$,
   tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, SETTING_DEFS = SETTING_DEFS$;
 
 const AESTAS = 1;
@@ -103,17 +104,18 @@ const aestas: AdvisorRule = {
     return `Cisterns catch ${fractionWord(seasonMult(s, 'cisterna', AESTAS))} of their rain in Aestas and wells draw `
       + `${fractionWord(seasonMult(s, 'puteus', AESTAS))}. We hold ${int(P(p.stock))} amphorae, with room for ${int(P(p.cap))}.`;
   },
-  remedies(s, v, a) {
+  remedies(s, v) {
     const def = SETTING_DEFS.waterReserve;
     const want = Math.min(def.max, settingValue(s, 'waterReserve') + STEP.WATER_RESERVE);
     const reserve: Remedy | null = s.ordo.on.build && want > settingValue(s, 'waterReserve') ? { kind: 'setting', setting: 'waterReserve', value: want } : null;
-    // as the Ordo reckons it (ordo/build.ts, Aestas row): a cistern helps only if the summer deficit fits in its room;
-    // otherwise the wells must draw more, and another cistern would stand dry
+    // as the Ordo reckons it (ordo/water.ts): a cistern while room is what is short and Aestas is still ahead, else a
+    // well; when neither could lift the low (the store enters Aestas short of water), the wells' hands come first
     const w = v.f.water;
-    const deficit = w.cons - maxPotential(s, 'water', AESTAS);
-    const helps = deficit <= 0 || deficit * seasonLength(s.day + P(a.params.D)) <= w.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
+    const pick = w.crunch ? aestasWork(s, v, w, w.crunch, settingValue(s, 'waterReserve')) : null;
     const cistern: Remedy = { kind: 'place', building: 'cisterna' }, well: Remedy = { kind: 'place', building: 'puteus' };
-    return three(helps ? cistern : well, helps ? well : cistern, reserve);
+    if (pick === 'cisterna') return three(cistern, well, reserve);
+    if (pick === 'puteus') return three(well, cistern, reserve);
+    return three(labourRemedy(s, v, 'water', 'water', w.cons - w.prod), well, reserve);
   },
 };
 

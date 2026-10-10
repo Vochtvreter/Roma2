@@ -14,6 +14,12 @@ import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
 import { manualPlan, planLabour } from '../src/game/ordo/labour';
 import { maxSites, ordoSites, ordoSlot, walkWishes, wishList } from '../src/game/ordo/build';
+import { aestasWork } from '../src/game/ordo/water';
+import { maxPotential } from '../src/game/economy';
+import { projectEssential } from '../src/game/forecast';
+import { B } from '../src/game/balance';
+import { BUILDING_DEFS } from '../src/game/data/buildings';
+import { play } from './autoplayer';
 import { addCost } from '../src/game/state';
 import { canSpend, reserved, savingFor } from '../src/game/ordo/saving';
 import { emergencyDay } from '../src/game/ordo/emergency';
@@ -21,7 +27,7 @@ import { ordoTrade, ordoTradeWould, tradeMoves } from '../src/game/ordo/trade';
 import { reasonShort, reasonText } from '../src/game/ordo/reasons';
 import { applyOnce, askOrdo, pinBuild, setLabourPriority, setManualTarget, setOrdo } from '../src/game/ordo/actions';
 import { Rng } from '../src/game/rng';
-import { INTEGRATED, ctx, fresh, noNaN, run } from './util';
+import { INTEGRATED, ctx, fresh, noNaN, run, setJobs } from './util';
 
 // Pass-through spies: the emergency tests make the (WP-D) import and relief succeed on demand.
 vi.mock('../src/game/trade', async (orig) => {
@@ -345,6 +351,66 @@ describe('trade', () => {
   });
 });
 
+describe('water for Aestas (DESIGN §10.5 row 2, §11.11)', () => {
+  // the wish's choice on chosen figures: need 100 a day, the reserve 15 days; a full store must hold the Aestas deficit
+  // and the reserve, plus the sun's share (hold = (deficit × 92 + 1,500) / 0.816 ≈ 1,840 with no deficit)
+  const setup = () => { const s = fresh(42); run(s, 1); return { s, v: view(s), pot: maxPotential(s, 'water', 1) }; };
+  const w = (cons: number, cap: number): EssentialForecast => ({ ...view(fresh(42)).f.water, need: 100, cons, cap });
+  const at = (s: GameState, startsIn: number, lowIn: number) => ({ season: 1 as const, startsIn, lowestDoh: 10, lowestDay: s.day + lowIn, emptyDay: null, needInStore: 0 });
+  it('a cistern while room is what is short and Aestas is still ahead', () => {
+    const { s, v, pot } = setup();
+    expect(aestasWork(s, v, w(pot, 1500), at(s, 30, 120), 15)).toBe('cisterna');    // one cistern short
+    expect(aestasWork(s, v, w(pot, 500), at(s, 30, 120), 15)).toBe('cisterna');     // several short, but the wells carry Aestas
+  });
+  it('a well when the wells fall short by more than a cistern\'s room, or the room already suffices', () => {
+    const { s, v, pot } = setup();
+    expect(aestasWork(s, v, w(pot + 50, 1500), at(s, 30, 120), 15)).toBe('puteus');
+    expect(aestasWork(s, v, w(pot + 5, 5000), at(s, 30, 120), 15)).toBe('puteus');
+  });
+  it('never a cistern once Aestas has come (its room could not fill), and nothing when no well could lift the low', () => {
+    const { s, v, pot } = setup();
+    expect(aestasWork(s, v, w(pot, 1500), at(s, 0, 40), 15)).toBe('puteus');
+    expect(aestasWork(s, v, w(pot, 1500), at(s, 0, 0), 15)).toBeNull();               // the low is today
+    expect(aestasWork(s, v, w(pot, 5000), at(s, 30, 30), 15)).toBeNull();             // the low is Aestas's first day
+  });
+  it('the forecast mans the wells for what the works draw as well as for the need: a full store does not drain in Ver', () => {
+    const s = fresh(42);
+    run(s, 1);
+    s.rank = 2;
+    invalidate(s);
+    for (let k = 0; k < 3; k++) built(s, 'puteus');
+    const bath = built(s, 'balneum');                                              // draws 20 a day while manned
+    setJobs(s, { perBuilding: { [bath.id]: 2 } });
+    invalidate(s);
+    const f = projectEssential(s, 'water');
+    expect(f.cons - f.need).toBeGreaterThanOrEqual(BUILDING_DEFS.balneum.waterDraw ?? 20);
+    expect(maxPotential(s, 'water', 0)).toBeGreaterThan(f.need * B.forecast.WATER + (f.cons - f.need));
+    s.res.water = f.cap;
+    const g = projectEssential(s, 'water');
+    expect(g.months[0].season).toBe(0);
+    expect(g.months[0].endStock).toBeGreaterThanOrEqual(g.cap - 1);
+  });
+  it.runIf(INTEGRATED)('a growing city raises water as its need grows, not a cistern every build day, and keeps its summer runway', () => {
+    const cisterns: number[] = [];
+    let low = Infinity;
+    const r = play(42, 'decision', {
+      days: 6000,
+      onDay: (st) => {
+        for (const b of st.buildings) if (b.type === 'cisterna' && b.placed === st.day && b.owner === 'ordo') cisterns.push(st.day);
+        const need = census(st).need.water;
+        if (st.day > 30 && need > 0) low = Math.min(low, st.res.water / need);
+      },
+    });
+    const s = r.s;
+    const wells = s.buildings.filter((b) => b.type === 'puteus').length, tanks = s.buildings.filter((b) => b.type === 'cisterna').length;
+    for (const d of cisterns) expect(cisterns.filter((x) => x > d - 365 && x <= d).length, `cisterns in the year to day ${d}`).toBeLessThanOrEqual(3);
+    expect(tanks).toBeLessThan(wells);                                             // yield grows with the need; room follows it
+    expect((wells * 17.6 + tanks * 2.4) / census(s).need.water).toBeGreaterThan(0.8); // Aestas yield tracks the need
+    expect(low).toBeGreaterThanOrEqual(10);                                        // the realised runway never fell below 10 days
+    expect(s.stats.deathsBy.thirst).toBe(0);
+  }, 120_000);
+});
+
 describe('reasons', () => {
   const CODES: ReasonCode[] = [
     'request', 'pin', 'survivalFood', 'survivalWater', 'aestasWater', 'hiemsStore', 'storageFull', 'beds', 'waterAccess', 'evolve',
@@ -374,6 +440,11 @@ describe('reasons', () => {
     expect(reasonText({ code: 'request', params: { type: 'lararium', n: 6, want: 'religion' } })).toBe('Raising the shrine you asked for: 6 homes lacked a shrine.');
     expect(reasonText({ code: 'needFood', params: { need: 31, goal: 37.2, stock: 612, target: 900 } }))
       .toBe('Hands in the fields for 37 grain a day against a need of 31, and a winter stock (612 of 900).');
+    // a wish raised in Aestas itself does not say "Aestas comes in 0 days"
+    expect(reasonText({ code: 'aestasWater', params: { type: 'puteus', low: 12, keep: 15 } }))
+      .toBe('Aestas is upon us and our water would fall to 12 days; we keep 15, so a well is raised.');
+    expect(reasonShort({ code: 'aestasWater', params: { type: 'puteus', days: 0, low: 12, keep: 15 } })).toBe('Well — Aestas: water would fall to 12 d, we keep 15');
+    expect(reasonShort({ code: 'aestasWater', params: { type: 'cisterna', days: 59, low: 9, keep: 15 } })).toBe('Cistern — Aestas in 59 d, water would fall to 9 d, we keep 15');
   });
 });
 
