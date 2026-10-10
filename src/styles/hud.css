@@ -50,7 +50,7 @@
 .hud-vital.falling .vit-sub { display: block; }
 .hud-vital.falling .vit-seasons { display: none; }
 .vit-strip { grid-column: 1 / 3; display: flex; gap: 1px; }
-.vit-cell { flex: 1; height: 6px; border-radius: 1px; background: var(--dim); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3); }
+.vit-cell { flex: 1; height: 6px; border-radius: 1px; background: var(--dim-fill); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3); }
 .vit-cell.good { background: var(--good); } .vit-cell.gold { background: var(--gold); } .vit-cell.warn { background: var(--sev-2); }
 .vit-cell.bad { background: var(--bad); } .vit-cell.empty { background: #0a0710; box-shadow: inset 0 0 0 1px #3a2a22; }
 .vit-cell.now { box-shadow: 0 -2px 0 var(--text); }

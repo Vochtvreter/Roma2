@@ -1103,7 +1103,7 @@ Space pause · 1–4 speeds · E/V/B/P/T/L tabs · O cycle overlay, Shift+O off 
 | `--line` | `#5c4334` | `--good` (laurel) | `#9ccc5a` |
 | `--line-2` | `#7d5b44` | `--bad` | `#e5554a` |
 | `--text` (marble) | `#f4ead6` | `--water` | `#62b0d6` |
-| `--muted` | `#bba58b` | `--dim` | `#806b57` |
+| `--muted` | `#bba58b` | `--dim` (secondary text, ≥ 4.3:1 on every panel) | `#a48d76` |
 | `--sev-0` Nota | `#8fa3b5` | `--sev-1` Monitum | `#f2c94c` |
 | `--sev-2` Cave | `#e3843a` | `--sev-3` Periculum | `#e5554a` |
 | `--parchment` | `#eadfc4` | `--ink` | `#2b1e15` |

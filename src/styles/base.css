@@ -79,7 +79,7 @@ button.chip { cursor: pointer; }
 /* ───────── meters, pips, severities, badges ───────── */
 .meter { height: 6px; background: rgba(255, 255, 255, .08); border-radius: 2px; overflow: hidden; }
 .meter > i, .meter-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--terra), var(--gold)); transition: width .3s; }
-.pip { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--dim); box-shadow: 0 0 0 1px var(--ring); }
+.pip { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--dim-fill); box-shadow: 0 0 0 1px var(--ring); }
 .sev-bg-0 { background: var(--sev-0); } .sev-bg-1 { background: var(--sev-1); } .sev-bg-2 { background: var(--sev-2); } .sev-bg-3 { background: var(--sev-3); }
 .sev-c0 { color: var(--sev-0); } .sev-c1 { color: var(--sev-1); } .sev-c2 { color: var(--sev-2); } .sev-c3 { color: var(--sev-3); }
 .sev-0 { border-left: 3px solid var(--sev-0); } .sev-1 { border-left: 3px solid var(--sev-1); }

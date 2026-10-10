@@ -10,7 +10,8 @@
   --line-2: #7d5b44;
   --text: #f4ead6;
   --muted: #bba58b;
-  --dim: #806b57;
+  --dim: #a48d76;        /* secondary text: >= 5:1 on the panels, 4.3:1 on the side-tab gradient */
+  --dim-fill: #806b57;   /* the same quiet tone as a fill (pips, empty forecast cells, labour borders) */
   --ember: #f0a04b;
   --ember-2: #d9652b;
   --gold: #f2c94c;
