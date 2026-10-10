@@ -7,7 +7,7 @@ import { H, W } from '../game/map';
 import { B } from '../game/balance';
 
 /** CSS px per world px (DESIGN §3.1: integer levels 1–5; CONTRACT_NOTES client 1). */
-export const ZOOM_LEVELS: readonly number[] = [1, 2, 3, 4, 5];
+export const ZOOM_LEVELS: readonly number[] = B.ui.ZOOM_LEVELS;
 /** World px per tile. */
 export const TILE: number = B.map.TILE;
 /** Map size in world px. */
@@ -36,12 +36,12 @@ export function scaleFor(level: number, dpr: number): number {
 
 /** The default zoom level: 3 on desktop, 2 below 700 CSS px (DESIGN §3.1). */
 export function defaultLevel(cssWidth: number): number {
-  return cssWidth < 700 ? 2 : 3;
+  return cssWidth < B.ui.ZOOM_SMALL_W ? B.ui.ZOOM_SMALL : B.ui.ZOOM_DEFAULT;
 }
 
 /** A camera at the map centre, default level, 1×1 viewport (resize() fills in the real size). */
 export function makeCamera(): Camera {
-  const level = 3;
+  const level: number = B.ui.ZOOM_DEFAULT;
   return { x: WORLD_W / 2, y: WORLD_H / 2, level, scale: level, vw: 1, vh: 1 };
 }
 

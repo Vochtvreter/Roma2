@@ -160,6 +160,10 @@ export const B = {
     ACCESS_MIN: 2,                                    // wish 5: ≥ 2 houses whose first unmet need is water
     DEFICIT_RESERVE: 0.5,                             // trade 1: grain DoH < Grain reserve × 0.5 with max potential < need
     LUXURY_RUNWAY: 60, MERCHANT_DEAL: 1.1,
+    MIN_EXPORT: 20,                                   // the smallest surplus worth a caravan
+    COMING: 30,                                       // days ahead that "the coming season" means for survival food
+    STREET_TILES: 4,                                  // road tiles in one "busy street" paved under Urbs
+    STORES_PER_RANK: 1,                               // horrea/apothecae for full stores ≤ 1 + rank × this
     FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
   },
 
@@ -229,6 +233,8 @@ export const B = {
     SLOTS_BASE: 1, SLOTS_MAX: 7, MANSIO_SLOTS: 2, MANSIO_DAYS: 1,
     SLOTS_RANK: [0, 1, 2, 2, 2],                      // extra caravan slots by rank: +1 Vicus, +1 Oppidum (§13.4)
     CARGO_MAX: 80,                                    // a caravan carries at most 80 (§13.4)
+    MERCHANT_POP_REF: 150, MERCHANT_SCALE: [0.5, 2],  // merchant quantities × clamp(pop / 150, 0.5, 2)
+    MERCHANT_SELL_P: 0.5,                             // chance an offer asks to buy from us
   },
 
   // ───────── advisors (DESIGN §11.3–11.6) ─────────
@@ -253,6 +259,8 @@ export const B = {
       // remedy steps: Spare beds +4 · Builder share +5 points · Trade reserve −10 · Ask/Place house plots ×2
       SPARE_BEDS_STEP: 4, BUILDER_SHARE_STEP: 0.05, TRADE_RESERVE_STEP: -10, PLOTS: 2,
     },
+    // remedy steps of the setting remedies (one tunable table)
+    STEP: { BUILDER_SHARE: 0.05, SPARE_BEDS: 4, TRADE_RESERVE: 10, GRAIN_RESERVE: 15, WATER_RESERVE: 5, SURPLUS_KEEP: 0.3, SURPLUS_MIN: 10 },
   },
 
   // ───────── mentor tips and reveal (DESIGN §11.7, §11.9, §15.3) ─────────
@@ -291,5 +299,6 @@ export const B = {
     NEWS_SPEED: 2,                                    // "Slow for news": a new choice card drops the speed to 2× (§2.1)
     FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 3000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
     ROSTER: 60, BEDS_LOW: 2,                          // Populus roster of the 60 oldest; souls chip amber below 2 free beds
+    NEW_DAYS: 30,                                     // a NEW sticker stays this many days after a reveal
   },
 } as const;

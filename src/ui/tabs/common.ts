@@ -20,7 +20,7 @@ export interface TabPanel extends Panel {
 }
 
 /** Days a newly unlocked thing wears its NEW marker. */
-export const NEW_DAYS = 30;                       // TODO(balance): move to B.ui.NEW_DAYS
+export const NEW_DAYS = B.ui.NEW_DAYS;
 
 /** Inscription caps with V for U ('CONSILIVM'). */
 export function caps(s: string): string {

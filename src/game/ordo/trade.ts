@@ -16,7 +16,7 @@ import { canSpend, capitoliumAhead, etaDays, outputRates, reserved, savingParts 
 import { houseWants, walkWishes } from './build';
 import { chronicle } from './chronicle';
 
-const MIN_EXPORT = 20;       // TODO(balance): move to B.ordo — the smallest surplus worth a caravan
+const MIN_EXPORT = B.ordo.MIN_EXPORT;   // the smallest surplus worth a caravan
 const MATERIALS: TradeRes[] = ['timber', 'stone', 'tiles', 'iron'];
 
 /** One contract the Ordo would make, with its reason. */

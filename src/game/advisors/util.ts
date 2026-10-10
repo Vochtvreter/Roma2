@@ -26,7 +26,7 @@ export const CLEAR = B.advisors.CLEAR;
 export const R = B.advisors.RULES;
 
 /** Remedy steps of the DESIGN §11.6 catalogue (Builder share +5, Spare beds +4, Trade reserve −10 …) and the surplus rule. */
-export const STEP = { BUILDER_SHARE: 0.05, SPARE_BEDS: 4, TRADE_RESERVE: 10, GRAIN_RESERVE: 15, WATER_RESERVE: 5, SURPLUS_KEEP: 0.3, SURPLUS_MIN: 10 } as const;   // TODO(balance): move to B.advisors.STEP
+export const STEP = B.advisors.STEP;
 
 /** A rule the engine evaluates only every `every` days (day % every == 0); on other days it is left exactly as it stands. */
 export type CadencedRule = AdvisorRule & { every?: number };

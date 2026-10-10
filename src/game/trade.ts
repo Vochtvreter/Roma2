@@ -24,9 +24,9 @@ const OPPIDUM = 2;
 const T = B.trade;
 const E = B.events;
 /** Merchant quantities scale with the population: × clamp(pop / MERCHANT_POP_REF, …). */
-const MERCHANT_POP_REF = 150;            // TODO(balance): move to B.trade
-const MERCHANT_SCALE: readonly [number, number] = [0.5, 2];   // TODO(balance): move to B.trade
-const MERCHANT_SELL_P = 0.5;             // TODO(balance): move to B.trade — chance an offer asks to buy from us
+const MERCHANT_POP_REF = B.trade.MERCHANT_POP_REF;
+const MERCHANT_SCALE: readonly [number, number] = B.trade.MERCHANT_SCALE;
+const MERCHANT_SELL_P = B.trade.MERCHANT_SELL_P;   // chance an offer asks to buy from us
 const PAUSE_CODES: readonly string[] = ['reserve', 'stock', 'denarii', 'storage', 'refused'];
 
 const resName = (r: TradeRes): string => RESOURCE_DEFS[r].name.toLowerCase();

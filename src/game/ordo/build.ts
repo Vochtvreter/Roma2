@@ -27,9 +27,9 @@ import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, sa
 import { chronicle } from './chronicle';
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
-const COMING = 30;           // TODO(balance): move to B.ordo — days ahead that "the coming season" means for survival food
-const STREET_TILES = 4;      // TODO(balance): move to B.ordo — road tiles in one "busy street" paved under Urbs
-const STORES_PER_RANK = 1;   // TODO(balance): move to B.ordo — horrea/apothecae for full stores ≤ 1 + rank × this
+const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food
+const STREET_TILES = B.ordo.STREET_TILES;       // road tiles in one "busy street" paved under Urbs
+const STORES_PER_RANK = B.ordo.STORES_PER_RANK; // horrea/apothecae for full stores ≤ 1 + rank × this
 const FOOD: BuildingId[] = ['ager', 'venatio', 'pabulatio'];
 const MATERIALS: ResId[] = ['timber', 'stone', 'tiles', 'concrete', 'ore', 'iron', 'tools', 'oil'];
 const PRODUCER: Partial<Record<ResId, BuildingId>> = {

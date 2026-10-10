@@ -22,7 +22,7 @@ import { RESOURCE_DEFS } from './data/resources';
 
 const E = B.economy;
 const HIEMS: SeasonIndex = 3;
-const AQUAE_CONCRETE = 1.05;        // TODO(balance): move to B.economy — Aquae: Operibus prius, concrete ×1.05 (data note 3)
+const AQUAE_CONCRETE = B.economy.OPERIBUS_CONCRETE;   // Aquae: Operibus prius, concrete ×1.05 (data note 3)
 const GROUPS = 4;
 const RATION_TIERS: readonly (readonly number[])[] = [[0], [1, 2], [3]];   // children, then youths + adults, then elders
 const NEED_KIND = { grain: 0, water: 1 } as const;
