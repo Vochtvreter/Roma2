@@ -144,6 +144,26 @@ describe('hints', () => {
     expect(howToGetMore(s, 'wine', view(s)).join(' ')).toMatch(/would sell it once our caravans reach it/);
     expect(benefitLine('horreum')).toBe('+4,000 safe grain storage');
   });
+  it('says when a full store\'s building is not yet granted (R03)', () => {
+    const s = run(fresh(42), 2);
+    s.res.timber = 300;
+    expect(howToGetMore(s, 'timber', view(s)).at(-1)).toBe('The stores are full (300 of 300): a warehouse adds room. Rome grants it to a Vicus.');
+    s.rank = 1;
+    expect(howToGetMore(s, 'timber', view(s)).at(-1)).toBe('The stores are full (300 of 300): a warehouse adds room.');
+  });
+  it('names a shrine in the wants tip only when a shrine is what the first waiting house wants (R03)', () => {
+    const wants = GUIDE.find((g) => g.id === 'wants')!;
+    const s = fresh(42);
+    let checked = 0;
+    run(s, 900, (st, _c, i) => {
+      if (i % 30 !== 0 || !wants.when(st)) return;
+      const text = wants.text(st);
+      const religion = /the first wants a shrine/.test(text);
+      expect(/A shrine within \d+ steps/.test(text)).toBe(religion);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
+  });
   it('shows the output chain with hands, per hand and the day\'s total', () => {
     const s = run(fresh(42), 2);
     const chain = outputChain(s, s.buildings.find((b) => b.type === 'ager')!);

@@ -81,7 +81,10 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
   }
   if (main) out.push(liveLine(s, v, main));
   const store = STORE[res];
-  if (store && s.res[res] >= 0.95 * v.c.caps[res]) out.push(`The stores are full (${int(s.res[res])} of ${int(v.c.caps[res])}): ${aName(store)} adds room.`);
+  if (store && s.res[res] >= 0.95 * v.c.caps[res]) {
+    const lock = BUILDING_DEFS[store].rank > s.rank ? ` Rome grants it to ${rankWord(BUILDING_DEFS[store].rank)}.` : '';
+    out.push(`The stores are full (${int(s.res[res])} of ${int(v.c.caps[res])}): ${aName(store)} adds room.${lock}`);
+  }
   return out;
 }
 
@@ -94,7 +97,6 @@ function coinLines(s: GameState): string[] {
     `Shop rows and market halls add ${B.economy.MARKET_TAX.taberna} and ${B.economy.MARKET_TAX.macellum} a covered soul a day.`,
     sub > 0 ? `Rome pays a stipend of ${num(sub)} a day while we are ${rankWord(s.rank)}.` : 'Rome pays no stipend any more.',
     'Caravans and merchants pay for our surplus.',
-    `This month's taxes so far: ${int(s.taxAccrued)} denarii.`,
   ];
 }
 

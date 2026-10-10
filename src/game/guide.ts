@@ -150,8 +150,10 @@ export const GUIDE: GuideStep[] = [
       const b = blocked(s);
       const first = b.find((w) => w.want !== null);
       const lead = first?.want ? `${b.length} ${b.length === 1 ? 'house waits' : 'houses wait'}; the first wants ${needWord(first.want)}. ` : '';
+      // the shrine sentence only when a shrine is what the first house wants
       const r = BUILDING_DEFS.lararium.service?.[0].radius ?? 0;
-      return `${lead}Hover a house to see what it needs next, or open the Domus overlay. A shrine within ${r} steps is often all it takes.`;
+      const shrine = first?.want === 'religion' ? ` A shrine within ${r} steps is often all it takes.` : '';
+      return `${lead}Hover a house to see what it needs next, or open the Domus overlay.${shrine}`;
     },
     when: (s) => blocked(s).length > 0,
   },
