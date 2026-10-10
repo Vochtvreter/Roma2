@@ -1,0 +1,120 @@
+/* src/styles/left.css — owner H (WP-H UI shell). Left column (#left): Res Gestae objective, counsel card, portrait strip.
+   #left is a non-stacking column (z-index auto) so the counsel card can sit above the HUD (21) while the objective and the
+   inspector stay at 14 (DESIGN §15.1). The inspector's own look is WP-I's (inspector.css). Prefixes left- obj- counsel-. */
+
+#left {
+  position: absolute; top: calc(var(--hud-h) + 10px); left: 10px; bottom: 10px; width: 300px;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+#left > section { pointer-events: auto; position: relative; flex: none; }
+#left > section:empty { display: none; }
+/* The inspector takes what the column has left and scrolls inside (.ins-card), so it never runs under the map tools,
+   the ticker or the sheet, nor off the bottom of the screen. */
+#left > #inspector { margin-top: auto; z-index: var(--z-inspector); flex: 0 1 auto; min-height: 0; }
+/* A clicked (sticky) card is what the player is looking at: the Res Gestae drops to its goal line, CTA and one scrolling
+   row of chips, and the portrait strip steps aside (the card itself stays). Hover cards change nothing, so the column
+   never jumps while the pointer crosses the map. */
+#left:has(> #inspector > .ins-card.sticky) :is(.obj-hint, .obj-unlocks, .obj-meter, .counsel-strip) { display: none; }
+#left:has(> #inspector > .ins-card.sticky) .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
+#left:has(> #inspector > .ins-card.sticky) .obj-chip { flex: none; }
+
+/* ───────── Res Gestae ───────── */
+#objective {
+  z-index: var(--z-left); padding: 9px 12px 10px;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 6px;
+  box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 236, 200, .04); backdrop-filter: var(--blur);
+}
+.obj-kicker { display: flex; justify-content: space-between; gap: 8px; font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.5px; color: var(--ember); }
+.obj-prog { color: var(--muted); letter-spacing: .5px; }
+.obj-goal { display: flex; align-items: center; gap: 6px; font-size: 16px; margin: 4px 0 2px; color: var(--text); }
+.obj-laurel { width: 24px; height: 24px; flex: none; }
+.obj-hint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.obj-meter { margin: 6px 0 2px; }
+.obj-unlocks { font-size: 11px; color: var(--good); margin-top: 5px; }
+.obj-unlocks-k { color: var(--muted); }
+.obj-cta {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 6px 8px; text-align: left;
+  border: 2px solid #c06aa0; border-radius: 4px; color: #ffe8a8; font-size: 13px;
+  background: linear-gradient(rgba(154, 60, 120, .55), rgba(106, 31, 74, .55));
+  animation: ctaGlow 2.4s ease-in-out infinite;
+}
+.obj-cta:hover { filter: brightness(1.2); }
+.obj-cta-k { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1px; color: #2a0c1e; background: var(--gold); padding: 1px 4px; border-radius: 2px; flex: none; }
+@keyframes ctaGlow { 50% { box-shadow: 0 0 16px rgba(192, 106, 160, .6); border-color: var(--gold); } }
+.obj-cta-note { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.obj-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
+.obj-chip { font-size: 9px; }
+#objective.obj-pop { animation: objPop .6s; }
+@keyframes objPop { 30% { transform: scale(1.04); border-color: var(--gold); box-shadow: var(--ring-shadow), 0 0 22px rgba(242, 201, 76, .5); } }
+
+/* ───────── counsel: portrait strip + one card ───────── */
+#counsel { z-index: var(--z-counsel); display: flex; flex-direction: column; gap: 6px; }
+.counsel-strip { display: flex; gap: 4px; }
+.counsel-pt {
+  position: relative; width: 32px; height: 32px; padding: 2px; flex: none;
+  background: linear-gradient(#3b2a22, #2a1e18); border: 2px solid var(--ring); border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 236, 200, .12);
+}
+.counsel-pt img { width: 24px; height: 24px; display: block; }
+button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); }
+.counsel-pt.vacant { opacity: .45; cursor: help; }
+.counsel-pt .pip { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; }
+
+.counsel-card {
+  position: relative; padding: 10px 12px 9px;
+  background: var(--panel); border: 2px solid var(--line); border-radius: 6px;
+  box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 236, 200, .04); backdrop-filter: var(--blur);
+  animation: counselIn .35s ease-out;
+}
+@keyframes counselIn { from { transform: translateY(8px); opacity: 0; } }
+.counsel-card.tip { border-color: #a8873a; }
+.counsel-card.tip.urgent { border-color: var(--ember); }
+.counsel-card.adv.sev-1 { border-color: rgba(242, 201, 76, .55); }
+.counsel-card.adv.sev-2 { border-color: rgba(227, 132, 58, .8); }
+.counsel-card.adv.sev-3 { border-color: var(--bad); animation: counselIn .35s ease-out, perilGlow 1.4s ease-in-out infinite; }
+@keyframes perilGlow { 50% { box-shadow: var(--ring-shadow), 0 0 18px rgba(229, 85, 74, .55); } }
+.counsel-card.adv.opp { border-color: var(--gold); background: linear-gradient(rgba(242, 201, 76, .08), transparent 60%), var(--panel); }
+.counsel-head { display: flex; align-items: flex-start; gap: 9px; }
+.counsel-face { width: 48px; height: 48px; flex: none; border: 2px solid var(--ring); border-radius: 4px; background: #2a1e18;
+  box-shadow: 0 0 0 1px var(--line-2); }
+.counsel-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.counsel-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.2px; color: var(--ember); min-width: 0; }
+.counsel-card.adv.sev-1 .counsel-kicker { color: var(--sev-1); }
+.counsel-card.adv.sev-2 .counsel-kicker { color: var(--sev-2); }
+.counsel-card.adv.sev-3 .counsel-kicker { color: var(--sev-3); }
+.counsel-card.adv.opp .counsel-kicker { color: var(--gold); }
+.counsel-title { font-size: 16px; line-height: 1.2; color: var(--gold); }
+.counsel-card.adv .counsel-title { color: var(--text); }
+/* the office is never cut: the kicker wraps, and the metric chip drops below it when they do not fit side by side */
+.counsel-krow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 3px 6px; min-height: 16px; }
+.counsel-metric { flex: none; margin: 0 0 0 auto; }
+.counsel-text { margin: 7px 0 8px; font-size: 13px; line-height: 1.4; color: #e6d9c2; }
+.counsel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.counsel-link { margin-left: auto; background: none; border: 0; padding: 2px 0; font-size: 12px; color: var(--dim); }
+.counsel-link:hover { color: var(--muted); text-decoration: underline; }
+.counsel-remedies { display: flex; flex-direction: column; gap: 5px; }
+.counsel-rem { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.counsel-rem.build { flex-wrap: nowrap; gap: 8px; padding: 5px 6px; background: rgba(0, 0, 0, .2); border: 1px solid #33251d; border-radius: 4px; }
+.counsel-rem-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.counsel-rem-name { font-size: 13px; color: var(--gold); }
+.counsel-rem-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+.counsel-rem-ico { max-width: 32px; max-height: 32px; flex: none; align-self: center; }
+.counsel-btnwrap { display: inline-flex; flex-direction: column; gap: 1px; }
+.counsel-why { font-size: 10px; color: var(--dim); max-width: 200px; }
+.counsel-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 236, 200, .07); }
+.counsel-name { font-size: 11px; color: var(--dim); font-style: italic; margin-right: auto; }
+.counsel-foot .counsel-link { margin-left: 0; }
+.counsel-toggle { display: none; }
+.counsel-calm {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted);
+  background: rgba(36, 26, 22, .82); border: 2px solid #3a2a22; border-radius: 6px; box-shadow: var(--ring-shadow);
+}
+.counsel-seal { width: 12px; height: 12px; flex: none; opacity: .8; }
+
+/* Short screens (tablet and desktop under 761 px tall) keep the Res Gestae to that compact form all the time, so the
+   counsel card and a hovered card still have room in the column (at 1000x700 a hover card got 29 px). */
+@media (min-width: 900px) and (max-height: 760px) {
+  .obj-hint, .obj-unlocks { display: none; }
+  .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
+  .obj-chip { flex: none; }
+}

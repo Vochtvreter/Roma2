@@ -1,0 +1,108 @@
+/* src/styles/base.css — owner H (WP-H UI shell). Page base and the shared components every UI file uses and nobody
+   redefines (ARCHITECTURE §13.9): .btn (.primary .legate .good .danger .ghost .small .big) · .chip (.bad .good .gold)
+   · .well · .card · .kicker · .meter · .pip · .sev-0…3 · .badge · .new · .seal · .num · .muted · .meander · .guide-glow.
+   Construction (DESIGN §16.1): 2 px borders, radius 6, a hard #0a0710 outer ring, 2 px inset highlights, bevelled buttons. */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font-body); font-size: var(--fs-base); line-height: 1.35;
+  -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; font-smooth: never;
+  user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+img.pix, canvas, .pix { image-rendering: pixelated; image-rendering: crisp-edges; }
+img.pix { -webkit-user-drag: none; }
+[hidden] { display: none !important; }
+input, textarea { user-select: text; -webkit-user-select: text; }
+
+/* ───────── app frame ───────── */
+/* viewport-fit=cover (index.html): the frame keeps clear of the notch, the Dynamic Island and the home indicator */
+#app { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); overflow: hidden; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: var(--z-map); touch-action: none; cursor: crosshair; }
+#app.in-title > :not(#map) { display: none !important; }
+
+/* ───────── buttons ───────── */
+.btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 6px 14px; border: 2px solid var(--ring); border-radius: 4px;
+  background: linear-gradient(#5b4334, #46332a);
+  box-shadow: inset 0 2px 0 rgba(255, 236, 200, .16), inset 0 -3px 0 rgba(0, 0, 0, .28);
+  color: var(--text); font-size: 15px; line-height: 1.1; white-space: nowrap; text-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+  transition: transform .06s, filter .1s;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.15); }
+.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255, 236, 200, .12), inset 0 -1px 0 rgba(0, 0, 0, .28); }
+.btn:disabled { opacity: .45; cursor: not-allowed; filter: saturate(.6); }
+.btn.small { min-height: 28px; padding: 3px 9px; font-size: 13px; }
+.btn.big { min-height: 46px; padding: 10px 26px; font-size: 19px; }
+.btn.primary { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; text-shadow: 0 1px 0 rgba(255, 255, 255, .35); }
+.btn.legate { background: linear-gradient(#9a3c78, var(--purple) 55%, #5e1f45); color: #ffe8a8; box-shadow: inset 0 2px 0 rgba(255, 210, 240, .22), inset 0 -3px 0 rgba(0, 0, 0, .3); }
+.btn.good { background: linear-gradient(#a6d86c, #5f9a3a); color: #10230a; text-shadow: none; }
+.btn.danger { background: linear-gradient(#d65454, #9e2f25); }
+.btn.ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--muted); }
+.btn.ghost:hover:not(:disabled) { color: var(--text); filter: none; }
+.btn.on { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; text-shadow: none; }
+.btn.armed { background: linear-gradient(#d65454, #9e2f25); color: #fff; animation: armedPulse .6s ease-in-out infinite alternate; }
+@keyframes armedPulse { to { filter: brightness(1.25); } }
+
+/* ───────── chips, wells, cards ───────── */
+.chip {
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; margin: 1px;
+  border-radius: 3px; background: rgba(0, 0, 0, .28); border: 1px solid #3a2a22;
+  font-family: var(--font-caps); font-size: 10px; letter-spacing: .3px; color: var(--text); white-space: nowrap; line-height: 16px;
+}
+button.chip { cursor: pointer; }
+.chip.bad { color: #ffc4bd; background: rgba(229, 85, 74, .16); border-color: rgba(229, 85, 74, .55); }
+.chip.good { color: #d8f0b8; background: rgba(156, 204, 90, .12); border-color: rgba(156, 204, 90, .45); }
+.chip.gold { color: #ffe9a3; background: rgba(242, 201, 76, .12); border-color: rgba(242, 201, 76, .5); }
+.chip-ico { width: 12px; height: 12px; }
+.cost { display: inline-flex; flex-wrap: wrap; gap: 2px; vertical-align: middle; }
+
+.well { background: var(--well); border: var(--border-w) solid var(--well-line); border-radius: 4px; padding: var(--s2); }
+.card {
+  background: var(--panel); border: var(--border-w) solid var(--line); border-radius: var(--r2);
+  box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 236, 200, .04);
+  padding: var(--s3); backdrop-filter: var(--blur);
+}
+.kicker { font-family: var(--font-caps); font-size: 10px; letter-spacing: 1.5px; color: var(--ember); text-transform: uppercase; }
+.muted { color: var(--muted); }
+.dim { color: var(--dim); }
+.num { font-family: var(--font-caps); font-variant-numeric: tabular-nums; letter-spacing: .2px; }
+.bad { color: var(--bad); }
+.good { color: var(--good); }
+.gold { color: var(--gold); }
+
+/* ───────── meters, pips, severities, badges ───────── */
+.meter { height: 6px; background: rgba(255, 255, 255, .08); border-radius: 2px; overflow: hidden; }
+.meter > i, .meter-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--terra), var(--gold)); transition: width .3s; }
+.pip { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--dim-fill); box-shadow: 0 0 0 1px var(--ring); }
+.sev-bg-0 { background: var(--sev-0); } .sev-bg-1 { background: var(--sev-1); } .sev-bg-2 { background: var(--sev-2); } .sev-bg-3 { background: var(--sev-3); }
+.sev-c0 { color: var(--sev-0); } .sev-c1 { color: var(--sev-1); } .sev-c2 { color: var(--sev-2); } .sev-c3 { color: var(--sev-3); }
+.sev-0 { border-left: 3px solid var(--sev-0); } .sev-1 { border-left: 3px solid var(--sev-1); }
+.sev-2 { border-left: 3px solid var(--sev-2); } .sev-3 { border-left: 3px solid var(--sev-3); }
+.badge {
+  display: inline-block; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; text-align: center;
+  font-family: var(--font-caps); font-size: 9px; line-height: 16px; background: var(--sev-0); color: #1d1410; box-shadow: 0 0 0 2px var(--ring);
+}
+.badge.warn { background: var(--sev-2); } .badge.bad { background: var(--bad); color: #fff; } .badge.gold { background: var(--gold); }
+.new { font-family: var(--font-caps); font-size: 7px; color: #1d1410; background: var(--gold); border-radius: 2px; padding: 1px 2px; }
+.seal { display: inline-block; width: 16px; height: 16px; }
+
+/* ───────── frames ───────── */
+/* The code-drawn meander (tipkit.meanderURL): gold on dark (--meander), umber on parchment (--meander-ink). */
+.meander, .meander-frame { border: var(--meander-px, 16px) solid transparent; border-image: var(--meander) 16 round; }
+.parchment .meander, .parchment.meander-frame { border-image-source: var(--meander-ink); }
+
+/* What a guide tip points at ("Show me", DESIGN §11.7). */
+.guide-glow { outline: 2px solid var(--gold) !important; outline-offset: 2px; animation: guidePulse 1.4s ease-in-out infinite; }
+@keyframes guidePulse { 50% { outline-color: rgba(242, 201, 76, .3); box-shadow: 0 0 18px rgba(242, 201, 76, .4); } }
+
+.kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin: 0 1px; border: 1px solid var(--line-2); border-bottom-width: 2px;
+  border-radius: 3px; background: rgba(255, 255, 255, .05); font-family: var(--font-caps); font-size: 10px; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
