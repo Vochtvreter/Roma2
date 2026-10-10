@@ -44,6 +44,7 @@
 
   #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
   #objective { padding: 6px 10px; }
+  #left:has(> #inspector > .ins-card.sticky) > #objective { display: none; }   /* a selection gets the objective's room */
   .obj-hint, .obj-unlocks, .obj-meter, .obj-laurel { display: none; }
   .obj-goal { font-size: 14px; margin: 2px 0 0; }
   .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
