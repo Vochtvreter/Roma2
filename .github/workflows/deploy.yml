@@ -1,15 +1,15 @@
 name: Deploy to GitHub Pages
+# Builds on every push to main (and by hand). Branch pushes do not start this workflow at all, so they can never enter
+# the `pages` concurrency group and cancel a main deploy that is in flight; a newer main push waits for the running
+# deploy instead of cancelling it (as in GitHub's Pages starter workflow).
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 permissions: { contents: read, pages: write, id-token: write }
-concurrency: { group: pages, cancel-in-progress: true }
+concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   build:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.ref_name == 'main' ||
-      github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
