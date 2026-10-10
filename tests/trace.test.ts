@@ -2,8 +2,9 @@
 // rank, pop, beds, houses by tier, grain/water days on hand, coin, morale, dignitas, Ordo sites, advisories ≥ Cave — then the
 // medians over the seeds against the DESIGN §18.4 target curve. Skipped by `npm test`; TRACE=1 runs it from plain vitest.
 // Knobs: TRACE_SEEDS=1,42 · TRACE_DAYS=6000 · TRACE_EVERY=300 · TRACE_BOT=decision|undecided|follower|builder|neglect · TRACE_LOG=20
+// · TRACE_WIDE=1 adds staffed workers per labour category (water/food/materials/industry/services/builders) and the idle.
 import { describe, expect, it } from 'vitest';
-import { HOUSE_TIERS } from '../src/game/types';
+import { HOUSE_TIERS, LABOR_CATS } from '../src/game/types';
 import type { GameState } from '../src/game/types';
 import { activeAdvisories } from '../src/game/advisors/engine';
 import { dignitas } from '../src/game/civic';
@@ -20,11 +21,13 @@ const DAYS = Number(env.TRACE_DAYS ?? BANDS.victory[1]);
 const EVERY = Number(env.TRACE_EVERY ?? 300);
 const KIND = (env.TRACE_BOT ?? 'decision') as BotKind;
 const LOG = Number(env.TRACE_LOG ?? 0);
+const WIDE = !!env.TRACE_WIDE;
 const T = { timeout: 3_600_000 };
 
 const COLS: [string, number][] = [
   ['day', 6], ['AUC', 9], ['rank', 10], ['pop', 5], ['beds', 5], ['T0/T1/T2/T3/T4i/T4d', 19], ['grain', 6], ['water', 6],
-  ['coin', 7], ['net/d', 6], ['mor', 4], ['dign', 5], ['ordo/pl', 7], ['advisories ≥ Cave', 0],
+  ['coin', 7], ['net/d', 6], ['mor', 4], ['dign', 5], ['ordo/pl', 7], ...(WIDE ? [['w/f/m/i/s/b idle', 22] as [string, number]] : []),
+  ['advisories ≥ Cave', 0],
 ];
 const line = (cells: string[]): string => cells.map((c, k) => (COLS[k][1] ? c.padStart(COLS[k][1]) : ` ${c}`)).join(' ');
 const days = (d: number): string => (d >= 9999 ? '∞' : d.toFixed(0));
@@ -40,7 +43,7 @@ function row(s: GameState, mark: string): string {
     `${mark}${elapsed(s)}`, toRoman(aucYear(s.day)), RANK_DEFS[s.rank].name, String(c.pop), String(c.beds),
     HOUSE_TIERS.map((t) => c.byTier[t]).join('/'), days(f.grain.doh), days(f.water.doh), Math.round(s.res.denarii).toString(),
     s.counters.coinEma.toFixed(1), Math.round(s.morale).toString(), Math.round(dignitas(s).value).toString(),
-    `${ordo}/${sites.length - ordo}`, cave,
+    `${ordo}/${sites.length - ordo}`, ...(WIDE ? [`${LABOR_CATS.map((k) => c.catStaffed[k]).join('/')} ${c.idle.length}`] : []), cave,
   ]);
 }
 
