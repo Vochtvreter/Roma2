@@ -15,6 +15,7 @@ import { mirror, sprite, tinted } from './sprites';
 import type { Push } from './camera';
 import { TILE } from './camera';
 import type { Roads } from './actors';
+import { looks } from './decor';
 
 interface Member { base: string; tint?: Record<string, string> }       // base 'a_oxcart' → a_oxcart_0/1; 'a_person' → walk frames
 interface Convoy { pts: number[]; cum: number[]; t: number; speed: number; gap: number; members: Member[]; park: boolean; tag: string }
@@ -58,6 +59,11 @@ export class Convoys {
     this.list.push({ pts, cum, t: 0, speed, gap, members, park, tag });
   }
 
+  /** A caravan's mule train: two strings, three when the colony was founded as an emporium (DESIGN §9.2). */
+  private mules(s: GameState): Member[] {
+    return Array.from({ length: looks(s).mules ? 3 : 2 }, () => ({ base: 'a_mules' }));
+  }
+
   private people(n: number, seed: number): Member[] {
     return Array.from({ length: n }, (_, k) => ({ base: 'a_person', tint: { S: TUNICS[(seed + k) % TUNICS.length], A: '#5d3b2a', U: '#6f5639' } }));
   }
@@ -77,8 +83,8 @@ export class Convoys {
           break;
         }
         case 'leave': this.add(this.roads.path(forum, edge), this.people(Math.min(5, e.n), e.n), SPEED.walk, 9); break;
-        case 'caravanOut': this.add([...sv.via], [{ base: 'a_mules' }, { base: 'a_mules' }], SPEED.mules, 22); break;
-        case 'caravanIn': this.add([...sv.via].reverse(), [{ base: 'a_mules' }, { base: 'a_mules' }], SPEED.mules, 22); break;
+        case 'caravanOut': this.add([...sv.via], this.mules(s), SPEED.mules, 22); break;
+        case 'caravanIn': this.add([...sv.via].reverse(), this.mules(s), SPEED.mules, 22); break;
         case 'rank': {
           this.add(this.roads.path(edge, forum), Array.from({ length: 8 }, () => ({ base: 'a_legionary' })), SPEED.legion, 9);
           if (e.rank === 1 || e.rank === 2) this.add(ringLine(s, e.rank), [{ base: 'a_ox' }], SPEED.plough, 0);

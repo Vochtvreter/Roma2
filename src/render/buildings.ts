@@ -15,6 +15,8 @@ import { capitoliumStage } from '../game/construction';
 import { B } from '../game/balance';
 import { buildingSprite, wantIcon } from './art/index';
 import { CROWN_AT } from './art/capitolium';
+import { RANK_DEFS } from '../game/data/ranks';
+import { fieldHay, fieldStones, forumDress, houseDress, shrineDress } from './decor';
 import { alphaMask, hasSprite, makeCanvas, sprite } from './sprites';
 import { fallbackSprite } from './fallback';
 import type { Push } from './camera';
@@ -126,7 +128,7 @@ export class BuildingPainter {
       if (b.status === 'done' || (b.status === 'building' && b.progress > 0)) {
         const look = b.type === 'capitolium' ? null : lookOf(buildingSprite(s, b, season), b.type, b.house?.tier ?? null, r.w);
         if (look && GROUND_TYPES.includes(b.type)) {
-          if (b.status === 'done') g.drawImage(look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height);
+          if (b.status === 'done') { g.drawImage(look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height); fieldStones(g, s, X, Y, w, h); }
           else rise(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height, b.progress);
         } else if (look && !NO_SHADOW.includes(b.type)) castShadow(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h, b.status === 'done' ? 1 : b.progress);
       }
@@ -153,10 +155,17 @@ export class BuildingPainter {
       const p = b.status === 'done' ? 1 : b.progress;
       const risen = Math.round(cv.height * p);
       this.record(b, r, name, left, bottom - risen, cv.width, risen, cv.width, top);
-      if (GROUND_TYPES.includes(b.type)) continue;
+      if (GROUND_TYPES.includes(b.type)) {
+        if (b.type === 'ager' && p >= 1) fieldHay(s, b, X, r.y * TILE, w, r.h * TILE, season, push);
+        continue;
+      }
       push(bottom, X, (g) => {
-        if (p >= 1) g.drawImage(cv, left, top);
-        else rise(g, cv, left, top, p);
+        if (p >= 1) {
+          g.drawImage(cv, left, top);
+          if (b.type === 'principia') forumDress(g, s, left, top, RANK_DEFS[s.rank].forumStage);
+          else if (b.house) houseDress(g, s, b, left, bottom);
+          else shrineDress(g, s, b, left, top);
+        } else rise(g, cv, left, top, p);
         if (p < 1 || b.house?.renovating) scaffold(g, left, cv.width, bottom, risen);
         if (b.type === 'lignarius' && p >= 1 && hasSprite('b_lignarius_logs')) {
           const logs = sprite('b_lignarius_logs');

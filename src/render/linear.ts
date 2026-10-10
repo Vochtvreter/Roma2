@@ -11,6 +11,7 @@ import { activeRings } from '../game/survey';
 import { hash2 } from '../game/rng';
 import { RANK_DEFS } from '../game/data/ranks';
 import { sprite } from './sprites';
+import { gateDress, wallBanner } from './decor';
 import type { Push } from './camera';
 import { TILE } from './camera';
 
@@ -187,12 +188,19 @@ export function linearItems(s: GameState, vis: Rect, push: Push): void {
         // rows 0–21 on the tile above, the walkway (22–30) across the road on the gate tile, the south tower's top
         // (28–39) ending where the next wall tile's 8 px overhang begins — so the sprite's bottom sits half a tile low.
         const bottom = o === 'h' ? B : B + (TILE >> 1);
-        push(bottom, X, (g) => g.drawImage(spr, X + 8 - (spr.width >> 1), bottom - spr.height));
+        push(bottom, X, (g) => {
+          g.drawImage(spr, X + 8 - (spr.width >> 1), bottom - spr.height);
+          gateDress(g, s, X + 8 - (spr.width >> 1), bottom - spr.height, o);
+        });
         continue;
       }
       if ((hz && !vt && (wall(x - 1, y) === 2 || wall(x + 1, y) === 2)) || (vt && !hz && (wall(x, y - 1) === 2 || wall(x, y + 1) === 2))) continue;
       const spr = sprite(`l_${stone ? 'murus' : 'vallum'}_${hz && vt ? 'c' : hz ? 'h' : 'v'}`);
-      push(B, X, (g) => g.drawImage(spr, X, B - spr.height));
+      const face = stone && hz && !vt;
+      push(B, X, (g) => {
+        g.drawImage(spr, X, B - spr.height);
+        if (face) wallBanner(g, s, x, y, X, B);
+      });
     }
   for (const b of s.buildings) if (b.type === 'castellum' && b.route?.length) aqueduct(s, b.route, b.status === 'done' ? 1 : b.progress, vis, push);
   const end = sv.via[sv.via.length - 1];

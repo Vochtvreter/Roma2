@@ -16,6 +16,7 @@ import { registerActors } from './actors';
 import { registerIcons } from './icons';
 import { registerPortraits } from './portraits';
 import { registerFrames } from './frames';
+import { registerDecor } from './decor';
 
 const TOOLS: readonly ToolId[] = ['pin', 'road', 'pave', 'reserve', 'demolish'];
 const SEASONS4 = [0, 1, 2, 3] as const;
@@ -95,6 +96,7 @@ export function registerAllArt(): void {
   registerIcons();
   registerPortraits();
   registerFrames();
+  registerDecor();
 }
 
 /** `name@season` when that seasonal variant is registered, else `name`. */
