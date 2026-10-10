@@ -10,7 +10,7 @@
 }
 #app:has(#side.collapsed) #map-tools, #app:has(#side.collapsed) #toasts { right: 12px; }
 #map-tools > * { pointer-events: auto; }
-#overlay-bar { grid-area: ov; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+#overlay-bar { grid-area: ov; justify-self: end; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
 #overlay-bar:empty { display: none; }
 #minimap {
   grid-area: mini; width: 224px; height: 168px; display: block; border: 2px solid var(--line); border-radius: 6px;
@@ -100,9 +100,12 @@
 .banner-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 10px; }
 
 /* ───────── placement banner (bottom centre) ───────── */
-#place-banner { position: absolute; bottom: 60px; left: calc((100% - var(--side-w) + 320px) / 2); transform: translateX(-50%); z-index: var(--z-place-banner);
-  width: max-content; max-width: calc(100% - var(--side-w) - 340px); }
-#app:has(#side.collapsed) #place-banner { left: calc((100% + 320px) / 2); max-width: calc(100% - 340px); }
+/* Centred in the free map between the left column (330 px) and the icon-only overlay column (62 px) while placing. */
+#place-banner { position: absolute; bottom: 60px; left: calc((100% - var(--side-w) + 268px) / 2); transform: translateX(-50%); z-index: var(--z-place-banner);
+  width: max-content; max-width: calc(100% - var(--side-w) - 400px); }
+#app:has(#side.collapsed) #place-banner { left: calc((100% + 268px) / 2); max-width: calc(100% - 400px); }
+#app.placing .map-ov span, #app.placing .map-legend, #app.placing .map-ov-row.sub { display: none; }
+#app.placing .map-ov { padding: 0 3px; }
 .place-box {
   display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 10px;
   background: rgba(29, 21, 17, .96); border: 2px solid var(--ember); border-radius: 6px;
@@ -117,4 +120,4 @@
 .place-verdict.ok { color: var(--good); }
 .place-verdict.bad { color: #ff8b80; }
 .place-warn { color: var(--gold); }
-.place-help { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1px; color: var(--dim); white-space: nowrap; }
+.place-help { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1px; color: var(--dim); }

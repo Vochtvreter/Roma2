@@ -1,10 +1,9 @@
 // src/ui/index.ts — the UI root (ARCHITECTURE §13.3, §13.7): builds every widget in its DOM id, runs the throttled update
-// loop, turns FxEvents into toasts, sounds, banners and dispatches, and owns the map widgets (overlay bar, zoom, place
-// banner) and the catch-up veil. The side panel, inspector and event card are WP-I's classes. Owner: WP-H.
-import { OVERLAYS } from '../game/types';
-import type { AwayReport, CoverageLayerId, FxEvent, OfflineRun, OverlayId, PlaceCheck, RankIndex } from '../game/types';
+// loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
+// mapbar.ts; the side panel, inspector and event card are WP-I's classes. Owner: WP-H.
+import type { AwayReport, FxEvent, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
-import { clear, costEl, fmt, h, img, tip } from './dom';
+import { clear, fmt, h } from './dom';
 import { caps, installMeander } from './tipkit';
 import { Hud } from './hud';
 import { Objective, milestoneToast } from './objective';
@@ -14,35 +13,20 @@ import { TitleScreen } from './title';
 import { toast, toastBatch } from './toasts';
 import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
+import { MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
-import { idx } from '../game/map';
 import { getBuilding } from '../game/state';
-import { overlayRevealed } from '../game/reveal';
 import { aucYear, formatRoman, toRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
-import { TIER_DEFS, LAYER_META } from '../game/data/housing';
+import { TIER_DEFS } from '../game/data/housing';
 import { RANK_DEFS } from '../game/data/ranks';
 import { HUB_DEFS } from '../game/data/hubs';
 import { PATH_DEFS } from '../game/data/decisions';
 import { PATH_DECISIONS } from '../game/types';
 import { B } from '../game/balance';
 
-const OVERLAY_LABEL: Record<OverlayId, string> = { none: 'Off', aqua: 'Aqua', domus: 'Domus', officia: 'Officia', desir: 'Dignitas loci', terra: 'Terra' };
-const OVERLAY_SUB: Record<OverlayId, string> = {
-  none: '', aqua: 'water reach', domus: 'what houses want', officia: 'service reach', desir: 'desirability', terra: 'the land',
-};
-const OFFICIA: { layer: CoverageLayerId; label: string }[] = [
-  { layer: 'shrine', label: 'Shrines' }, { layer: 'market', label: 'Markets' }, { layer: 'baths', label: 'Baths' }, { layer: 'culture', label: 'Culture' },
-];
-/** Overlay legends: [colour, label] swatches (ARCHITECTURE §12.5 colours). */
-const LEGEND: Partial<Record<OverlayId, [string, string][]>> = {
-  aqua: [['#9fd4f0', 'well water'], ['#3d7fa6', 'fountains'], ['#62b0d6', 'water table']],
-  domus: [['#9ccc5a', 'ready'], ['#f2c94c', 'one need'], ['#e5554a', 'two or more'], ['#806b57', 'declining']],
-  desir: [['#e5554a', '−20'], ['#806b57', '0'], ['#9ccc5a', '+30']],
-  terra: [['#f2c94c', 'fertile'], ['#a99a62', 'hills'], ['#9a968a', 'rock'], ['#c0623f', 'ore'], ['#b5651d', 'clay'], ['#4f9a3a', 'timber']],
-};
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
 
@@ -66,7 +50,7 @@ export class UI {
   private bellAt = -Infinity;
   private lifeAt = -Infinity;
   private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement; date: HTMLElement } | null = null;
-  private overlayKey = '';
+  private tools!: MapTools;
 
   constructor(private readonly g: Game) {}
 
@@ -83,22 +67,14 @@ export class UI {
     this.side = new SidePanel(g, el('side'));
     this.inspector = new Inspector(g, el('inspector'));
     this.choice = new ChoiceCard(g, el('choice'));
-    const zoom = el('zoom-ctl');
-    clear(zoom);
-    const zbtn = (label: string, aria: string, fn: () => void): HTMLElement => {
-      const b = h('button', { class: 'map-btn', 'aria-label': aria, onclick: () => { g.sfx('click'); fn(); } }, label);
-      tip(b, aria);
-      return b;
-    };
-    zoom.append(zbtn('+', 'Zoom in (+)', () => g.view.zoomBy(1)), zbtn('−', 'Zoom out (−)', () => g.view.zoomBy(-1)),
-      zbtn('⌂', 'Centre on the forum (H)', () => g.view.centerOnForum()));
+    this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
     this.showPlaceBanner(null, null);
   }
 
   /** Forces every widget to re-check its signature on the next frame (Game.changed). */
   changed(): void {
     this.last = -Infinity;
-    this.overlayKey = '';
+    this.tools?.invalidate();
     this.side?.poke();
   }
 
@@ -121,7 +97,7 @@ export class UI {
     this.objective.update();
     this.counsel.update();
     this.ticker.update(now);
-    this.updateOverlayBar();
+    this.tools.update();
   }
 
   /** FxEvents → toasts, sounds, banners and dispatches (§13.7). */
@@ -237,63 +213,6 @@ export class UI {
 
   /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. */
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void {
-    const root = el('place-banner');
-    clear(root);
-    root.hidden = !p;
-    document.getElementById('app')?.classList.toggle('placing', !!p);
-    if (!p) return;
-    const g = this.g;
-    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    const cancel = h('button', { class: 'btn small ghost', onclick: () => g.cancelPlacing() }, 'Cancel');
-    if (p.kind !== 'building') {
-      const what = { road: ['Road', 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST'], pave: ['Paving', 'DRAG OVER ROADS TO PAVE THEM IN BASALT'],
-        reserve: ['Reserve a block', 'CLICK A BLOCK TO KEEP IT FOR YOURSELF, OR RELEASE IT'], demolish: ['Demolish', 'CLICK A BUILDING, THEN AGAIN TO CONFIRM'] }[p.kind];
-      root.appendChild(h('div', { class: 'place-box' }, img(`i_tool_${p.kind}`, 3, 'place-ico'),
-        h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), h('div', { class: 'place-help' }, `${what[1]} · ESC TO CANCEL`)), cancel));
-      return;
-    }
-    const def = BUILDING_DEFS[p.type];
-    const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
-      : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
-        check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
-        : h('span', { class: 'place-verdict bad' }, check.reason);
-    const place = coarse && check?.ok
-      ? h('button', { class: 'btn small primary', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
-    root.appendChild(h('div', { class: `place-box${check && !check.ok ? ' bad' : ''}` },
-      img(p.type === 'area' ? 'h_tentoria_0' : `b_${p.type}`, 1, 'place-ico'),
-      h('div', { class: 'place-main' },
-        h('div', { class: 'place-name' }, def.name, h('span', { class: 'place-latin' }, def.latin), costEl(g.state, check?.ok ? check.cost : def.cost)),
-        verdict,
-        h('div', { class: 'place-help' }, coarse ? 'TAP A GLOWING PLOT, THEN PLACE' : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
-      place, cancel));
-  }
-
-  private updateOverlayBar(): void {
-    const g = this.g;
-    const cur = g.view.overlay;
-    const list = OVERLAYS.filter((o) => o !== 'none' && (o === cur || overlayRevealed(g.state, o)));
-    const key = `${list.join(',')}|${cur}|${g.view.overlayLayer}`;
-    if (key === this.overlayKey) return;
-    this.overlayKey = key;
-    const bar = el('overlay-bar');
-    clear(bar);
-    const set = (o: OverlayId, layer?: CoverageLayerId): void => { g.sfx('click'); g.view.setOverlay(o, layer); this.overlayKey = ''; this.updateOverlayBar(); };
-    const row = h('div', { class: 'map-ov-row', role: 'group', 'aria-label': 'Overlays (O)' });
-    for (const o of list) {
-      const on = o === cur;
-      const b = h('button', { class: on ? 'map-ov on' : 'map-ov', 'aria-pressed': String(on), onclick: () => set(on ? 'none' : o) },
-        img(`i_ov_${o}`, 2), h('span', null, OVERLAY_LABEL[o]));
-      tip(b, `${OVERLAY_LABEL[o]}: ${OVERLAY_SUB[o]}. ${on ? 'Click to turn off' : 'O cycles, Shift+O turns off'}.`);
-      row.appendChild(b);
-    }
-    bar.appendChild(row);
-    if (cur === 'officia') {
-      bar.appendChild(h('div', { class: 'map-ov-row sub' }, OFFICIA.map((x) => h('button', {
-        class: g.view.overlayLayer === x.layer || (x.layer === 'shrine' && g.view.overlayLayer === 'temple') || (x.layer === 'market' && g.view.overlayLayer === 'macellum') ? 'map-ov small on' : 'map-ov small',
-        onclick: () => set('officia', x.layer),
-      }, h('i', { class: 'map-sw', style: { background: LAYER_META[x.layer].color } }), x.label))));
-    }
-    const legend = cur === 'officia' ? [[LAYER_META[g.view.overlayLayer].color, 'covered'], ['#e5554a', 'unstaffed']] as [string, string][] : LEGEND[cur];
-    if (legend) bar.appendChild(h('div', { class: 'map-legend' }, legend.map(([c, t]) => h('span', null, h('i', { class: 'map-sw', style: { background: c } }), t))));
+    renderPlaceBanner(this.g, el('place-banner'), p, check);
   }
 }

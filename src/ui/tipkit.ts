@@ -1,9 +1,8 @@
 // src/ui/tipkit.ts — the shell's shared vocabulary (WP-H): inscription caps, tooltip blocks, the code-drawn meander
 // frame and the wax seal. Tooltip blocks are plain DOM (h()), never HTML strings: names in them are game data.
-import { h } from './dom';
+import { h, img } from './dom';
 import type { Kid } from './dom';
 import { hasSprite } from '../render/sprites';
-import { img } from './dom';
 
 /** Inscription caps: upper case with V for U ('Res gestae' → 'RES GESTAE', 'Vicus' → 'VICVS'). */
 export const caps = (s: string): string => s.toUpperCase().replace(/U/g, 'V');

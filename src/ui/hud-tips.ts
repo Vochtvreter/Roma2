@@ -1,6 +1,6 @@
 // src/ui/hud-tips.ts — the HUD's tooltips (DESIGN §11.10): resource ledger with "how to get more", coin, souls, spirits,
 // dignitas and the date. Owner: WP-H. Built lazily on hover from live state; every line is DOM, never HTML.
-import { RESOURCES } from '../game/types';
+import { EDICTS, RESOURCES } from '../game/types';
 import type { MulKey, RateSource, ResId } from '../game/types';
 import type { Game } from './types';
 import { fmt, fmtDays, fmtRate, h, realTime } from './dom';
@@ -12,7 +12,6 @@ import { fxBreakdown } from '../game/fx';
 import { howToGetMore } from '../game/hints';
 import { dignitas, moraleTarget } from '../game/civic';
 import { edictOption, edictWindow } from '../game/decisions';
-import { EDICTS } from '../game/types';
 import {
   aucYear, dateOf, dayOf, formatModern, formatRoman, formatRomanLong, nextSeasonStart, seasonDay, seasonLength, seasonOf,
   SEASON_NAMES, toRoman,
