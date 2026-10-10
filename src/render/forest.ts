@@ -10,6 +10,7 @@ import type { GameState, Rect, SeasonIndex } from '../game/types';
 import { H, W, getMap, idx, inBounds, woodAt } from '../game/map';
 import { hash2 } from '../game/rng';
 import { derived } from '../game/derived';
+import { structEpoch } from '../game/memo';
 import { makeCanvas, sprite } from './sprites';
 import { seasonal } from './art/index';
 import type { Push } from './camera';
@@ -67,10 +68,27 @@ function slots(seed: number): Map<number, Slot[]> {
  * object's row. Its trees leave the cached layer and are y-sorted with the objects (forestItems), or the building
  * would cut their canopies flat and walkers on the road would walk over them.
  */
-function front(i: number, occupied: Int32Array, road: Uint8Array): boolean {
+function isFront(i: number, occupied: Int32Array, road: Uint8Array): boolean {
   const x = i % W, n = i - W;
   if (n < 0) return false;
   return !!(occupied[n] || road[n] || (x > 0 && (occupied[n - 1] || road[n - 1])) || (x < W - 1 && (occupied[n + 1] || road[n + 1])));
+}
+
+let frontKey = '';
+let frontTiles: number[] = [];
+let frontSet = new Uint8Array(0);
+/** The front tiles among a map's tree tiles, sorted by index, and as a mask (cached per structure epoch). */
+function fronts(s: GameState): { tiles: number[]; set: Uint8Array } {
+  const key = `${s.seed}|${structEpoch(s)}`;
+  if (key !== frontKey) {
+    frontKey = key;
+    const d = derived(s);
+    frontTiles = [];
+    frontSet = new Uint8Array(W * H);
+    for (const i of slots(s.seed).keys()) if (isFront(i, d.buildingAt, d.road)) { frontTiles.push(i); frontSet[i] = 1; }
+    frontTiles.sort((a, b) => a - b);
+  }
+  return { tiles: frontTiles, set: frontSet };
 }
 
 /** A tile's trees as a small number that changes only when their picture does (0 = nothing drawn). */
@@ -84,7 +102,7 @@ function treeLook(s: GameState, i: number, occupied: Int32Array, road: Uint8Arra
 
 /** The look a tile has in the cached layer: 0 for front tiles (their trees are y-sorted objects instead). */
 function stageOf(s: GameState, i: number, occupied: Int32Array, road: Uint8Array, n: number): number {
-  return front(i, occupied, road) ? 0 : treeLook(s, i, occupied, road, n);
+  return fronts(s).set[i] ? 0 : treeLook(s, i, occupied, road, n);
 }
 
 /** Calls `each` for every tree or stump of a tile drawn at a given look. */
@@ -115,12 +133,14 @@ function drawTile(g: CanvasRenderingContext2D, i: number, stage: number, season:
 /** Pushes the trees and stumps of the front tiles in view onto the y-sorted list (feet = sort key). */
 export function forestItems(s: GameState, vis: Rect, season: SeasonIndex, push: Push): void {
   const all = slots(s.seed), d = derived(s);
-  for (let y = Math.max(1, vis.y); y < Math.min(H, vis.y + vis.h + 2); y++)
-    for (let x = Math.max(0, vis.x - 1); x < Math.min(W, vis.x + vis.w + 1); x++) {
-      const i = idx(x, y), list = all.get(i);
-      if (!list || !front(i, d.buildingAt, d.road)) continue;
-      eachSlot(i, treeLook(s, i, d.buildingAt, d.road, list.length), season, (t, name) => push(t.y, t.x, (g) => drawSlot(g, t, name)));
-    }
+  const y0 = Math.max(1, vis.y), y1 = Math.min(H, vis.y + vis.h + 2), x0 = vis.x - 1, x1 = vis.x + vis.w + 1;
+  for (const i of fronts(s).tiles) {
+    const x = i % W, y = (i / W) | 0;
+    if (y < y0) continue;
+    if (y >= y1) break;
+    if (x < x0 || x >= x1) continue;
+    eachSlot(i, treeLook(s, i, d.buildingAt, d.road, all.get(i)?.length ?? 0), season, (t, name) => push(t.y, t.x, (g) => drawSlot(g, t, name)));
+  }
 }
 
 /** The live tree layer, painted per chunk and season. */
