@@ -7,7 +7,7 @@
 // blocks (canPlace for owner 'ordo'), raise a hortus or pave except under Urbs (or on request).
 import { B } from '../balance';
 import { NEEDS, RESOURCES } from '../types';
-import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, ResId, SimView, TickContext, WishView } from '../types';
+import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
 import { dateOf, seasonLength, seasonOf } from '../calendar';
 import { addCost, canAfford, getBuilding, log, missing } from '../state';
 import { memo, structEpoch, dayEpoch, dayStruct } from '../memo';
@@ -25,6 +25,8 @@ import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, sa
 import { chronicle } from './chronicle';
 import { houseWants as eachHouseWant } from '../advisors/util';
 import { peopleIndex } from '../census';
+import { classAt, sizeOf } from '../derived';
+import { rectGap } from '../world/grid';
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
 const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food
@@ -263,14 +265,39 @@ function overCap(s: GameState, caps: Record<ResId, number>, type: BuildingId): b
   return RESOURCES.some((r) => (cost[r] ?? 0) > caps[r]);
 }
 
-/** Some valid Ordo slot of `type` would cover a house whose first want is `need` (the cached coverage previews). */
+/** Some valid Ordo slot of `type` would cover a house whose first want is `need` (the cached coverage previews). A slot
+ *  covers road tiles within its radius in steps of its sides, and a house only through a road tile beside it, so a slot
+ *  farther than radius + 2 (Chebyshev) from every waiting house cannot reach one: its preview is not needed. */
 function anyReach(s: GameState, v: SimView, type: BuildingId, need: NeedId): boolean {
   const first = houseWants(s, v).first;
+  const waiting: Rect[] = [];
+  for (const id of v.d.houses) {
+    if (first[id] !== need) continue;
+    const b = getBuilding(s, id);
+    if (!b) continue;
+    const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+    waiting.push({ x: b.x, y: b.y, w, h });
+  }
+  if (waiting.length === 0) return false;
+  let reach = 0;
+  for (const sv of BUILDING_DEFS[type].service ?? []) {
+    const bonus = RADIUS_BONUS[sv.layer];
+    reach = Math.max(reach, sv.radius + (bonus ? fxAdd(s, bonus) : 0));
+  }
+  reach += 2;
   for (const tile of validSlots(s, type, 'ordo').keys()) {
-    for (const layer of previewCovered(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) return true;
+    const x = tx(tile), y = ty(tile);
+    const [w, h] = sizeOf(type, classAt(s, type, x, y));
+    const r: Rect = { x, y, w, h };
+    if (!waiting.some((hr) => rectGap(r, hr) <= reach)) continue;
+    for (const layer of previewCovered(s, type, x, y)) for (const hid of layer.houses) if (first[hid] === need) return true;
   }
   return false;
 }
+/** Path radius bonus per coverage layer (as coverage.ts applies it to previews). */
+const RADIUS_BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadius' | 'bathsRadius'>> = {
+  shrine: 'shrineRadius', temple: 'shrineRadius', market: 'marketRadius', macellum: 'marketRadius', baths: 'bathsRadius',
+};
 
 /** Houses waiting for `need` that a work of `type` at `tile` would cover (A's coverage preview, fully staffed). */
 function reaches(s: GameState, v: SimView, type: BuildingId, tile: number, need: NeedId): number {
