@@ -69,9 +69,12 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
     if (i >= 0) stack.splice(i, 1);
     back.classList.add('modal-out');
     window.setTimeout(() => back.remove(), 160);
+    // focus goes back where it was: the button that opened this modal (also inside the modal underneath), else that
+    // modal's first control
     const next = stack[stack.length - 1];
-    if (next) (focusables(next.box)[0] ?? next.box).focus();
-    else if (entry.prevFocus instanceof HTMLElement && entry.prevFocus.isConnected) entry.prevFocus.focus();
+    const prev = entry.prevFocus instanceof HTMLElement && entry.prevFocus.isConnected ? entry.prevFocus : null;
+    if (next) (prev && next.box.contains(prev) ? prev : focusables(next.box).find((x) => !x.classList.contains('modal-x')) ?? focusables(next.box)[0] ?? next.box).focus();
+    else prev?.focus();
     opts?.onClose?.();
   };
   entry.close = close;

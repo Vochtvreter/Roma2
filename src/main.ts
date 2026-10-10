@@ -167,6 +167,10 @@ class App implements Game {
     this.ui.side.open(tab, anchor);
   }
 
+  inspecting(): boolean {
+    return this.ui.inspector.pinned;
+  }
+
   prefillContract(spec: ContractSpec): void {
     prefill(spec);
     this.openTab('trade', 'new-contract');
