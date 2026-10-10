@@ -7,7 +7,8 @@ import { BUILDINGS as BUILDINGS$, LAYERS as LAYERS$, T as T$ } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote, WorldMap } from './types';
 import { getMap as getMap$, woodAt as woodAt$ } from './map';
 import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, sizeOf as sizeOf$ } from './derived';
-import { dayEpoch as dayEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
+import { dayEpoch as dayEpoch$, layoutEpoch as layoutEpoch$, memo as memo$, structEpoch as structEpoch$ } from './memo';
+import { fxAdd as fxAdd$ } from './fx';
 import { coverage, desirability, previewCovered, previewDesir, type PreviewLayer } from './coverage';
 import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
@@ -20,7 +21,7 @@ import { aroundSum as aroundSum$, woodAround as woodAround$, woodDependent as wo
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDINGS = BUILDINGS$, LAYERS = LAYERS$, T = T$, getMap = getMap$, woodAt = woodAt$,
   blockOfTile = blockOfTile$, classAt = classAt$, derived = derived$, sizeOf = sizeOf$, dayEpoch = dayEpoch$,
-  layoutEpoch = layoutEpoch$, memo = memo$, BUILDING_DEFS = BUILDING_DEFS$, GH = GH$, GW = GW$, rectGap = rectGap$,
+  layoutEpoch = layoutEpoch$, memo = memo$, structEpoch = structEpoch$, fxAdd = fxAdd$, BUILDING_DEFS = BUILDING_DEFS$, GH = GH$, GW = GW$, rectGap = rectGap$,
   rectTiles = rectTiles$, sideTiles = sideTiles$, countRingT = countRingT$, countT = countT$,
   fertilityOf = fertilityOf$, isForestT = isForestT$, isHillsRockT = isHillsRockT$, isHillsScrubT = isHillsScrubT$,
   quarryFactor = quarryFactor$, aroundSum = aroundSum$, woodAround = woodAround$, woodDependent = woodDependent$,
@@ -410,11 +411,17 @@ export function siteScore(s: GameState, type: BuildingId, x: number, y: number, 
 export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner; purpose?: ReasonCode }): { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null {
   const owner = opts?.owner ?? 'ordo';
   const purpose = opts?.purpose;
-  return memo(s, `bestSlot:${type}:${owner}:${purpose ?? ''}`, dayEpoch(s), () => {
+  const slot = `bestSlot:${type}:${owner}:${purpose ?? ''}`;
+  return memo(s, slot, dayEpoch(s), () => {
     const slots = validSlots(s, type, owner);
     if (slots.size === 0) return null;
-    const ctx = scoreCtx(s, type);
     const fast = FAST_TYPES.has(type);
+    const sig = fast ? fastSig(s, type, slots) : null;
+    if (sig) {
+      const last = fastBest.get(s)?.get(slot);
+      if (last && sameSig(last.sig, sig)) return last.best;
+    }
+    const ctx = scoreCtx(s, type);
     let best: { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null = null;
     for (const tile of [...slots.keys()].sort((a, b) => a - b)) {
       const x = tile % GW, y = Math.floor(tile / GW);
@@ -427,8 +434,46 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
       if (!best || sc.score > best.score + 1e-9) best = { tile, x, y, score: sc.score, notes: sc.notes };
     }
     if (best && fast) best.notes = score(s, ctx, type, best.x, best.y, purpose).notes;   // the same sum, with its notes
+    if (sig) {
+      let m = fastBest.get(s);
+      if (!m) { m = new Map(); fastBest.set(s, m); }
+      m.set(slot, { sig, best });
+    }
     return best;
   });
+}
+
+/** Everything a fast type's scores read besides its own slot parts: the structure (rank, footprints, the slot set),
+ *  the coverage and desirability in force, the fed gate, the radius bonuses, each house's tier, renovation, preference
+ *  and goods, and the timber standing on each candidate slot. While it holds, yesterday's best slot is today's. */
+interface FastSig { struct: number; cov: unknown; desir: unknown; slots: unknown; fed: boolean; bonus: number[]; houses: number[]; fells: number[] }
+const fastBest = new WeakMap<GameState, Map<string, { sig: FastSig; best: ReturnType<typeof bestSlot> }>>();
+const PREF_BITS: Readonly<Record<string, number>> = { auto: 0, insula: 1, domus: 2 };
+
+function fastSig(s: GameState, type: BuildingId, slots: Map<number, number>): FastSig {
+  const SUP = B.housing.SUPPLIED;
+  const houses: number[] = [];
+  for (const id of derived(s).houses) {
+    const h = getBuilding(s, id)?.house;
+    if (!h) { houses.push(-1); continue; }
+    houses.push((h.renovating ? 1 : 0) + 2 * (PREF_BITS[h.pref] ?? 3) + (h.oil >= SUP ? 8 : 0) + (h.wine >= SUP ? 16 : 0)
+      + 32 * TIER_LEVEL.indexOf(h.tier));
+  }
+  const fells: number[] = [];
+  for (const tile of slots.keys()) fells.push(fellOn(s, fixedOf(s, type, tile % GW, Math.floor(tile / GW))));
+  return {
+    struct: structEpoch(s), cov: coverage(s), desir: desirability(s), slots, fed: s.fed >= B.needs.FED_MIN,
+    bonus: [fxAdd(s, 'shrineRadius'), fxAdd(s, 'marketRadius'), fxAdd(s, 'bathsRadius')], houses, fells,
+  };
+}
+
+function sameSig(a: FastSig, b: FastSig): boolean {
+  if (a.struct !== b.struct || a.cov !== b.cov || a.desir !== b.desir || a.slots !== b.slots || a.fed !== b.fed) return false;
+  for (let k = 0; k < 3; k++) if (a.bonus[k] !== b.bonus[k]) return false;
+  if (a.houses.length !== b.houses.length || a.fells.length !== b.fells.length) return false;
+  for (let k = 0; k < a.houses.length; k++) if (a.houses[k] !== b.houses[k]) return false;
+  for (let k = 0; k < a.fells.length; k++) if (a.fells[k] !== b.fells[k]) return false;
+  return true;
 }
 
 /** Types the daily slot search scores with fastScore: services, wells, cisterns and fountains, whose score is a fixed
@@ -466,12 +511,18 @@ function fixedOf(s: GameState, type: BuildingId, x: number, y: number): SlotFixe
 }
 
 /** `score(...).score` for a fast type, term for term in the same order (so the same float), without its notes. */
-function fastScore(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: number, purpose?: ReasonCode): number {
-  const f = fixedOf(s, type, x, y);
+/** Standing timber on a slot's footprint (score's felling sum, tile by tile in its order). */
+function fellOn(s: GameState, f: SlotFixed): number {
   let fell = 0;
   for (let ty = Math.max(0, f.y); ty < Math.min(GH, f.y + f.h); ty++) {
     for (let tx = Math.max(0, f.x); tx < Math.min(GW, f.x + f.w); tx++) fell += woodAt(s, ty * GW + tx);
   }
+  return fell;
+}
+
+function fastScore(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: number, purpose?: ReasonCode): number {
+  const f = fixedOf(s, type, x, y);
+  const fell = fellOn(s, f);
   let sc = SC.FELL * fell * B.economy.WOOD.FELL_WORK;
   let unblock = 0, newly = 0, t4 = 0;
   const { ids, bits } = coverList(s, type, x, y);
