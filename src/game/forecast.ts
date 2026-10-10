@@ -6,7 +6,7 @@ import { B } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
 import { dayEpoch, dayStruct, memo } from './memo';
 import { census } from './census';
-import { buildingRate, maxPotential } from './economy';
+import { buildingRateOf, maxPotential } from './economy';
 import { BUILDING_DEFS } from './data/buildings';
 import { dateOf, dayOf, daysInMonth, nextSeasonStart, seasonOf, seasonStartOf } from './calendar';
 
@@ -40,7 +40,7 @@ function currentFlows(s: GameState, res: Essential, season: SeasonIndex): { prod
   for (const b of s.buildings) {
     const def = BUILDING_DEFS[b.type];
     if (b.status !== 'done' || (def.output?.res !== res && def.passive?.res !== res && !def.inputs?.[res] && !(res === 'water' && def.waterDraw))) continue;
-    const v = buildingRate(s, b, season, 'current')[res] ?? 0;
+    const v = buildingRateOf(s, b, season, 'current', res);
     if (v > 0) prod += v;
     else draw -= v;
   }

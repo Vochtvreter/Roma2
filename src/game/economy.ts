@@ -152,12 +152,24 @@ function waterPaused(s: GameState, b: Building): boolean {
   return s.ordo.emergency.waterPause && (b.type === 'caementarium' || BUILDING_DEFS[b.type].waterDraw !== undefined);
 }
 
-/** Net resources per day of a building (inputs negative); 'full' = every slot at its current average worker. */
-export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): Partial<Res> {
-  const out: Partial<Res> = {};
+// buildingRate's sums, kept in scratch per resource index (the building's terms in the same order, so the same floats)
+// and read either as a record or for one resource without building the record.
+const RES_N = RESOURCES.length;
+const RES_IDX = Object.fromEntries(RESOURCES.map((r, k) => [r, k])) as Record<ResId, number>;
+const rateSum = new Float64Array(RES_N);
+const rateHas = new Uint8Array(RES_N);
+const rateOrder: number[] = [];   // resource indices in the order they were first added (the record's key order)
+
+function rateAdd(k: number, v: number): void {
+  if (v === 0) return;
+  if (rateHas[k]) rateSum[k] += v;
+  else { rateHas[k] = 1; rateSum[k] = 0 + v; rateOrder.push(k); }
+}
+
+/** Fills the scratch with a building's net rates (buildingRate's terms, in its order); the caller reads and clears it. */
+function rateCore(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): void {
   const def = BUILDING_DEFS[b.type];
-  if (b.status !== 'done' || (!def.output && !def.passive && !def.waterDraw)) return out;
-  const add = (r: ResId, v: number): void => { if (v !== 0) out[r] = (out[r] ?? 0) + v; };
+  if (b.status !== 'done' || (!def.output && !def.passive && !def.waterDraw)) return;
   const f = factors(s);
   const outside = activeFactor(s, b) * seasonMult(s, b.type, season);
   if (def.output && b.open && !waterPaused(s, b)) {
@@ -171,12 +183,30 @@ export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mod
       n = def.slots;
       total = per * n;
     }
-    add(def.output.res, total);
-    if (def.inputs && outside > 0) for (const r of RESOURCES) add(r, -(def.inputs[r] ?? 0) * n);
+    rateAdd(RES_IDX[def.output.res], total);
+    if (def.inputs && outside > 0) for (let k = 0; k < RES_N; k++) rateAdd(k, -(def.inputs[RESOURCES[k]] ?? 0) * n);
   }
-  add(def.passive?.res ?? 'water', passiveRate(s, b, season, f));
-  if (def.waterDraw && !waterPaused(s, b) && (mode === 'full' || serviceActive(s, b))) add('water', -def.waterDraw);
+  rateAdd(RES_IDX[def.passive?.res ?? 'water'], passiveRate(s, b, season, f));
+  if (def.waterDraw && !waterPaused(s, b) && (mode === 'full' || serviceActive(s, b))) rateAdd(RES_IDX.water, -def.waterDraw);
+}
+
+/** Net resources per day of a building (inputs negative); 'full' = every slot at its current average worker. */
+export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): Partial<Res> {
+  const out: Partial<Res> = {};
+  rateCore(s, b, season, mode);
+  for (const k of rateOrder) { out[RESOURCES[k]] = rateSum[k]; rateHas[k] = 0; }
+  rateOrder.length = 0;
   return out;
+}
+
+/** `buildingRate(s, b, season, mode)[res] ?? 0` without building the record. */
+export function buildingRateOf(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full', res: ResId): number {
+  rateCore(s, b, season, mode);
+  const k = RES_IDX[res];
+  const v = rateHas[k] ? rateSum[k] : 0;
+  for (const j of rateOrder) rateHas[j] = 0;
+  rateOrder.length = 0;
+  return v;
 }
 
 interface Producers { slots: { type: BuildingId; id: number; n: number; per: number }[]; passive: { type: BuildingId; per: number }[] }
@@ -239,10 +269,13 @@ export function caps(s: GameState): Res {
   });
 }
 
-/** Grain capacity of finished horrea (safe from rot), × fx(horreaCap). */
+/** Grain capacity of finished horrea (safe from rot), × fx(horreaCap). The count of horrea is kept per layout epoch. */
 export function horreaCap(s: GameState): number {
-  let n = 0;
-  for (const b of s.buildings) if (b.status === 'done' && b.type === 'horreum') n++;
+  const n = memo(s, 'horrea', layoutEpoch(s), () => {
+    let k = 0;
+    for (const b of s.buildings) if (b.status === 'done' && b.type === 'horreum') k++;
+    return k;
+  });
   return n * (BUILDING_DEFS.horreum.storage?.grain ?? 0) * fx(s, 'horreaCap');
 }
 

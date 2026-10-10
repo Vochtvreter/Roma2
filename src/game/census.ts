@@ -3,7 +3,7 @@
 import { B } from './balance';
 import { BUILDER, HOUSE_TIERS, LABOR_CATS } from './types';
 import type { Building, Census, GameState, HouseTierId, LaborCat, Person, Quad, StageIndex } from './types';
-import { censusEpoch, memo, peopleEpoch } from './memo';
+import { censusEpoch, memo, peopleEpoch, structEpoch } from './memo';
 import { derived } from './derived';
 import { caps, horreaCap, portion } from './economy';
 import { fx, fxAdd } from './fx';
@@ -153,6 +153,59 @@ export function freeBedsOf(s: GameState, b: Building): number {
   return Math.max(0, houseBeds(s, b) - residents(s, b.id).length);
 }
 
+/** The census's pass over the houses: beds, free beds (before the colony-wide clamp), tiers and decline. Kept while the
+ *  people epoch (homes, tiers and decline bump it), the day (damage ends), the path bonuses to beds and the aquae state
+ *  of every insula (its fountain beds, asked of isAquae as the pass would) stay; the nested census of the coverage
+ *  (depth > 1, no aquae beds) never stores it. */
+interface HouseCounts { beds: number; freeBeds: number; byTier: Record<HouseTierId, number>; declining: number }
+const houseCounts = new WeakMap<GameState, { pe: number; day: number; low: number; ins: number; insulae: Building[]; aquae: boolean[]; v: HouseCounts }>();
+
+function countHouses(s: GameState, houses: readonly number[], byHome: ReadonlyMap<number, Person[]>): HouseCounts {
+  const lowCap = fxAdd(s, 'lowCap'), insulaCap = fxAdd(s, 'insulaCap');
+  const pe = peopleEpoch(s);
+  const c = houseCounts.get(s);
+  if (depth <= 1 && c && c.pe === pe && c.day === s.day && c.low === lowCap && c.ins === insulaCap && c.insulae.every((b, k) => isAquae(s, b) === c.aquae[k])) return c.v;
+  let beds = 0, freeBeds = 0, declining = 0;
+  const byTier = {} as Record<HouseTierId, number>;
+  for (const t of HOUSE_TIERS) byTier[t] = 0;
+  const insulae: Building[] = [];
+  for (const id of houses) {
+    const b = getBuilding(s, id);
+    if (!b?.house) continue;
+    const n = bedsOf(s, b, lowCap, insulaCap);
+    beds += n;
+    freeBeds += Math.max(0, n - (byHome.get(id)?.length ?? 0));
+    byTier[b.house.tier]++;
+    if (b.house.declining) declining++;
+    if (b.house.tier === 'insula' && b.status === 'done') insulae.push(b);
+  }
+  const v = { beds, freeBeds, byTier, declining };
+  if (depth <= 1) houseCounts.set(s, { pe, day: s.day, low: lowCap, ins: insulaCap, insulae, aquae: insulae.map((b) => isAquae(s, b)), v });
+  return v;
+}
+
+/** Slots per building and per labour category (builders aside) and each building's category, in building order (memo
+ *  on the structure epoch: completions, closures and reopenings bump it). */
+interface SlotCounts { slots: Record<number, number>; catSlots: Record<LaborCat, number>; staffable: { id: number; labor: LaborCat | null }[] }
+
+function slotCounts(s: GameState): SlotCounts {
+  return memo(s, 'census.slots', structEpoch(s), () => {
+    const slots: Record<number, number> = {};
+    const catSlots = {} as Record<LaborCat, number>;
+    for (const c of LABOR_CATS) catSlots[c] = 0;
+    const staffable: SlotCounts['staffable'] = [];
+    for (const b of s.buildings) {
+      const def = BUILDING_DEFS[b.type];
+      if (def.slots <= 0) continue;
+      const n = b.status === 'done' && b.open ? def.slots : 0;
+      slots[b.id] = n;
+      if (def.labor) catSlots[def.labor] += n;
+      staffable.push({ id: b.id, labor: def.labor ?? null });
+    }
+    return { slots, catSlots, staffable };
+  });
+}
+
 function computeCensus(s: GameState): Census {
   const day = s.day;
   const d = derived(s);
@@ -172,37 +225,18 @@ function computeCensus(s: GameState): Census {
     if (n > 0) staffed[b.id] = n;
   }
 
-  let beds = 0, freeBeds = 0, declining = 0;
-  const byTier = {} as Record<HouseTierId, number>;
-  for (const t of HOUSE_TIERS) byTier[t] = 0;
-  const lowCap = fxAdd(s, 'lowCap'), insulaCap = fxAdd(s, 'insulaCap');
-  for (const id of d.houses) {
-    const b = getBuilding(s, id);
-    if (!b?.house) continue;
-    const n = bedsOf(s, b, lowCap, insulaCap);
-    beds += n;
-    freeBeds += Math.max(0, n - (ix.byHome.get(id)?.length ?? 0));
-    byTier[b.house.tier]++;
-    if (b.house.declining) declining++;
-  }
+  const hc = countHouses(s, d.houses, ix.byHome);
+  const { beds, declining } = hc;
+  const byTier = { ...hc.byTier };
   // A child is born into its parents' home even when that home is full; such a house's crowd fills beds elsewhere in
   // the reckoning, so the colony's free beds never exceed its beds less its housed souls.
-  freeBeds = Math.max(0, Math.min(freeBeds, beds - (s.people.length - ix.homeless.length)));
+  const freeBeds = Math.max(0, Math.min(hc.freeBeds, beds - (s.people.length - ix.homeless.length)));
 
-  const slots: Record<number, number> = {};
-  const catSlots = {} as Record<LaborCat, number>;
+  const sc = slotCounts(s);
+  const catSlots = { ...sc.catSlots };
   const catStaffed = {} as Record<LaborCat, number>;
-  for (const c of LABOR_CATS) { catSlots[c] = 0; catStaffed[c] = 0; }
-  for (const b of s.buildings) {
-    const def = BUILDING_DEFS[b.type];
-    if (def.slots <= 0) continue;
-    const n = b.status === 'done' && b.open ? def.slots : 0;
-    slots[b.id] = n;
-    if (def.labor) {
-      catSlots[def.labor] += n;
-      catStaffed[def.labor] += staffed[b.id] ?? 0;
-    }
-  }
+  for (const c of LABOR_CATS) catStaffed[c] = 0;
+  for (const { id, labor } of sc.staffable) if (labor) catStaffed[labor] += staffed[id] ?? 0;
   catStaffed.builders = ix.builders.length;
   catSlots.builders = ix.builders.length;   // builders have no slot cap (CONTRACT_NOTES, game stubs 5)
 
@@ -222,7 +256,7 @@ function computeCensus(s: GameState): Census {
     beds, freeBeds, homeless: ix.homeless.length, roll: RANK_DEFS[s.rank].ceiling,
     need: { grain: sum(grain), water: sum(water) }, groupNeed: { grain, water },
     caps: caps(s), horreaCap: horreaCap(s),
-    slots, staffed, catSlots, catStaffed,
+    slots: sc.slots, staffed, catSlots, catStaffed,
     houses: d.houses.length, byTier, declining, patricii,
   };
 }

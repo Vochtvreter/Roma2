@@ -15,7 +15,7 @@ import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
 import { houseDesir, previewCovered } from '../coverage';
-import { buildingRate, maxPotential, seasonMult } from '../economy';
+import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { fxAdd } from '../fx';
 import { idx, tx, ty } from '../map';
 import { BUILDING_DEFS } from '../data/buildings';
@@ -269,7 +269,7 @@ function foodSlotsShort(s: GameState, v: SimView): boolean {
 /** Oil the groves press per day with every slot filled, averaged over the year. */
 function olivePotential(s: GameState): number {
   let oil = 0;
-  for (const b of s.buildings) if (b.type === 'olivetum' && b.status === 'done') for (let k = 0; k < 4; k++) oil += (buildingRate(s, b, k as 0, 'full').oil ?? 0) / 4;
+  for (const b of s.buildings) if (b.type === 'olivetum' && b.status === 'done') for (let k = 0; k < 4; k++) oil += buildingRateOf(s, b, k as 0, 'full', 'oil') / 4;
   return oil;
 }
 
