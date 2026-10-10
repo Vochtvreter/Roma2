@@ -24,7 +24,6 @@ interface FxCache {
 
 const cache = new WeakMap<GameState, FxCache>();
 const MUL_SET: ReadonlySet<string> = new Set<string>(MUL_KEYS);
-const ADD_SET: ReadonlySet<string> = new Set<string>(ADD_KEYS);
 
 // valid() runs on every fx read (thousands a day), so the edicts and paths are compared field by field with literal names:
 // a loop over the id lists reads with a computed key, about ten times slower. Each list below must name every id (the
@@ -79,12 +78,11 @@ function build(s: GameState): FxCache {
   for (const k of MUL_KEYS) mul[k] = 1;
   const add = {} as Record<AddKey, number>;
   for (const k of ADD_KEYS) add[k] = 0;
-  // each source's own keys (a key's factors still multiply in source order); keys outside the lists are ignored
   for (const src of sources) {
-    const sm = src.fx.mul as Record<string, number | undefined> | undefined;
-    if (sm) for (const k in sm) { const v = sm[k]; if (v !== undefined && MUL_SET.has(k)) mul[k as MulKey] *= v; }
-    const sa = src.fx.add as Record<string, number | undefined> | undefined;
-    if (sa) for (const k in sa) { const v = sa[k]; if (v !== undefined && ADD_SET.has(k)) add[k as AddKey] += v; }
+    const sm = src.fx.mul;
+    if (sm) for (const k of MUL_KEYS) { const v = sm[k]; if (v !== undefined) mul[k] *= v; }
+    const sa = src.fx.add;
+    if (sa) for (const k of ADD_KEYS) { const v = sa[k]; if (v !== undefined) add[k] += v; }
   }
   return {
     day: s.day,
