@@ -183,7 +183,10 @@ export function linearItems(s: GameState, vis: Rect, push: Push): void {
       if (v === 2) {
         const o = hz ? 'h' : 'v';
         const spr = sprite(`l_gate_${stone ? 'stone' : 'timber'}_${o}`);
-        const bottom = o === 'h' ? B : B + TILE;
+        // h: bottom-aligned on the gate tile (its wall stubs continue the wall tiles beside it). v (WP-G2): north tower
+        // rows 0–21 on the tile above, the walkway (22–30) across the road on the gate tile, the south tower's top
+        // (28–39) ending where the next wall tile's 8 px overhang begins — so the sprite's bottom sits half a tile low.
+        const bottom = o === 'h' ? B : B + (TILE >> 1);
         push(bottom, X, (g) => g.drawImage(spr, X + 8 - (spr.width >> 1), bottom - spr.height));
         continue;
       }

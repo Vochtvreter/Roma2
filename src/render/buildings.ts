@@ -210,7 +210,7 @@ export class BuildingPainter {
       if (b.owner === 'ordo' && (b.status !== 'done' || s.day - b.placed < ORDO_SEAL_DAYS)) icons.push('i_seal');
       if (b.status === 'done') {
         if (b.house?.declining || (b.damagedUntil ?? 0) > s.day) g.drawImage(sprite('ov_cracks'), Math.round(cx - 16), d.sy + d.h - 24);
-        if (saturnalia && b.house) g.drawImage(sprite('ov_lanterns'), Math.round(cx - 16), d.sy + 2);
+        if (saturnalia && b.house) g.drawImage(sprite('ov_lanterns'), Math.round(cx - 16), d.sy + d.h - 16);   // G1: hangs across the front, above the doors
         if (def.slots > 0 && !b.open) icons.push('i_closed');
         else if (def.slots > 0 && (c.staffed[b.id] ?? 0) === 0) icons.push('i_unstaffed');
         if (b.unpaid) icons.push('i_unpaid');
