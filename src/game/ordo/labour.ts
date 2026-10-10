@@ -10,7 +10,7 @@ import { nextSeasonStart as nextSeasonStart$, seasonLength as seasonLength$, sea
 import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
 import { getBuilding as getBuilding$ } from '../lookup';
-import { dayEpoch as dayEpoch$, memo as memo$ } from '../memo';
+import { jobsEpoch as jobsEpoch$, memo as memo$ } from '../memo';
 import { roadNeighbors as roadNeighbors$ } from '../derived';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
@@ -19,7 +19,7 @@ import { houseWants, materialNeeds } from './build';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
-  nextSeasonStart = nextSeasonStart$, seasonLength = seasonLength$, seasonOf = seasonOf$, dayEpoch = dayEpoch$,
+  nextSeasonStart = nextSeasonStart$, seasonLength = seasonLength$, seasonOf = seasonOf$, jobsEpoch = jobsEpoch$,
   memo = memo$, roadNeighbors = roadNeighbors$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
   FOCUS_DEFS = FOCUS_DEFS$,
   getBuilding = getBuilding$;
@@ -34,6 +34,7 @@ const RES_N = RESOURCES.length;
 const RES_IDX = Object.fromEntries(RESOURCES.map((r, k) => [r, k])) as Record<ResId, number>;
 const MANUAL_ORDER: LaborCat[] = ['water', 'food', 'services', 'builders', 'materials', 'industry'];
 const FAR = 1e9;
+const DAY_SPAN = 1e6;   // as memo.ts: epoch × DAY_SPAN + day is exact in float64
 
 /** A staffable post; `i` is its place in the day's order (the plan keeps its hands in an array by it). */
 interface Post { b: Building; def: BuildingDef; cat: LaborCat; res: ResId | null; rate: number; layers: CoverageLayerId[]; i: number }
@@ -47,9 +48,10 @@ function reason(code: ReasonCode, params: Record<string, number | string | undef
   return { code, params: p };
 }
 
-/** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id. */
+/** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id
+ *  (memo on the day, the jobs epoch and the water pause: who works where moves the rates, a house's tier does not). */
 function posts(s: GameState): Post[] {
-  return memo(s, 'ordo.posts', dayEpoch(s) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
+  return memo(s, 'ordo.posts', (jobsEpoch(s) * DAY_SPAN + s.day) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
     const out: Post[] = [];
     const season = seasonOf(s.day);
     for (const b of s.buildings) {
