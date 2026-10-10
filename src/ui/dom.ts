@@ -167,6 +167,7 @@ let tipEl: HTMLElement | null = null;
 let current: Element | null = null;
 let showTimer = 0;
 let pinned = false;
+let swallowClick = false;   // a long press pinned a tooltip: the click its release fires must not also work the control
 
 /** Attaches a tooltip (text or a builder) to an element; returns the element. */
 export function tip(el: HTMLElement, content: string | (() => Node | string), opts?: { wide?: boolean }): HTMLElement {
@@ -227,6 +228,8 @@ export function initTooltips(): void {
       if (t) showTimer = window.setTimeout(() => { if (current === t && t.isConnected && render(t)) place(lx, ly); }, TIP_DELAY_MS);
     } else if (t && tipEl && !tipEl.hidden) place(lx, ly);
   });
+  // a new press (seen first, on the window's capture phase): whatever an earlier long press left behind no longer applies
+  window.addEventListener('pointerdown', () => { swallowClick = false; }, true);
   document.addEventListener('pointerdown', (e) => {
     if (pinned && tipEl && e.target instanceof Node && tipEl.contains(e.target)) return;
     if (e.pointerType === 'mouse') { hide(); return; }
@@ -237,6 +240,7 @@ export function initTooltips(): void {
     showTimer = window.setTimeout(() => {
       if (!t.isConnected || !render(t) || !tipEl) return;
       pinned = true;
+      swallowClick = true;
       current = t;
       tipEl.classList.add('pinned');
       const close = h('button', { class: 'tip-close', 'aria-label': 'Close', onclick: () => hide() }, '✕');
@@ -244,6 +248,14 @@ export function initTooltips(): void {
       place(x, y);
     }, LONG_PRESS_MS);
   });
+  // holding a control for its tooltip (How to play teaches it for touch) must not also press it: iOS fires the click
+  window.addEventListener('click', (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('keydown', () => { swallowClick = false; }, true);
   const cancelPress = (): void => { if (!pinned) window.clearTimeout(showTimer); };
   document.addEventListener('pointerup', cancelPress);
   document.addEventListener('pointercancel', cancelPress);
