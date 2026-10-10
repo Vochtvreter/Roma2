@@ -1,13 +1,17 @@
 // tests/goods.test.ts — late-game robustness of the Ordo (fix batch G): oil and wine planned like the grain for Hiems
-// (DESIGN §7.6, §10.4 step 8, §10.5 row 9, §10.7 rule 2).
+// (DESIGN §7.6, §10.4 step 8, §10.5 row 9, §10.7 rule 2), services raised where they serve the houses that wait for them
+// (§10.5 row 6, §11.6 aedilis.evolve), and the blocks the charter's works need kept free (§10.5 row 7).
 import { describe, expect, it } from 'vitest';
-import type { GameState, SimView } from '../src/game/types';
+import type { BuildingId, GameState, NeedId, SimView } from '../src/game/types';
 import { view } from '../src/game/sim';
 import { elapsed } from '../src/game/calendar';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { goodsPlan } from '../src/game/ordo/goods';
 import { luxuryCaravans, tradeMoves } from '../src/game/ordo/trade';
+import { keptBlocks } from '../src/game/ordo/build';
 import { caravanSlots, checkDispatch } from '../src/game/trade';
+import { houseWants, liftSlot, serveSlot, serviceFor } from '../src/game/advisors/util';
+import { rectGap } from '../src/game/world/grid';
 import { B } from '../src/game/balance';
 import { INTEGRATED, fresh } from './util';
 import { play } from './autoplayer';
@@ -90,7 +94,7 @@ describe('wine for the atrium houses (DESIGN §7.6, §10.7)', () => {
   });
 });
 
-describe.runIf(INTEGRATED)('the Ordo late in the game (decision bot)', () => {
+describe.runIf(INTEGRATED)('the Ordo late in the game (decision and follower bots)', () => {
   it('seed 2: never sells oil the insulae need through the lean season, and no house lapses for want of oil', T, () => {
     let sold = 0, below = 0, lapsed = 0;
     const r = play(2, 'decision', {
@@ -111,5 +115,60 @@ describe.runIf(INTEGRATED)('the Ordo late in the game (decision bot)', () => {
     expect(lapsed, 'insula-days declining for want of oil').toBe(0);
     expect(r.s.stats.devolved).toBe(0);
     expect(r.s.people.length, 'pop at victory').toBeGreaterThan(1000);
+  });
+
+  it('follower seed 2: no group of houses waits more than 180 days for a service that a free slot could bring them', T, () => {
+    const NEEDS: NeedId[] = ['water', 'religion', 'market', 'temple', 'baths', 'macellum', 'desirability'];
+    const streak = new Map<NeedId, number>();
+    let worst = { days: 0, at: 0, need: '' };
+    play(2, 'follower', {
+      days: 9000,
+      onDay: (s) => {
+        const e = elapsed(s);
+        if (e % 5 !== 0) return;
+        const v = view(s);
+        const by = new Map<NeedId, number[]>();
+        for (const w of houseWants(s, v)) if (w.next && w.unmet.length === 1 && NEEDS.includes(w.unmet[0])) by.set(w.unmet[0], [...(by.get(w.unmet[0]) ?? []), w.id]);
+        for (const need of NEEDS) {
+          const ids = by.get(need) ?? [];
+          let open = false;
+          if (ids.length >= B.advisors.RULES.EVOLVE_HOUSES) {
+            if (need === 'desirability') open = liftSlot(s, 'player', ids) !== null;
+            else {
+              const t = serviceFor(s, need, v.d.castellumActive) as BuildingId;
+              const ts: BuildingId[] = t === 'lacus' ? ['lacus', 'puteus'] : t === 'thermae' ? ['thermae', 'balneum'] : [t];
+              open = ts.some((x) => serveSlot(s, x, 'player', need, ids) !== null);
+            }
+          }
+          const n = open ? (streak.get(need) ?? 0) + 5 : 0;
+          streak.set(need, n);
+          if (n > worst.days) worst = { days: n, at: e, need };
+        }
+      },
+    });
+    expect(worst.days, `${worst.need} on day ${worst.at}`).toBeLessThanOrEqual(180);
+  });
+
+  it('seed 3: the castellum goes where a free block for the thermae lies in its reach; the Ordo keeps it and raises the thermae there', T, () => {
+    let atCastellum: number | null = null, kept = false, other = false;
+    const r = play(3, 'decision', {
+      days: 17_500,
+      stop: (s) => s.buildings.some((b) => b.type === 'thermae'),
+      onDay: (s) => {
+        const cas = s.buildings.find((b) => b.type === 'castellum');
+        if (!cas) return;
+        const k = keptBlocks(s).find((x) => x.for === 'thermae');
+        if (atCastellum === null) {
+          atCastellum = elapsed(s);
+          kept = k !== undefined && rectGap(k.rect, { x: cas.x, y: cas.y, w: 2, h: 2 }) <= B.map.CASTELLUM_REACH;
+        }
+        // nothing but the thermae is raised in its block meanwhile
+        if (k) for (const b of s.buildings) if (b.type !== 'thermae' && b.x >= k.rect.x && b.x < k.rect.x + 4 && b.y >= k.rect.y && b.y < k.rect.y + 4) other = true;
+      },
+    });
+    expect(atCastellum, 'a castellum is placed').not.toBeNull();
+    expect(kept, 'a free block lies within its reach and is kept').toBe(true);
+    expect(other).toBe(false);
+    expect(r.s.buildings.some((b) => b.type === 'thermae'), 'the thermae is raised').toBe(true);
   });
 });

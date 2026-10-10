@@ -215,6 +215,27 @@ describe('rule fixtures', () => {
   }
 });
 
+describe('the Aedilis counsels what can be done (fix batch G)', () => {
+  const E = 'aedilis.evolve';
+  const waitTemple = (s: GameState, rank: 1 | 2): void => {
+    setTier(s, 'tegulata');
+    s.rank = rank;
+    s.fed = 1;
+    ctl.covered = ALL_LAYERS.filter((l) => l !== 'temple');
+    invalidate(s);
+  };
+  it('the remedy is a temple at the free block that serves the most of the waiting houses', () => {
+    const s = base();
+    for (let i = 0; i < every(E); i++) { waitTemple(s, 2); day(s); }
+    const m = s.guidance.advisories[E]!;
+    expect(m.sev).toBeGreaterThanOrEqual(1);
+    const r = renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: m });
+    const place = r.remedies[0].remedy;
+    expect(place).toMatchObject({ kind: 'place', building: 'templum' });
+    expect(r.text).toMatch(/^A temple .* would let \d+ of them grow\.$/);
+  });
+});
+
 describe('hysteresis', () => {
   const at = (r: number): Patch => ({ grain: ess(r * 100, -100) });
   const G = 'annonae.grain.runout';
