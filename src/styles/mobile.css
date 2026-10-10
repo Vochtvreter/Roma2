@@ -44,6 +44,8 @@
   #objective { padding: 6px 10px; }
   .obj-hint, .obj-unlocks, .obj-meter, .obj-laurel { display: none; }
   .obj-goal { font-size: 14px; margin: 2px 0 0; }
+  .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
+  .obj-chip { flex: none; }
   .obj-cta { margin-top: 5px; padding: 4px 8px; }
   .counsel-strip { display: none; }
   .counsel-card { padding: 6px 10px; cursor: pointer; }
@@ -61,6 +63,10 @@
 
   #map-tools { right: 8px; bottom: calc(var(--sheet) + 52px); }
   #app.placing #map-tools { display: none; }
+  /* while placing, the sheet drops to its tab bar and the left column steps aside: the map is the whole stage */
+  #app.placing { --sheet: 56px; }
+  #app.placing #side { transform: translateY(calc(100% - 52px)); }
+  #app.placing #left { display: none; }
   .map-ov-row { flex-direction: row; }
   .map-ov span, .map-legend { display: none; }
   .map-ov { padding: 0; height: 40px; width: 40px; justify-content: center; }
@@ -86,7 +92,8 @@
   .disp-stats { grid-template-columns: repeat(2, 1fr); }
   .disp-await { grid-template-columns: 14px 1fr; }
   .disp-await .btn { grid-column: 2; }
-  .disp-seal { top: -58px; left: -8px; transform: rotate(-10deg) scale(.75); }
+  .disp { position: static; }   /* the seal sits in the letter's corner, clear of a title that wraps to two lines */
+  .disp-seal { top: 2px; left: 2px; transform-origin: 0 0; transform: rotate(-10deg) scale(.6); }
   .modal.parchment .modal-title { font-size: 21px; margin: 2px 36px 8px; }
   .modal.parchment .modal-kicker { margin: 4px 36px 0; }
 }
@@ -102,6 +109,8 @@
   .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
   .hud-coin .hud-sub { font-size: 7px; }
   .hud-stages { display: none; }
+  .hud-chip.hud-souls { flex: 1.5 1 0 !important; }   /* "651/473" needs the room the spirits face does not */
+  .hud-chip.hud-morale { flex: .7 1 0 !important; }
   .hud-dignitas { display: none; }
   .hud-date-main { font-size: 9px; }
   .hud-date .hud-sub { display: none; }

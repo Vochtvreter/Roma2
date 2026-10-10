@@ -17,6 +17,8 @@
   background: #0a0710; cursor: crosshair; box-shadow: var(--ring-shadow), 0 4px 14px rgba(0, 0, 0, .45);
 }
 #app.placing #minimap { display: none; }
+/* while placing, the icon-only overlay column sits flush right above the zoom buttons, clear of the place banner */
+#app.placing #map-tools { grid-template-columns: auto; grid-template-areas: "ov" "zoom"; }
 #zoom-ctl { grid-area: zoom; justify-self: end; display: flex; gap: 4px; }
 .map-btn {
   width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
