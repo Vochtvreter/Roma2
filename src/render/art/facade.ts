@@ -102,3 +102,64 @@ export function column(p: Pix, x: number, y: number, h: number, lit = 'w', mid =
   for (let j = y + 2; j < y + h - 1; j++) { p.set(x, j, lit); p.set(x + 1, j, mid); p.set(x + 2, j, shade); }
   p.hline(x - 1, x + 3, y + h - 1, mid);
 }
+
+/**
+ * A shallow pediment roof seen from the front: two terracotta planes (`depth` px deep, lit left, shaded right) rising
+ * `1/run` row per px from the corners on row `eaveY` to the apex, with tile courses parallel to the rake.
+ * Returns the apex row of the front rake; the caller paints the raking cornice and the tympanum below it.
+ */
+export function pedimentRoof(p: Pix, x0: number, x1: number, eaveY: number, depth: number, run: number, lit = 'u', dark = 'v'): number {
+  const mid = (x0 + x1) / 2;
+  for (let i = x0; i <= x1; i++) {
+    const k = Math.min(i - x0, x1 - i);
+    const edge = eaveY - Math.floor(k / run);
+    const left = i <= mid;
+    for (let j = edge - depth; j < edge; j++) {
+      const rib = (edge - j) % 3 === 0;
+      p.set(i, j, rib ? (left ? 'v' : 'R') : left ? lit : dark);
+    }
+    p.set(i, edge - depth, left ? 'o' : 'u');
+  }
+  return eaveY - Math.floor((x1 - x0) / 2 / run);
+}
+
+/** The rake edge row of a pediment at column i (same geometry as pedimentRoof). */
+export function rakeRow(x0: number, x1: number, eaveY: number, run: number, i: number): number {
+  return eaveY - Math.floor(Math.min(i - x0, x1 - i) / run);
+}
+
+/** Paving slabs (default travertine) over a rectangle: a square grid, read as a floor seen from above. */
+export function paving(p: Pix, x: number, y: number, w: number, h: number, slab = 'a', joint = 'i'): void {
+  for (let j = y; j < y + h; j++)
+    for (let i = x; i < x + w; i++) p.set(i, j, (j - y) % 4 === 3 || (i - x) % 5 === 4 ? joint : slab);
+}
+
+/** A cypress: a dark green flame on a short trunk. */
+export function cypress(p: Pix, x: number, ground: number, h: number): void {
+  for (let j = 0; j < h; j++) {
+    const half = j < 2 ? 0 : j < h - 3 ? 1 : 1;
+    for (let i = -half; i <= half + (j > 3 && j < h - 2 ? 1 : 0); i++) p.set(x + i, ground - 2 - h + j, i < 0 ? 'd' : i > 0 ? 'D' : 'Z');
+  }
+  p.set(x, ground - 1, 'b').set(x, ground, 'b');
+}
+
+/** A rising steam wisp from (x, y) upwards. */
+export function steam(p: Pix, x: number, y: number, h: number): void {
+  for (let k = 0; k < h; k++) {
+    const dx = Math.round(Math.sin(k * 0.9) * 1.5);
+    p.set(x + dx, y - k, k % 3 === 0 ? 'W' : 'w');
+    if (k % 2 === 0 && k < h - 2) p.set(x + dx + 1, y - k, 'W');
+  }
+}
+
+/** A wooden crate (lit top and left face) of size s at (x, y). */
+export function crate(p: Pix, x: number, y: number, s: number): void {
+  p.rect(x, y, s, s, 'n').hline(x, x + s - 1, y, 't').vline(x + s - 1, y, y + s - 1, 'B').line(x, y + s - 1, x + s - 1, y, 'B');
+  p.box(x, y, s, s, 'b');
+}
+
+/** An amphora standing at (x, ground). */
+export function amphora(p: Pix, x: number, ground: number): void {
+  p.set(x + 1, ground - 6, 'v').hline(x, x + 2, ground - 5, 'u').rect(x, ground - 4, 3, 2, 'u').set(x, ground - 5, 'o');
+  p.set(x + 2, ground - 4, 'v').set(x + 2, ground - 3, 'v').hline(x, x + 2, ground - 2, 'v').set(x + 1, ground - 1, 'v');
+}
