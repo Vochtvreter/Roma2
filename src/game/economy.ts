@@ -251,6 +251,7 @@ interface Woods { catchment: Map<number, number[]>; union: Uint8Array }
 function woods(s: GameState): Woods {
   return memo(s, 'woods', structEpoch(s), () => {
     const map = getMap(s.seed);
+    const der = derived(s);
     const catchment = new Map<number, number[]>();
     const union = new Uint8Array(map.W * map.H);
     const R = E.WOOD.CATCHMENT;
@@ -262,7 +263,7 @@ function woods(s: GameState): Woods {
         for (let x = b.x - R; x < b.x + w + R; x++) {
           if (!inBounds(x, y)) continue;
           const i = idx(x, y);
-          if (map.woodMax[i] <= 0) continue;
+          if (map.woodMax[i] <= 0 || der.buildingAt[i] !== 0 || der.road[i] > 0) continue;   // felled for works and roads
           const d = Math.max(b.x - x, 0, x - (b.x + w - 1), b.y - y, y - (b.y + h - 1));
           cand.push({ i, d });
           union[i] = 1;

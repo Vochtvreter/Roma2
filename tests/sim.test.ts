@@ -15,6 +15,7 @@ import { newCtx, tick, view } from '../src/game/sim';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
+import { getMap } from '../src/game/map';
 import { ctx, fresh, noNaN, place, run } from './util';
 
 const pins = vi.hoisted(() => new Map<number, number>());
@@ -336,6 +337,73 @@ describe('people (DESIGN §6)', () => {
     expect(noNaN(s)).toEqual([]);
     for (const p of s.people) if (p.spouse !== null) expect(s.people.find((q) => q.id === p.spouse)?.spouse).toBe(p.id);
     for (const f of s.families) expect(s.people.some((p) => p.family === f.id)).toBe(true);
+  });
+});
+
+describe('woods (DESIGN §8.7)', () => {
+  it('a lumber camp fells its mature catchment nearest first, and the clearing regrows', () => {
+    const s = fresh();
+    expect(place(s, 'lignarius', 16, 14, { ignoreCost: true }).ok).toBe(true);
+    const camp = first(s, 'lignarius');
+    camp.status = 'done';
+    invalidate(s);
+    assignJobs(s, plan({ [camp.id]: 3 }));
+    const timber = s.res.timber;
+    const c = ctx();
+    produce(s, c, new Rng(1));
+    const cut = c.rates.prod.timber.lignarius ?? 0;
+    expect(cut).toBeGreaterThan(10);
+    expect(s.res.timber).toBeCloseTo(timber + cut, 9);
+    const map = getMap(s.seed);
+    const felled = Object.keys(s.wood).map(Number);
+    expect(felled.length).toBeGreaterThan(0);
+    let drawn = 0;
+    for (const i of felled) drawn += map.woodMax[i] - s.wood[i];
+    expect(drawn).toBeCloseTo(cut, 6);
+    for (const i of felled) expect(Math.max(Math.abs((i % map.W) - 16.5), Math.abs(Math.floor(i / map.W) - 14.5))).toBeLessThanOrEqual(2);
+    const i = felled[0];
+    const before = s.wood[i];
+    storage(s, ctx());
+    expect(s.wood[i] - before).toBeCloseTo(B.economy.WOOD.REPLANT * map.woodMax[i], 9);
+  });
+});
+
+describe('departures and the mentor', () => {
+  it('the homeless leave after HOMELESS_LEAVE days without a bed', () => {
+    const s = fresh();
+    fillBeds(s);
+    const p = s.people[s.people.length - 1];
+    s.people.push({ ...s.people[2], id: 30_000, spouse: null, home: p.home, work: null });   // takes p's bed
+    p.home = null;
+    p.homelessSince = s.day - B.people.HOMELESS_LEAVE + 1;
+    touchPeople(s);
+    s.day++;
+    peopleDay(s, newCtx(), new Rng(3));
+    expect(s.people.some((q) => q.id === p.id)).toBe(false);
+    expect(s.stats.emigrants).toBeGreaterThanOrEqual(1);
+  });
+
+  it('despondent households emigrate (p 0.02 a day below morale 25)', () => {
+    const s = fresh();
+    s.morale = 10;
+    const rng = new Rng(4);
+    for (let d = 0; d < 300; d++) { s.day++; s.morale = 10; peopleDay(s, newCtx(), rng); }
+    expect(s.stats.emigrants).toBeGreaterThan(0);
+    const t = fresh();
+    const r2 = new Rng(4);
+    for (let d = 0; d < 300; d++) { t.day++; peopleDay(t, newCtx(), r2); }
+    expect(t.stats.emigrants).toBe(0);
+  });
+
+  it('records the mentor\'s death', () => {
+    const s = fresh();
+    const decimus = s.people.find((p) => p.prae === 'Decimus') as Person;
+    decimus.born = s.day - 110 * B.time.YEAR_DAYS;
+    const rng = new Rng(8);
+    for (let d = 0; d < 60 && s.counters.mentorDiedDay === null; d++) { s.day++; peopleDay(s, newCtx(), rng); }
+    expect(s.counters.mentorDiedDay).not.toBe(null);
+    expect(s.stats.deathsBy.age).toBeGreaterThan(0);
+    expect(s.log.some((e) => e.text.startsWith('Decimus Cassius, primus pilus emeritus'))).toBe(true);
   });
 });
 

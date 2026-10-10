@@ -8,7 +8,7 @@ import type {
 import { houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
 import { derived, footprintOf } from './derived';
 import { fx } from './fx';
-import { invalidate, touchPeople } from './memo';
+import { censusEpoch, invalidate, memo, structEpoch, touchPeople } from './memo';
 import { residents } from './census';
 import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
@@ -95,7 +95,8 @@ export function firstWant(s: GameState, b: Building): NeedId | null {
   if (!next) return null;
   const unmet = unmetNeeds(s, b, next);
   if (unmet.length > 0) return unmet[0];
-  return covers(renovationPool(s, view(s)), TIER_DEFS[next].renovation) ? null : 'materials';
+  const pool = memo(s, 'renovationPool', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => renovationPool(s, view(s)));
+  return covers(pool, TIER_DEFS[next].renovation) ? null : 'materials';
 }
 
 /** Houses that a building of `type` at (x, y) would let evolve: their first want is a need it would satisfy. */

@@ -115,17 +115,20 @@ function capPerWork(s: GameState, b: Building): Record<string, number> {
   return out;
 }
 
-/** Stock the Capitolium may draw: above the Ordo's saving target, denarii also above the treasury floor. */
-function capAvailable(s: GameState, r: ResId): number {
+/** Stock the Capitolium may draw per material: above the Ordo's saving target, denarii also above the treasury floor. */
+function capAvailable(s: GameState): Partial<Record<ResId, number>> {
   const keep = savingFor(s, view(s))?.cost ?? {};
-  return Math.max(0, s.res[r] - (keep[r] ?? 0) - (r === 'denarii' ? settingValue(s, 'treasuryFloor') : 0));
+  const out: Partial<Record<ResId, number>> = {};
+  for (const r of CAP_RES) out[r] = Math.max(0, s.res[r] - (keep[r] ?? 0) - (r === 'denarii' ? settingValue(s, 'treasuryFloor') : 0));
+  return out;
 }
 
 function capitoliumDay(s: GameState, ctx: TickContext, b: Building, crewWork: number): boolean {
   const tool = (b.toolUntil ?? 0) > s.day ? B.economy.TOOL_MULT : 1;
   const per = capPerWork(s, b);
   let work = Math.min(crewWork * tool, b.work * (1 - b.progress));
-  for (const r of CAP_RES) if (per[r] > 0) work = Math.min(work, capAvailable(s, r) / per[r]);
+  const avail = capAvailable(s);
+  for (const r of CAP_RES) if (per[r] > 0) work = Math.min(work, (avail[r] ?? 0) / per[r]);
   if (!(work > EPS)) return false;
   const used: Cost = b.matUsed ?? {};
   for (const r of CAP_RES) {
@@ -214,9 +217,10 @@ export function capitoliumFlow(s: GameState): { stage: number; eta: number | nul
     for (const r of CAP_RES) if ((out[r] ?? 0) > 0) made[r] = (made[r] ?? 0) + (out[r] ?? 0);
   }
   made.denarii = Math.max(0, s.counters.coinEma);
+  const avail = capAvailable(s);
   for (const r of CAP_RES) {
     if (!(per[r] > 0)) continue;
-    const supply = (made[r] ?? 0) + capAvailable(s, r) / B.ordo.CAP_RESERVE_DAYS;
+    const supply = (made[r] ?? 0) + (avail[r] ?? 0) / B.ordo.CAP_RESERVE_DAYS;
     const allow = supply / per[r];
     if (allow < rate) { rate = allow; bottleneck = r; }
   }
