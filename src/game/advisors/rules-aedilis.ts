@@ -64,7 +64,7 @@ const evolve: CadencedRule = {
     const min = held(s, 'aedilis.evolve') ? Math.floor(R.EVOLVE_HOUSES / CLEAR) : R.EVOLVE_HOUSES;
     if (!need || list.length < min) return null;
     const pn = petitionNeeds(s, v);
-    const dep = pn !== null && pn.rank !== null && pn.needs.some((n) => !n.met && /house|tier|T[0-4]/i.test(n.label));
+    const dep = pn !== null && pn.rank !== null && pn.needs.some((n) => !n.met && /home|house|insula|domus|tier|T[0-4]/i.test(n.label));   // WP-D: 'Homes of …', 'Insulae and domus'
     return {
       rule: 'aedilis.evolve', severity: dep ? 2 : 1, metric: { label: 'Waiting', value: list.length, unit: 'houses' },
       params: {

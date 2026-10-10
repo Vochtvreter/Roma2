@@ -154,6 +154,16 @@ function spring(s: GameState): { tile: number; dist: number; dir: string } | nul
   return best;
 }
 
+/** Words of the petition lines that wait on the aqueduct: the aqueduct itself, or the great baths it feeds. */
+const AQUA_WORDS = ['aqueduct', BUILDING_DEFS.castellum.latin, BUILDING_DEFS.thermae.name, BUILDING_DEFS.thermae.latin].map((w) => w.toLowerCase());
+
+/** A petition line (WP-D wording: 'The aqueduct flows', 'Great baths, Theatre staffed (missing: …)') that waits on the aqueduct. */
+function onAqueduct(label: string): boolean {
+  const l = label.toLowerCase();
+  const what = l.includes('missing:') ? l.slice(l.indexOf('missing:')) : l;
+  return AQUA_WORDS.some((w) => what.includes(w));
+}
+
 const aqueduct: AdvisorRule = {
   id: 'aquarum.aqueduct', advisor: 'aquarum',
   evaluate(s, v) {
@@ -162,7 +172,7 @@ const aqueduct: AdvisorRule = {
     if (!f) return null;
     const pn = s.rank === MUNICIPIUM ? petitionNeeds(s, v) : null;
     const unmet = pn && pn.rank === COLONIA ? pn.needs.filter((n) => !n.met) : [];
-    const waits = unmet.length > 0 && unmet.every((n) => /aqu|castell|thermae/i.test(n.label));
+    const waits = unmet.length > 0 && unmet.every((n) => onAqueduct(n.label));
     return { rule: 'aquarum.aqueduct', severity: waits ? 2 : 1, params: { dist: f.dist, dir: f.dir, fons: f.tile, waits: waits ? 1 : 0 } };
   },
   title: (_s, a) => `A spring rises ${int(P(a.params.dist))} paces to the ${a.params.dir}.`,
