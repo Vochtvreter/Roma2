@@ -2,20 +2,24 @@
 // annonae.goods) (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
-import { B } from '../balance';
+import { B as B$ } from '../balance';
 import type { AdvisorRule, GameState, Person, Remedy, Severity, SimView } from '../types';
-import { formatRoman, seasonOf } from '../calendar';
+import { formatRoman as formatRoman$, seasonOf as seasonOf$ } from '../calendar';
 import { peopleIndex, stageOf } from '../census';
 import { edictOption, settingValue } from '../decisions';
 import { buildingRateOf, seasonMult } from '../economy';
-import { fx } from '../fx';
+import { fx as fx$ } from '../fx';
 import { getBuilding } from '../state';
-import { BUILDING_DEFS } from '../data/buildings';
-import { SETTING_DEFS } from '../data/decisions';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
   CLEAR, R, STEP, bestFood, days, exportRemedy, fractionWord, held, idleBySkill, importRemedy, inDays, int, labourRemedy, listJoin, lowLadder,
   namesOf, num, openPosts, runway, three, todayRate,
 } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, formatRoman = formatRoman$, seasonOf = seasonOf$, fx = fx$, BUILDING_DEFS = BUILDING_DEFS$,
+  SETTING_DEFS = SETTING_DEFS$;
 
 const HIEMS = 3;
 const EPS = 1e-6;

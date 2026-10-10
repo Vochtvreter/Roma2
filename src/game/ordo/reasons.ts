@@ -3,12 +3,16 @@
 // want (a house need), why/level/state → phrases; anything else is a number. Template syntax: {k} value, {K} capitalised,
 // {a:k}/{A:k} with an article, [ … ] an optional part kept only when every {k} inside it resolves.
 import type { BuildingId, Reason, ReasonCode } from '../types';
-import { BUILDING_DEFS } from '../data/buildings';
-import { RESOURCE_DEFS } from '../data/resources';
-import { HUB_DEFS } from '../data/hubs';
-import { FOCUS_DEFS } from '../data/decisions';
-import { RANK_DEFS } from '../data/ranks';
-import { NEED_META } from '../data/housing';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from '../data/resources';
+import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
+import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
+import { NEED_META as NEED_META$ } from '../data/housing';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const BUILDING_DEFS = BUILDING_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$, HUB_DEFS = HUB_DEFS$, FOCUS_DEFS = FOCUS_DEFS$,
+  RANK_DEFS = RANK_DEFS$, NEED_META = NEED_META$;
 
 /** Works named in Roman-flavoured English: common things in English, the great civic works by their Latin names. */
 const WORK: Partial<Record<BuildingId, string>> = {

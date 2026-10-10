@@ -1,7 +1,10 @@
 // src/game/world/grid.ts — tile-grid helpers shared by generation, placement, roads and scoring. Owner: WP-A.
 // Pure functions over the fixed 112 × 84 grid (B.map.W × B.map.H); no game state.
-import { B } from '../balance';
+import { B as B$ } from '../balance';
 import type { Rect } from '../types';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$;
 
 /** Grid width in tiles. */
 export const GW: number = B.map.W;

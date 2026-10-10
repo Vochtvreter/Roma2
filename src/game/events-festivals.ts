@@ -1,15 +1,19 @@
 // src/game/events-festivals.ts — the calendar festivals of DESIGN §12.3, kept automatically by the Feriae edict.
 // Owner: WP-D (split from events.ts). Festivals are toasts, never cards; one that the stores cannot spare (or that
 // would take more than CLAMP_RES of a stock) is skipped with a note from the Augur.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { Cost, FestivalId, GameState, TickContext } from './types';
-import { FESTIVALS } from './types';
-import { aucYear, dateOf, dayOf, formatAuc, formatRoman } from './calendar';
-import { fx } from './fx';
+import { FESTIVALS as FESTIVALS$ } from './types';
+import { aucYear as aucYear$, dateOf as dateOf$, dayOf as dayOf$, formatAuc as formatAuc$, formatRoman as formatRoman$ } from './calendar';
+import { fx as fx$ } from './fx';
 import { canAfford, log, pay } from './state';
 import { dignitas } from './civic';
 import { addModifier } from './events-catalogue';
-import { RANK_DEFS } from './data/ranks';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, FESTIVALS = FESTIVALS$, aucYear = aucYear$, dateOf = dateOf$, dayOf = dayOf$, formatAuc = formatAuc$,
+  formatRoman = formatRoman$, fx = fx$, RANK_DEFS = RANK_DEFS$;
 
 /** One festival: its date, the Feriae options that keep it, its cost per resident and its effects. */
 export interface FestivalDef {

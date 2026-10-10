@@ -1,17 +1,22 @@
 // src/game/census.ts — the census memo: stages, workforce, beds, needs, caps, staffing (ARCHITECTURE §8.3). Owner: WP-B.
 // Also the people index (by home, job and family), memoised on the census epoch, so no daily step loops over people twice.
-import { B } from './balance';
-import { BUILDER, HOUSE_TIERS, LABOR_CATS } from './types';
+import { B as B$ } from './balance';
+import { BUILDER as BUILDER$, HOUSE_TIERS as HOUSE_TIERS$, LABOR_CATS as LABOR_CATS$ } from './types';
 import type { Building, Census, GameState, HouseTierId, LaborCat, Person, Quad, StageIndex } from './types';
-import { censusEpoch, memo, peopleEpoch, structEpoch } from './memo';
-import { derived } from './derived';
+import { censusEpoch as censusEpoch$, memo as memo$, peopleEpoch as peopleEpoch$, structEpoch as structEpoch$ } from './memo';
+import { derived as derived$ } from './derived';
 import { caps, horreaCap, portion } from './economy';
-import { fx, fxAdd } from './fx';
+import { fx as fx$, fxAdd as fxAdd$ } from './fx';
 import { getBuilding } from './state';
 import { isAquae } from './housing';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { RANK_DEFS } from './data/ranks';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, BUILDER = BUILDER$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, censusEpoch = censusEpoch$,
+  memo = memo$, peopleEpoch = peopleEpoch$, structEpoch = structEpoch$, derived = derived$, fx = fx$, fxAdd = fxAdd$,
+  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$;
 
 const YEAR = B.time.YEAR_DAYS;
 const PORTION_VALUES: readonly number[] = Object.values(B.economy.PORTIONS);

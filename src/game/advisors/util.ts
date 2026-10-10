@@ -1,24 +1,29 @@
 // src/game/advisors/util.ts — shared helpers of the advisor rules: severity ladders, the tick channel, the house-wants
 // memo, and the words that name people, places, markets and fractions (DESIGN §11.1, §11.4–11.6). Owner: WP-E.
 // Load order: only function bodies here touch other game modules, so any file may import this one.
-import { B } from '../balance';
-import { HOUSE_TIERS, HUBS } from '../types';
+import { B as B$ } from '../balance';
+import { HOUSE_TIERS as HOUSE_TIERS$, HUBS as HUBS$ } from '../types';
 import type {
   AdvisorRule, BuildingId, ContractSpec, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
   SkillId, TradeRes,
 } from '../types';
-import { seasonOf } from '../calendar';
+import { seasonOf as seasonOf$ } from '../calendar';
 import { seasonMult } from '../economy';
-import { distToRect, getMap, tx, ty } from '../map';
-import { memo, structEpoch } from '../memo';
+import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } from '../map';
+import { memo as memo$, structEpoch as structEpoch$ } from '../memo';
 import { personName } from '../people';
 import { getBuilding, getPerson } from '../state';
 import { nextTier, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
-import { BUILDING_DEFS } from '../data/buildings';
-import { NEED_META, TIER_DEFS } from '../data/housing';
-import { RANK_DEFS } from '../data/ranks';
-import { RESOURCE_DEFS } from '../data/resources';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { NEED_META as NEED_META$, TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from '../data/resources';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, HUBS = HUBS$, seasonOf = seasonOf$, distToRect = distToRect$,
+  getMap = getMap$, tx = tx$, ty = ty$, memo = memo$, structEpoch = structEpoch$, BUILDING_DEFS = BUILDING_DEFS$,
+  NEED_META = NEED_META$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$;
 
 /** Hysteresis release factor: an advisory clears only past its threshold × CLEAR (DESIGN §11.4). */
 export const CLEAR = B.advisors.CLEAR;

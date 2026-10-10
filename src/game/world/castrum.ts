@@ -1,17 +1,24 @@
 // src/game/world/castrum.ts — castrum site search, features, guarantees and the start field (DESIGN §3.3 steps 5–9,
 // §18.1). Owner: WP-A. Pure functions of a BaseTerrain; map.ts runs the retry loop and caches the result.
-import { B } from '../balance';
-import { F, T } from '../types';
+import { B as B$ } from '../balance';
+import { F as F$, T as T$ } from '../types';
 import type { Rect, Survey, WorldMap } from '../types';
-import { MAP_SEED_XOR, Rng, hash2 } from '../rng';
-import { computeSurvey } from '../survey';
-import { GH, GN, GW, PrefixSum, anySide, chebToRect, forN4, maskOf, rectDistances, rectGap } from './grid';
-import { stepField } from './search';
+import { MAP_SEED_XOR as MAP_SEED_XOR$, Rng, hash2 as hash2$ } from '../rng';
+import { computeSurvey as computeSurvey$ } from '../survey';
+import { GH as GH$, GN as GN$, GW as GW$, PrefixSum, anySide as anySide$, chebToRect as chebToRect$, forN4 as forN4$, maskOf as maskOf$, rectDistances as rectDistances$, rectGap as rectGap$ } from './grid';
+import { stepField as stepField$ } from './search';
 import type { BaseTerrain } from './gen';
-import { valueNoise } from './noise';
-import { agerBase, aqueductCostT, isFertileT, isForestT, isHillsRockT, roadCostT } from './rules';
-import { RANK_DEFS } from '../data/ranks';
-import { BUILDING_DEFS } from '../data/buildings';
+import { valueNoise as valueNoise$ } from './noise';
+import { agerBase as agerBase$, aqueductCostT as aqueductCostT$, isFertileT as isFertileT$, isForestT as isForestT$, isHillsRockT as isHillsRockT$, roadCostT as roadCostT$ } from './rules';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, F = F$, T = T$, MAP_SEED_XOR = MAP_SEED_XOR$, hash2 = hash2$, computeSurvey = computeSurvey$, GH = GH$,
+  GN = GN$, GW = GW$, anySide = anySide$, chebToRect = chebToRect$, forN4 = forN4$, maskOf = maskOf$,
+  rectDistances = rectDistances$, rectGap = rectGap$, stepField = stepField$, valueNoise = valueNoise$,
+  agerBase = agerBase$, aqueductCostT = aqueductCostT$, isFertileT = isFertileT$, isForestT = isForestT$,
+  isHillsRockT = isHillsRockT$, roadCostT = roadCostT$, RANK_DEFS = RANK_DEFS$, BUILDING_DEFS = BUILDING_DEFS$;
 
 const M = B.map;
 const G = M.GEN;

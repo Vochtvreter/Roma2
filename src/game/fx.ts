@@ -3,9 +3,13 @@
 // nothing; legacy and emergency portions are applied by economy.ts, not here.
 // Memoised per state on paths + edicts + active modifiers (compared field by field, no string building); a new day keeps
 // the cache unless a modifier began or ran out in between.
-import { ADD_KEYS, EDICTS, MUL_KEYS, PATH_DECISIONS } from './types';
+import { ADD_KEYS as ADD_KEYS$, EDICTS as EDICTS$, MUL_KEYS as MUL_KEYS$, PATH_DECISIONS as PATH_DECISIONS$ } from './types';
 import type { AddKey, EdictId, Effects, GameState, Modifier, MulKey, PathDecisionId } from './types';
-import { EDICT_DEFS, PATH_DEFS } from './data/decisions';
+import { EDICT_DEFS as EDICT_DEFS$, PATH_DEFS as PATH_DEFS$ } from './data/decisions';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const ADD_KEYS = ADD_KEYS$, EDICTS = EDICTS$, MUL_KEYS = MUL_KEYS$, PATH_DECISIONS = PATH_DECISIONS$,
+  EDICT_DEFS = EDICT_DEFS$, PATH_DEFS = PATH_DEFS$;
 
 /** One effect source with its display label. */
 export interface FxSource { label: string; fx: Effects }

@@ -2,13 +2,18 @@
 // Pomerium = unmasked blocks of the active rings (the reserved forum and Area Capitolina blocks included), the active
 // streets and the forum. Reserved tiles = the Area Capitolina and every aqueduct route (while it is built and after:
 // the arches stand there for good).
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { Block, Building, BuildingId, Derived, GameState, PlaceClass } from './types';
-import { getMap, H, W, idx, inBounds, tx, ty } from './map';
-import { activeRings, isActiveBlock } from './survey';
-import { layoutEpoch, memo } from './memo';
-import { BUILDING_DEFS } from './data/buildings';
-import { RANK_DEFS } from './data/ranks';
+import { getMap as getMap$, H as H$, W as W$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
+import { activeRings as activeRings$, isActiveBlock as isActiveBlock$ } from './survey';
+import { layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, getMap = getMap$, H = H$, W = W$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
+  activeRings = activeRings$, isActiveBlock = isActiveBlock$, layoutEpoch = layoutEpoch$, memo = memo$,
+  BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$;
 
 const PLOT = B.map.PLOT;
 const BLOCK = B.map.BLOCK;

@@ -3,16 +3,20 @@
 // One goal at a time: `guidance.objective` indexes MILESTONES; checkObjectives loops so several can complete in one
 // tick (offline). Every milestone unlocks something (UnlockRef) and adds +1 Deeds dignitas (civic.ts reads
 // milestoneDays). The post-victory goals follow the Capitolium in the same list.
-import { B } from './balance';
-import { HOUSE_TIERS } from './types';
+import { B as B$ } from './balance';
+import { HOUSE_TIERS as HOUSE_TIERS$ } from './types';
 import type { Census, GameState, MilestoneDef, MilestoneId, SimView, TickContext, UnlockRef } from './types';
 import { census } from './census';
-import { derived } from './derived';
+import { derived as derived$ } from './derived';
 import { portion } from './economy';
-import { nextSeasonStart, toRoman } from './calendar';
+import { nextSeasonStart as nextSeasonStart$, toRoman as toRoman$ } from './calendar';
 import { log } from './state';
-import { EDICT_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
-import { TIER_DEFS } from './data/housing';
+import { EDICT_DEFS as EDICT_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from './data/decisions';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, derived = derived$, nextSeasonStart = nextSeasonStart$, toRoman = toRoman$,
+  EDICT_DEFS = EDICT_DEFS$, SETTING_DEFS = SETTING_DEFS$, SWITCH_DEFS = SWITCH_DEFS$, TIER_DEFS = TIER_DEFS$;
 
 const P = B.progress;
 /** The first Hiems is over on the first Kal. Mart. after the founding (Kal. Mart. AUC DCCCI). */

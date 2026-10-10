@@ -1,20 +1,26 @@
 // src/game/civic.ts — morale, care, dignitas, taxes, upkeep and the Kalends ledger (ARCHITECTURE §8.3, DESIGN §8.8–8.11). Owner: WP-B.
-import { B } from './balance';
-import { LABOR_CATS, MILESTONE_IDS } from './types';
+import { B as B$ } from './balance';
+import { LABOR_CATS as LABOR_CATS$, MILESTONE_IDS as MILESTONE_IDS$ } from './types';
 import type { GameState, SimView, TickContext } from './types';
-import { dayEpoch, invalidate, memo, structEpoch } from './memo';
+import { dayEpoch as dayEpoch$, invalidate as invalidate$, memo as memo$, structEpoch as structEpoch$ } from './memo';
 import { houseHas } from './coverage';
-import { blockOfTile, derived } from './derived';
+import { blockOfTile as blockOfTile$, derived as derived$ } from './derived';
 import { houseTax, isAquae } from './housing';
 import { census, peopleIndex } from './census';
 import { meanRation, portion } from './economy';
-import { fx, fxAdd, fxBreakdown } from './fx';
-import { seasonOf } from './calendar';
-import { idx } from './map';
+import { fx as fx$, fxAdd as fxAdd$, fxBreakdown as fxBreakdown$ } from './fx';
+import { seasonOf as seasonOf$ } from './calendar';
+import { idx as idx$ } from './map';
 import { getBuilding, log } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { RANK_DEFS } from './data/ranks';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, LABOR_CATS = LABOR_CATS$, MILESTONE_IDS = MILESTONE_IDS$, dayEpoch = dayEpoch$, invalidate = invalidate$,
+  memo = memo$, structEpoch = structEpoch$, blockOfTile = blockOfTile$, derived = derived$, fx = fx$, fxAdd = fxAdd$,
+  fxBreakdown = fxBreakdown$, seasonOf = seasonOf$, idx = idx$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
+  RANK_DEFS = RANK_DEFS$;
 
 const M = B.morale;
 const HIEMS = 3;

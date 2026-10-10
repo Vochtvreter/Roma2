@@ -2,13 +2,18 @@
 // A pure day-by-day projection from today's stock to the end of the 12th month cell, using the economy module:
 // production per season (Ordo labour on: min(maxPotential, need × 1.35 grain / × 1.10 water), the crunch season at
 // maxPotential; Ordo labour off: today's staffing), consumption = today's need + industry draws, caps, rot, evaporation.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
-import { dayEpoch, dayStruct, memo } from './memo';
+import { dayEpoch as dayEpoch$, dayStruct as dayStruct$, memo as memo$ } from './memo';
 import { census } from './census';
 import { buildingRateOf, maxPotential } from './economy';
-import { BUILDING_DEFS } from './data/buildings';
-import { dateOf, dayOf, daysInMonth, nextSeasonStart, seasonOf, seasonStartOf } from './calendar';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { dateOf as dateOf$, dayOf as dayOf$, daysInMonth as daysInMonth$, nextSeasonStart as nextSeasonStart$, seasonOf as seasonOf$, seasonStartOf as seasonStartOf$ } from './calendar';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, dayEpoch = dayEpoch$, dayStruct = dayStruct$, memo = memo$, BUILDING_DEFS = BUILDING_DEFS$,
+  dateOf = dateOf$, dayOf = dayOf$, daysInMonth = daysInMonth$, nextSeasonStart = nextSeasonStart$,
+  seasonOf = seasonOf$, seasonStartOf = seasonStartOf$;
 
 const DOH_NONE = B.forecast.DOH_NONE;   // days on hand when nobody needs the essential (finite for metrics)
 const CELLS = B.forecast.CELLS;

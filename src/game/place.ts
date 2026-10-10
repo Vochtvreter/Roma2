@@ -2,26 +2,37 @@
 // canPlace runs the twelve checks of the §8.2 table in order and returns the first failure; validSlots answers the
 // same question for every origin at once (masks and prefix sums) and must agree with canPlace. Felling, auto-roads,
 // block streets and aqueduct routes live in world/roads.ts; site rules in world/siterules.ts.
-import { B } from './balance';
-import { RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId, WorldMap } from './types';
-import { getMap, idx, inBounds, tx, ty } from './map';
-import { activeRings, halfOrigin, isActiveBlock, isFutureBlock, plotOrigin } from './survey';
-import { blockOfTile, classAt, derived, sizeOf } from './derived';
-import { dayLayout, invalidate, layoutEpoch, memo, touchPeople } from './memo';
+import { getMap as getMap$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
+import { activeRings as activeRings$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, plotOrigin as plotOrigin$ } from './survey';
+import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, sizeOf as sizeOf$ } from './derived';
+import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layoutEpoch$, memo as memo$, touchPeople as touchPeople$ } from './memo';
 import { addCost, canAfford, getBuilding, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { cancelSite } from './construction';
 import { buildingRate } from './economy';
-import { seasonOf } from './calendar';
-import { fx } from './fx';
+import { seasonOf as seasonOf$ } from './calendar';
+import { fx as fx$ } from './fx';
 import { siteMultAt } from './site';
-import { reasonText } from './ordo/reasons';
-import { BUILDING_DEFS } from './data/buildings';
-import { RANK_DEFS } from './data/ranks';
-import { RESOURCE_DEFS } from './data/resources';
-import { GN, PrefixSum, anySide, rectTiles } from './world/grid';
-import { aqueductRoute, autoRoad, blockStreetTiles, fell, roadField, standingTimber } from './world/roads';
-import { RULE_REASON, ruleFail, ruleTester, terrainFail, woodDependent } from './world/siterules';
+import { reasonText as reasonText$ } from './ordo/reasons';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
+import { GN as GN$, PrefixSum, anySide as anySide$, rectTiles as rectTiles$ } from './world/grid';
+import { aqueductRoute as aqueductRoute$, autoRoad as autoRoad$, blockStreetTiles as blockStreetTiles$, fell as fell$, roadField as roadField$, standingTimber as standingTimber$ } from './world/roads';
+import { RULE_REASON as RULE_REASON$, ruleFail as ruleFail$, ruleTester as ruleTester$, terrainFail as terrainFail$, woodDependent as woodDependent$ } from './world/siterules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
+  activeRings = activeRings$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$, isFutureBlock = isFutureBlock$,
+  plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$, derived = derived$, sizeOf = sizeOf$,
+  dayLayout = dayLayout$, invalidate = invalidate$, layoutEpoch = layoutEpoch$, memo = memo$,
+  touchPeople = touchPeople$, seasonOf = seasonOf$, fx = fx$, reasonText = reasonText$, BUILDING_DEFS = BUILDING_DEFS$,
+  RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$, GN = GN$, anySide = anySide$, rectTiles = rectTiles$,
+  aqueductRoute = aqueductRoute$, autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$, fell = fell$,
+  roadField = roadField$, standingTimber = standingTimber$, RULE_REASON = RULE_REASON$, ruleFail = ruleFail$,
+  ruleTester = ruleTester$, terrainFail = terrainFail$, woodDependent = woodDependent$;
 
 const URBAN: readonly PlaceClass[] = ['plot', 'half', 'block'];
 const PLOT = B.map.PLOT;

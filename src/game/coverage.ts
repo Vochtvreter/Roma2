@@ -3,20 +3,27 @@
 // the road tiles beside its footprint; a road tile is covered within the service's effective radius in whole steps, and
 // a house is covered when a road tile beside it is. The flood reruns only when the structure or a radius changes.
 // Desirability: Σ v · (1 − d/(r + 1)) over every source within its range (Chebyshev d from the source's footprint).
-import { B } from './balance';
-import { BUILDINGS, F, LAYERS, T } from './types';
+import { B as B$ } from './balance';
+import { BUILDINGS as BUILDINGS$, F as F$, LAYERS as LAYERS$, T as T$ } from './types';
 import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
-import { getMap } from './map';
-import { dayEpoch, dayStruct, layoutEpoch, memo } from './memo';
-import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
+import { getMap as getMap$ } from './map';
+import { dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
+import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, footprintOf as footprintOf$, sizeOf as sizeOf$ } from './derived';
 import { peopleIndex } from './census';
-import { fxAdd } from './fx';
+import { fxAdd as fxAdd$ } from './fx';
 import { getBuilding } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { RANK_DEFS } from './data/ranks';
-import { GH, GN, GW, sideTiles } from './world/grid';
-import { autoRoad, blockStreetTiles } from './world/roads';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+import { GH as GH$, GN as GN$, GW as GW$, sideTiles as sideTiles$ } from './world/grid';
+import { autoRoad as autoRoad$, blockStreetTiles as blockStreetTiles$ } from './world/roads';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, BUILDINGS = BUILDINGS$, F = F$, LAYERS = LAYERS$, T = T$, getMap = getMap$, dayEpoch = dayEpoch$,
+  dayStruct = dayStruct$, layoutEpoch = layoutEpoch$, memo = memo$, blockOfTile = blockOfTile$, classAt = classAt$,
+  derived = derived$, footprintOf = footprintOf$, sizeOf = sizeOf$, fxAdd = fxAdd$, BUILDING_DEFS = BUILDING_DEFS$,
+  TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, GH = GH$, GN = GN$, GW = GW$, sideTiles = sideTiles$,
+  autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$;
 
 /** Path radius bonus that applies to each layer (DESIGN §9.3). */
 const RADIUS_BONUS: Partial<Record<CoverageLayerId, AddKey>> = {

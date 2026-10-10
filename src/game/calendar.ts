@@ -1,8 +1,11 @@
 // src/game/calendar.ts — the proleptic Julian calendar with Roman dates and seasons (ARCHITECTURE §6, DESIGN §2.2).
 // Port of rome's state/calendar.ts with one fix: inclusive counting before the Ides (a.d. {Ides − d + 1}).
 // day 0 = Kalendae Ianuariae AUC DCCC (1 January AD 47); the game starts on day 90 = Kal. Apr.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { SeasonIndex } from './types';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$;
 
 /** A calendar date: AUC year, month 1..12, day of month 1..31. */
 export interface RomanDate { year: number; month: number; day: number }

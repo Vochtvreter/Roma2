@@ -2,19 +2,23 @@
 // fabrum.capitolium) (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
-import { B } from '../balance';
-import { LABOR_CATS, RESOURCES, TRADE_RES } from '../types';
+import { B as B$ } from '../balance';
+import { LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, TRADE_RES as TRADE_RES$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
-import { toRoman } from '../calendar';
+import { toRoman as toRoman$ } from '../calendar';
 import { capitoliumFlow } from '../construction';
 import { petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { getBuilding, missing } from '../state';
-import { BUILDING_DEFS, BUILD_ORDER } from '../data/buildings';
-import { SETTING_DEFS } from '../data/decisions';
+import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$ } from '../data/buildings';
+import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
   CLEAR, R, STEP, aName, bName, buildingPlace, days, held, idleBySkill, importRemedy, int, listJoin, namesOf, num, openPosts, resName, three,
 } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$, TRADE_RES = TRADE_RES$, toRoman = toRoman$,
+  BUILDING_DEFS = BUILDING_DEFS$, BUILD_ORDER = BUILD_ORDER$, SETTING_DEFS = SETTING_DEFS$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 const WORK_CATS = LABOR_CATS.filter((c) => c !== 'builders');

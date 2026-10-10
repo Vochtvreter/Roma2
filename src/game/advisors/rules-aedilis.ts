@@ -2,22 +2,26 @@
 // (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
-import { B } from '../balance';
-import { HOUSE_TIERS, NEEDS } from '../types';
+import { B as B$ } from '../balance';
+import { HOUSE_TIERS as HOUSE_TIERS$, NEEDS as NEEDS$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
 import { moraleTarget } from '../civic';
 import { previewCoverage } from '../coverage';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { getBuilding } from '../state';
-import { RANK_DEFS } from '../data/ranks';
-import { SETTING_DEFS } from '../data/decisions';
-import { TIER_DEFS } from '../data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
+import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
+import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import {
   CLEAR, R, STEP, aName, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor,
   three, tierWord,
 } from './util';
 import type { CadencedRule, HouseWant } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, NEEDS = NEEDS$, RANK_DEFS = RANK_DEFS$, SETTING_DEFS = SETTING_DEFS$,
+  TIER_DEFS = TIER_DEFS$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 const COVERED: readonly NeedId[] = ['water', 'religion', 'market', 'temple', 'baths', 'macellum'];

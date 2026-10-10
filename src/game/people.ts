@@ -1,20 +1,26 @@
 // src/game/people.ts — names, job assignment, life events, immigration, families (ARCHITECTURE §8.3, DESIGN §6). Owner: WP-B.
 // Every loop over people is O(n): indexes come from census.peopleIndex, and randomness is drawn in person-id order.
-import { B } from './balance';
-import { BUILDER, SKILLS } from './types';
+import { B as B$ } from './balance';
+import { BUILDER as BUILDER$, SKILLS as SKILLS$ } from './types';
 import type { Building, DeathCause, Family, GameState, LabourPlan, Person, SkillId, TickContext } from './types';
 import type { Rng } from './rng';
 import { ablePeople, ageOf, census, houseBeds, peopleIndex } from './census';
-import { derived, roadNeighbors } from './derived';
-import { toRoman } from './calendar';
-import { fx } from './fx';
-import { layoutEpoch, memo, touchJobs, touchPeople } from './memo';
+import { derived as derived$, roadNeighbors as roadNeighbors$ } from './derived';
+import { toRoman as toRoman$ } from './calendar';
+import { fx as fx$ } from './fx';
+import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, touchPeople as touchPeople$ } from './memo';
 import { careShare } from './civic';
 import { getBuilding, getPerson, log, nextId } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { RANK_DEFS } from './data/ranks';
-import { DAUGHTER_COG, GENTES_IMMIGRANT, PRAENOMINA, feminine } from './data/names';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, PRAENOMINA as PRAENOMINA$, feminine as feminine$ } from './data/names';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
+  toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
+  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
+  DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$;
 
 const P = B.people;
 const YEAR = B.time.YEAR_DAYS;

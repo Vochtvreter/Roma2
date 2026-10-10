@@ -1,23 +1,28 @@
 // src/game/housing.ts — house needs, evolution, renovation, decline, goods (ARCHITECTURE §8.3, DESIGN §7). Owner: WP-B.
 // Houses are checked every CHECK_EVERY days on their own slot ((id + day) % 5 == 0); renovations finish daily.
-import { B } from './balance';
-import { HOUSE_TIERS, RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { HOUSE_TIERS as HOUSE_TIERS$, RESOURCES as RESOURCES$ } from './types';
 import type {
   ActionResult, Building, BuildingId, CoverageLayerId, Cost, GameState, HousePref, HouseTierId, NeedId, SimView, TickContext,
 } from './types';
 import { houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
-import { derived, footprintOf } from './derived';
-import { fx } from './fx';
-import { dayEpoch, invalidateTiers, memo, touchPeople } from './memo';
+import { derived as derived$, footprintOf as footprintOf$ } from './derived';
+import { fx as fx$ } from './fx';
+import { dayEpoch as dayEpoch$, invalidateTiers as invalidateTiers$, memo as memo$, touchPeople as touchPeople$ } from './memo';
 import { residents } from './census';
 import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
 import { evictOverflow } from './people';
 import { view } from './sim';
 import { getBuilding, log } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { feminine } from './data/names';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { feminine as feminine$ } from './data/names';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, RESOURCES = RESOURCES$, derived = derived$, footprintOf = footprintOf$,
+  fx = fx$, dayEpoch = dayEpoch$, invalidateTiers = invalidateTiers$, memo = memo$, touchPeople = touchPeople$,
+  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, feminine = feminine$;
 
 const H = B.housing;
 const TOP = 4;

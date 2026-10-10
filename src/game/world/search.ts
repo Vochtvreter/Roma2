@@ -1,8 +1,11 @@
 // src/game/world/search.ts — Dijkstra cost fields over the tile grid (auto-roads, aqueduct routes). Owner: WP-A.
 // One multi-source search fills the whole field, so every footprint can then read its cheapest connection in O(1)
 // and walk it back to the source. Deterministic: the heap breaks priority ties by the lower tile index.
-import { GN, GW } from './grid';
-import { MinHeap } from './heap';
+import { GN as GN$, GW as GW$ } from './grid';
+import { MinHeap as MinHeap$ } from './heap';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const GN = GN$, GW = GW$, MinHeap = MinHeap$;
 
 /** Result of a multi-source search: path cost, path length in tiles and the next tile toward the source. */
 export interface CostField {

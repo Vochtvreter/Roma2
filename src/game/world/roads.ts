@@ -1,17 +1,23 @@
 // src/game/world/roads.ts — auto-roads, block streets, aqueduct routes and felling on the live state (DESIGN §3.4, §3.7,
 // §3.8, §5.3). Owner: WP-A. The cost fields are memoised on the structure epoch: one Dijkstra from the road network
 // (or from the free springs) serves every footprint until something is built.
-import { B } from '../balance';
-import { F } from '../types';
+import { B as B$ } from '../balance';
+import { F as F$ } from '../types';
 import type { GameState } from '../types';
-import { getMap, woodAt } from '../map';
-import { derived } from '../derived';
-import { blockStreets, isFutureBlock } from '../survey';
-import { layoutEpoch, memo } from '../memo';
-import { GN, GW, forN4, onGrid } from './grid';
-import { bfsField, costField, walkBack } from './search';
+import { getMap as getMap$, woodAt as woodAt$ } from '../map';
+import { derived as derived$ } from '../derived';
+import { blockStreets as blockStreets$, isFutureBlock as isFutureBlock$ } from '../survey';
+import { layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
+import { GN as GN$, GW as GW$, forN4 as forN4$, onGrid as onGrid$ } from './grid';
+import { bfsField as bfsField$, costField as costField$, walkBack as walkBack$ } from './search';
 import type { CostField, StepField } from './search';
-import { aqueductCostT, roadCostT } from './rules';
+import { aqueductCostT as aqueductCostT$, roadCostT as roadCostT$ } from './rules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, F = F$, getMap = getMap$, woodAt = woodAt$, derived = derived$, blockStreets = blockStreets$,
+  isFutureBlock = isFutureBlock$, layoutEpoch = layoutEpoch$, memo = memo$, GN = GN$, GW = GW$, forN4 = forN4$,
+  onGrid = onGrid$, bfsField = bfsField$, costField = costField$, walkBack = walkBack$, aqueductCostT = aqueductCostT$,
+  roadCostT = roadCostT$;
 
 const M = B.map;
 // Aqueduct steps not listed in DESIGN §3.8

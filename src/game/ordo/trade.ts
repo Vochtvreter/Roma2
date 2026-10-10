@@ -3,19 +3,23 @@
 // exports; then, on the merchant's last council day, clearly good deals. Contracts are tagged 'ordo' and carry their
 // Reason; the Ordo tidies only its own contracts (never a player's). Every coin spent respects the saving target and the
 // treasury floor and keeps a coin runway (90 days for contracts, 60 for the merchant).
-import { B } from '../balance';
-import { HUBS, RULES, TRADE_RES } from '../types';
+import { B as B$ } from '../balance';
+import { HUBS as HUBS$, RULES as RULES$, TRADE_RES as TRADE_RES$ } from '../types';
 import type { ContractSpec, Cost, GameState, HubId, Reason, ResId, SimView, TickContext, TradeRes } from '../types';
 import { cancelContract, caravanSlots, createContract, hubOpen, price, takeOffer, tripDays } from '../trade';
 import { settingValue } from '../decisions';
 import { capitoliumFlow } from '../construction';
 import { missing } from '../state';
-import { BUILDING_DEFS } from '../data/buildings';
-import { TRADE_BASE } from '../data/hubs';
-import { RANK_DEFS } from '../data/ranks';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { TRADE_BASE as TRADE_BASE$ } from '../data/hubs';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { canSpend, capitoliumAhead, etaDays, outputRates, reserved, savingParts } from './saving';
 import { houseWants, walkWishes } from './build';
 import { chronicle } from './chronicle';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HUBS = HUBS$, RULES = RULES$, TRADE_RES = TRADE_RES$, BUILDING_DEFS = BUILDING_DEFS$,
+  TRADE_BASE = TRADE_BASE$, RANK_DEFS = RANK_DEFS$;
 
 const MIN_EXPORT = B.ordo.MIN_EXPORT;   // the smallest surplus worth a caravan
 const MATERIALS: TradeRes[] = ['timber', 'stone', 'tiles', 'iron'];

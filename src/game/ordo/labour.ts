@@ -3,19 +3,25 @@
 // tools → oil → services → focus split → leftovers). Within a step: High priority first, then the best output per hand
 // this season, then lowest id (Hearthlands' marginal-yield staffing). Each labour line keeps the Reason of the step that
 // first staffed its category; later steps may add detail to it (the winter stock to the food line).
-import { B } from '../balance';
-import { HOUSE_TIERS, LABOR_CATS, RESOURCES } from '../types';
+import { B as B$ } from '../balance';
+import { HOUSE_TIERS as HOUSE_TIERS$, LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$ } from '../types';
 import type { Building, BuildingDef, BuildingId, CoverageLayerId, GameState, LaborCat, LabourLine, LabourPlan, NeedId, Reason, ReasonCode, ResId, SimView } from '../types';
-import { nextSeasonStart, seasonLength, seasonOf } from '../calendar';
+import { nextSeasonStart as nextSeasonStart$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
 import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
 import { getBuilding } from '../state';
-import { dayEpoch, memo } from '../memo';
-import { roadNeighbors } from '../derived';
-import { BUILDING_DEFS } from '../data/buildings';
-import { TIER_DEFS } from '../data/housing';
-import { FOCUS_DEFS } from '../data/decisions';
+import { dayEpoch as dayEpoch$, memo as memo$ } from '../memo';
+import { roadNeighbors as roadNeighbors$ } from '../derived';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { houseWants, materialNeeds } from './build';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
+  nextSeasonStart = nextSeasonStart$, seasonLength = seasonLength$, seasonOf = seasonOf$, dayEpoch = dayEpoch$,
+  memo = memo$, roadNeighbors = roadNeighbors$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
+  FOCUS_DEFS = FOCUS_DEFS$;
 
 /** Works that stop drawing water while the Lex de annona pauses them (DESIGN §8.12 step 2): they get no hands. */
 export const WATER_PAUSED: readonly BuildingId[] = ['caementarium', 'balneum', 'thermae'];

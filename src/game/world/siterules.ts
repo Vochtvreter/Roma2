@@ -1,15 +1,20 @@
 // src/game/world/siterules.ts — DESIGN §5.1 site rules (canPlace check 11) on the live state. Owner: WP-A.
 // `ruleFail` checks one site and names the failure; `ruleTester` answers the same question for many sites at once
 // (prefix sums over the same predicates), so canPlace and validSlots always agree.
-import { B } from '../balance';
-import { F, T } from '../types';
+import { B as B$ } from '../balance';
+import { F as F$, T as T$ } from '../types';
 import type { BuildingId, GameState, PlaceFail, Rect, Survey } from '../types';
-import { getMap } from '../map';
-import { dayLayout, memo } from '../memo';
-import { sizeOf } from '../derived';
-import { BUILDING_DEFS } from '../data/buildings';
-import { GH, GN, GW, PrefixSum, anySide, rectGap } from './grid';
-import { countT, isFertileT, isHillsRockT, isHillsScrubT } from './rules';
+import { getMap as getMap$ } from '../map';
+import { dayLayout as dayLayout$, memo as memo$ } from '../memo';
+import { sizeOf as sizeOf$ } from '../derived';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { GH as GH$, GN as GN$, GW as GW$, PrefixSum, anySide as anySide$, rectGap as rectGap$ } from './grid';
+import { countT as countT$, isFertileT as isFertileT$, isHillsRockT as isHillsRockT$, isHillsScrubT as isHillsScrubT$ } from './rules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, F = F$, T = T$, getMap = getMap$, dayLayout = dayLayout$, memo = memo$, sizeOf = sizeOf$,
+  BUILDING_DEFS = BUILDING_DEFS$, GH = GH$, GN = GN$, GW = GW$, anySide = anySide$, rectGap = rectGap$,
+  countT = countT$, isFertileT = isFertileT$, isHillsRockT = isHillsRockT$, isHillsScrubT = isHillsScrubT$;
 
 const S = B.site;
 const WOODS_R = S.VENATIO_R;                      // 5

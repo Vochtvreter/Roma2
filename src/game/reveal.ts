@@ -2,16 +2,21 @@
 // DESIGN §15.3, §11.9, §10.10, §9.4). Owner: WP-D.
 // Things gated by a milestone are revealed when that milestone is done (MILESTONES' unlock lists are the one source of
 // truth); the rest follow the reveal columns of DESIGN §15.3 / §11.9. Reveals never depend on the UI.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { BuildingId, CoverageLayerId, GameState, OverlayId, ResId, SectionId, SwitchId, TabId, ToolId, TradeRes, UnlockRef } from './types';
-import { elapsed, toRoman } from './calendar';
-import { derived } from './derived';
+import { elapsed as elapsed$, toRoman as toRoman$ } from './calendar';
+import { derived as derived$ } from './derived';
 import { MILESTONES, milestoneDone, milestoneUnlocking, unlockLabel } from './objectives';
 import { NEVER } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { EDICT_DEFS, SETTING_DEFS } from './data/decisions';
-import { HUB_DEFS } from './data/hubs';
-import { EDICTS, HUBS, RESOURCES, SETTINGS, SWITCHES } from './types';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { EDICT_DEFS as EDICT_DEFS$, SETTING_DEFS as SETTING_DEFS$ } from './data/decisions';
+import { HUB_DEFS as HUB_DEFS$ } from './data/hubs';
+import { EDICTS as EDICTS$, HUBS as HUBS$, RESOURCES as RESOURCES$, SETTINGS as SETTINGS$, SWITCHES as SWITCHES$ } from './types';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, elapsed = elapsed$, toRoman = toRoman$, derived = derived$, BUILDING_DEFS = BUILDING_DEFS$,
+  EDICT_DEFS = EDICT_DEFS$, SETTING_DEFS = SETTING_DEFS$, HUB_DEFS = HUB_DEFS$, EDICTS = EDICTS$, HUBS = HUBS$,
+  RESOURCES = RESOURCES$, SETTINGS = SETTINGS$, SWITCHES = SWITCHES$;
 
 const VICUS = 1;
 const MONITUM = 1;

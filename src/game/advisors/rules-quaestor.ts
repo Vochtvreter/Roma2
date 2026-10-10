@@ -2,16 +2,20 @@
 // quaestor.merchant) (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
-import { B } from '../balance';
-import { TRADE_RES } from '../types';
+import { B as B$ } from '../balance';
+import { TRADE_RES as TRADE_RES$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, Remedy, RuleId, SimView, TradeRes } from '../types';
-import { dateOf, dayOf, formatRoman } from '../calendar';
+import { dateOf as dateOf$, dayOf as dayOf$, formatRoman as formatRoman$ } from '../calendar';
 import { settingValue } from '../decisions';
 import { missing } from '../state';
-import { BUILDING_DEFS } from '../data/buildings';
-import { SETTING_DEFS } from '../data/decisions';
-import { HUB_DEFS } from '../data/hubs';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
+import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
 import { R, STEP, bestHub, days, exportRemedy, held, inDays, int, listJoin, lowLadder, num, resName, runway, three, todayRate } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, TRADE_RES = TRADE_RES$, dateOf = dateOf$, dayOf = dayOf$, formatRoman = formatRoman$,
+  BUILDING_DEFS = BUILDING_DEFS$, SETTING_DEFS = SETTING_DEFS$, HUB_DEFS = HUB_DEFS$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 /** Works whose closing saves coin without starving or unhousing anyone (DESIGN §11.6 "costliest optional"). */

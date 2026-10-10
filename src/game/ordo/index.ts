@@ -2,7 +2,7 @@
 // Order: emergency (daily) → labour (daily) → the player's pin and requests (daily) → build (even days) → trade
 // (day % 10 == 5). An area runs when its toggle is on, or offline with Govern while away; the player's own orders (pin,
 // requests) are carried out either way. The report is kept in a WeakMap (never saved, never read by the sim).
-import { B } from '../balance';
+import { B as B$ } from '../balance';
 import type { CouncilReport, GameState, LaborCat, LabourPlan, OrdoArea, Reason, SimView, TickContext } from '../types';
 import type { Rng } from '../rng';
 import { switchOn } from '../decisions';
@@ -12,6 +12,9 @@ import { newWishes, ordoBuild, processRequests, wishList } from './build';
 import { ordoTrade, ordoTradeWould } from './trade';
 import { savingFor, savingReason } from './saving';
 import { beginDay, decisionsToday } from './chronicle';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$;
 
 const reports = new WeakMap<GameState, CouncilReport>();
 const AGENDA = 3;            // wishes shown in the Agenda (DESIGN §10.6)

@@ -1,10 +1,14 @@
 // src/game/world/gen.ts — seeded terrain: elevation, moisture, the river and the terrain classes (DESIGN §3.3 steps 1–4).
 // Owner: WP-A. Pure function of the terrain seed. Features, the castrum and the guarantees live in castrum.ts.
-import { B } from '../balance';
-import { T } from '../types';
-import { MAP_SEED_XOR, Rng, hash2 } from '../rng';
-import { GH, GN, GW, chebDistance } from './grid';
-import { fbmField, noise1, stretch } from './noise';
+import { B as B$ } from '../balance';
+import { T as T$ } from '../types';
+import { MAP_SEED_XOR as MAP_SEED_XOR$, Rng, hash2 as hash2$ } from '../rng';
+import { GH as GH$, GN as GN$, GW as GW$, chebDistance as chebDistance$ } from './grid';
+import { fbmField as fbmField$, noise1 as noise1$, stretch as stretch$ } from './noise';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, T = T$, MAP_SEED_XOR = MAP_SEED_XOR$, hash2 = hash2$, GH = GH$, GN = GN$, GW = GW$,
+  chebDistance = chebDistance$, fbmField = fbmField$, noise1 = noise1$, stretch = stretch$;
 
 const G = B.map.GEN;
 const SHAPE = G.SHAPE;                           // shape constants of the noise and the river course

@@ -1,24 +1,30 @@
 // src/game/economy.ts — the one formula module: production, consumption, storage (ARCHITECTURE §8.3, DESIGN §8). Owner: WP-B.
 // The tick, the forecast, the Ordo and the tooltips all read these functions. Stocks are floats: nothing here floors.
-import { B } from './balance';
-import { RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { RESOURCES as RESOURCES$ } from './types';
 import type {
   Building, BuildingId, Census, Essential, GameState, MulKey, Person, Quad, Res, ResId, SeasonIndex, SkillId, TickContext,
 } from './types';
 import type { Rng } from './rng';
 import { census, peopleIndex, stageOf } from './census';
-import { seasonOf } from './calendar';
-import { fx, fxAdd, fxSources } from './fx';
+import { seasonOf as seasonOf$ } from './calendar';
+import { fx as fx$, fxAdd as fxAdd$, fxSources as fxSources$ } from './fx';
 import { emptyRes, log } from './state';
-import { censusEpoch, layoutEpoch, memo } from './memo';
+import { censusEpoch as censusEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
 import { siteMult } from './site';
 import { gainSkill } from './people';
 import { worksQueue } from './construction';
 import { edictOption, settingValue } from './decisions';
-import { derived, sizeOf, classAt } from './derived';
-import { getMap, inBounds, idx, W } from './map';
-import { BUILDING_DEFS, TOOL_ORDER } from './data/buildings';
-import { RESOURCE_DEFS } from './data/resources';
+import { derived as derived$, sizeOf as sizeOf$, classAt as classAt$ } from './derived';
+import { getMap as getMap$, inBounds as inBounds$, idx as idx$, W as W$ } from './map';
+import { BUILDING_DEFS as BUILDING_DEFS$, TOOL_ORDER as TOOL_ORDER$ } from './data/buildings';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, seasonOf = seasonOf$, fx = fx$, fxAdd = fxAdd$, fxSources = fxSources$,
+  censusEpoch = censusEpoch$, layoutEpoch = layoutEpoch$, memo = memo$, derived = derived$, sizeOf = sizeOf$,
+  classAt = classAt$, getMap = getMap$, inBounds = inBounds$, idx = idx$, W = W$, BUILDING_DEFS = BUILDING_DEFS$,
+  TOOL_ORDER = TOOL_ORDER$, RESOURCE_DEFS = RESOURCE_DEFS$;
 
 const E = B.economy;
 const HIEMS: SeasonIndex = 3;

@@ -1,7 +1,10 @@
 // src/game/world/noise.ts — seeded value noise and fractal noise for terrain generation. Owner: WP-A.
 // Built on the stateless `hash2`, so every value is a pure function of (x, y, seed). `fbmField` caches the lattice
 // of each octave over a bounded domain, which makes whole-map sampling several times faster than calling `fbm`.
-import { hash2 } from '../rng';
+import { hash2 as hash2$ } from '../rng';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const hash2 = hash2$;
 
 function smooth(t: number): number {
   return t * t * (3 - 2 * t);

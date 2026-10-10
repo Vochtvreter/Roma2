@@ -2,25 +2,30 @@
 // checkRemedy says whether a remedy can run now and, if not, why (the button stays visible, disabled with that reason);
 // applyRemedy runs sim remedies through the frozen action API; UI remedies (place, open, overlay, contract,
 // building:center) are executed by App.applyRemedy and only checked here. Nothing here throws.
-import { B } from '../balance';
+import { B as B$ } from '../balance';
 import type { ActionResult, BuildingId, EdictId, FailCode, GameState, LaborCat, OrdoArea, OverlayId, Remedy, TabId } from '../types';
 import * as act from '../actions';
-import { aucYear, formatRoman } from '../calendar';
+import { aucYear as aucYear$, formatRoman as formatRoman$ } from '../calendar';
 import { census } from '../census';
-import { derived } from '../derived';
+import { derived as derived$ } from '../derived';
 import { edictOption, edictWindow, isUnlocked, settingValue, switchOn } from '../decisions';
 import { triggerRelief } from '../events';
-import { pushActionFx } from '../memo';
+import { pushActionFx as pushActionFx$ } from '../memo';
 import { MILESTONES } from '../objectives';
 import { canPlace, validSlots } from '../place';
 import { overlayRevealed, tabRevealed } from '../reveal';
 import { newCtx, view } from '../sim';
 import { getBuilding } from '../state';
 import { checkDispatch, hubOpen, price } from '../trade';
-import { BUILDING_DEFS } from '../data/buildings';
-import { EDICT_DEFS, FOCUS_DEFS, SETTING_DEFS, SWITCH_DEFS } from '../data/decisions';
-import { HUB_DEFS } from '../data/hubs';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { EDICT_DEFS as EDICT_DEFS$, FOCUS_DEFS as FOCUS_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from '../data/decisions';
+import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
 import { aName, bestHub, days, int, rankWord, resName } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, aucYear = aucYear$, formatRoman = formatRoman$, derived = derived$, pushActionFx = pushActionFx$,
+  BUILDING_DEFS = BUILDING_DEFS$, EDICT_DEFS = EDICT_DEFS$, FOCUS_DEFS = FOCUS_DEFS$, SETTING_DEFS = SETTING_DEFS$,
+  SWITCH_DEFS = SWITCH_DEFS$, HUB_DEFS = HUB_DEFS$;
 
 const OK: ActionResult = { ok: true };
 const fail = (code: FailCode, reason: string): ActionResult => ({ ok: false, code, reason });

@@ -5,28 +5,34 @@
 // of a good the target lacks. Survival wishes ignore the reserve, the treasury floor, the stake and the site limit.
 // Never: demolish, move, convert, build in reserved blocks or blocks holding unfinished player works, place on future-ring
 // blocks (canPlace for owner 'ordo'), raise a hortus or pave except under Urbs (or on request).
-import { B } from '../balance';
-import { NEEDS, RESOURCES } from '../types';
+import { B as B$ } from '../balance';
+import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
 import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
-import { dateOf, seasonLength, seasonOf } from '../calendar';
+import { dateOf as dateOf$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
 import { addCost, canAfford, getBuilding, log, missing } from '../state';
-import { memo, structEpoch, dayEpoch, dayStruct } from '../memo';
+import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$ } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
 import { desirability, houseDesir, previewCovered } from '../coverage';
 import { buildingRateOf, maxPotential, seasonMult } from '../economy';
-import { fxAdd } from '../fx';
-import { idx, tx, ty } from '../map';
-import { BUILDING_DEFS } from '../data/buildings';
-import { TIER_DEFS } from '../data/housing';
-import { FOCUS_DEFS } from '../data/decisions';
+import { fxAdd as fxAdd$ } from '../fx';
+import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
 import { houseWants as eachHouseWant } from '../advisors/util';
 import { peopleIndex } from '../census';
-import { classAt, sizeOf } from '../derived';
-import { rectGap } from '../world/grid';
+import { classAt as classAt$, sizeOf as sizeOf$ } from '../derived';
+import { rectGap as rectGap$ } from '../world/grid';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$, seasonLength = seasonLength$,
+  seasonOf = seasonOf$, memo = memo$, structEpoch = structEpoch$, dayEpoch = dayEpoch$, dayStruct = dayStruct$,
+  fxAdd = fxAdd$, idx = idx$, tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
+  FOCUS_DEFS = FOCUS_DEFS$, classAt = classAt$, sizeOf = sizeOf$, rectGap = rectGap$;
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
 const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food

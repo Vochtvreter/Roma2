@@ -2,20 +2,29 @@
 // Site notes carry one number each: a multiplier note (river, loam, fields, woods, rock, vein, quarryNear, mineNear,
 // water) holds the percentage it adds or takes (+20, −40); `forum` holds road steps; `covers`/`unblocks` hold houses;
 // `felling` holds timber; `clay`, `district` and `via` hold nothing.
-import { B } from './balance';
-import { BUILDINGS, LAYERS, T } from './types';
+import { B as B$ } from './balance';
+import { BUILDINGS as BUILDINGS$, LAYERS as LAYERS$, T as T$ } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote, WorldMap } from './types';
-import { getMap, woodAt } from './map';
-import { blockOfTile, classAt, derived, sizeOf } from './derived';
-import { dayEpoch, layoutEpoch, memo } from './memo';
+import { getMap as getMap$, woodAt as woodAt$ } from './map';
+import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, sizeOf as sizeOf$ } from './derived';
+import { dayEpoch as dayEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
 import { coverage, desirability, previewCovered, previewDesir, type PreviewLayer } from './coverage';
 import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
 import { getBuilding } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { GH, GW, PrefixSum, rectGap, rectTiles, sideTiles } from './world/grid';
-import { countRingT, countT, fertilityOf, isForestT, isHillsRockT, isHillsScrubT, quarryFactor } from './world/rules';
-import { aroundSum, woodAround, woodDependent, woodSums } from './world/siterules';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { GH as GH$, GW as GW$, PrefixSum, rectGap as rectGap$, rectTiles as rectTiles$, sideTiles as sideTiles$ } from './world/grid';
+import { countRingT as countRingT$, countT as countT$, fertilityOf as fertilityOf$, isForestT as isForestT$, isHillsRockT as isHillsRockT$, isHillsScrubT as isHillsScrubT$, quarryFactor as quarryFactor$ } from './world/rules';
+import { aroundSum as aroundSum$, woodAround as woodAround$, woodDependent as woodDependent$, woodSums as woodSums$ } from './world/siterules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, BUILDINGS = BUILDINGS$, LAYERS = LAYERS$, T = T$, getMap = getMap$, woodAt = woodAt$,
+  blockOfTile = blockOfTile$, classAt = classAt$, derived = derived$, sizeOf = sizeOf$, dayEpoch = dayEpoch$,
+  layoutEpoch = layoutEpoch$, memo = memo$, BUILDING_DEFS = BUILDING_DEFS$, GH = GH$, GW = GW$, rectGap = rectGap$,
+  rectTiles = rectTiles$, sideTiles = sideTiles$, countRingT = countRingT$, countT = countT$,
+  fertilityOf = fertilityOf$, isForestT = isForestT$, isHillsRockT = isHillsRockT$, isHillsScrubT = isHillsScrubT$,
+  quarryFactor = quarryFactor$, aroundSum = aroundSum$, woodAround = woodAround$, woodDependent = woodDependent$,
+  woodSums = woodSums$;
 
 const S = B.site;
 const SC = B.score;

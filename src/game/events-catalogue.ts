@@ -3,25 +3,31 @@
 // Every card's default is its cautious option and costs nothing. Losses are clamped: no event takes more than
 // CLAMP_RES of a stock or kills more than CLAMP_POP of the people (DESIGN §12.1). Option costs are the player's own
 // choice and are shown on the card.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type {
   Building, ChoiceOption, Cost, EventId, Family, GameState, Modifier, PendingChoice, Person, SimView, SkillId, TickContext,
 } from './types';
 import type { Rng } from './rng';
-import { aucYear, formatRoman, nextSeasonStart, seasonOf } from './calendar';
-import { fx } from './fx';
-import { touchPeople } from './memo';
+import { aucYear as aucYear$, formatRoman as formatRoman$, nextSeasonStart as nextSeasonStart$, seasonOf as seasonOf$ } from './calendar';
+import { fx as fx$ } from './fx';
+import { touchPeople as touchPeople$ } from './memo';
 import { getPerson, log, nextId } from './state';
 import { coverage, houseHas } from './coverage';
-import { footprintOf, roadNeighbors } from './derived';
-import { getMap } from './map';
+import { footprintOf as footprintOf$, roadNeighbors as roadNeighbors$ } from './derived';
+import { getMap as getMap$ } from './map';
 import { siteMult } from './site';
 import { FEVER_VOW, evictOverflow, makeFamily, personName, settleFamily } from './people';
 import { careShare } from './civic';
 import { daysOnHand } from './objectives';
-import { BUILDING_DEFS } from './data/buildings';
-import { GENTES_IMMIGRANT, GENTES_VETERAN } from './data/names';
-import { TRADE_BASE } from './data/hubs';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { GENTES_IMMIGRANT as GENTES_IMMIGRANT$, GENTES_VETERAN as GENTES_VETERAN$ } from './data/names';
+import { TRADE_BASE as TRADE_BASE$ } from './data/hubs';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, aucYear = aucYear$, formatRoman = formatRoman$, nextSeasonStart = nextSeasonStart$, seasonOf = seasonOf$,
+  fx = fx$, touchPeople = touchPeople$, footprintOf = footprintOf$, roadNeighbors = roadNeighbors$, getMap = getMap$,
+  BUILDING_DEFS = BUILDING_DEFS$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, GENTES_VETERAN = GENTES_VETERAN$,
+  TRADE_BASE = TRADE_BASE$;
 
 const E = B.events;
 const EV = B.events;                             // the catalogue's tunables (DESIGN §12.2)

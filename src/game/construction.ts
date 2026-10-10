@@ -1,22 +1,26 @@
 // src/game/construction.ts — works queue, stakes, plans, builders, the Capitolium (ARCHITECTURE §8.3, DESIGN §5.3, §9.5). Owner: WP-B.
 // Builders pour work into the first site of the queue until it is done, then the next; the Capitolium takes what is left,
 // at most CAP_CREW builders' worth, and draws its materials pro rata to the work it receives.
-import { B } from './balance';
-import { RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Building, Cost, GameState, HouseState, Person, ResId, TickContext } from './types';
-import { getMap } from './map';
-import { invalidate, touchPeople } from './memo';
+import { getMap as getMap$ } from './map';
+import { invalidate as invalidate$, touchPeople as touchPeople$ } from './memo';
 import { canAfford, getBuilding, log, nextId, pay, refund } from './state';
-import { fx } from './fx';
+import { fx as fx$ } from './fx';
 import { census, peopleIndex, stageOf } from './census';
 import { buildingRate, legacyMult, productivity } from './economy';
 import { gainSkill } from './people';
 import { savingFor } from './ordo/saving';
 import { settingValue } from './decisions';
-import { seasonOf } from './calendar';
+import { seasonOf as seasonOf$ } from './calendar';
 import { view } from './sim';
 import { placementCost } from './place';
-import { BUILDING_DEFS } from './data/buildings';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, invalidate = invalidate$, touchPeople = touchPeople$, fx = fx$,
+  seasonOf = seasonOf$, BUILDING_DEFS = BUILDING_DEFS$;
 
 const C = B.construction;
 const EPS = 1e-9;

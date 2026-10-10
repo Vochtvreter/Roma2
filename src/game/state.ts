@@ -1,21 +1,28 @@
 // src/game/state.ts — the new game, the founding roster, the log and cost helpers (ARCHITECTURE §8.1, DESIGN §6.2, §18.1).
-import { B } from './balance';
-import { ADVISORS, EDICTS, LABOR_CATS, RESOURCES, SETTINGS, SWITCHES, TRADE_RES } from './types';
+import { B as B$ } from './balance';
+import { ADVISORS as ADVISORS$, EDICTS as EDICTS$, LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, SETTINGS as SETTINGS$, SWITCHES as SWITCHES$, TRADE_RES as TRADE_RES$ } from './types';
 import type {
   AdvisorId, Block, Building, BuildingId, Cost, DecisionState, EdictId, Family, GameState, HouseState, LaborCat,
   LogKind, LogTag, OrdoState, Person, Res, SettingId, SkillId, SwitchId, TradeRes,
 } from './types';
-import { GAME_SEED_XOR } from './rng';
-import { getMap } from './map';
-import { plotOrigin } from './survey';
-import { footprintOf } from './derived';
+import { GAME_SEED_XOR as GAME_SEED_XOR$ } from './rng';
+import { getMap as getMap$ } from './map';
+import { plotOrigin as plotOrigin$ } from './survey';
+import { footprintOf as footprintOf$ } from './derived';
 import { roadPathFor } from './place';
-import { invalidate } from './memo';
-import { formatRoman } from './calendar';
-import { BUILDING_DEFS } from './data/buildings';
-import { EDICT_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
-import { COLONY_NAMES } from './data/names';
+import { invalidate as invalidate$ } from './memo';
+import { formatRoman as formatRoman$ } from './calendar';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { EDICT_DEFS as EDICT_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from './data/decisions';
+import { COLONY_NAMES as COLONY_NAMES$ } from './data/names';
 import { SAVE_VERSION } from './save';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, ADVISORS = ADVISORS$, EDICTS = EDICTS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
+  SETTINGS = SETTINGS$, SWITCHES = SWITCHES$, TRADE_RES = TRADE_RES$, GAME_SEED_XOR = GAME_SEED_XOR$, getMap = getMap$,
+  plotOrigin = plotOrigin$, footprintOf = footprintOf$, invalidate = invalidate$, formatRoman = formatRoman$,
+  BUILDING_DEFS = BUILDING_DEFS$, EDICT_DEFS = EDICT_DEFS$, SETTING_DEFS = SETTING_DEFS$, SWITCH_DEFS = SWITCH_DEFS$,
+  COLONY_NAMES = COLONY_NAMES$;
 
 /** "Never happened" day for cooldown counters (far in the past; plain JSON, unlike −Infinity). */
 export const NEVER = -1_000_000;

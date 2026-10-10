@@ -2,18 +2,22 @@
 // Saving target = petition fee (once its other requirements are met) + player plans + pin + requests + the pending wish.
 // Every Ordo spend except survival draws only on stock above it (and keeps the treasury floor); renovations and
 // export contracts read the same reservation, so saving never deadlocks building or renovation.
-import { B } from '../balance';
-import { RESOURCES } from '../types';
+import { B as B$ } from '../balance';
+import { RESOURCES as RESOURCES$ } from '../types';
 import type { Building, BuildingId, Cost, GameState, Reason, ResId, SimView } from '../types';
 import { addCost, canAfford, missing, scaleCost } from '../state';
 import { petitionNeeds, settingValue } from '../decisions';
 import { capitoliumFlow } from '../construction';
-import { dayEpoch, memo, structEpoch } from '../memo';
-import { seasonOf } from '../calendar';
+import { dayEpoch as dayEpoch$, memo as memo$, structEpoch as structEpoch$ } from '../memo';
+import { seasonOf as seasonOf$ } from '../calendar';
 import { buildingRate } from '../economy';
-import { fx } from '../fx';
+import { fx as fx$ } from '../fx';
 import { placementCost } from '../place';
 import { walkWishes } from './build';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, dayEpoch = dayEpoch$, memo = memo$, structEpoch = structEpoch$,
+  seasonOf = seasonOf$, fx = fx$;
 
 /** What a saving part is for, in priority order. */
 export type SavingKind = 'petition' | 'plan' | 'pin' | 'request' | 'wish';
