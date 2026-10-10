@@ -103,7 +103,7 @@ function reckonHouseWants(s: GameState, list: ReturnType<typeof eachHouseWant>):
 }
 
 /** The Ordo's slot for a type: A's best slot (validSlots for owner 'ordo' already keeps off reserved blocks and blocks
- *  holding a player plan or unfinished player site), off the block it keeps for the thermae (keptBlock); a castellum
+ *  holding a player plan or unfinished player site), off the blocks it keeps for other works (keptBlocks); a castellum
  *  goes only where a free block for the thermae lies within its reach (castellumSlot). Chosen once a day per structure:
  *  the wish walk runs again after every change of jobs or people, and a full scoring pass each time cost more than the
  *  whole rest of the Ordo. */
@@ -127,7 +127,7 @@ function bestScored(s: GameState, type: BuildingId, purpose: ReasonCode, ok: (ti
   return best;
 }
 
-/** The lowest valid Ordo slot of a type off the kept block (memo on structure and day, like A's validSlots). The walk
+/** The lowest valid Ordo slot of a type off the kept blocks (memo on structure and day, like A's validSlots). The walk
  *  asks only whether a wish has a slot and what it costs (tile-independent except a castellum's route); the best slot —
  *  a full scoring pass of every valid slot — is searched only when the wish is placed or shown (lazyTile). */
 function anyOpenSlot(s: GameState, type: BuildingId): number | null {
@@ -270,7 +270,7 @@ function castellumSlot(s: GameState, purpose: ReasonCode): number | null {
   return memo(s, `ordo.castellumSlot.${purpose}`, blockKey(s), () => bestScored(s, 'castellum', purpose, ok) ?? best);
 }
 
-/** A work of `type` at `tile` would take part of a block kept for another charter work. */
+/** A work of `type` at `tile` would take part of a block kept for another work. */
 function overlapsKept(s: GameState, type: BuildingId, tile: number, kept = keptBlocks(s)): boolean {
   if (kept.length === 0) return false;
   const x = tx(tile), y = ty(tile);
@@ -305,7 +305,7 @@ function waitingFor(s: GameState, v: SimView, need: NeedId): number[] {
 }
 
 /** The Ordo's slot for a service raised for the houses waiting on `need`: the slot that serves the most of them, off
- *  the kept block (advisors/util serveSlot); null when no valid slot reaches one. */
+ *  the blocks kept for other works (advisors/util serveSlot); null when no valid slot reaches one. */
 function ordoServeSlot(s: GameState, v: SimView, type: BuildingId, need: NeedId): { tile: number; k: number } | null {
   return serveSlot(s, type, 'ordo', need, waitingFor(s, v, need), keptSlots(s, type));
 }
