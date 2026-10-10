@@ -121,7 +121,7 @@ const access: CadencedRule = {
       params: { n: dry.length, tile: dry[Math.floor(dry.length / 2)].tile },
     };
   },
-  title: (_s, a) => `${P(a.params.n)} homes fetch water from the river.`,
+  title: (_s, a) => (P(a.params.n) === 1 ? 'A home fetches water from the river.' : `${P(a.params.n)} homes fetch water from the river.`),
   text(s, v, a) {
     const type = serviceFor(s, 'water', v.d.castellumActive) ?? 'puteus';
     const what = type === 'lacus' ? 'a fountain' : 'a well';

@@ -159,7 +159,7 @@ const beds: AdvisorRule = {
     }
     const plot = TIER_DEFS.tentoria.beds;
     const roofless = P(p.homeless) > 0 ? ` The roofless leave after ${B.people.HOMELESS_LEAVE} days.` : '';
-    return `${P(p.free)} ${P(p.free) === 1 ? 'bed stands' : 'beds stand'} empty in our ${P(p.houses)} homes. Two more house plots would take ${2 * plot} newcomers.${roofless}`;
+    return `${P(p.free)} ${P(p.free) === 1 ? 'bed stands' : 'beds stand'} empty in our ${P(p.houses)} ${P(p.houses) === 1 ? 'home' : 'homes'}. Two more house plots would take ${2 * plot} newcomers.${roofless}`;
   },
   remedies(s, _v, a) {
     if (a.params.mode === 'roll') return three({ kind: 'open', tab: 'council', anchor: 'petition' });
