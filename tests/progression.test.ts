@@ -1,5 +1,11 @@
 // tests/progression.test.ts — petitions, paths, edict windows, settings, milestones and reveal (WP-D, ARCHITECTURE §15).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// decisions.ts is imported first on purpose: the real civic.ts imports housing.ts → decisions.ts, so if decisions.ts were
+// first loaded from inside the civic mock's importOriginal() it would bind the original dignitas, not the mock below.
+import {
+  choosePath, edictWindow, isUnlocked, nextColonyLegacy, nextPath, pathStory, petitionNeeds, rankUp, setEdict, setFocus, setSetting,
+  setSwitch, settingValue,
+} from '../src/game/decisions';
 import { HUBS, MILESTONE_IDS, PATH_DECISIONS } from '../src/game/types';
 import type { Building, BuildingId, GameState, HouseTierId, MilestoneId, MulKey, AddKey } from '../src/game/types';
 import { nextId } from '../src/game/state';
@@ -7,10 +13,6 @@ import { drainActionFx, invalidate, touchPeople } from '../src/game/memo';
 import { fx, fxAdd } from '../src/game/fx';
 import { formatRoman, nextSeasonStart } from '../src/game/calendar';
 import { view } from '../src/game/sim';
-import {
-  choosePath, edictWindow, isUnlocked, nextColonyLegacy, nextPath, pathStory, petitionNeeds, rankUp, setEdict, setFocus, setSetting,
-  setSwitch, settingValue,
-} from '../src/game/decisions';
 import { FIRST_HIEMS_OVER, MILESTONES, checkObjectives, currentMilestone, milestoneDone, updateCounters } from '../src/game/objectives';
 import {
   buildingVisible, nextTeaser, overlayRevealed, resourceRevealed, revealedRef, sectionRevealed, tabRevealed, toolRevealed,

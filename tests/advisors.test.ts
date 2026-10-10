@@ -22,13 +22,16 @@ vi.mock('../src/game/coverage', async (orig) => {
   return { ...m, houseHas: (s: GameState, id: number, l: CoverageLayerId) => (ctl.covered ? ctl.covered.includes(l) : m.houseHas(s, id, l)) };
 });
 
+// The rule modules are imported first on purpose: the real modules import each other in cycles, and a module first
+// loaded from inside one of the mocks' importOriginal() would bind the original export instead of the mock.
+import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
+import { applyRemedy, checkRemedy, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
 import { fresh, run } from './util';
+import { EDICT_DEFS, SETTING_DEFS } from '../src/game/data/decisions';
 import { B } from '../src/game/balance';
 import { Rng } from '../src/game/rng';
 import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
-import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
-import { applyRemedy, checkRemedy, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -284,6 +287,8 @@ describe('engine', () => {
 describe('remedies', () => {
   it('applies sim remedies through the actions and leaves UI remedies to the UI', () => {
     const s = base();
+    // the setting and the edict are unlocked by their milestones (WP-D's reveal; the phase-1 stub unlocked everything)
+    for (const m of [SETTING_DEFS.grainReserve.unlock, EDICT_DEFS.rationes.unlock]) s.guidance.milestoneDays[m] = s.day;
     expect(applyRemedy(s, { kind: 'setting', setting: 'grainReserve', value: 60 }).ok).toBe(true);
     expect(s.decisions.settings.grainReserve).toBe(60);
     expect(checkRemedy(s, { kind: 'setting', setting: 'grainReserve', value: 60 }).ok).toBe(false);
