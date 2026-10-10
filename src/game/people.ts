@@ -502,6 +502,7 @@ function nameChild(s: GameState, father: Person | null, mother: Person, female: 
 }
 
 function births(s: GameState, ctx: TickContext, rng: Rng): void {
+  if (s.people.length >= P.POP_CAP) return;   // the hard cap (DESIGN §18.3); not a blocked birth for the Aedilis
   const c = census(s);
   const moraleF = Math.min(P.BIRTH_MORALE[2], Math.max(P.BIRTH_MORALE[1], s.morale / P.BIRTH_MORALE[0]));
   const base = (P.BIRTH_RATE * foodFactor(s) * moraleF * fx(s, 'births')) / YEAR;
@@ -528,6 +529,7 @@ function births(s: GameState, ctx: TickContext, rng: Rng): void {
     ctx.fx.push({ kind: 'birth', home: kid.home });
     const parents = father ? `${personName(father)} and ${personName(w)}` : personName(w);
     log(s, 'birth', `${female ? 'A daughter' : 'A son'}, ${personName(kid)}, is born to ${parents}.`, undefined, kid.home ?? undefined);
+    if (s.people.length >= P.POP_CAP) break;
   }
 }
 

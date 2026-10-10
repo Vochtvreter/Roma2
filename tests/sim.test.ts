@@ -330,6 +330,28 @@ describe('people (DESIGN §6)', () => {
     expect(ids.every((v, i) => i === 0 || ids[i - 1] < v)).toBe(true);
   });
 
+  it('no births past the hard cap of 1,500 souls, and the cap is no blocked birth (R43)', () => {
+    const s = fresh();
+    for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
+    s.modifiers.push({ id: 'test.fertile', label: 'fertile', until: 1e9, fx: { mul: { births: 5000 } }, benign: true, source: 'stage' });
+    const mothers = s.people.filter((w) => w.female && w.spouse !== null).length;
+    expect(mothers).toBeGreaterThanOrEqual(2);
+    const extra = B.people.POP_CAP - 1 - s.people.length;
+    s.people.push(...Array.from({ length: extra }, (_, k) => ({ ...s.people[2], id: 10_000 + k, spouse: null, home: null, female: false,
+      born: s.day - 30 * B.time.YEAR_DAYS, mother: null, father: null, work: null, skills: {} })));
+    s.nextId = 20_000;
+    touchPeople(s);
+    const blocked = s.counters.lastBirthBlocked;
+    const rng = new Rng(3);
+    for (let d = 0; d < 5; d++) {
+      s.day++;
+      peopleDay(s, newCtx(), rng);
+      expect(s.people.length).toBeLessThanOrEqual(B.people.POP_CAP);
+    }
+    expect(s.stats.births).toBeGreaterThanOrEqual(1);
+    expect(s.counters.lastBirthBlocked).toBe(blocked);
+  });
+
   it('marries, bears children and buries over the years without NaN', () => {
     const s = fresh();
     for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
