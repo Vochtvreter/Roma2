@@ -22,7 +22,7 @@ import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
-import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
+import { canSpend, capitoliumAhead, etaDays, floorOk, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
 import { houseWants as eachHouseWant } from '../advisors/util';
 import { peopleIndex } from '../census';
@@ -345,8 +345,7 @@ function withFloor(s: GameState, w: Wish): Cost {
  *  target the renovations, the trade and the Capitolium respect is the one the council set (memo on day, structure
  *  epoch and the player's orders and settings). */
 export function walkWishes(s: GameState, v: SimView): Walk {
-  const key = [s.day, structEpoch(s), s.ordo.pin,
-    JSON.stringify(s.ordo.requests), s.decisions.focus, JSON.stringify(s.decisions.settings), JSON.stringify(s.decisions.paths)].join('|');
+  const key = `${s.day}|${structEpoch(s)}|${ordersOf(s).walk}`;
   return memo(s, 'ordo.walk', key, () => {
     const base = addCost(partsCost(savingParts(s, v)), capitoliumAhead(s));
     const out: Walk = { list: [], take: null, pending: null };
