@@ -3,7 +3,7 @@
 // water) holds the percentage it adds or takes (+20, −40); `forum` holds road steps; `covers`/`unblocks` hold houses;
 // `felling` holds timber; `clay`, `district` and `via` hold nothing.
 import { B } from './balance';
-import { LAYERS, T } from './types';
+import { BUILDINGS, LAYERS, T } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote, WorldMap } from './types';
 import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
@@ -208,6 +208,7 @@ interface ScoreCtx {
   byId: Map<number, ScoreCtx['houses'][number]>;
 }
 
+const NO_RECT: Rect = { x: 0, y: 0, w: 0, h: 0 };
 const TIER_LEVEL: readonly string[] = ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'];
 const LAYER_BIT = new Map<CoverageLayerId, number>(LAYERS.map((l, k) => [l, 1 << k]));
 
@@ -230,7 +231,7 @@ function scoreCtx(s: GameState, type?: BuildingId): ScoreCtx {
   for (const id of d.houses) {
     const b = getBuilding(s, id);
     if (!b || !b.house) continue;
-    const rect = rectOf(s, b.type, b.x, b.y);
+    const rect = desir ? rectOf(s, b.type, b.x, b.y) : NO_RECT;   // only the hortus reads the houses' footprints
     let avg = 0;
     if (desir) {
       let sum = 0;
@@ -404,12 +405,81 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
     const slots = validSlots(s, type, owner);
     if (slots.size === 0) return null;
     const ctx = scoreCtx(s, type);
+    const fast = FAST_TYPES.has(type);
     let best: { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null = null;
     for (const tile of [...slots.keys()].sort((a, b) => a - b)) {
       const x = tile % GW, y = Math.floor(tile / GW);
+      if (fast) {
+        const sc = fastScore(s, ctx, type, x, y, purpose);
+        if (!best || sc > best.score + 1e-9) best = { tile, x, y, score: sc, notes: [] };
+        continue;
+      }
       const sc = score(s, ctx, type, x, y, purpose);
       if (!best || sc.score > best.score + 1e-9) best = { tile, x, y, score: sc.score, notes: sc.notes };
     }
+    if (best && fast) best.notes = score(s, ctx, type, best.x, best.y, purpose).notes;   // the same sum, with its notes
     return best;
   });
+}
+
+/** Types the daily slot search scores with fastScore: services, wells, cisterns and fountains, whose score is a fixed
+ *  part per structure (steps to the forum, district, the forum's temple, the water table) plus the houses they would
+ *  reach today and the timber on the plot. */
+const FAST_TYPES: ReadonlySet<BuildingId> = new Set<BuildingId>([...SERVICE_TYPES, ...WATER_TYPES, 'lacus']);
+
+/** What `score` reads of a fast type's slot that only the structure moves (memo per structure epoch and rank): the
+ *  footprint, the steps to the forum, the district and forum terms (services) and the site multiplier (wells). */
+interface SlotFixed { x: number; y: number; w: number; h: number; steps: number; fit: number; forum: number; mult: number }
+const slotFixed = new WeakMap<GameState, { e: number; rank: number; m: Map<number, SlotFixed> }>();
+const TYPE_KEY = new Map<BuildingId, number>(BUILDINGS.map((t, k) => [t, k]));
+
+function fixedOf(s: GameState, type: BuildingId, x: number, y: number): SlotFixed {
+  const e = structEpoch(s);
+  let c = slotFixed.get(s);
+  if (!c || c.e !== e || c.rank !== s.rank) {
+    c = { e, rank: s.rank, m: new Map() };
+    slotFixed.set(s, c);
+  }
+  const k = (TYPE_KEY.get(type) as number) * GW * GH + y * GW + x;
+  let f = c.m.get(k);
+  if (!f) {
+    const r = rectOf(s, type, x, y);
+    const blk: Block | null = classAt(s, type, x, y) === 'rural' ? null : blockOfTile(s, y * GW + x);
+    const fit = (LATERA.includes(type) && blk?.district === 'latera') || (PRAETENTURA.includes(type) && blk?.district === 'praetentura');
+    f = {
+      x: r.x, y: r.y, w: r.w, h: r.h, steps: type === 'lacus' ? 0 : stepsToForum(s, r),
+      fit: fit ? SC.SERVICE.DISTRICT : 0, forum: type === 'templum' && blk?.touchesForum ? SC.SERVICE.TEMPLE_FORUM : 0,
+      mult: siteMultAt(s, type, x, y).mult,
+    };
+    c.m.set(k, f);
+  }
+  return f;
+}
+
+/** `score(...).score` for a fast type, term for term in the same order (so the same float), without its notes. */
+function fastScore(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: number, purpose?: ReasonCode): number {
+  const f = fixedOf(s, type, x, y);
+  let fell = 0;
+  for (let ty = Math.max(0, f.y); ty < Math.min(GH, f.y + f.h); ty++) {
+    for (let tx = Math.max(0, f.x); tx < Math.min(GW, f.x + f.w); tx++) fell += woodAt(s, ty * GW + tx);
+  }
+  let sc = SC.FELL * fell * B.economy.WOOD.FELL_WORK;
+  let unblock = 0, newly = 0, t4 = 0;
+  const { ids, bits } = coverList(s, type, x, y);
+  for (let k = 0; k < ids.length; k++) {
+    const hh = ctx.byId.get(ids[k]);
+    if (!hh) continue;
+    const ls = bits[k];
+    if ((hh.wantMask & ls) !== 0) unblock++;
+    if ((ls & ~hh.mask) !== 0) { newly++; if (hh.level >= 4) t4++; }
+  }
+  if (SERVICE_TYPES.includes(type)) {
+    sc += SC.SERVICE.UNBLOCK * unblock + SC.SERVICE.COVER * newly + SC.SERVICE.STEPS * f.steps + f.fit + f.forum;
+  } else if (WATER_TYPES.includes(type)) {
+    const drought = purpose === 'survivalWater' || purpose === 'aestasWater';
+    sc += SC.WATER.ACCESS * newly + SC.WATER.STEPS * f.steps + (drought ? DROUGHT_SITE * (f.mult - 1) : 0);
+  } else {
+    sc += SC.LACUS.T4 * t4 + SC.LACUS.COVER * newly;
+  }
+  return sc;
 }

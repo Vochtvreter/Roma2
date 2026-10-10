@@ -321,8 +321,21 @@ function desirKey(s: GameState): string {
   });
 }
 
+// desirability(s) is a function of dayEpoch(s) (its key comes from desirKey, memoised on it): a one-entry fast path for
+// the hot readers (houseDesir per house per need) skips the two memo lookups.
+const desirLast = new WeakMap<GameState, { k: number; f: Float32Array }>();
+
 /** Desirability per tile, clamped to DESIR_CLAMP (memo on structEpoch and the tiers of the insulae and domus). */
 export function desirability(s: GameState): Float32Array {
+  const k = dayEpoch(s);
+  const last = desirLast.get(s);
+  if (last && last.k === k) return last.f;
+  const f = desirabilityOf(s);
+  desirLast.set(s, { k, f });
+  return f;
+}
+
+function desirabilityOf(s: GameState): Float32Array {
   return memo(s, 'desirability', desirKey(s), () => {
     const map = getMap(s.seed);
     const field = natureDesir(map).slice();
