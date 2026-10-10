@@ -74,11 +74,13 @@ function preview(g: Game, spec: ContractSpec): { lines: string[]; reason: string
   const value = p * spec.qty;
   const base = TRADE_BASE[spec.res] * spec.qty;
   const one = tripDays(s, spec.hub, spec.qty);
-  const profit = spec.mode === 'export' ? value - base : base - value;
+  const diff = Math.abs(value - base);
+  const exp = spec.mode === 'export';
   const lines = [
-    `${fmt(p)} den each (base ${TRADE_BASE[spec.res]}) · ${spec.mode === 'export' ? `+${fmt(value)} den on return` : `−${fmt(value)} den at dispatch`}`,
-    `${one} days each way, back in ${2 * one} days (${realTime(2 * one, g.speed)})`,
-    `${profit >= 0 ? 'Gain' : 'Loss'} against the base price: ${profit >= 0 ? '+' : '−'}${fmt(Math.abs(profit))} den · ${fmt(value / (2 * one))} den a day on the road`,
+    `${fmt(p)} den each (base ${TRADE_BASE[spec.res]}) · ${exp ? `+${fmt(value)} den on return` : `−${fmt(value)} den at dispatch`}`,
+    `${one} days each way: ${exp ? 'back' : 'the goods arrive'} in ${2 * one} days (${realTime(2 * one, g.speed)})`,
+    diff < 0.5 ? 'At the base price.' : exp ? `${fmt(diff)} den ${value > base ? 'above' : 'below'} the base price · ${fmt(value / (2 * one))} den a day on the road`
+      : `${fmt(diff)} den ${value > base ? 'dearer' : 'cheaper'} than at the base price`,
   ];
   const free = caravanSlots(s) - slotsInUse(s);
   const check = checkDispatch(s, spec, view(s));

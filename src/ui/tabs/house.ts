@@ -105,7 +105,7 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
   }
   if (hs.declining) {
     const lower = HOUSE_TIERS[Math.max(B.housing.MIN_DROP_LEVEL, HOUSE_TIERS.indexOf(hs.tier) - 1)];
-    const lapsed = unmetNeeds(s, b, hs.tier).map((n) => NEED_META[n].label.toLowerCase()).join(', ');
+    const lapsed = unmetNeeds(s, b, hs.tier).map((n) => NEED_META[n].label.charAt(0).toLowerCase() + NEED_META[n].label.slice(1)).join(', ');
     const d = h('div', { class: 'ins-bad' });
     const tick = (): void => { d.textContent = `Declining${lapsed ? `: ${lapsed} lapsed` : ''}. Falls back to ${TIER_DEFS[lower].latin} in ${Math.max(0, B.housing.DROP_AFTER - hs.declineDays)} days unless restored.`; };
     tick();

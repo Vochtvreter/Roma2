@@ -25,8 +25,8 @@ export const PANELS: Readonly<Record<TabId, TabPanel>> = {
 const PULSE_MS = 1600;
 
 /** Runs a UI step; a bug in one panel must never stop the game loop. */
-function safe(what: string, fn: () => void): void {
-  try { fn(); } catch (e) { console.error(`[panels] ${what}`, e); }
+function safe(what: string, fn: () => void): boolean {
+  try { fn(); return true; } catch (e) { console.error(`[panels] ${what}`, e); return false; }
 }
 
 /** Scrolls to `[data-anchor=…]` inside the body and pulses it. */
@@ -171,7 +171,7 @@ export class SidePanel {
     this.ups = [];
     clear(this.body);
     const wrap = h('div', { class: `side-body side-${this.cur}` });
-    safe(`${this.cur} build`, () => PANELS[this.cur].build(this.g, wrap, this.ups));
+    if (!safe(`${this.cur} build`, () => PANELS[this.cur].build(this.g, wrap, this.ups))) wrap.append(h('div', { class: 'tab-quiet' }, 'Part of this page could not be drawn (see the console).'));
     this.body.appendChild(wrap);
     this.body.scrollTop = top;
   }

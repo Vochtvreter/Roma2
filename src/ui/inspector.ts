@@ -131,7 +131,7 @@ export class Inspector {
       if (!b) { card.append(h('div', { class: 'muted' }, 'It is gone.')); return; }
       const def = BUILDING_DEFS[b.type];
       if (b.house && b.status === 'done') {
-        this.head(card, houseSprite(b.house.tier, isAquae(s, b), b.x, b.y), `DOMVS · ${caps(TIER_DEFS[b.house.tier].latin)}`, TIER_DEFS[b.house.tier].latin, sticky);
+        this.head(card, houseSprite(b.house.tier, isAquae(s, b), b.x, b.y), `DOMVS · T${TIER_DEFS[b.house.tier].level}${isAquae(s, b) ? ' · AQVAE' : ''}`, TIER_DEFS[b.house.tier].latin, sticky);
         if (!this.collapsed) card.append(...houseView(this.g, b, this.ups), this.demolish(b));
         return;
       }
@@ -219,7 +219,8 @@ export class Inspector {
     }
     if (def.storage) out.push(h('div', { class: 'ins-line' }, 'Stores: ', Object.entries(def.storage).map(([r, n]) => `+${fmt(n ?? 0)} ${RESOURCE_DEFS[r as keyof typeof RESOURCE_DEFS].name.toLowerCase()}`).join(' · ')));
     const mult = siteMult(s, b);
-    if (Math.abs(mult - 1) > 0.01 || b.notes?.length) out.push(h('div', { class: 'ins-small' }, `Site ${pct(mult)}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`));
+    const site = Math.abs(mult - 1) > 0.01 ? `Site ${pct(mult)}` : 'Site';
+    if (site !== 'Site' || b.notes?.length) out.push(h('div', { class: 'ins-small' }, `${site}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`));
     const flags: string[] = [];
     if (def.upkeep) flags.push(`Upkeep ${fmt(def.upkeep)} den a day${b.unpaid ? ' · UNPAID: works at half pace' : ''}`);
     if ((b.toolUntil ?? 0) > s.day) flags.push(`Tool kit: +20%, ${(b.toolUntil ?? 0) - s.day} days left`);

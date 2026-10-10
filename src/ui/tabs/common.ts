@@ -3,7 +3,7 @@
 import { RESOURCES } from '../../game/types';
 import type { ActionResult, BuildingId, Cost, GameState, ResId, WishView } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
-import { fmt, fmtCost, h, img, tip } from '../dom';
+import { fmtCost, h, img, tip } from '../dom';
 import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
@@ -206,9 +206,4 @@ export function kv(k: Kid, v: Kid, cls = ''): HTMLElement {
 export function pct(mult: number): string {
   const p = Math.round((mult - 1) * 100);
   return p >= 0 ? `+${p}%` : `−${-p}%`;
-}
-
-/** Formats a number with fmt and a unit. */
-export function amount(n: number, unit: string): string {
-  return `${fmt(n)} ${unit}`;
 }
