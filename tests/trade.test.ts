@@ -70,10 +70,10 @@ describe('prices: distance improves the price both ways', () => {
     expect(near).toBe('metellianus');
     expect(far).toBe('augusta');
     for (const h of HUBS) {
-      expect(price(s, near, 'grain', 'buy')!).toBeGreaterThanOrEqual(price(s, h, 'grain', 'buy') ?? 0);
-      expect(price(s, far, 'grain', 'buy')!).toBeLessThanOrEqual(price(s, h, 'grain', 'buy') ?? Infinity);
-      expect(price(s, near, 'tiles', 'sell')!).toBeLessThanOrEqual(price(s, h, 'tiles', 'sell')!);
-      expect(price(s, far, 'tiles', 'sell')!).toBeGreaterThanOrEqual(price(s, h, 'tiles', 'sell')!);
+      expect(price(s, near, 'tiles', 'buy')!).toBeGreaterThanOrEqual(price(s, h, 'tiles', 'buy')!);
+      expect(price(s, far, 'tiles', 'buy')!).toBeLessThanOrEqual(price(s, h, 'tiles', 'buy')!);
+      expect(price(s, near, 'stone', 'sell')!).toBeLessThanOrEqual(price(s, h, 'stone', 'sell')!);
+      expect(price(s, far, 'stone', 'sell')!).toBeGreaterThanOrEqual(price(s, h, 'stone', 'sell')!);
     }
   });
 
