@@ -57,7 +57,7 @@ export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reas
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
 /** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus, T4 residents. */
-export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Record<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
+export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Map<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
 
 /** The houses' wants (memo on day + epochs + the fed gate). Each house's next tier and unmet needs come from the
  *  advisors' list, which is memoised on everything those read (advisors/util houseWants), not recomputed daily. */
@@ -85,11 +85,11 @@ function sameRenovating(s: GameState, list: readonly { id: number }[], was: read
 
 function reckonHouseWants(s: GameState, list: ReturnType<typeof eachHouseWant>, byHome: ReturnType<typeof peopleIndex>['byHome']): HouseWants {
   {
-    const out: HouseWants = { want: {}, first: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
+    const out: HouseWants = { want: {}, first: new Map(), renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
     for (const w of list) {
       const b = getBuilding(s, w.id);
       if (!b?.house || !w.next) continue;
-      if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first[w.id] = w.unmet[0]; }
+      if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first.set(w.id, w.unmet[0]); }
       else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[w.next].renovation);
       if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, w.id) < B.housing.DESIR_DOMUS) out.t3Low++;
     }
@@ -282,7 +282,7 @@ function overCap(s: GameState, caps: Record<ResId, number>, type: BuildingId): b
 function anyReach(s: GameState, v: SimView, type: BuildingId, need: NeedId): boolean {
   const first = houseWants(s, v).first;
   const ids: number[] = [];
-  for (const id of v.d.houses) if (first[id] === need && getBuilding(s, id)) ids.push(id);
+  for (const id of v.d.houses) if (first.get(id) === need && getBuilding(s, id)) ids.push(id);
   if (ids.length === 0) return false;
   const slots = validSlots(s, type, 'ordo');
   const layout = layoutEpoch(s), rank = s.rank;
@@ -306,7 +306,7 @@ function sameIds(a: readonly number[], b: readonly number[]): boolean {
   return true;
 }
 
-function reachAny(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[], first: Record<number, NeedId>, slots: Map<number, number>): boolean {
+function reachAny(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[], first: ReadonlyMap<number, NeedId>, slots: Map<number, number>): boolean {
   const waiting: Rect[] = [];
   for (const id of ids) {
     const b = getBuilding(s, id);
@@ -325,7 +325,7 @@ function reachAny(s: GameState, type: BuildingId, need: NeedId, ids: readonly nu
     const [w, h] = sizeOf(type, classAt(s, type, x, y));
     const r: Rect = { x, y, w, h };
     if (!waiting.some((hr) => rectGap(r, hr) <= reach)) continue;
-    for (const layer of previewCovered(s, type, x, y)) for (const hid of layer.houses) if (first[hid] === need) return true;
+    for (const layer of previewCovered(s, type, x, y)) for (const hid of layer.houses) if (first.get(hid) === need) return true;
   }
   return false;
 }
@@ -338,7 +338,7 @@ const RADIUS_BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadi
 function reaches(s: GameState, v: SimView, type: BuildingId, tile: number, need: NeedId): number {
   const first = houseWants(s, v).first;
   const covered = new Set<number>();
-  for (const layer of previewCovered(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) covered.add(h);
+  for (const layer of previewCovered(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first.get(h) === need) covered.add(h);
   return covered.size;
 }
 

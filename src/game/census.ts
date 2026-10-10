@@ -223,9 +223,14 @@ function slotCounts(s: GameState): SlotCounts {
       const def = BUILDING_DEFS[b.type];
       if (def.slots <= 0) continue;
       const n = b.status === 'done' && b.open ? def.slots : 0;
-      slots[b.id] = n;
       if (def.labor) catSlots[def.labor] += n;
       staffable.push({ id: b.id, labor: def.labor ?? null });
+    }
+    // highest id first, as the census's staffed record (sparse elements, no backing array as long as the highest id)
+    for (let k = s.buildings.length - 1; k >= 0; k--) {
+      const b = s.buildings[k];
+      const def = BUILDING_DEFS[b.type];
+      if (def.slots > 0) slots[b.id] = b.status === 'done' && b.open ? def.slots : 0;
     }
     return { slots, catSlots, staffable };
   });
@@ -255,7 +260,10 @@ function computeCensus(s: GameState): Census {
   const { workforce, patricii } = pc;
   const idle: number[] = [];
   for (const p of pc.able) if (p.work === null) idle.push(p.id);
-  for (const b of s.buildings) {
+  // highest id first: an integer-keyed record that starts at a high key keeps sparse (dictionary) elements, where one
+  // filled from its lowest key grows a backing array as long as the highest building id (kilobytes per census)
+  for (let k = s.buildings.length - 1; k >= 0; k--) {
+    const b = s.buildings[k];
     const n = ix.byWork.get(b.id)?.length ?? 0;
     if (n > 0) staffed[b.id] = n;
   }
