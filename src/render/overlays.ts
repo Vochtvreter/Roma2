@@ -129,9 +129,10 @@ export class OverlayPainter {
   }
 
   private terra(s: GameState, put: Put): void {
-    const map = getMap(s.seed);
+    const map = getMap(s.seed), sv = map.survey;
     for (let i = 0; i < W * H; i++) {
       const t = map.terrain[i] as Terrain, f = map.feature[i];
+      if (sv.fossa[i] || sv.wall[i]) continue;
       if (f === F.fons) put(i, rgbOf(C.spring));
       else if (map.vein[i] > 0) put(i, rgbOf(C.ore), Math.round(140 + 115 * Math.min(1, map.vein[i] / 1.4)));
       else if (f === F.clay) put(i, rgbOf(C.clay));

@@ -7,7 +7,7 @@ import { BUILDER } from '../game/types';
 import type { Building, FxEvent, GameState, LaborCat, Rect, ResId } from '../game/types';
 import { H, W, idx } from '../game/map';
 import { hash2 } from '../game/rng';
-import { derived, roadNeighbors } from '../game/derived';
+import { derived, footprintOf, roadNeighbors } from '../game/derived';
 import { structEpoch } from '../game/memo';
 import { stageOf, isPatrician } from '../game/census';
 import { getBuilding } from '../game/state';
@@ -38,7 +38,9 @@ type Mode = 'walk' | 'in' | 'work' | 'stand';
 interface Walker {
   id: number; x: number; y: number; path: number[]; pi: number; mode: Mode; wait: number; phase: number; facing: 1 | -1;
   alpha: number; leaving: boolean; seen: number; kind: Kind; tint: Record<string, string>; carry: string | null;
-  home: number; work: number | null; leg: 0 | 1 | 2 | 3; lane: number; frames: Map<string, HTMLCanvasElement>;
+  home: number; work: number | null; leg: 0 | 1 | 2 | 3; lane: number;     // leg: 0 at home, 1 to work, 2 strolling, 3 homeward
+  frames: Map<string, HTMLCanvasElement>;
+  door: number; goal: { x: number; y: number } | null;                    // last door reached; a spot inside a field or site
 }
 
 /** Road-graph paths for walkers: BFS over built road tiles with stamped buffers, cached per structure epoch. */
@@ -176,7 +178,7 @@ export class Actors {
         w = {
           id: p.id, x: (door % W) * TILE + 8, y: Math.floor(door / W) * TILE + 10, path: [], pi: 0, mode: 'in', wait: 400 + hash2(p.id, 3) * 4000,
           phase: hash2(p.id, 4) * 10, facing: 1, alpha: 0, leaving: false, seen: stamp, kind, carry: null, home: p.home, work: p.work, leg: 0,
-          lane: (hash2(p.id, 5) - 0.5) * 6, frames: new Map(),
+          lane: (hash2(p.id, 5) - 0.5) * 6, frames: new Map(), door, goal: null,
           tint: { S: tunic, A: kind === 'elder' ? '#e6e2da' : HAIR[p.id % HAIR.length], U: LEGS[(p.id >> 2) % LEGS.length] },
         };
         this.walkers.set(p.id, w);
@@ -186,29 +188,42 @@ export class Actors {
     for (const w of this.walkers.values()) if (w.seen !== stamp) { if (w.mode === 'in') this.walkers.delete(w.id); else w.leaving = true; }
   }
 
-  /** Next leg of a walker's day: home → work → home, or a stroll for children, elders, the idle and patricians. */
+  /** Next leg of a walker's day: home → work (or a stroll for children, elders, the idle and patricians) → home. */
   private plan(s: GameState, w: Walker): void {
     const home = getBuilding(s, w.home);
     const hd = home ? this.roads.door(s, home) : -1;
     const r = Math.random();
-    const here = Math.floor(w.y / TILE) * W + Math.floor(w.x / TILE);
-    let to = hd, workLeg = false;
-    if (w.kind === 'person' && w.work !== null && w.leg === 0) {
+    const here = w.door >= 0 ? w.door : Math.floor(w.y / TILE) * W + Math.floor(w.x / TILE);
+    let to = hd;
+    w.goal = null;
+    w.carry = null;
+    if (w.leg === 0) {
       const d = derived(s);
-      const site = w.work === BUILDER ? getBuilding(s, d.sites[Math.floor(r * Math.min(3, d.sites.length))] ?? -1) : getBuilding(s, w.work);
-      const door = site ? this.roads.door(s, site) : -1;
-      if (door >= 0) { to = door; workLeg = true; }
-    } else if (w.leg === 0) {
-      const f = forumDoor(s);
-      to = w.kind === 'child' ? this.roads.near(hd, 6, r) : w.kind === 'elder' || r < 0.3 ? this.roads.near(f, 4, r) : this.roads.near(hd, 12, r);
+      const job = w.kind !== 'person' || w.work === null ? undefined
+        : w.work === BUILDER ? getBuilding(s, d.sites[Math.floor(r * Math.min(3, d.sites.length))] ?? -1) : getBuilding(s, w.work);
+      const door = job ? this.roads.door(s, job) : -1;
+      if (job && door >= 0) {
+        to = door;
+        w.leg = 1;
+        if (w.work === BUILDER || (BUILDING_DEFS[job.type].place.includes('rural') && ['food', 'materials'].includes(BUILDING_DEFS[job.type].labor ?? ''))) {
+          const f = footprintOf(job, s), t = f[Math.floor(Math.random() * f.length)] ?? door;
+          w.goal = { x: (t % W) * TILE + 3 + Math.random() * 10, y: Math.floor(t / W) * TILE + 6 + Math.random() * 8 };
+        }
+      } else {
+        to = w.kind === 'child' ? this.roads.near(hd, 6, r) : w.kind === 'elder' || r < 0.3 ? this.roads.near(forumDoor(s), 4, r) : this.roads.near(hd, 12, r);
+        w.leg = 2;
+      }
+    } else {
+      if (w.leg === 1 && w.work !== null && w.work !== BUILDER) {
+        const res = BUILDING_DEFS[getBuilding(s, w.work)?.type ?? 'area'].output?.res;
+        w.carry = res ? GOODS[res] ?? null : null;
+      }
+      w.leg = 3;
     }
-    const path = this.roads.path(here, to) ?? [to];
-    w.path = path; w.pi = 0; w.mode = 'walk'; w.leg = workLeg ? 1 : w.leg === 0 ? 2 : 0;
-    if (w.leg === 0 && w.work !== null && w.kind === 'person') {
-      const job = w.work !== BUILDER ? getBuilding(s, w.work) : undefined;
-      const res = job ? BUILDING_DEFS[job.type].output?.res : undefined;
-      w.carry = res ? GOODS[res] ?? null : null;
-    } else w.carry = null;
+    w.path = this.roads.path(here, to) ?? [to];
+    w.pi = 0;
+    w.door = -1;
+    w.mode = 'walk';
   }
 
   private step(s: GameState, w: Walker, dtMs: number, sp: number): void {
@@ -218,13 +233,13 @@ export class Actors {
     w.phase += (dtMs / 1000) * sp;
     if (w.mode !== 'walk') {
       if ((w.wait -= dtMs * sp) > 0) return;
-      if (w.mode === 'work') { w.mode = 'stand'; }
       this.plan(s, w);
       return;
     }
     const t = w.path[w.pi];
-    if (t === undefined) { this.arrive(s, w); return; }
-    const tx = (t % W) * TILE + 8 + w.lane, ty = Math.floor(t / W) * TILE + 10 + w.lane * 0.5;
+    if (t === undefined && !w.goal) { this.arrive(w); return; }
+    const tx = t === undefined ? (w.goal?.x ?? w.x) : (t % W) * TILE + 8 + w.lane, ty = t === undefined ? (w.goal?.y ?? w.y) : Math.floor(t / W) * TILE + 10 + w.lane * 0.5;
+    if (t === undefined && Math.hypot(tx - w.x, ty - w.y) < 0.5) { this.arrive(w); return; }
     const dx = tx - w.x, dy = ty - w.y, dist = Math.hypot(dx, dy);
     const v = SPEED * sp * (w.kind === 'elder' ? 0.6 : w.kind === 'child' ? 1.15 : 1) * (dtMs / 1000);
     if (dist <= v) { w.x = tx; w.y = ty; w.pi++; return; }
@@ -233,18 +248,20 @@ export class Actors {
     if (Math.abs(dx) > 0.3) w.facing = dx > 0 ? 1 : -1;
   }
 
-  private arrive(s: GameState, w: Walker): void {
+  private arrive(w: Walker): void {
     const r = Math.random();
+    w.door = w.path[w.path.length - 1] ?? -1;
     if (w.leg === 1) {
-      const b = w.work === BUILDER ? null : getBuilding(s, w.work ?? -1);
-      const outdoor = w.work === BUILDER || (b && ['food', 'materials'].includes(BUILDING_DEFS[b.type].labor ?? '') && BUILDING_DEFS[b.type].place.includes('rural'));
-      w.mode = outdoor ? 'work' : 'in';
+      w.mode = w.goal ? 'work' : 'in';
       w.wait = 3000 + r * 5000;
-      return;
+    } else if (w.leg === 2) {
+      w.mode = 'stand';
+      w.wait = (w.kind === 'elder' ? 5000 : 1200) + r * 3000;
+    } else {
+      w.mode = 'in';
+      w.wait = 2500 + r * 6000;
+      w.leg = 0;
     }
-    w.mode = w.leg === 0 ? 'in' : 'stand';
-    w.wait = w.leg === 0 ? 2500 + r * 6000 : (w.kind === 'elder' ? 5000 : 1200) + r * 3000;
-    if (w.leg === 2) w.leg = 0;
   }
 
   private draw(g: CanvasRenderingContext2D, w: Walker): void {

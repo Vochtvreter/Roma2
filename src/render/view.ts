@@ -20,7 +20,8 @@ import { Particles } from './particles';
 import { Actors } from './actors';
 import { BuildingPainter, footprintRect } from './buildings';
 import { linearItems } from './linear';
-import { sprite, spriteNames, spriteSize } from './sprites';
+import { hasSprite, sprite, spriteNames, spriteSize } from './sprites';
+import { REQUIRED_SPRITES } from './art/index';
 
 /** What the player is placing: a building (optionally replacing an Ordo stake or pre-positioned) or a map tool. */
 export type PlacingState =
@@ -77,6 +78,7 @@ export class MapView {
   private dragFrom: number | null = null;
   private titleT = 0;
   private sheetY = 0;
+  private titleUntil = 0;                            // titleDrift() was called this frame: a clean map, no marks
 
   constructor(private readonly canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, private readonly cb: ViewCallbacks) {
     const g = canvas.getContext('2d', { alpha: false });
@@ -190,7 +192,8 @@ export class MapView {
     this.items.sort((a, b) => a.y - b.y || a.x - b.x);
     for (const it of this.items) it.draw(g);
     // 6–9 · marks, particles, birds, ghost, flashes
-    this.painter.marks(g, s, this.cam.level, this.time, this._selected);
+    const title = this.time < this.titleUntil;
+    if (!title) this.painter.marks(g, s, this.cam.level, this.time, this._selected);
     this.overlays.marks(g, s, this._overlay, vis, this.time);
     this.particles.ambient(dtMs, s, this.painter.drawn, cur, !paused);
     this.particles.draw(g, { x: vis.x * TILE, y: vis.y * TILE, w: vis.w * TILE, h: vis.h * TILE });
@@ -316,6 +319,7 @@ export class MapView {
   titleDrift(dtMs: number, s: GameState): void {
     this.s = s;
     this.titleT += dtMs / 1000;
+    this.titleUntil = this.time + dtMs + 50;
     const f = getMap(s.seed).survey.forum, a = this.titleT * DRIFT.rate;
     this.centerWorld((f.x + f.w / 2) * TILE + Math.sin(a) * DRIFT.r, (f.y + f.h / 2) * TILE + Math.sin(a * 0.7 + 1) * DRIFT.r * 0.5);
   }
@@ -444,34 +448,35 @@ export class MapView {
     }
   }
 
-  /** ?dev&sheet: every registered sprite in a labelled grid by group at 2× (device px); drag or wheel scrolls. */
+  /** ?dev&sheet: every registered and every required sprite in a labelled grid by group at 2× (missing ones in red). */
   private drawSheet(): void {
-    const g = this.g, names = spriteNames(), d = this.dpr;
-    g.fillStyle = '#f4ead6';
+    const g = this.g, d = this.dpr, sc = 2 * Math.max(1, Math.round(d));
+    const names = [...new Set([...spriteNames(), ...REQUIRED_SPRITES])].sort();
+    const missing = names.filter((n) => !hasSprite(n)).length;
     g.font = `${Math.round(10 * d)}px monospace`;
     g.textBaseline = 'top';
     g.imageSmoothingEnabled = false;
-    if (!names.length) { g.fillText('No sprites registered yet.', 16, 16); return; }
-    const sc = 2 * Math.max(1, Math.round(d));
-    let x = 8, y = 8 + this.sheetY, rowH = 0, group = '';
+    g.fillStyle = missing ? '#e5554a' : '#9ccc5a';
+    g.fillText(`${names.length - missing} registered · ${missing} required but missing (drag or wheel to scroll)`, 8, 8 + this.sheetY);
+    let x = 8, y = 8 + 18 * d + this.sheetY, rowH = 0, group = '';
     for (const n of names) {
       const grp = n.slice(0, n.indexOf('_') + 1);
       if (grp !== group) {
         group = grp;
-        if (x > 8) { x = 8; y += rowH + 8; rowH = 0; }
+        x = 8; y += rowH + (rowH ? 8 : 0); rowH = 0;
         g.fillStyle = '#f0a04b';
         g.fillText(`${grp}*`, 8, y);
         y += 16 * d;
-        g.fillStyle = '#f4ead6';
       }
-      const { w, h } = spriteSize(n);
-      const cw = Math.max(w * sc, 96 * d);
+      const { w, h } = spriteSize(n), cw = Math.max(w * sc, 96 * d);
       if (x + cw > this.canvas.width) { x = 8; y += rowH + 8; rowH = 0; }
-      g.fillStyle = '#2c201b';
-      g.fillRect(x, y, w * sc, h * sc);
-      g.drawImage(sprite(n), x, y, w * sc, h * sc);
-      g.fillStyle = '#f4ead6';
-      g.fillText(n, x, y + h * sc + 2);
+      if (y > -200 && y < this.canvas.height) {
+        g.fillStyle = '#2c201b';
+        g.fillRect(x, y, w * sc, h * sc);
+        g.drawImage(sprite(n), x, y, w * sc, h * sc);
+        g.fillStyle = hasSprite(n) ? '#f4ead6' : '#e5554a';
+        g.fillText(n, x, y + h * sc + 2);
+      }
       rowH = Math.max(rowH, h * sc + 14 * d);
       x += cw + 8;
     }

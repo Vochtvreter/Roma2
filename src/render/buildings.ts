@@ -37,7 +37,7 @@ const GROUND_TYPES: readonly string[] = ['ager', 'olivetum'];            // fiel
 const CROWNS: readonly string[] = ['iuppiter', 'aeternitas', 'imperium'];
 const ORDO_SEAL_DAYS = 10;                                               // an Ordo site shows its seal this long
 const TRENCH_UNTIL = 0.12;
-const SHADOW = { alpha: 0.24, lean: 0.55, flat: 0.42 } as const;
+const SHADOW = { alpha: 0.2, lean: 0.45, flat: 0.32 } as const;
 const C = { chalk: '#efe8d8', plan: '#f2c94c', bar: '#1d1410', gold: '#f2c94c', ember: '#f0a04b', bubble: '#f4ead6', ink: '#1d1410' } as const;
 
 let rectEpoch = -1;
@@ -149,7 +149,8 @@ export class BuildingPainter {
       if (GROUND_TYPES.includes(b.type)) continue;
       push(bottom, X, (g) => {
         if (p >= 1) g.drawImage(cv, left, top);
-        else { rise(g, cv, left, top, p); scaffold(g, left, cv.width, bottom, risen); }
+        else rise(g, cv, left, top, p);
+        if (p < 1 || b.house?.renovating) scaffold(g, left, cv.width, bottom, risen);
         if (b.type === 'lignarius' && p >= 1 && hasSprite('b_lignarius_logs')) {
           const logs = sprite('b_lignarius_logs');
           rise(g, logs, X + w - logs.width, bottom - logs.height, Math.min(1, s.res.timber / Math.max(1, census(s).caps.timber)));
@@ -175,11 +176,12 @@ export class BuildingPainter {
     const done = k > 0 ? lookOf(`p_capitolium_${k}`, 'capitolium', null, r.w) : null;
     const up = lookOf(`p_capitolium_${next}`, 'capitolium', null, r.w);
     const X = r.x * TILE, w = r.w * TILE, bottom = (r.y + r.h) * TILE, left = X + ((w - up.cv.width) >> 1), top = bottom - up.cv.height;
-    const crown = b.status === 'done' ? CROWNS.find((c) => Object.values(s.decisions.paths).includes(c as never)) : undefined;
+    const chosen: string[] = Object.values(s.decisions.paths);
+    const crown = b.status === 'done' ? CROWNS.find((c) => chosen.includes(c)) : undefined;
     this.record(b, r, (done ?? up).name, left, top, up.cv.width, up.cv.height, up.cv.width);
     push(bottom, X, (g) => {
       if (done) g.drawImage(done.cv, left, top);
-      if (b.status !== 'done') { rise(g, up.cv, left, top, within); scaffold(g, left, up.cv.width, bottom, Math.round(up.cv.height * Math.max(within, k / 4))); }
+      if (b.status !== 'done') { rise(g, up.cv, left, top, within); scaffold(g, left, up.cv.width, bottom, Math.round(up.cv.height * within)); }
       if (crown) { const cr = sprite(`p_crown_${crown}`); g.drawImage(cr, Math.round(left + up.cv.width / 2 - cr.width / 2), top - cr.height + 10); }
     });
   }
@@ -206,7 +208,7 @@ export class BuildingPainter {
       if (b.status === 'plan') icons.push('i_plan');
       if (b.owner === 'ordo' && (b.status !== 'done' || s.day - b.placed < ORDO_SEAL_DAYS)) icons.push('i_seal');
       if (b.status === 'done') {
-        if (b.house?.declining) g.drawImage(sprite('ov_cracks'), Math.round(cx - 16), d.sy + d.h - 24);
+        if (b.house?.declining || (b.damagedUntil ?? 0) > s.day) g.drawImage(sprite('ov_cracks'), Math.round(cx - 16), d.sy + d.h - 24);
         if (saturnalia && b.house) g.drawImage(sprite('ov_lanterns'), Math.round(cx - 16), d.sy + 2);
         if (def.slots > 0 && !b.open) icons.push('i_closed');
         else if (def.slots > 0 && (c.staffed[b.id] ?? 0) === 0) icons.push('i_unstaffed');
