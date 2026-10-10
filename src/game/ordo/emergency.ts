@@ -75,9 +75,10 @@ export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void {
   // 3 · emergency import: 20 days of grain from the cheapest open hub when the coin covers it; cooldown 90 days
   const qty = Math.ceil(g.need * E.IMPORT_DAYS);
   const offer = qty > 0 ? cheapestGrain(s, qty) : null;
+  // (trade.emergencyImport sets em.lastImport and logs the purchase with the caravan's id; the chronicle rewrites that line)
   if (gR < E.IMPORT_AT && offer && s.res.denarii >= offer.cost && s.day - em.lastImport >= E.IMPORT_COOLDOWN && emergencyImport(s, ctx, qty)) {
-    em.lastImport = s.day;
-    chronicle(s, 'emergency', { code: 'emergencyImport', params: { qty, hub: offer.hub, days: tripDays(s, offer.hub, qty) } }, decided);
+    const car = s.trade.caravans.filter((c) => c.kind === 'emergency' && c.depart === s.day).pop();
+    chronicle(s, 'emergency', { code: 'emergencyImport', params: { qty, hub: offer.hub, days: tripDays(s, offer.hub, qty) } }, { ...decided, ref: car?.id });
   }
 
   // 4 · the Legate's relief: structural famine with < 10 days, or < 6 days on hand and no coin for an import

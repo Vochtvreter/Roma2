@@ -257,7 +257,8 @@ describe('emergency (Lex de annona)', () => {
     s.rank = 1;
     s.res.denarii = 2000;
     invalidate(s);
-    vi.mocked(emergencyImport).mockReturnValue(true);
+    // the stub honours WP-D's contract: a successful emergencyImport records lastImport itself (set once, in trade.ts)
+    vi.mocked(emergencyImport).mockImplementation((st) => { st.ordo.emergency.lastImport = st.day; return true; });
     emergencyDay(s, ctx(), withForecast(s, { runout: s.day + 7, need: 20 }));
     expect(emergencyImport).toHaveBeenCalledWith(s, expect.anything(), 400);
     expect(s.ordo.emergency.lastImport).toBe(s.day);
