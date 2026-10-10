@@ -164,6 +164,9 @@ function computeCensus(s: GameState): Census {
     byTier[b.house.tier]++;
     if (b.house.declining) declining++;
   }
+  // A child is born into its parents' home even when that home is full; such a house's crowd fills beds elsewhere in
+  // the reckoning, so the colony's free beds never exceed its beds less its housed souls.
+  freeBeds = Math.max(0, Math.min(freeBeds, beds - (s.people.length - ix.homeless.length)));
 
   const slots: Record<number, number> = {};
   const catSlots = {} as Record<LaborCat, number>;
