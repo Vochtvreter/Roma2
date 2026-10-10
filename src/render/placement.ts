@@ -19,9 +19,14 @@ import { makeCanvas, sprite } from './sprites';
 import type { PlacingState } from './view';
 import { TILE } from './camera';
 import { footprintRect, lookOf } from './buildings';
+import { drawSpan } from './linear';
 
 const GOLD_MULT = 1.05;
-const C = { ok: '#9ccc5a', bad: '#e5554a', gold: '#f2c94c', white: '#f4ead6', ember: '#f0a04b', dim: 'rgba(244,234,214,0.35)' } as const;
+const C = {
+  ok: '#9ccc5a', bad: '#e5554a', gold: '#f2c94c', white: '#f4ead6', ember: '#f0a04b', dim: 'rgba(244,234,214,0.35)',
+  route: 'rgba(96,156,214,0.55)', spring: '#9fd4f0',
+} as const;
+const ARCH_GHOST = 0.45;                         // alpha of the aqueduct's arches previewed along a castellum's route
 
 /** An L-shaped tile path from a to b: horizontal first (or vertical first), inclusive of both ends. */
 export function lPath(a: number, b: number, verticalFirst: boolean): number[] {
@@ -175,6 +180,17 @@ export class Placement {
         const b = s.buildings.find((x) => x.id === p.replaceId);
         if (b) { g.fillStyle = C.ember; edge(g, footprintRect(s, b), 2); }
       }
+      const route = this.check?.ok ? this.check.route : undefined;
+      if (route?.length) {
+        // a castellum's aqueduct: the route it reserves (and fells) from the spring, the spring's end outlined
+        g.fillStyle = C.route;
+        for (const t of route) {
+          const r = { x: t % W, y: Math.floor(t / W), w: 1, h: 1 };
+          if (inView(r)) g.fillRect(r.x * TILE + 2, r.y * TILE + 2, TILE - 4, TILE - 4);
+        }
+        g.fillStyle = C.spring;
+        edge(g, { x: route[0] % W, y: Math.floor(route[0] / W), w: 1, h: 1 }, 2);
+      }
     } else if (p.kind === 'reserve') {
       const sv = getMap(s.seed).survey;
       g.fillStyle = 'rgba(240,160,75,0.5)';
@@ -208,6 +224,14 @@ export class Placement {
       if (this.best) {
         const ic = sprite('i_laurel'), bob = Math.round(Math.sin(time / 260) * 1.5);
         g.drawImage(ic, Math.round((this.best.x + this.best.w / 2) * TILE - ic.width / 2), this.best.y * TILE - ic.height - 2 + bob);
+      }
+      const route = this.check?.ok ? this.check.route : undefined;
+      if (route?.length) {
+        // the arches to come, faint, nearest rows last
+        const order = route.map((_, k) => k).sort((a, b) => Math.floor(route[a] / W) - Math.floor(route[b] / W) || a - b);
+        g.globalAlpha = ARCH_GHOST;
+        for (const k of order) drawSpan(g, s, route, k);
+        g.globalAlpha = 1;
       }
       this.ghost(g, s, p.type, time, season);
     } else if ((p.kind === 'road' || p.kind === 'pave') && this.path?.length) {
@@ -247,6 +271,7 @@ export class Placement {
     }
     if (c.mult >= GOLD_MULT) { label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold); y -= 11; }
     if (c.fell > 0) { label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok); y -= 11; }
+    if (c.route?.length) { label(g, `~${c.route.length} arches from the spring`, cx, y, C.spring); y -= 11; }
     const houses = this.preview?.houses ?? [];
     if (houses.length) {
       label(g, `+${houses.length} ${houses.length === 1 ? 'house' : 'houses'} could evolve`, cx, y, C.ok);

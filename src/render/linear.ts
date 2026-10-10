@@ -203,22 +203,34 @@ export function linearItems(s: GameState, vis: Rect, push: Push): void {
   }
 }
 
-/** Aqueduct spans from the spring: arches along E–W runs, piers on N–S runs and corners; built share = progress. */
+/** Aqueduct spans from the spring: arches along E–W runs, piers on N–S runs and corners; built share = progress. The
+ *  rest of the route is staked out (a peg and a chalk mark per tile), so a castellum at 0% already shows its line. */
 function aqueduct(s: GameState, route: number[], progress: number, vis: Rect, push: Push): void {
-  const map = getMap(s.seed);
   const n = Math.floor(route.length * Math.max(0, Math.min(1, progress)));
-  for (let k = 0; k < n; k++) {
+  for (let k = 0; k < route.length; k++) {
     const i = route[k], x = i % W, y = Math.floor(i / W);
     if (x < vis.x - 1 || y < vis.y - 1 || x > vis.x + vis.w || y > vis.y + vis.h + 2) continue;
-    const a = route[k - 1] ?? i, b = route[k + 1] ?? i;
-    const dx = (a % W !== x ? 1 : 0) + (b % W !== x ? 1 : 0), dy = (Math.floor(a / W) !== y ? 1 : 0) + (Math.floor(b / W) !== y ? 1 : 0);
-    const spr = sprite(dx && dy ? 'l_aqua_pier' : dx ? 'l_aqua_ew' : 'l_aqua_ns');
-    const t = map.terrain[i];
-    const lift = t === 9 ? STAKE_LIFT.river : t === 2 ? STAKE_LIFT.loam : 0;
     const X = x * TILE, B = (y + 1) * TILE;
-    push(B, X, (g) => {
-      g.drawImage(spr, X, B - lift - AQUA_H);
-      if (lift) g.drawImage(spr, 0, spr.height - 1, spr.width, 1, X, B - lift, spr.width, lift);
+    if (k < n) push(B, X, (g) => drawSpan(g, s, route, k));
+    else push(B - 4, X, (g) => {
+      g.globalAlpha = 0.7;
+      g.fillStyle = C.chalk; g.fillRect(X + 4, B - 5, 8, 1);
+      g.globalAlpha = 1;
+      g.fillStyle = C.peg; g.fillRect(X + 7, B - 10, 2, 6);
+      g.fillStyle = C.pegTop; g.fillRect(X + 7, B - 10, 2, 1);
     });
   }
+}
+
+/** One aqueduct span (the k-th tile of a route) with its feet on the tile's bottom edge, lifted over low ground. */
+export function drawSpan(g: CanvasRenderingContext2D, s: GameState, route: readonly number[], k: number): void {
+  const i = route[k], x = i % W, y = Math.floor(i / W);
+  const a = route[k - 1] ?? i, b = route[k + 1] ?? i;
+  const dx = (a % W !== x ? 1 : 0) + (b % W !== x ? 1 : 0), dy = (Math.floor(a / W) !== y ? 1 : 0) + (Math.floor(b / W) !== y ? 1 : 0);
+  const spr = sprite(dx && dy ? 'l_aqua_pier' : dx ? 'l_aqua_ew' : 'l_aqua_ns');
+  const t = getMap(s.seed).terrain[i];
+  const lift = t === 9 ? STAKE_LIFT.river : t === 2 ? STAKE_LIFT.loam : 0;
+  const X = x * TILE, B = (y + 1) * TILE;
+  g.drawImage(spr, X, B - lift - AQUA_H);
+  if (lift) g.drawImage(spr, 0, spr.height - 1, spr.width, 1, X, B - lift, spr.width, lift);
 }
