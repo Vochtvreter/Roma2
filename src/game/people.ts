@@ -506,9 +506,16 @@ export function freshGentes(s: GameState, pool: readonly string[]): string[] {
   return fresh.length > 0 ? fresh : pool.slice();
 }
 
-/** Rome's roll: one Bernoulli roll for a new household; it arrives only within the roll and with the beds for it. */
+/** Rome's roll (DESIGN §6.6): the day's draw (IMM_RATE × attract households of CALL.SOULS souls) accrues on Rome's
+ *  call; past CALL.FROM souls one roll a day, certain at CALL.TO, sends a household, whose souls leave the call. So the
+ *  colonists come steadily at the drawn rate instead of in Bernoulli clumps (the opening's Vicus day no longer swings by
+ *  a year between seeds); the call is capped at CALL.TO, so days the gates were shut (no beds, the roll full) are not
+ *  owed. A household arrives only within the roll and with the beds for it. */
 export function immigrationDay(s: GameState, ctx: TickContext, rng: Rng): void {
-  if (!rng.chance(immigrationChance(s))) return;
+  const C = P.CALL;
+  const call = Math.min(C.TO, s.counters.immCall + immigrationChance(s) * C.SOULS);
+  s.counters.immCall = call;
+  if (call < C.FROM || !rng.chance((call - C.FROM) / (C.TO - C.FROM))) return;
   const c = census(s);
   const roll = RANK_DEFS[s.rank].ceiling;
   if (c.pop >= roll || s.people.length >= P.POP_CAP) return;
@@ -520,6 +527,7 @@ export function immigrationDay(s: GameState, ctx: TickContext, rng: Rng): void {
   const n = fam.people.length;
   if (c.pop + n > roll) return;
   if (c.freeBeds < n || !settleFamily(s, ctx, fam)) s.counters.lastArrivalBlocked = s.day;
+  else s.counters.immCall = call - n;
 }
 
 // ───────────────────────────── households ─────────────────────────────

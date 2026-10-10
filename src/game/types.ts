@@ -362,6 +362,7 @@ export interface Counters {
   fedStreak: number; stabStreak: number; ironMade: number; tilesMade: number; caravansReturned: number;
   festivalsKept: Partial<Record<FestivalId, number>>; robigaliaYear: number;
   lastArrivalBlocked: number; lastBirthBlocked: number;
+  immCall: number;                                   // souls Rome's roll has called and not yet sent (DESIGN §6.6)
   renovWindow: { start: number; count: number };
   lastChoiceDay: number; lastHarmfulDay: number; lastFireDay: number;
   coinEma: number;                                   // 30-day EMA of net denarii/day (accrual basis)

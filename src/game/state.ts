@@ -168,7 +168,7 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
     guidance: { advisories: {}, muted: [], appointed: START_ADVISORS.slice(), tips: [], objective: 0, milestoneDays: {} },
     counters: {
       fedStreak: 0, stabStreak: 0, ironMade: 0, tilesMade: 0, caravansReturned: 0,
-      festivalsKept: {}, robigaliaYear: -1, lastArrivalBlocked: NEVER, lastBirthBlocked: NEVER,
+      festivalsKept: {}, robigaliaYear: -1, lastArrivalBlocked: NEVER, lastBirthBlocked: NEVER, immCall: 0,
       renovWindow: { start: day, count: 0 }, lastChoiceDay: NEVER, lastHarmfulDay: NEVER, lastFireDay: NEVER,
       coinEma: 0, mentorDiedDay: null,
     },
