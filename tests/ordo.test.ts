@@ -326,10 +326,14 @@ describe('trade', () => {
     s.res.timber = 300;
     expect(createContract(s, { hub: 'metellianus', mode: 'import', res: 'stone', qty: 10, repeat: true }, 'player').ok).toBe(true);
     const player = structuredClone(s.trade.contracts[0]);
+    // DESIGN §10.7: the Ordo sells what passes 95% of the cap (full sheds of 300 timber leave 15, too few for a caravan),
+    // and from 60% under Mercatura
+    expect(ordoTradeWould(s, view(s))).toBeNull();
+    s.decisions.focus = 'mercatura';
     expect(ordoTradeWould(s, view(s))?.code).toBe('surplusExport');
     ordoTrade(s, ctx(), view(s));
     const mine = s.trade.contracts.find((c) => c.owner === 'ordo');
-    expect(mine).toMatchObject({ mode: 'export', res: 'timber', qty: 60, reason: { code: 'surplusExport' } });
+    expect(mine).toMatchObject({ mode: 'export', res: 'timber', qty: 80, reason: { code: 'surplusExport' } });
     expect(s.trade.contracts[0]).toEqual(player);
     const famine = tradeMoves(s, withForecast(s, { doh: 10, structural: true, stock: 200, need: 20, crunch: null }));
     expect(famine).toEqual([]);                                    // two caravan slots, both in use

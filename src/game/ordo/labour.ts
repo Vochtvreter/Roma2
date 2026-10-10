@@ -233,9 +233,11 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   const kits = B.ordo.TOOLS_PER * users;
   if (s.res.tools < kits) feed('tools', (kits - s.res.tools) / B.ordo.MATERIALS_ETA, reason('tools', { kits: Math.floor(s.res.tools), goal: Math.ceil(kits) }));
 
-  // 8 · olive groves to the great houses' oil × 1.2
+  // 8 · olive groves to the great houses' oil × 1.2 over the year: the same hands in every season (the goal follows the
+  //     season's yield), so the Autumnus and Hiems presses fill the stores for Ver and Aestas instead of matching each
+  //     day's need with three hands at the peak and running dry in summer
   const oil = houseWants(s, v).t4Res * B.housing.GOODS.oil;
-  if (oil > 0) toward('oil', oil * B.ordo.LUXURY, reason('luxuryStaff', { demand: r1(oil) }));
+  if (oil > 0) toward('oil', oil * B.ordo.LUXURY * seasonMult(s, 'olivetum', season), reason('luxuryStaff', { demand: r1(oil) }));
 
   // 9 · the remaining service slots
   const svc = reason('serviceFull', {});

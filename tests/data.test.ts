@@ -117,7 +117,7 @@ describe('buildings (DESIGN §5)', () => {
     expect(BUILDING_DEFS.cisterna.passive).toEqual({ res: 'water', perDay: 8 });
     expect(BUILDING_DEFS.cisterna.work).toBe(25);
     expect(BUILDING_DEFS.horreum.storage).toEqual({ grain: 4000 });
-    expect(BUILDING_DEFS.capitolium.work).toBe(160_000);
+    expect(BUILDING_DEFS.capitolium.work).toBe(320_000);
     expect(BUILDING_DEFS.thermae.cost).toEqual({ denarii: 600, timber: 60, stone: 300, tiles: 80, concrete: 120, iron: 20 });
   });
   it('BUILD_ORDER lists every placeable type once, by rank', () => {
@@ -136,7 +136,7 @@ describe('ranks (DESIGN §9.1)', () => {
     RANK_DEFS.forEach((r, i) => { expect(r.index).toBe(i); expect(r.forumStage).toBe(i); expectCost(r.fee); });
     expect(RANK_DEFS.map(r => r.ceiling)).toEqual([100, 260, 560, 900, 1500]);
     expect(RANK_DEFS.map(r => r.territory)).toEqual([20, 26, 34, 44, 999]);
-    expect(RANK_DEFS.map(r => r.immRate)).toEqual([0.012, 0.03, 0.045, 0.06, 0.07]);
+    expect(RANK_DEFS.map(r => r.immRate)).toEqual([0.014, 0.011, 0.0075, 0.003, 0.04]);
     expect(RANK_DEFS.map(r => r.dignitas)).toEqual([0, 12, 40, 100, 190]);
     expect(RANK_DEFS.map(r => r.subsidy)).toEqual([3, 1.5, 0, 0, 0]);
   });
@@ -163,9 +163,9 @@ describe('housing (DESIGN §7.1)', () => {
   });
   it('tiers: beds, tax, levels, cumulative needs in NEEDS order', () => {
     expect(HOUSE_TIERS.map(t => TIER_DEFS[t].beds)).toEqual([5, 8, 10, 13, 24, 10]);
-    expect(HOUSE_TIERS.map(t => TIER_DEFS[t].tax)).toEqual([0.02, 0.04, 0.06, 0.08, 0.07, 0.30]);
+    expect(HOUSE_TIERS.map(t => TIER_DEFS[t].tax)).toEqual([0.02, 0.04, 0.06, 0.12, 0.11, 0.40]);
     expect(HOUSE_TIERS.map(t => TIER_DEFS[t].level)).toEqual([0, 1, 2, 3, 4, 4]);
-    expect(HOUSE_TIERS.map(t => TIER_DEFS[t].desirMin)).toEqual([null, null, -5, 0, 0, 10]);
+    expect(HOUSE_TIERS.map(t => TIER_DEFS[t].desirMin)).toEqual([null, null, -5, 0, -3, 10]);
     expect(TIER_DEFS.domus.patrician).toBe(true);
     for (const t of HOUSE_TIERS) {
       const d = TIER_DEFS[t];

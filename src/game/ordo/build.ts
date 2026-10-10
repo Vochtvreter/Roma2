@@ -30,6 +30,7 @@ const LIST_MAX = 6;          // wishes the walk evaluates past the first ready o
 const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food
 const STREET_TILES = B.ordo.STREET_TILES;       // road tiles in one "busy street" paved under Urbs
 const STORES_PER_RANK = B.ordo.STORES_PER_RANK; // horrea/apothecae for full stores ≤ 1 + rank × this
+const STORE_RESERVE = B.ordo.STORE_RESERVE;     // …and horrea beyond it while grain capacity < this × the grain reserve
 const FOOD: BuildingId[] = ['ager', 'venatio', 'pabulatio'];
 const MATERIALS: ResId[] = ['timber', 'stone', 'tiles', 'concrete', 'ore', 'iron', 'tools', 'oil'];
 const PRODUCER: Partial<Record<ResId, BuildingId>> = {
@@ -62,9 +63,11 @@ export function houseWants(s: GameState, v: SimView): HouseWants {
     }
     const byHome = peopleIndex(s).byHome;   // residents per home (census index) rather than a lookup per person
     for (const [home, list] of byHome) {
-      const tier = getBuilding(s, home)?.house?.tier;
-      if (tier === 'insula' || tier === 'domus') out.t4Res += list.length;
-      if (tier === 'domus') out.domusRes += list.length;
+      // the goods feed T4 homes and the homes that wait only for them (their first want): counting those too lets the
+      // Ordo press or import the first oil, without which no house could ever become an insula or a domus
+      const tier = getBuilding(s, home)?.house?.tier, first = out.first[home];
+      if (tier === 'insula' || tier === 'domus' || first === 'oil' || first === 'wine') out.t4Res += list.length;
+      if (tier === 'domus' || first === 'wine') out.domusRes += list.length;
     }
     return out;
   });
@@ -165,19 +168,26 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   const wr = settingValue(s, 'waterReserve');
   const wc = f.water.crunch;
   if (wc && wc.startsIn <= B.advisors.RULES.AESTAS_LEAD && wc.lowestDoh < wr && !unfinished(v, 'cisterna') && !unfinished(v, 'puteus')) {
+    // storage helps only while a full store (and one cistern more) carries the Aestas deficit above the water reserve;
+    // past that a well's yield does (a store that merely covered the deficit raised 25 cisterns in five years)
     const deficit = f.water.cons - maxPotential(s, 'water', 1);
-    const helps = deficit <= 0 || deficit * seasonLength(s.day + wc.startsIn) <= f.water.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
+    const helps = deficit <= 0 || deficit * seasonLength(s.day + wc.startsIn) + wr * f.water.need <= f.water.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
     yield* yieldOf(make(helps ? 'cisterna' : 'puteus', 'aestasWater', { days: wc.startsIn, low: Math.floor(wc.lowestDoh), keep: wr }));
   }
-  // 3 · Hiems store, then stores that are full
+  // 3 · Hiems store, then stores that are full. A horreum only when the Hiems need exceeds what our stores can hold: a
+  //     shortfall the stores could already hold is the fields' and the hunters' to fix (a horreum every build day while
+  //     the forecast ran dry once raised 17 granaries before one Hiems)
   const gr = settingValue(s, 'grainReserve');
   const gc = f.grain.crunch;
-  if (gc && gc.startsIn <= B.advisors.RULES.HIEMS_LEAD && (gc.lowestDoh < 1 || gc.needInStore > f.grain.cap)) {
+  if (gc && gc.startsIn <= B.advisors.RULES.HIEMS_LEAD && gc.needInStore > f.grain.cap) {
     yield* yieldOf(make('horreum', 'hiemsStore', { days: gc.startsIn, hold: Math.floor(f.grain.cap / Math.max(1e-6, f.grain.need)), keep: gr }));
   }
+  // (horrea beyond the rank's count while the granaries hold less than STORE_RESERVE × the grain reserve: a grown city
+  //  must keep its Hiems store, and its summer harvest should not spill)
+  const short = c.caps.grain < STORE_RESERVE * gr * f.grain.need;
   for (const r of ['grain', ...MATERIALS, 'wine'] as ResId[]) {
     const t = r === 'grain' ? 'horreum' : 'apotheca';
-    if (s.res[r] >= B.ordo.STORE_FULL * c.caps[r] && (d.all[t] ?? 0) < 1 + s.rank * STORES_PER_RANK) yield* yieldOf(store(r));
+    if (s.res[r] >= B.ordo.STORE_FULL * c.caps[r] && ((d.all[t] ?? 0) < 1 + s.rank * STORES_PER_RANK || (r === 'grain' && short))) yield* yieldOf(store(r));
   }
   // 4 · beds for newcomers while Rome's roll allows
   const planned = ((d.all.area ?? 0) - (d.counts.area ?? 0)) * (TIER_DEFS.tentoria.beds + fxAdd(s, 'lowCap'));
@@ -187,13 +197,13 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   const hw = houseWants(s, v);
   const dry = hw.want.water ?? 0;
   if (dry >= B.ordo.EVOLVE_MIN) yield* yieldOf(make(d.castellumActive && BUILDING_DEFS.lacus.rank <= s.rank ? 'lacus' : 'puteus', 'waterAccess', { n: dry }, { serves: 'water' }));
-  // 6 · the service most homes wait for (baths beyond the first are left to the player)
+  // 6 · the service most homes wait for (baths too: one balneum cannot reach every insula of a grown city)
   const wants = (Object.keys(SERVICE_FOR) as NeedId[]).filter((n) => (hw.want[n] ?? 0) > 0)
     .sort((a, b) => (hw.want[b] ?? 0) - (hw.want[a] ?? 0) || NEEDS.indexOf(a) - NEEDS.indexOf(b));
   for (const n of wants) {
     const t = SERVICE_FOR[n] as BuildingId;
     const min = BUILDING_DEFS[t].place.includes('block') ? B.ordo.EVOLVE_MIN_BLOCK : B.ordo.EVOLVE_MIN;
-    if ((hw.want[n] ?? 0) < min || (n === 'baths' && (d.all.balneum ?? 0) + (d.all.thermae ?? 0) > 0)) continue;
+    if ((hw.want[n] ?? 0) < min) continue;
     yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n }));
   }
   // 7 · works the next petition names (the Vicus petition only once the Lex coloniae is proclaimed)
@@ -221,8 +231,8 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     const short = missing(s, w.cost);
     for (const r2 of MATERIALS) if ((short[r2] ?? 0) > 0) queue.push({ r: r2, q: short[r2] ?? 0, for: w.type });
   }
-  // 9 · oil for the great houses
-  if (BUILDING_DEFS.olivetum.rank <= s.rank && hw.t4Res * B.housing.GOODS.oil > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
+  // 9 · oil for the great houses (groves for the demand × LUXURY: the margin the stores need to carry Ver and Aestas)
+  if (BUILDING_DEFS.olivetum.rank <= s.rank && hw.t4Res * B.housing.GOODS.oil * B.ordo.LUXURY > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
   // 10 · the council focus's build plan; 11 · beauty under Urbs
   const focus = s.decisions.focus;
   for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', { focus }));
