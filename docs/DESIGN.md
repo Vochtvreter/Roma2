@@ -652,7 +652,7 @@ The wish list is walked in order. Each wish names a type and a slot (`bestSlot`)
 |---|---|---|---|---|
 | 0 | `request` / `pin` | player asked / pinned | that type | no (player site) |
 | 1 | `survivalFood` / `survivalWater` | max potential < need and DoH < 30 | best food producer for the coming season / well or cistern | no; ignores the saving target |
-| 2 | `aestasWater` | forecast: lowest water DoH in the coming Aestas < *Water reserve* | cistern (puteus if storage cannot help) | yes |
+| 2 | `aestasWater` | forecast: lowest water DoH in the coming Aestas < *Water reserve* | cistern while a full store (+ one cistern) carries the Aestas deficit above the *Water reserve*, else puteus | yes |
 | 3 | `hiemsStore` / `storageFull` | forecast: the Hiems need exceeds total capacity (a shortfall the stores could already hold is for the fields and hunters, not a granary); or grain ≥ 95% of cap / a material ≥ 95% of cap, while horrea/apothecae < 1 + rank — horrea beyond that while grain capacity < 2 × *Grain reserve* × need | horreum / apotheca | yes |
 | 4 | `beds` | free beds + planned beds < *Spare beds* and pop < roll | house plot (partly built blocks first) | yes |
 | 5 | `waterAccess` | ≥ 2 houses whose first unmet need is water | puteus (lacus once a castellum flows) covering most of them | yes |

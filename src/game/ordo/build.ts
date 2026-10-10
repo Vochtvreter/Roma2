@@ -168,8 +168,10 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   const wr = settingValue(s, 'waterReserve');
   const wc = f.water.crunch;
   if (wc && wc.startsIn <= B.advisors.RULES.AESTAS_LEAD && wc.lowestDoh < wr && !unfinished(v, 'cisterna') && !unfinished(v, 'puteus')) {
+    // storage helps only while a full store (and one cistern more) carries the Aestas deficit above the water reserve;
+    // past that a well's yield does (a store that merely covered the deficit raised 25 cisterns in five years)
     const deficit = f.water.cons - maxPotential(s, 'water', 1);
-    const helps = deficit <= 0 || deficit * seasonLength(s.day + wc.startsIn) <= f.water.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
+    const helps = deficit <= 0 || deficit * seasonLength(s.day + wc.startsIn) + wr * f.water.need <= f.water.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
     yield* yieldOf(make(helps ? 'cisterna' : 'puteus', 'aestasWater', { days: wc.startsIn, low: Math.floor(wc.lowestDoh), keep: wr }));
   }
   // 3 · Hiems store, then stores that are full. A horreum only when the Hiems need exceeds what our stores can hold: a
