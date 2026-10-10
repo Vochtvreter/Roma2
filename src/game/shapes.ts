@@ -8,7 +8,7 @@
 // order) of the literal that creates its kind is rebuilt through that literal and its later keys are added after it,
 // in their saved order — the class the live object has, and the same keys in the same order, so it serialises to the
 // same bytes. An object that does not begin that way is kept as parsed.
-import type { Building, GameState, Person } from './types';
+import type { AdvisoryMemo, Building, GameState, LogEntry, Person } from './types';
 
 type Obj = Record<string, unknown>;
 
@@ -108,6 +108,26 @@ const WINDOW_KEYS = ['start', 'count'] as const;
 const STATS_KEYS = ['births', 'deaths', 'deathsBy', 'immigrants', 'emigrants', 'peakPop', 'built', 'builtBy', 'evolved', 'evolvedBy',
   'devolved', 'denariiTaxed', 'playMs', 'startedAt', 'victoryDay'] as const;
 const DEATHS_KEYS = ['age', 'hunger', 'thirst', 'fever', 'fire', 'other'] as const;
+/** An Annales line as log() writes it (state.ts); tags and ref follow when given. */
+const LOG_KEYS = ['day', 'kind', 'text'] as const;
+/** An advisory's memo as the engine raises it (advisors/engine.ts); metric and snooze follow. */
+const ADVISORY_KEYS = ['rule', 'active', 'sev', 'since', 'lowerSince', 'params', 'flips'] as const;
+
+function logShape(e: LogEntry): LogEntry {
+  return reshape(e, LOG_KEYS, (v) => ({ day: v.day, kind: v.kind, text: v.text }));
+}
+
+/** The advisories record filled key by key, each memo through the engine's literal. */
+function advisoriesShape(a: GameState['guidance']['advisories']): GameState['guidance']['advisories'] {
+  const out: Obj = {};
+  for (const k of Object.keys(a)) {
+    const m = (a as Record<string, AdvisoryMemo>)[k];
+    out[k] = reshape(m, ADVISORY_KEYS, (v) => ({
+      rule: v.rule, active: v.active, sev: v.sev, since: v.since, lowerSince: v.lowerSince, params: v.params, flips: v.flips,
+    }));
+  }
+  return out as GameState['guidance']['advisories'];
+}
 
 type S = GameState;
 
@@ -132,7 +152,7 @@ export function stateShape(x: S): S {
     hubsTraded: v.hubsTraded, debt: v.debt,
   }));
   const guidance = reshape(g, GUIDANCE_KEYS, (v) => ({
-    advisories: filled(v.advisories), muted: v.muted, appointed: v.appointed, tips: v.tips, objective: v.objective,
+    advisories: advisoriesShape(v.advisories), muted: v.muted, appointed: v.appointed, tips: v.tips, objective: v.objective,
     milestoneDays: filled(v.milestoneDays),
   }));
   const counters = reshape(c, COUNTERS_KEYS, (v) => ({
@@ -154,6 +174,6 @@ export function stateShape(x: S): S {
     legacyBonus: v.legacyBonus, rank: v.rank, victory: v.victory, defeat: v.defeat, res: filled(v.res), taxAccrued: v.taxAccrued,
     people: v.people, families: v.families, buildings: v.buildings, roads: v.roads, paved: v.paved, wood: v.wood, needs, fed: v.fed,
     morale: v.morale, decisions, ordo, trade, choice: v.choice, gate: v.gate, eventDays: filled(v.eventDays), modifiers: v.modifiers,
-    guidance, counters, stats, log: v.log, lastSave: v.lastSave,
+    guidance, counters, stats, log: v.log.map(logShape), lastSave: v.lastSave,
   }));
 }
