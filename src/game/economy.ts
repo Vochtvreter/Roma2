@@ -220,25 +220,37 @@ interface Producers { slots: { type: BuildingId; id: number; n: number; per: num
 
 /** Producers of an essential with their season-free per-worker output (current average worker, else an unskilled one). */
 function producers(s: GameState, res: Essential): Producers {
-  return memo(s, `producers:${res}`, `${censusEpoch(s)}|${s.day}|${s.morale}`, () => {
-    const out: Producers = { slots: [], passive: [] };
-    const ix = peopleIndex(s);
-    const f = factors(s);
-    for (const b of s.buildings) {
-      if (b.status !== 'done') continue;
-      const def = BUILDING_DEFS[b.type];
-      const act = activeFactor(s, b);
-      if (def.passive?.res === res) out.passive.push({ type: b.type, per: def.passive.perDay * (def.fxKey ? f.mul(def.fxKey) : 1) * act });
-      if (def.output?.res !== res || !b.open || def.slots <= 0 || act <= 0 || waterPaused(s, b)) continue;
-      const base = cappedBase(s, b, f);
-      const workers = ix.byWork.get(b.id) ?? [];
-      let per = 0;
-      for (const p of workers) per += outputWith(s, b, p, base, act);
-      per = workers.length > 0 ? per / workers.length : outputWith(s, b, null, base, act);
-      if (per > 0) out.slots.push({ type: b.type, id: b.id, n: def.slots, per });
-    }
-    return out;
-  });
+  // kept per state for (census epoch, day, morale) — the memo key this had as a string, without building the string
+  // (a morale's decimal digits) at each of the ten reads a day
+  const k = censusEpoch(s) * DAY_SPAN + s.day, mo = s.morale;
+  let c = prodCache.get(s);
+  if (!c || c.k !== k || !(c.morale === mo || (c.morale !== c.morale && mo !== mo))) {
+    c = { k, morale: mo, grain: null, water: null };
+    prodCache.set(s, c);
+  }
+  return c[res] ??= producersOf(s, res);
+}
+const DAY_SPAN = 1e6;   // as memo.ts: epoch × DAY_SPAN + day is exact in float64
+const prodCache = new WeakMap<GameState, { k: number; morale: number; grain: Producers | null; water: Producers | null }>();
+
+function producersOf(s: GameState, res: Essential): Producers {
+  const out: Producers = { slots: [], passive: [] };
+  const ix = peopleIndex(s);
+  const f = factors(s);
+  for (const b of s.buildings) {
+    if (b.status !== 'done') continue;
+    const def = BUILDING_DEFS[b.type];
+    const act = activeFactor(s, b);
+    if (def.passive?.res === res) out.passive.push({ type: b.type, per: def.passive.perDay * (def.fxKey ? f.mul(def.fxKey) : 1) * act });
+    if (def.output?.res !== res || !b.open || def.slots <= 0 || act <= 0 || waterPaused(s, b)) continue;
+    const base = cappedBase(s, b, f);
+    const workers = ix.byWork.get(b.id) ?? [];
+    let per = 0;
+    for (const p of workers) per += outputWith(s, b, p, base, act);
+    per = workers.length > 0 ? per / workers.length : outputWith(s, b, null, base, act);
+    if (per > 0) out.slots.push({ type: b.type, id: b.id, n: def.slots, per });
+  }
+  return out;
 }
 
 /** Best assignment of the workforce to existing producers of an essential (food cap applied) plus passive output. */

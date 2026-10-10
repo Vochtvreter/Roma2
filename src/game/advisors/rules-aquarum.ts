@@ -30,7 +30,8 @@ const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 
 /** Finished, open, staffed works that draw water (concrete works, baths), in id order. */
 function waterDraws(s: GameState, v: SimView): Building[] {
-  return s.buildings.filter((b) => b.status === 'done' && b.open && (v.c.staffed[b.id] ?? 0) > 0
+  const staffed = v.c.staffed;   // the census once, not a view read per building
+  return s.buildings.filter((b) => b.status === 'done' && b.open && (staffed[b.id] ?? 0) > 0
     && (BUILDING_DEFS[b.type].waterDraw !== undefined || BUILDING_DEFS[b.type].inputs?.water !== undefined));
 }
 

@@ -47,7 +47,8 @@ function dailyUse(s: GameState, v: SimView, res: TradeRes): number {
   if (res === 'oil') return hw.t4Res * B.housing.GOODS.oil;
   if (res === 'wine') return hw.domusRes * B.housing.GOODS.wine;
   let use = 0;
-  for (const b of s.buildings) if (b.status === 'done') use += (BUILDING_DEFS[b.type].inputs?.[res] ?? 0) * (v.c.staffed[b.id] ?? 0);
+  const staffed = v.c.staffed;   // the census once, not a view read per building
+  for (const b of s.buildings) if (b.status === 'done') use += (BUILDING_DEFS[b.type].inputs?.[res] ?? 0) * (staffed[b.id] ?? 0);
   return use;
 }
 

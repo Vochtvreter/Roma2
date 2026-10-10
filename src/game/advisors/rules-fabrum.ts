@@ -58,7 +58,8 @@ function suggest(s: GameState, v: SimView): { type: BuildingId; k: number } | nu
 
 /** A finished, open service with posts and nobody in them. */
 function unstaffedService(s: GameState, v: SimView): boolean {
-  return s.buildings.some((b) => b.status === 'done' && b.open && BUILDING_DEFS[b.type].service && BUILDING_DEFS[b.type].slots > 0 && (v.c.staffed[b.id] ?? 0) === 0);
+  const staffed = v.c.staffed;   // the census once, not a view read per building
+  return s.buildings.some((b) => b.status === 'done' && b.open && BUILDING_DEFS[b.type].service && BUILDING_DEFS[b.type].slots > 0 && (staffed[b.id] ?? 0) === 0);
 }
 
 const labour: AdvisorRule = {
