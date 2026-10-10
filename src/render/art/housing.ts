@@ -381,21 +381,26 @@ function trench(): string[] {
   return p.rows();
 }
 
-/** Registers this group's sprites with registerArt()/registerDraw() (no canvas work at registration). */
+/** Registers a grid that already carries its outline. */
+function reg(name: string, rows: string[]): void {
+  registerArt(name, rows, { outline: false });
+}
+
+/** Registers this group's sprites with registerArt() (no canvas work at registration). */
 export function registerHousing(): void {
   for (const v of [0, 1] as const) {
-    registerArt(`h_tentoria_${v}`, tentoria(v));
-    registerArt(`h_casa_${v}`, casa(v));
-    registerArt(`h_tegulata_${v}`, tegulata(v));
-    registerArt(`h_domusParva_${v}`, domusParva(v));
-    registerArt(`h_insula_${v}`, insula(v, 3, 44));
-    registerArt(`h_domus_${v}`, domus(v, false));
+    reg(`h_tentoria_${v}`, tentoria(v));
+    reg(`h_casa_${v}`, casa(v));
+    reg(`h_tegulata_${v}`, tegulata(v));
+    reg(`h_domusParva_${v}`, domusParva(v));
+    reg(`h_insula_${v}`, insula(v, 3, 44));
+    reg(`h_domus_${v}`, domus(v, false));
   }
-  registerArt('h_insula_aquae', insula(1, 4, 52));
-  registerArt('h_domus_aquae', domus(0, true));
-  registerArt('ov_scaffold', scaffold());
-  registerArt('ov_cracks', cracks());
-  registerArt('ov_lanterns', lanterns());
-  registerArt('ov_pegs', pegs());
-  registerArt('ov_trench', trench());
+  reg('h_insula_aquae', insula(1, 4, 52));
+  reg('h_domus_aquae', domus(0, true));
+  reg('ov_scaffold', scaffold());
+  reg('ov_cracks', cracks());
+  reg('ov_lanterns', lanterns());
+  reg('ov_pegs', pegs());
+  reg('ov_trench', trench());
 }

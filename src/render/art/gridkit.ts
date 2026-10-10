@@ -1,7 +1,5 @@
 // src/render/art/gridkit.ts — a canvas-free pixel builder that produces string grids for registerArt(). Owner: WP-G (G1).
 // Everything here is plain string work, so art built with it registers in node (tests/art.test.ts) and stays lazy.
-import type { Grid } from '../sprites';
-
 const CLEAR = '.';
 const isClear = (c: string): boolean => c === '.' || c === ' ';
 
@@ -15,14 +13,6 @@ export class Pix {
     this.w = w;
     this.h = h;
     this.px = new Array<string>(w * h).fill(fill);
-  }
-
-  /** A Pix initialised from a grid (rows padded with '.'). */
-  static from(g: Grid): Pix {
-    const w = Math.max(0, ...g.map((r) => r.length));
-    const p = new Pix(w, g.length);
-    p.stamp(0, 0, g);
-    return p;
   }
 
   /** The key at (x, y), '.' outside. */
@@ -105,26 +95,6 @@ export class Pix {
     return this;
   }
 
-  /** Copies a grid onto this one at (x, y); '.' and ' ' in the source are transparent. */
-  stamp(x: number, y: number, g: Grid | Pix): this {
-    const rows = g instanceof Pix ? g.rows() : g;
-    rows.forEach((r, j) => {
-      for (let i = 0; i < r.length; i++) if (!isClear(r[i])) this.set(x + i, y + j, r[i]);
-    });
-    return this;
-  }
-
-  /** Tiles a pattern over a rectangle, anchored at (x, y) unless an origin is given ('.' leaves pixels untouched). */
-  tile(x: number, y: number, w: number, h: number, pat: Grid, ox = x, oy = y): this {
-    const ph = pat.length, pw = pat[0].length;
-    for (let j = y; j < y + h; j++)
-      for (let i = x; i < x + w; i++) {
-        const ch = pat[(((j - oy) % ph) + ph) % ph][(((i - ox) % pw) + pw) % pw];
-        if (!isClear(ch)) this.set(i, j, ch);
-      }
-    return this;
-  }
-
   /** Replaces keys inside a rectangle (default: everywhere). */
   recolor(map: Readonly<Record<string, string>>, x = 0, y = 0, w = this.w, h = this.h): this {
     for (let j = y; j < y + h; j++)
@@ -149,13 +119,6 @@ export class Pix {
     return this;
   }
 
-  /** A horizontally mirrored copy. */
-  flipX(): Pix {
-    const p = new Pix(this.w, this.h);
-    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) p.set(this.w - 1 - x, y, this.get(x, y));
-    return p;
-  }
-
   /** An independent copy. */
   clone(): Pix {
     const p = new Pix(this.w, this.h);
@@ -169,9 +132,4 @@ export class Pix {
     for (let y = 0; y < this.h; y++) out.push(this.px.slice(y * this.w, (y + 1) * this.w).join(''));
     return out;
   }
-}
-
-/** Mirrors a grid horizontally and swaps lit/shaded keys so the light still comes from the top-left. */
-export function mirrorGrid(g: Grid, swap: Readonly<Record<string, string>> = {}): string[] {
-  return g.map((r) => [...r].reverse().map((ch) => swap[ch] ?? ch).join(''));
 }
