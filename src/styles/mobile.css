@@ -146,3 +146,24 @@
   .modal-title { font-size: 21px; }
   .disp-body.letter, .disp-letter { font-size: 15px; }
 }
+
+/* ───────── landscape phones: the sheet becomes a right-hand drawer ───────── */
+/* Every rule above assumes a portrait phone (a 46vh sheet under a two-row HUD), which leaves no map on an 844×390
+   screen. Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit
+   at the bottom right of the free map. */
+@media (max-width: 899px) and (max-height: 520px) {
+  :root, #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
+  #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
+    border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
+  #side.collapsed, #app.placing #side { transform: translateX(100%); }
+  #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
+    border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2); }
+  #side-toggle::before { content: '▸'; }
+  #side.collapsed #side-toggle::before { content: '◂'; }
+  #tabs { grid-template-columns: repeat(3, 1fr); }
+  #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
+  #map-tools { bottom: 8px; }
+  #app:not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
+  #ticker { display: none; }
+  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: 8px; }
+}
