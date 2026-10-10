@@ -3,6 +3,7 @@
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, ResId } from '../game/types';
 import { RESOURCE_DEFS } from '../game/data/resources';
+import { B } from '../game/balance';
 import { spriteURL } from '../render/sprites';
 import { resIcon } from '../render/art/index';
 
@@ -12,6 +13,8 @@ export type Kid = Node | string | number | null | undefined | false | Kid[];
 export type Attrs = Record<string, unknown>;
 
 const MINUS = '−';
+const WEEK = 7;
+const MONTH = 30;   // B.ui.RUNWAY_MONTHS = 120 days reads as 4 months
 const TIP_DELAY_MS = 80;
 const LONG_PRESS_MS = 450;
 const TIP_MARGIN = 8;
@@ -95,6 +98,20 @@ export function fmtDays(n: number | null): string {
   if (n === null || Number.isNaN(n)) return '—';
   if (!Number.isFinite(n) || n >= 10_000) return '∞';
   return `${Math.max(0, Math.floor(n))} d`;
+}
+
+/** A capacity or room in time (DESIGN §8.6): '14 days' under three weeks, '6 weeks' under four months, '4.2 months'
+ *  above; '∞' (infinite or ≥ 10,000), '—' (null). Only for capacity and room: days on hand stay in days (fmtDays). */
+export function fmtRunway(n: number | null): string {
+  if (n === null || Number.isNaN(n)) return '—';
+  if (!Number.isFinite(n) || n >= 10_000) return '∞';
+  const d = Math.max(0, n);
+  if (d < B.ui.RUNWAY_WEEKS) {
+    const k = Math.floor(d);
+    return `${k} ${k === 1 ? 'day' : 'days'}`;
+  }
+  if (d < B.ui.RUNWAY_MONTHS) return `${Math.round(d / WEEK)} weeks`;
+  return `${fmt(d / MONTH)} months`;
 }
 
 /** A cost as text in resource order: '50 den · 20 timber'. */

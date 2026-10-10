@@ -190,3 +190,19 @@ describe('the Ordo\'s saving line (R16)', () => {
     expect(line).not.toMatch(/den/);
   });
 });
+
+describe('runway display (R59, DESIGN §8.6)', () => {
+  it('shows capacity in days under three weeks, weeks under four months, months above', async () => {
+    const { fmtRunway } = await import('../src/ui/dom');
+    expect(fmtRunway(1)).toBe('1 day');
+    expect(fmtRunway(14.7)).toBe('14 days');
+    expect(fmtRunway(B.ui.RUNWAY_WEEKS - 0.1)).toBe('20 days');
+    expect(fmtRunway(B.ui.RUNWAY_WEEKS)).toBe('3 weeks');
+    expect(fmtRunway(42)).toBe('6 weeks');
+    expect(fmtRunway(B.ui.RUNWAY_MONTHS - 1)).toBe('17 weeks');
+    expect(fmtRunway(B.ui.RUNWAY_MONTHS)).toBe('4 months');
+    expect(fmtRunway(164)).toBe('5.5 months');
+    expect(fmtRunway(null)).toBe('—');
+    expect(fmtRunway(Infinity)).toBe('∞');
+  });
+});

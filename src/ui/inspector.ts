@@ -1,9 +1,9 @@
 // src/ui/inspector.ts — the house / building / block / tile inspector (ARCHITECTURE §13.3, DESIGN §15.4, §11.10). Owner: WP-I.
 // Hover = transient, click = sticky; signature-diffed like the panels (rebuild on discrete change, else updaters).
 import { BUILDER, F, T } from '../game/types';
-import type { Building, GameState, SiteNote, Terrain } from '../game/types';
+import type { Building, GameState, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
-import { clear, fmt, h, img } from './dom';
+import { clear, fmt, fmtRunway, h, img } from './dom';
 import * as A from '../game/actions';
 import { getBuilding } from '../game/state';
 import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
@@ -13,6 +13,7 @@ import { worksQueue } from '../game/construction';
 import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
+import { forecast } from '../game/forecast';
 import { personName } from '../game/people';
 import { outputChain } from '../game/hints';
 import { isAquae, nextTier, unmetNeeds } from '../game/housing';
@@ -28,6 +29,14 @@ import { buildingSprite, houseSprite } from '../render/art/index';
 import { confirm2 } from './modals';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
+
+/** '+4,000 grain (4.2 months at today's 32/day)': what a store adds, in time at today's need for grain and water (§8.6). */
+function storeText(s: GameState, r: ResId, n: number): string {
+  const base = `+${fmt(n)} ${RESOURCE_DEFS[r].name.toLowerCase()}`;
+  if (r !== 'grain' && r !== 'water') return base;
+  const need = forecast(s)[r].need;
+  return need > 0 ? `${base} (${fmtRunway(n / need)} at today's ${fmt(need)}/day)` : base;
+}
 
 const TERRAIN: Record<number, string> = {
   [T.grass]: 'Grassland', [T.meadow]: 'Meadow', [T.loam]: 'River loam', [T.scrub]: 'Scrub', [T.forest]: 'Forest',
@@ -218,7 +227,14 @@ export class Inspector {
       const r = effectiveRadius(s, b, sv.layer);
       out.push(h('div', { class: `ins-line ${r ? '' : 'ins-bad'}` }, `${LAYER_META[sv.layer].label}: ${r ? `${r} road steps` : 'inactive'}${r && r < sv.radius ? ` (full ${sv.radius} at ${Math.ceil(def.slots * B.economy.SERVICE_FULL)} hands)` : ''}`));
     }
-    if (def.storage) out.push(h('div', { class: 'ins-line' }, 'Stores: ', Object.entries(def.storage).map(([r, n]) => `+${fmt(n ?? 0)} ${RESOURCE_DEFS[r as keyof typeof RESOURCE_DEFS].name.toLowerCase()}`).join(' · ')));
+    if (def.storage) {
+      const store = def.storage;
+      const line = h('div', { class: 'ins-line' });
+      const refreshStore = (): void => { line.textContent = `Stores: ${(Object.keys(store) as ResId[]).map((r) => storeText(g.state, r, store[r] ?? 0)).join(' · ')}`; };
+      refreshStore();
+      this.ups.push(refreshStore);
+      out.push(line);
+    }
     const mult = siteMult(s, b);
     const site = Math.abs(mult - 1) > 0.01 ? `Site ${pct(mult)}` : 'Site';
     if (site !== 'Site' || b.notes?.length) out.push(h('div', { class: 'ins-small' }, `${site}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`));
