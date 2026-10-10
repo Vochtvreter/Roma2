@@ -4,8 +4,11 @@
 import { B } from '../balance';
 import { HUBS } from '../types';
 import type {
-  BuildingId, ContractSpec, GameState, HouseTierId, HubId, NeedId, Person, Rates, Remedy, RuleId, Severity, SimView, SkillId, TradeRes,
+  BuildingId, ContractSpec, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
+  SkillId, TradeRes,
 } from '../types';
+import { seasonOf } from '../calendar';
+import { seasonMult } from '../economy';
 import { distToRect, getMap, tx, ty } from '../map';
 import { censusEpoch, memo, structEpoch } from '../memo';
 import { personName } from '../people';
@@ -66,6 +69,53 @@ export function lendRates(r: Rates | null): void {
 export function todayRate(side: 'prod' | 'cons', res: keyof Rates['prod'], src: string): number | null {
   if (!tickRates) return null;
   return (tickRates[side][res] as Record<string, number | undefined>)[src] ?? 0;
+}
+
+/** Today's net of a resource from the lent ledger (Σ production − Σ consumption); null outside advisorsDay. */
+export function netToday(res: ResId): number | null {
+  if (!tickRates) return null;
+  let n = 0;
+  for (const v of Object.values(tickRates.prod[res])) n += v ?? 0;
+  for (const v of Object.values(tickRates.cons[res])) n -= v ?? 0;
+  return n;
+}
+
+// ───────────────────────────── labour ─────────────────────────────
+
+/** Open posts in a labour category. */
+export function openPosts(v: SimView, cat: LaborCat): number {
+  return Math.max(0, v.c.catSlots[cat] - v.c.catStaffed[cat]);
+}
+
+/** Best output per hand this season among a category's finished producers of an essential (0 if none). */
+export function perHand(s: GameState, cat: LaborCat, res: Essential): number {
+  const season = seasonOf(s.day);
+  let best = 0;
+  for (const b of s.buildings) {
+    const d = BUILDING_DEFS[b.type];
+    if (b.status === 'done' && b.open && d.labor === cat && d.output?.res === res) best = Math.max(best, d.output.perWorker * seasonMult(s, b.type, season));
+  }
+  return best;
+}
+
+/** The labour remedy for a shortfall: the Ordo puts the category first, or (manual labour) k more hands by hand. */
+export function labourRemedy(s: GameState, v: SimView, cat: LaborCat, res: Essential, deficit: number): Remedy {
+  if (s.ordo.on.labour) return { kind: 'priority', cat, days: R.REMEDY_DAYS };
+  const per = perHand(s, cat, res);
+  const k = per > 0 ? Math.ceil(Math.max(0, deficit) / per) : 1;
+  return { kind: 'assign', cat, n: Math.max(1, Math.min(Math.max(1, openPosts(v, cat)), k)) };
+}
+
+/** The grain producer that gives most per hand this season among those Rome allows us. */
+export function bestFood(s: GameState): BuildingId {
+  const season = seasonOf(s.day);
+  let best: BuildingId = 'ager', top = -1;
+  for (const t of ['ager', 'venatio', 'pabulatio'] as const) {
+    const d = BUILDING_DEFS[t];
+    const v = d.rank <= s.rank && d.output ? d.output.perWorker * seasonMult(s, t, season) : -1;
+    if (v > top) { top = v; best = t; }
+  }
+  return best;
 }
 
 // ───────────────────────────── houses ─────────────────────────────
