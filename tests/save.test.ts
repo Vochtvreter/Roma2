@@ -10,7 +10,13 @@ import {
   DEFAULT_PREFS, KEYS, MIGRATIONS, SAVE_VERSION, addFasti, clearSave, deserialize, exportText, fastiEntry, hasSave, importText, loadFasti,
   loadGame, loadPrefs, saveGame, savePrefs, serialize,
 } from '../src/game/save';
-import { describeAway, offlineDays, offlineRun, simulateOffline } from '../src/game/offline';
+import { decidedLines, describeAway, keepDecided, offlineDays, offlineRun, simulateOffline, wonWhileAway } from '../src/game/offline';
+import type { Decided } from '../src/game/offline';
+import type { LogEntry, LogKind } from '../src/game/types';
+import { petitionNeeds } from '../src/game/decisions';
+import { activeAdvisories } from '../src/game/advisors/engine';
+import { view } from '../src/game/sim';
+import { play } from './autoplayer';
 import { forceEvent, fresh, noNaN, run } from './util';
 
 type Raw = ReturnType<typeof JSON.parse>;   // a parsed save, before sanitising
@@ -340,5 +346,49 @@ describe('offline catch-up', () => {
     expect(s.victory).toBe(true);
     expect(rep.days).toBeLessThan(rep.daysPlanned);
     expect(rep.after.day).toBe(B.time.START_DAY + rep.days);
+    // R01: the catch-up's fx are thrown away, so the app replays the dedication from the report
+    expect(wonWhileAway(s, rep)).toBe(true);
+    expect(s.stats.victoryDay).toBe(rep.after.day);
+    const later = simulateOffline(s, 200_000);   // a later absence of the same (dedicated) colony does not replay it
+    expect(later && wonWhileAway(s, later)).toBe(false);
+    expect(wonWhileAway(fresh(), simulateOffline(fresh(), 200_000)!)).toBe(false);
+  });
+
+  it('decided in your name: repeats fold with a count; over 12 lines the oldest routine line goes first (R18)', () => {
+    const e = (kind: LogKind, text: string): LogEntry => ({ day: 0, kind, text, tags: ['decided'] });
+    const list: Decided[] = [];
+    keepDecided(list, e('emergency', 'Emergency rations: 30 days of grain.'));
+    for (let i = 0; i < 40; i++) keepDecided(list, e('trade', `Selling ${80 + i} surplus grain to Massilia.`));
+    for (let i = 0; i < 14; i++) keepDecided(list, e('ordo', `The Ordo raises work number ${'IVXLCDM'[i % 7]}${'abcdefghijklmn'[i]}.`));
+    keepDecided(list, e('event', 'The Ordo gives the travellers a modest welcome.'));
+    const lines = decidedLines(list);
+    expect(lines).toHaveLength(12);
+    expect(lines[0]).toBe('Emergency rations: 30 days of grain.');           // survival decisions outlast routine work
+    expect(lines).toContain('The Ordo gives the travellers a modest welcome.');
+    expect(lines.some((t) => t.startsWith('Selling'))).toBe(false);           // the oldest routine group was given up first
+    expect(lines.filter((t) => t.startsWith('The Ordo raises'))).toHaveLength(10);
+    expect(lines.at(-2)).toBe('The Ordo raises work number Mn.');              // the newest routine lines are kept
+    const few: Decided[] = [];
+    for (let i = 0; i < 3; i++) keepDecided(few, e('trade', `Selling ${80 + i} surplus grain to Massilia.`));
+    expect(decidedLines(few)).toEqual(['Selling 82 surplus grain to Massilia. (×3)']);
+    const full: Decided[] = [];
+    for (let i = 0; i < 13; i++) keepDecided(full, e('event', `Event ${'abcdefghijklm'[i]}.`));
+    expect(decidedLines(full)[0]).toBe('Event b.');                             // only events left: the oldest goes
+  });
+
+  it('awaiting you: the ready petition is listed once, never again as the Augur\'s advisory (R17)', () => {
+    const r = play(1, 'decision', { days: 1500, stop: (x) => { const pn = petitionNeeds(x, view(x)); return !!pn && pn.ready && pn.rank !== null; } });
+    const s = r.s;
+    expect(petitionNeeds(s, view(s))?.ready).toBe(true);
+    const rep = simulateOffline(s, 60_000)!;
+    expect(rep.awaiting.petition).not.toBeNull();
+    expect(activeAdvisories(s, { forCard: true }).some((a) => a.rule === 'augur.petition')).toBe(true);
+    expect(rep.awaiting.advisories).not.toContain('augur.petition');
+  });
+
+  it('the lowest point ends in one full stop after a Roman date (R48)', () => {
+    const rep = simulateOffline(fresh(3), 200_000)!;
+    rep.lowest.grain = { doh: 12, day: B.time.START_DAY + 5 };
+    expect(describeAway(rep).lowest).toMatch(/[^.]\.$/);
   });
 });

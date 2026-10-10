@@ -11,7 +11,7 @@ import { newGame } from './game/state';
 import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { nextColonyLegacy } from './game/decisions';
 import { addFasti, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, saveGame, savePrefs } from './game/save';
-import { offlineRun, simulateOffline } from './game/offline';
+import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
@@ -298,6 +298,9 @@ class App implements Game {
     this.ui.hideVeil();
     drainActionFx();
     this.fxBuf = [];
+    // The catch-up ticks drop their fx; a dedication while away is replayed so the next frame opens the Victory dispatch
+    // over the letter and onVictory writes the Fasti entry (construction raises it only once).
+    if (wonWhileAway(this.state, report)) this.fxBuf.push({ kind: 'victory' });
     try { this.rates = previewRates(this.state); } catch { this.rates = emptyRates(); }
     this.mode = 'game';
     this.paused = true;
@@ -423,6 +426,7 @@ class App implements Game {
     if (this.mode !== 'game') return;
     const report = simulateOffline(this.state, Math.max(0, minutes) * 60_000);
     drainActionFx();
+    if (report && wonWhileAway(this.state, report)) this.fxBuf.push({ kind: 'victory' });
     try { this.rates = previewRates(this.state); } catch { this.rates = emptyRates(); }
     this.paused = true;
     if (report) this.ui.showDispatch('away', report);
