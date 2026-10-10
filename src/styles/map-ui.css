@@ -66,7 +66,7 @@
 /* ───────── toasts (top right of the map) ───────── */
 #toasts {
   position: absolute; top: calc(var(--hud-h) + 12px); right: calc(var(--side-w) + 16px); z-index: var(--z-toasts);
-  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; width: min(360px, calc(100vw - 24px)); pointer-events: none;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; width: min(360px, calc(100% - 24px)); pointer-events: none;
   transition: right .2s;
 }
 .toast {
@@ -87,7 +87,7 @@
 @keyframes toastBump { 40% { transform: scale(1.05); } }
 
 /* ───────── rank / stage banner ───────── */
-#banner { position: absolute; top: 31%; left: 50%; transform: translateX(-50%); z-index: var(--z-banner); display: none; width: min(560px, calc(100vw - 24px)); }
+#banner { position: absolute; top: 31%; left: 50%; transform: translateX(-50%); z-index: var(--z-banner); display: none; width: min(560px, calc(100% - 24px)); }
 #banner.show { display: block; animation: bannerIn .5s ease-out; }
 #banner.out { animation: bannerOut .45s forwards; }
 @keyframes bannerIn { from { opacity: 0; transform: translate(-50%, 14px) scale(.97); } }

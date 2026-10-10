@@ -44,7 +44,7 @@
 
 /* ───────── labour lines ───────── */
 .tab-labour { display: flex; flex-direction: column; gap: 4px; }
-.tab-lab { --cc: var(--dim); display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 4px 8px;
+.tab-lab { --cc: var(--dim-fill); display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 4px 8px;
   background: var(--well); border: var(--border-w) solid var(--well-line); border-left: 4px solid var(--cc); border-radius: var(--r1); }
 .tab-lab[data-cat='water'] { --cc: #62b0d6; } .tab-lab[data-cat='food'] { --cc: #d9a35b; } .tab-lab[data-cat='materials'] { --cc: #8a6b4a; }
 .tab-lab[data-cat='industry'] { --cc: #55565e; } .tab-lab[data-cat='services'] { --cc: #9e2f25; } .tab-lab[data-cat='builders'] { --cc: #c0623f; }

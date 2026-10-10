@@ -4,15 +4,14 @@
 
 /* ───────── tablet and narrow desktop ───────── */
 @media (max-width: 1099px) {
-  #hud { gap: 5px; padding: 0 8px; }
-  .hud-brand { display: none; }
-  .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
-  .hud-stages { width: 40px; }
-  .hud-chip { padding-right: 6px; }
-  .hud-date { min-width: 0; padding-right: 8px; }
-  .hud-date > img { display: none; }
-  .hud-sp { min-width: 28px; }
-  .hud-menu { min-width: 34px; }
+  /* the HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below */
+  :root { --hud-h: 108px; }
+  #hud { flex-wrap: wrap; align-content: center; row-gap: 3px; }
+  .hud-strip { grid-template-rows: 32px; }
+  .hud-speed, .hud-menu { order: 1; }
+  .hud-speed { margin-left: auto; }
+  .hud-break { display: block; flex: 0 0 100% !important; height: 0; order: 2; }
+  .hud-date, .hud-strip { order: 3; }
   #minimap { display: none; }
   #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
   #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
@@ -20,28 +19,43 @@
   #place-banner { bottom: 104px; }
 }
 
+/* Below 1200 px the placement banner would be squeezed between the left column and the overlay column into a tall strip
+   over the very plots it points at: while placing, the left column steps aside and the banner centres on the free map. */
+@media (max-width: 1199px) {
+  #app.placing #left { display: none; }
+  #place-banner { left: calc((100% - var(--side-w) - 62px) / 2); max-width: calc(100% - var(--side-w) - 90px); }
+  #app:has(#side.collapsed) #place-banner { left: calc((100% - 62px) / 2); max-width: calc(100% - 90px); }
+}
+
 /* ───────── mobile: two-row HUD, widgets above the bottom sheet ───────── */
 @media (max-width: 899px) {
-  :root { --hud-h: 96px; --side-w: 0px; --sheet: 46vh; }
+  /* The open sheet is 46vh, but on a short phone it yields height so the Res Gestae line and the counsel chip still fit
+     between the HUD and the map tools (320 px: the column, the tools and the ticker). */
+  :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
   #app:has(#side.collapsed) { --sheet: 56px; }
   #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
   .hud-brand { display: none; }
   .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
-  .hud-vitals { flex: 2.2 1 0 !important; min-width: 0; gap: 4px; }
-  .hud-vital { flex: 1 1 0; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
-  .hud-chip { flex: 1 1 0 !important; min-width: 0; overflow: hidden; }
+  /* row 1 sizes to its numbers (flex-basis auto) and shares out the rest, so no figure is cut while the row has room */
+  .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
+  .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
+  .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
+  .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
   .hud-date, .hud-speed, .hud-menu { flex: none !important; }
+  .hud-speed, .hud-menu, .hud-date, .hud-strip { order: 3; }
+  .hud-speed { margin-left: 0; }
   .vit-strip, .vit-seasons { display: none; }
   .vit-sub, .hud-vital.falling .vit-sub { display: none; }
   .hud-chip { height: 42px; }
   .hud-menu { margin-left: auto; height: 40px; }
   .hud-date { height: 38px; }
-  .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; }
-  .hud-res { min-width: 0; }
+  .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
+  .hud-res { min-width: 56px; }
   .hud-sp { height: 36px; }
 
   #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
   #objective { padding: 6px 10px; }
+  #left:has(> #inspector > .ins-card.sticky) > #objective { display: none; }   /* a selection gets the objective's room */
   .obj-hint, .obj-unlocks, .obj-meter, .obj-laurel { display: none; }
   .obj-goal { font-size: 14px; margin: 2px 0 0; }
   .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
@@ -80,7 +94,7 @@
   .tick-box { height: 36px; width: 100%; }
   #toasts { top: calc(var(--hud-h) + 8px); right: 50%; transform: translateX(50%); align-items: center; }
   #app:has(#side.collapsed) #toasts { right: 50%; }
-  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100vw - 16px); width: calc(100vw - 16px); }
+  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100% - 16px); width: calc(100% - 16px); }
   .place-box { flex-wrap: wrap; gap: 8px; }
   .place-help { white-space: normal; }
   .place-box .btn { min-height: 44px; }
@@ -98,6 +112,11 @@
   .modal.parchment .modal-kicker { margin: 4px 36px 0; }
 }
 
+/* narrow tablets and large phones: dignitas steps out of row 1 so the souls keep their beds figure */
+@media (max-width: 699px) {
+  .hud-dignitas { display: none; }
+}
+
 /* ───────── compact phones ───────── */
 @media (max-width: 559px) {
   .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
@@ -109,9 +128,21 @@
   .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
   .hud-coin .hud-sub { font-size: 7px; }
   .hud-stages { display: none; }
-  .hud-chip.hud-souls { flex: 1.5 1 0 !important; }   /* "651/473" needs the room the spirits face does not */
-  .hud-chip.hud-morale { flex: .7 1 0 !important; }
-  .hud-dignitas { display: none; }
+  /* Three rows: tablets, coin and souls · date, speed and menu · spirits and the materials (scrolling). No row can wrap:
+     in each one item takes what is left (flex-basis 0) and the others keep their natural width; if even that runs short
+     (a 360 px phone late in the game) only the souls figure or the date ellipsizes. #hud::after breaks rows 2 and 3. */
+  :root { --hud-h: 136px; }
+  #hud { row-gap: 3px; }
+  #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
+  .hud-vitals, .hud-chip.hud-coin { flex: 0 1 auto !important; }
+  .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
+  .hud-break { order: 1; }
+  .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
+  .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
+  .hud-speed, .hud-menu { order: 2; }
+  .hud-menu { margin-left: 0; }
+  .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
+  .hud-strip { order: 4; flex: 1 1 0 !important; }
   .hud-date-main { font-size: 9px; }
   .hud-date .hud-sub { display: none; }
   .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
@@ -120,4 +151,64 @@
   .title-row { flex-direction: column; }
   .modal-title { font-size: 21px; }
   .disp-body.letter, .disp-letter { font-size: 15px; }
+}
+
+/* ───────── touch: targets of at least 44 px (DESIGN §15.7) ───────── */
+@media (pointer: coarse) {
+  .btn, .btn.small, .btn.tab-seg-btn, .btn.bld-cat, .obj-cta, .side-tab, .modal-row, .tr-repeat, .tr-select, button.chip { min-height: 44px; }
+  .btn.adv-f { min-height: 64px; }
+  .btn.small, .btn.bld-cat { min-width: 44px; }
+  .btn.adv-f { min-width: 0; }
+  .counsel-link { min-height: 44px; padding: 0 8px; }
+  button.chip { padding: 0 10px; }
+  .ed-slider, .modal-range { height: 44px; }
+  .tr-repeat input { width: 22px; height: 22px; }
+  .modal-x, .tip-close { min-width: 44px; min-height: 44px; }
+  .modal-x { top: 14px; right: 8px; }
+  .counsel-pt { width: 44px; height: 44px; padding: 8px; }
+  .map-btn { width: 44px; height: 44px; }
+  .map-ov { height: 44px; }
+  .hud-sp, .hud-menu { height: 44px; }
+}
+@media (pointer: coarse) and (max-width: 1099px) {
+  .hud-sp { min-width: clamp(32px, calc((100vw - 700px) / 5), 44px); }
+  .hud-menu { min-width: 44px; }
+}
+@media (pointer: coarse) and (max-width: 899px) {
+  :root { --hud-h: 104px; }
+  .hud-sp { min-width: clamp(28px, calc((100vw - 460px) / 5), 44px); }
+  .map-ov { width: 44px; }
+  .counsel-toggle { top: 4px; right: 4px; width: 44px; height: 44px; }
+  .counsel-who { padding-right: 46px; }
+  #side-toggle { top: -44px; height: 44px; }
+  #left { bottom: calc(var(--sheet) + 158px); }   /* the 44 px overlay and zoom rows stand taller */
+}
+@media (pointer: coarse) and (max-width: 559px) {
+  :root { --hud-h: 140px; }
+  .hud-sp { min-width: clamp(28px, calc((100vw - 214px) / 5), 40px); }
+  .hud-menu { min-width: 40px; }
+}
+
+/* ───────── landscape phones: the sheet becomes a right-hand drawer ───────── */
+/* Every rule above assumes a portrait phone (a 46vh sheet under a two-row HUD), which leaves no map on an 844×390
+   screen. Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit
+   at the bottom right of the free map. */
+@media (max-width: 899px) and (max-height: 520px) {
+  :root, #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
+  #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
+    border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
+  #side.collapsed, #app.placing #side { transform: translateX(100%); }
+  #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
+    border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2); }
+  #side-toggle::before { content: '▸'; }
+  #side.collapsed #side-toggle::before { content: '◂'; }
+  #tabs { grid-template-columns: repeat(3, 1fr); }
+  #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
+  #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
+  #map-tools { bottom: 8px; }
+  #app:not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
+  /* the overlay toggles fold into rows of three so the tools fit the free map beside the left column */
+  .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
+  #ticker { display: none; }
+  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: 8px; }
 }

@@ -50,7 +50,7 @@
 .hud-vital.falling .vit-sub { display: block; }
 .hud-vital.falling .vit-seasons { display: none; }
 .vit-strip { grid-column: 1 / 3; display: flex; gap: 1px; }
-.vit-cell { flex: 1; height: 6px; border-radius: 1px; background: var(--dim); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3); }
+.vit-cell { flex: 1; height: 6px; border-radius: 1px; background: var(--dim-fill); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3); }
 .vit-cell.good { background: var(--good); } .vit-cell.gold { background: var(--gold); } .vit-cell.warn { background: var(--sev-2); }
 .vit-cell.bad { background: var(--bad); } .vit-cell.empty { background: #0a0710; box-shadow: inset 0 0 0 1px #3a2a22; }
 .vit-cell.now { box-shadow: 0 -2px 0 var(--text); }
@@ -83,9 +83,10 @@
 @keyframes hudFlash { 0% { background: rgba(242, 201, 76, .5); } 100% { background: rgba(0, 0, 0, .28); } }
 
 /* materials: a 2-row grid that grows sideways and scrolls when crowded */
+/* Columns size to their content, so a number is never squeezed; the strip keeps room for at least one column and scrolls the rest. */
 .hud-strip {
-  display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 25px); gap: 2px 4px; align-content: center;
-  flex: 1 1 auto !important; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; justify-content: start;
+  display: grid; grid-auto-flow: column; grid-auto-columns: max-content; grid-template-rows: repeat(2, 25px); gap: 2px 4px; align-content: center;
+  flex: 1 1 auto !important; min-width: 132px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; justify-content: start;
 }
 .hud-strip.more { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
 .hud-strip::-webkit-scrollbar { display: none; }
@@ -121,4 +122,22 @@
 .hud-sp.on { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; }
 .hud-menu { font-family: var(--font-body); font-size: 18px; min-width: 38px; }
 
-@media (max-width: 1439px) { .hud-title { display: none; } .hud-brand { max-width: 170px; } }
+/* Below 1760 px the full row no longer fits: the chips tighten, and once five or more materials are on the strip the
+   brand shrinks to its aquila (name and rank in its tooltip); below 1440 px it steps aside, so the material strip keeps
+   its numbers (DESIGN §15.2). */
+@media (max-width: 1759px) {
+  .hud-title { display: none; }
+  .hud-brand { max-width: 170px; }
+  #hud:has(.hud-strip > :nth-child(5)) .hud-brand-text { display: none; }
+  #hud { gap: 5px; padding: 0 8px; }
+  .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
+  .hud-stages { width: 40px; }
+  .hud-chip { padding-right: 6px; }
+  .hud-date { min-width: 0; padding-right: 8px; }
+  .hud-date > img { display: none; }
+  .hud-sp { min-width: 28px; }
+  .hud-menu { min-width: 34px; }
+}
+@media (max-width: 1439px) {
+  .hud-brand { display: none; }
+}

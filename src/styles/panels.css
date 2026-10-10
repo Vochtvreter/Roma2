@@ -39,8 +39,9 @@
   position: absolute; top: -5px; left: 4px; padding: 0 3px; border-radius: 2px; background: var(--gold); color: #1d1410;
   font-family: var(--font-caps); font-size: 8px; line-height: 11px; box-shadow: 0 0 0 1px var(--ring);
 }
+/* on the tab's top-right corner, above the label's last letters (the tab columns size to their labels) */
 .side-badge {
-  position: absolute; top: -5px; right: 3px; min-width: 16px; height: 16px; line-height: 16px; text-align: center;
+  position: absolute; top: -7px; right: -4px; min-width: 16px; height: 16px; line-height: 16px; text-align: center;
   box-shadow: 0 0 0 2px var(--ring);
 }
 .side-badge.info { background: var(--sev-0); }
@@ -62,7 +63,7 @@
   #side { box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0,0,0,.35); }
 }
 @media (max-width: 899px) {
-  #side { top: auto; left: 0; width: 100vw; height: 46vh; border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
+  #side { top: auto; left: 0; right: 0; width: auto; height: var(--sheet-open, 46vh); border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
   #side.collapsed { transform: translateY(calc(100% - 52px)); }
   #side-toggle { left: auto; right: 8px; top: -30px; width: 44px; height: 28px; border: var(--border-w) solid var(--line); border-bottom: 0; border-radius: var(--r2) var(--r2) 0 0; }
   #side-toggle::before { content: '▾'; }
@@ -72,6 +73,7 @@
   .side-tab-sub { display: none; }
   .side-tab-label { font-size: 10px; }
   .side-tab-ico { width: 20px; height: 20px; }
+  .side-badge { top: -5px; right: 3px; }   /* the stacked phone tabs have room beside the icon */
 }
 @media (max-width: 559px) {
   .side-tab-label { font-size: 9px; letter-spacing: -.02em; }
