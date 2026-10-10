@@ -9,7 +9,7 @@ import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState
 import { getMap } from './map';
 import { dayEpoch, memo, structEpoch } from './memo';
 import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
-import { census } from './census';
+import { peopleIndex } from './census';
 import { fxAdd } from './fx';
 import { getBuilding } from './state';
 import { BUILDING_DEFS } from './data/buildings';
@@ -31,7 +31,7 @@ export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerI
   let r = svc.radius;
   if (def.slots > 0) {
     if (!b.open) return 0;
-    const n = census(s).staffed[b.id] ?? 0;
+    const n = peopleIndex(s).byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
     if (n <= 0) return 0;
     if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);
   }
