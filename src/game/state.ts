@@ -8,6 +8,9 @@ import type {
 import { GAME_SEED_XOR } from './rng';
 import { getMap } from './map';
 import { plotOrigin } from './survey';
+import { footprintOf } from './derived';
+import { roadPathFor } from './place';
+import { invalidate } from './memo';
 import { formatRoman } from './calendar';
 import { BUILDING_DEFS } from './data/buildings';
 import { EDICT_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
@@ -224,6 +227,12 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
   for (const g of sv.gates) mark[g.tile] = 1;
   for (const i of sv.via) mark[i] = 1;
   for (let i = 0; i < mark.length; i++) if (mark[i]) s.roads.push(i);
+  invalidate(s);
+  // the start field's track to the network, as placement lays one for every rural work (cleared, not felled for timber)
+  const track = roadPathFor(s, footprintOf(field, s)) ?? [];
+  for (const i of track) if (map.woodMax[i] > 0) s.wood[i] = 0;
+  if (track.length > 0) s.roads = [...new Set([...s.roads, ...track])].sort((a, c) => a - c);
+  invalidate(s);
 
   log(s, 'info', `${formatRoman(day, { year: true })}: ${s.people.length} souls of ${s.families.length} families pitch their tents at ${name}.`, ['highlight']);
   return s;
