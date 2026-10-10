@@ -2,8 +2,9 @@
 // §12.5, DESIGN §11.9). Owner: WP-F.
 // Each overlay is a W×H canvas rebuilt when its key changes (structEpoch + overlay + layer + day/5 for domus and terra),
 // drawn by view.ts at 45% alpha with smoothing on, and mirrored on the minimap. Marks are what a 1 px layer cannot
-// show: ✕ on dry houses and the castellum's 18-tile reach (aqua), want icons and the declining pulse (domus), red rings
-// on unstaffed services (officia), contour lines at 0 and 10 (desir).
+// show, drawn after the objects: every house's state as a tinted, outlined footprint over its sprite (the 1 px layer
+// lies under the sprite and barely shows), ✕ on dry houses and the castellum's 18-tile reach (aqua), want icons and the
+// declining pulse (domus), red rings on unstaffed services (officia), contour lines at 0 and 10 (desir).
 import { F, LAYERS, T } from '../game/types';
 import type { Building, CoverageLayerId, GameState, OverlayId, Rect, Terrain } from '../game/types';
 import { H, W, fertility, getMap, woodAt } from '../game/map';
@@ -33,7 +34,8 @@ const CONTOURS: readonly [number, string][] = [[0, '#f4ead6'], [10, '#9ccc5a']];
 
 type RGB = [number, number, number];
 type Put = (i: number, c: RGB, a?: number) => void;
-interface HouseMark { b: Building; col: string; want: string | null }
+interface HouseMark { b: Building; col: string; want: string | null; tint: boolean }   // tint: a light fill over the sprite
+const MARK = { line: 2, tint: 0.22 } as const;
 
 /** Builds and caches the active overlay canvas and its marks. */
 export class OverlayPainter {
@@ -85,7 +87,7 @@ export class OverlayPainter {
       const m = cov.houseMask.get(id) ?? 0;
       const col = m & bit('fountain') ? C.fountain : m & bit('water') ? C.water : null;
       if (col) this.fill(s, b, rgbOf(col), put);
-      else this.houses.push({ b, col: C.bad, want: wantIcon('water') });
+      this.houses.push(col ? { b, col, want: null, tint: true } : { b, col: C.bad, want: wantIcon('water'), tint: true });
     }
   }
 
@@ -97,7 +99,7 @@ export class OverlayPainter {
       const miss = next ? unmetNeeds(s, b, next) : [];
       const col = b.house.declining ? C.dim : miss.length === 0 ? C.good : miss.length === 1 ? C.one : C.bad;
       this.fill(s, b, rgbOf(col), put);
-      if (b.house.declining || miss.length === 1) this.houses.push({ b, col, want: miss.length === 1 && !b.house.declining ? wantIcon(miss[0]) : null });
+      this.houses.push({ b, col, want: miss.length === 1 && !b.house.declining ? wantIcon(miss[0]) : null, tint: true });
     }
   }
 
@@ -109,7 +111,7 @@ export class OverlayPainter {
       const def = BUILDING_DEFS[b.type];
       if (b.status !== 'done' || !def.service?.some((x) => x.layer === layer)) continue;
       this.fill(s, b, col, put);
-      if (def.slots > 0 && (!b.open || !(c.staffed[b.id] > 0))) this.houses.push({ b, col: C.bad, want: null });
+      if (def.slots > 0 && (!b.open || !(c.staffed[b.id] > 0))) this.houses.push({ b, col: C.bad, want: null, tint: false });
     }
   }
 
@@ -158,16 +160,16 @@ export class OverlayPainter {
       const r = footprintRect(s, m.b);
       if (r.x > vis.x + vis.w || r.y > vis.y + vis.h || r.x + r.w < vis.x || r.y + r.h < vis.y) continue;
       const X = r.x * TILE, Y = r.y * TILE, w = r.w * TILE, h = r.h * TILE;
-      if (m.col === C.dim) {
-        g.globalAlpha = 0.25 + 0.25 * Math.sin(time / 250);
-        g.fillStyle = C.dim;
+      if (m.tint || m.col === C.dim) {
+        g.globalAlpha = m.col === C.dim ? 0.25 + 0.25 * Math.sin(time / 250) : MARK.tint;
+        g.fillStyle = m.col;
         g.fillRect(X, Y, w, h);
         g.globalAlpha = 1;
-      } else if (!m.want) {
-        g.strokeStyle = C.bad;
-        g.lineWidth = 2;
-        g.strokeRect(X - 1, Y - 1, w + 2, h + 2);
       }
+      g.strokeStyle = m.col;
+      g.lineWidth = MARK.line;
+      if (m.tint) g.strokeRect(X + 1, Y + 1, w - 2, h - 2);          // inside the footprint: neighbours keep their own edge
+      else g.strokeRect(X - 1, Y - 1, w + 2, h + 2);
       if (m.want) g.drawImage(sprite(m.want), X + (w >> 1) - 6, Y + (h >> 1) - 6);
     }
     for (const c of this.contours) {

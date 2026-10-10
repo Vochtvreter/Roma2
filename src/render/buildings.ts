@@ -15,6 +15,8 @@ import { capitoliumStage } from '../game/construction';
 import { B } from '../game/balance';
 import { buildingSprite, wantIcon } from './art/index';
 import { CROWN_AT } from './art/capitolium';
+import { RANK_DEFS } from '../game/data/ranks';
+import { fieldHay, fieldStones, forumDress, houseDress, shrineDress } from './decor';
 import { alphaMask, hasSprite, makeCanvas, sprite } from './sprites';
 import { fallbackSprite } from './fallback';
 import type { Push } from './camera';
@@ -32,10 +34,16 @@ export const TIER_COLOR: Readonly<Record<HouseTierId, string>> = {
 };
 
 /** A building as drawn this frame: its visible box (world px) and the sprite origin inside it, for picking. */
-export interface Drawn { b: Building; r: Rect; name: string | null; x: number; y: number; w: number; h: number; sx: number; sy: number; sw: number }
+export interface Drawn {
+  b: Building; r: Rect; name: string | null; x: number; y: number; w: number; h: number; sx: number; sy: number; sw: number;
+  mark?: number;                     // where status marks start (world y), when the sprite box's top is not it (the Capitolium)
+}
 
 const GROUND_TYPES: readonly string[] = ['ager', 'olivetum'];            // fields lie flat: drawn before y-sorting
 const CROWNS: readonly string[] = ['iuppiter', 'aeternitas', 'imperium'];
+const NO_SHADOW: readonly string[] = ['principia'];                     // flat ground plans (the forum) cast no wall shadow
+const LANTERNS = 'saturnalia.lanterns';
+const CAP_MARK_IN = 7;                                                   // the Capitolium's bar sits this far inside its area
 const ORDO_SEAL_DAYS = 10;                                               // an Ordo site shows its seal this long
 const TRENCH_UNTIL = 0.12;
 const SHADOW = { alpha: 0.2, lean: 0.45, flat: 0.32 } as const;
@@ -120,9 +128,9 @@ export class BuildingPainter {
       if (b.status === 'done' || (b.status === 'building' && b.progress > 0)) {
         const look = b.type === 'capitolium' ? null : lookOf(buildingSprite(s, b, season), b.type, b.house?.tier ?? null, r.w);
         if (look && GROUND_TYPES.includes(b.type)) {
-          if (b.status === 'done') g.drawImage(look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height);
+          if (b.status === 'done') { g.drawImage(look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height); fieldStones(g, s, X, Y, w, h); }
           else rise(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height, b.progress);
-        } else if (look) castShadow(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h, b.status === 'done' ? 1 : b.progress);
+        } else if (look && !NO_SHADOW.includes(b.type)) castShadow(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h, b.status === 'done' ? 1 : b.progress);
       }
       if (b.id === sel || b.id === hover) ring(g, X, Y, w, h, b.id === sel ? C.ember : 'rgba(244,234,214,0.8)', b.id === sel ? time : 0);
     }
@@ -147,10 +155,17 @@ export class BuildingPainter {
       const p = b.status === 'done' ? 1 : b.progress;
       const risen = Math.round(cv.height * p);
       this.record(b, r, name, left, bottom - risen, cv.width, risen, cv.width, top);
-      if (GROUND_TYPES.includes(b.type)) continue;
+      if (GROUND_TYPES.includes(b.type)) {
+        if (b.type === 'ager' && p >= 1) fieldHay(s, b, X, r.y * TILE, w, r.h * TILE, season, push);
+        continue;
+      }
       push(bottom, X, (g) => {
-        if (p >= 1) g.drawImage(cv, left, top);
-        else rise(g, cv, left, top, p);
+        if (p >= 1) {
+          g.drawImage(cv, left, top);
+          if (b.type === 'principia') forumDress(g, s, left, top, RANK_DEFS[s.rank].forumStage);
+          else if (b.house) houseDress(g, s, b, left, bottom);
+          else shrineDress(g, s, b, left, top);
+        } else rise(g, cv, left, top, p);
         if (p < 1 || b.house?.renovating) scaffold(g, left, cv.width, bottom, risen);
         if (b.type === 'lignarius' && p >= 1 && hasSprite('b_lignarius_logs')) {
           const logs = sprite('b_lignarius_logs');
@@ -180,6 +195,11 @@ export class BuildingPainter {
     const chosen: string[] = Object.values(s.decisions.paths);
     const crown = b.status === 'done' ? CROWNS.find((c) => chosen.includes(c)) : undefined;
     this.record(b, r, (done ?? up).name, left, top, up.cv.width, up.cv.height, up.cv.width);
+    // status marks start at the stone actually standing (not the canvas top with its 32 px overhang, which reaches the
+    // wall and the north gate), and never above the Area Capitolina's own first row
+    let stands = top + Math.max(opaqueTop(up), Math.round(up.cv.height * (1 - within)));
+    if (done) stands = Math.min(stands, top + opaqueTop(done));
+    this.drawn[this.drawn.length - 1].mark = Math.max(stands, r.y * TILE + CAP_MARK_IN);
     push(bottom, X, (g) => {
       if (done) g.drawImage(done.cv, left, top);
       if (b.status !== 'done') { rise(g, up.cv, left, top, within); scaffold(g, left, up.cv.width, bottom, Math.round(up.cv.height * within)); }
@@ -191,17 +211,22 @@ export class BuildingPainter {
     this.drawn.push({ b, r, name, x, y, w, h, sx: x, sy, sw });
   }
 
-  /** Marks pass (step 6): progress bars, cracks, closed/unpaid/unstaffed pips, Ordo seals, plans, want bubbles (zoom ≥ 2). */
-  marks(g: CanvasRenderingContext2D, s: GameState, level: number, time: number, sel: number | null): void {
+  /**
+   * Marks pass (step 6): progress bars, cracks, closed/unpaid/unstaffed pips, Ordo seals, plans and, at zoom ≥ 2, the
+   * want cue of every house: a small pip on its own roof, and the full want bubble only over the selected or hovered
+   * house (a bubble over every house would cover the facade of the house to its north). `quiet` (the Domus overlay is
+   * on and shows the wants itself) drops the want cues.
+   */
+  marks(g: CanvasRenderingContext2D, s: GameState, level: number, time: number, sel: number | null, hover: number | null = null, quiet = false): void {
     const c = census(s);
     const key = `${structEpoch(s)}|${s.day}`;
     if (key !== this.wantKey) { this.wantKey = key; this.wants.clear(); }
-    const saturnalia = s.modifiers.some((m) => m.source === 'saturnalia') && hasSprite('ov_lanterns');
+    const saturnalia = s.modifiers.some((m) => m.id === LANTERNS) && hasSprite('ov_lanterns');   // the 7-day lanterns, not the feast's other modifiers
     for (const d of this.drawn) {
       const b = d.b, def = BUILDING_DEFS[b.type];
-      const cx = d.sx + d.sw / 2, top = Math.min(d.sy, d.y);
+      const cx = d.sx + d.sw / 2, top = d.mark ?? Math.min(d.sy, d.y);
       if (b.status === 'building') {
-        const bw = Math.min(d.sw - 4, 40), bx = Math.round(cx - bw / 2), by = d.sy - 5;
+        const bw = Math.min(d.sw - 4, 40), bx = Math.round(cx - bw / 2), by = (d.mark ?? d.sy) - 5;
         g.fillStyle = C.bar; g.fillRect(bx - 1, by - 1, bw + 2, 4);
         g.fillStyle = C.gold; g.fillRect(bx, by, Math.max(1, Math.round(bw * b.progress)), 2);
       }
@@ -221,12 +246,16 @@ export class BuildingPainter {
         for (const n of icons) { g.drawImage(sprite(n), x, y); x += 13; }
         y -= 15;
       }
-      if (b.house && b.status === 'done' && level >= 2) {
+      let bubbled = false;
+      if (b.house && b.status === 'done' && level >= 2 && !quiet) {
         const want = this.want(s, b);
-        if (want) bubble(g, wantIcon(want), Math.round(cx), y + 12 + Math.round(Math.sin(time / 400 + b.id) * 1.2));
+        if (want && (b.id === sel || b.id === hover)) {
+          bubble(g, wantIcon(want), Math.round(cx), y + 12 + Math.round(Math.sin(time / 400 + b.id) * 1.2));
+          bubbled = true;
+        } else if (want) pip(g, wantIcon(want), Math.round(d.sx + d.sw) - PIP - 1, Math.max(top, d.r.y * TILE) + 1);
       }
       if (b.id === sel) {
-        const bob = Math.round(Math.sin(time / 200) * 1.5), ay = top - 6 + bob - (icons.length ? 15 : 0);
+        const bob = Math.round(Math.sin(time / 200) * 1.5), ay = top - 6 + bob - (icons.length ? 15 : 0) - (bubbled ? 20 : 0);
         g.fillStyle = C.ink; g.fillRect(cx - 4, ay - 1, 9, 4); g.fillRect(cx - 2, ay + 3, 5, 2);
         g.fillStyle = C.ember; g.fillRect(cx - 3, ay, 7, 2); g.fillRect(cx - 1, ay + 2, 3, 2);
       }
@@ -249,6 +278,20 @@ export class BuildingPainter {
     }
     return null;
   }
+}
+
+const tops = new Map<string, number>();
+/** The first row of a look that has an opaque pixel (0 for a stand-in silhouette); cached per sprite name. */
+function opaqueTop(look: { name: string | null; cv: HTMLCanvasElement }): number {
+  if (!look.name) return 0;
+  let t = tops.get(look.name);
+  if (t === undefined) {
+    const m = alphaMask(look.name), w = look.cv.width;
+    t = 0;
+    while (t < look.cv.height && !m.subarray(t * w, (t + 1) * w).some((v) => v > 0)) t++;
+    tops.set(look.name, t);
+  }
+  return t;
 }
 
 const shadows = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
@@ -283,6 +326,39 @@ function ring(g: CanvasRenderingContext2D, X: number, Y: number, w: number, h: n
     g.fillRect(x, dy > 0 ? y : y - L + 1, 1 + (time ? 1 : 0), L);
   }
   g.globalAlpha = 1;
+}
+
+const PIP = 7;
+const pipColors = new Map<string, string>();
+/** The main colour of an icon: its most frequent pixel that is neither transparent nor near-black (cached). */
+function iconColor(icon: string): string {
+  let c = pipColors.get(icon);
+  if (c) return c;
+  c = C.ember;
+  const cv = sprite(icon), d = cv.getContext('2d')?.getImageData(0, 0, cv.width, cv.height).data;
+  if (d) {
+    const count = new Map<number, number>();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128 || d[i] + d[i + 1] + d[i + 2] < 180) continue;
+      const v = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      count.set(v, (count.get(v) ?? 0) + 1);
+    }
+    let best = -1, n = 0;
+    for (const [v, k] of count) if (k > n) { n = k; best = v; }
+    if (best >= 0) c = `#${best.toString(16).padStart(6, '0')}`;
+  }
+  pipColors.set(icon, c);
+  return c;
+}
+
+/** A want pip (PIP px): a round dot in the main colour of the need's icon, outlined in ink, top-left at (x, y). */
+function pip(g: CanvasRenderingContext2D, icon: string, x: number, y: number): void {
+  g.fillStyle = C.ink;
+  g.fillRect(x + 1, y, PIP - 2, PIP); g.fillRect(x, y + 1, PIP, PIP - 2);
+  g.fillStyle = iconColor(icon);
+  g.fillRect(x + 2, y + 1, PIP - 4, PIP - 2); g.fillRect(x + 1, y + 2, PIP - 2, PIP - 4);
+  g.fillStyle = 'rgba(255,255,255,0.55)';
+  g.fillRect(x + 2, y + 2, 1, 1);
 }
 
 /** A want bubble: a parchment speech bubble with the need's icon, its tail at (cx, by). */

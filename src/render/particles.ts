@@ -2,6 +2,7 @@
 // Cosmetic only: Math.random is allowed here (ARCHITECTURE §10.2). Capped at 600 (300 on coarse pointers). Ambient
 // emitters read the buildings drawn this frame: kiln/bloomery/forge smoke, bath steam, temple incense, fountain
 // sparkle, winter chimneys, construction dust while work is applied, and burning buildings (10 s after a fire fx).
+// The paths thicken them (DESIGN §9.2): Ars fabrilis smoke plumes, Pietas incense, Aquae salutares steam and sparkle.
 import type { FxEvent, GameState, Rect, SeasonIndex } from '../game/types';
 import { getMap } from '../game/map';
 import { getBuilding } from '../game/state';
@@ -11,6 +12,7 @@ import { sprite } from './sprites';
 import { TILE } from './camera';
 import type { Drawn } from './buildings';
 import { footprintRect } from './buildings';
+import { looks } from './decor';
 
 type Kind = 'dust' | 'star' | 'coin' | 'smoke' | 'steam' | 'spark' | 'flame' | 'petal' | 'sparkle' | 'wisp' | 'text' | 'icon' | 'pennant' | 'peg';
 interface P { k: Kind; x: number; y: number; vx: number; vy: number; g: number; life: number; max: number; size: number; color?: string; text?: string }
@@ -26,6 +28,12 @@ const EMIT: Partial<Record<string, { k: Kind; rate: number; fx: number; fy: numb
   templum: { k: 'smoke', rate: 0.8, fx: 0.5, fy: 0.45, staffed: true }, lararium: { k: 'smoke', rate: 0.4, fx: 0.5, fy: 0.4, staffed: true },
   lacus: { k: 'sparkle', rate: 3, fx: 0.5, fy: 0.55, staffed: false }, castellum: { k: 'sparkle', rate: 1.5, fx: 0.5, fy: 0.5, staffed: false },
 };
+/** Which path multiplier an emitter follows. */
+const PATH_EMIT: Partial<Record<string, 'smoke' | 'incense' | 'baths'>> = {
+  figlina: 'smoke', officina: 'smoke', fabrica: 'smoke', templum: 'incense', lararium: 'incense',
+  balneum: 'baths', thermae: 'baths', lacus: 'baths', castellum: 'baths',
+};
+const INCENSE = '#dcd4ec';
 
 /** A small particle system in world px. */
 export class Particles {
@@ -128,7 +136,7 @@ export class Particles {
   ambient(dtMs: number, s: GameState, drawn: readonly Drawn[], season: SeasonIndex, running: boolean): void {
     this.now += dtMs;
     if (!running) return;
-    const dt = dtMs / 1000, c = census(s);
+    const dt = dtMs / 1000, c = census(s), L = looks(s);
     for (const d of drawn) {
       const b = d.b;
       if (b.status === 'building') {
@@ -152,11 +160,14 @@ export class Particles {
         }
       }
       const em = EMIT[b.type] ?? (b.house && season === 3 && b.house.tier !== 'tentoria' ? { k: 'smoke' as Kind, rate: 0.3, fx: 0.7, fy: 0.12, staffed: false } : null);
-      if (!em || (em.staffed && !(c.staffed[b.id] > 0)) || R() >= dt * em.rate) continue;
+      const path = PATH_EMIT[b.type], mult = path ? L[path] : 1;
+      if (!em || (em.staffed && !(c.staffed[b.id] > 0)) || R() >= dt * em.rate * mult) continue;
       const x = d.sx + d.sw * em.fx + (R() - 0.5) * 3, y = d.sy + d.h * em.fy;
       if (em.k === 'sparkle') this.add('sparkle', d.sx + d.sw * (0.25 + R() * 0.5), y + (R() - 0.5) * 6, 0, -3, 700);
       else if (em.k === 'dust') this.add('dust', x + (R() - 0.5) * d.sw * 0.6, y, (R() - 0.5) * 6, -6, 900, 1.5);
-      else this.add(em.k, x, y, 2 + R() * 3, em.k === 'steam' ? -12 : -9, em.k === 'steam' ? 1600 : 2600, em.k === 'steam' ? 2 : 1.5);
+      else if (path === 'incense' && mult > 1) this.add('smoke', x, y, 1 + R() * 2, -7, 3000, 1.5, INCENSE);
+      else this.add(em.k, x, y, 2 + R() * 3, em.k === 'steam' ? -12 : -9, (em.k === 'steam' ? 1600 : 2600) * (path === 'smoke' ? mult : 1),
+        (em.k === 'steam' ? 2 : 1.5) * (path === 'smoke' ? mult : 1));
     }
   }
 

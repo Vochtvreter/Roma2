@@ -334,6 +334,22 @@ const BIRD_1: Grid = ['.....', '.....', 'xx.xx', '..x..'];
 const SHEEP: Grid = ['.......', '.wwwww.', 'wWwwwwG', 'wwwwWwk', '.G..G..', '.......'];
 const FISH: Grid = ['.....', '.Cc..', 'CccwC', '.Cc..'];
 
+/** A legion-red cloak (sagum) over the shoulders and down the back (the sprites face right, so the back is column 0–1). */
+function cloaked(rows: Grid): string[] {
+  return rows.map((r, y) => {
+    const c = [...r];
+    if (y === 4) for (let x = 0; x < c.length; x++) if (c[x] === 'S') c[x] = 'r';
+    if (y === 5 || y === 6) { c[0] = 'R'; c[1] = 'r'; }
+    if (y === 7) c[1] = 'R';
+    return c.join('');
+  });
+}
+
+/** A citizen's plain toga: the patrician's toga without the purple clavus (Ius Latii, DESIGN §9.2). */
+function plainToga(rows: Grid): string[] {
+  return rows.map((r) => r.replace(/I/g, 'i'));
+}
+
 /** Registers this group's sprites with registerArt()/registerDraw() (no canvas work at registration). */
 export function registerActors(): void {
   const frames: [string, Grid][] = [
@@ -350,5 +366,10 @@ export function registerActors(): void {
     ['a_bird_0', BIRD_0], ['a_bird_1', BIRD_1],
     ['a_vettent', VETTENT], ['a_sheep', SHEEP], ['a_fish', FISH],
   ];
+  // the path looks of the walkers (DESIGN §9.2): veterans' cloaks (Colonia veteranorum), citizens' togas (Ius Latii)
+  for (const [f, rows] of [['idle', PERSON_IDLE], ['walk0', PERSON_WALK0], ['walk1', PERSON_WALK1], ['work', PERSON_WORK]] as const)
+    frames.push([`a_veteran_${f}`, cloaked(rows)]);
+  for (const [f, rows] of [['idle', PATRICIAN_IDLE], ['walk0', PATRICIAN_WALK0], ['walk1', PATRICIAN_WALK1]] as const)
+    frames.push([`a_citizen_${f}`, plainToga(rows)]);
   for (const [name, rows] of frames) registerArt(name, rows, { outline: !name.startsWith('a_bird') && name !== 'a_fish' });
 }

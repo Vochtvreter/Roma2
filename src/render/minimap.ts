@@ -9,10 +9,15 @@ import type { Camera } from './camera';
 import { TILE } from './camera';
 import { buildingColor, footprintRect } from './buildings';
 import { OVERLAY_ALPHA } from './overlays';
+import { looks } from './decor';
 
 const REDRAW_MS = 500;
 const PX_PER_TILE = 2;
-const C = { dirt: '#9b7a52', paved: '#5c5d66', wall: '#6f5639', murus: '#b8a582', view: '#f4ead6', shade: 'rgba(10,7,16,0.35)' } as const;
+const C = {
+  dirt: '#9b7a52', paved: '#5c5d66', wall: '#6f5639', murus: '#b8a582', view: '#f4ead6', shade: 'rgba(10,7,16,0.35)',
+  spark: ['#e8f6ff', '#9fd4f0'],
+} as const;
+const FOUNTAINS: readonly string[] = ['lacus', 'castellum'];
 
 /** The minimap canvas painter and its pointer handling. */
 export class Minimap {
@@ -69,6 +74,17 @@ export class Minimap {
       g.fillRect(r.x * k, (r.y + r.h) * k - Math.max(1, dpr), r.w * k, Math.max(1, dpr));
     }
     g.globalAlpha = 1;
+    if (looks(s).fountains) {
+      // the Res Gestae reward: every running fountain and water tower twinkles (alternating every redraw)
+      for (const b of s.buildings) {
+        if (b.status !== 'done' || !FOUNTAINS.includes(b.type)) continue;
+        const r = footprintRect(s, b), on = (Math.floor(now / REDRAW_MS) + b.id) % 2 === 0;
+        const px = Math.max(1, Math.round(k * 0.75)), cx = (r.x + r.w / 2) * k, cy = (r.y + r.h / 2) * k;
+        g.fillStyle = C.spark[on ? 0 : 1];
+        g.fillRect(Math.round(cx - px / 2), Math.round(cy - px / 2), px, px);
+        if (on) { g.fillRect(Math.round(cx - px * 1.5), Math.round(cy - px / 2), px * 3, px); g.fillRect(Math.round(cx - px / 2), Math.round(cy - px * 1.5), px, px * 3); }
+      }
+    }
     if (overlay) {
       g.imageSmoothingEnabled = true;
       g.globalAlpha = OVERLAY_ALPHA + 0.15;

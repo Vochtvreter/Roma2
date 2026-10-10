@@ -2,7 +2,9 @@
 // min(220, pop / 4) people (120 on touch), sampled with hash2(personId, month bucket) so a reload looks the same, walk
 // home ↔ work along the roads (BFS on the built road tiles, cached per structure epoch), go inside, work outdoors on
 // fields and quarries, build on sites, and carry their goods home. Tunic colour = labour category of the job;
-// patricians wear white togas; children and elders by stage. They never touch the sim. Convoys and animals: convoys.ts.
+// patricians wear white togas; children and elders by stage; under Colonia veteranorum 30% of the grown walkers wear a
+// legion-red cloak and under Ius Latii half wear a citizen's plain toga (DESIGN §9.2). They never touch the sim.
+// Convoys and animals: convoys.ts.
 import { BUILDER } from '../game/types';
 import type { Building, FxEvent, GameState, LaborCat, Rect, ResId } from '../game/types';
 import { H, W, idx } from '../game/map';
@@ -16,6 +18,8 @@ import { mirror, tinted } from './sprites';
 import type { Push } from './camera';
 import { TILE } from './camera';
 import { Convoys } from './convoys';
+import { looks } from './decor';
+import type { Looks } from './decor';
 
 /** Tunic colour by labour category of the job (ARCHITECTURE §12.6). */
 export const TUNIC: Readonly<Record<LaborCat | 'none', string>> = {
@@ -32,6 +36,8 @@ const MAX = 220, MAX_TOUCH = 120, PER_PERSON = 4;
 const SAMPLE_DAYS = 30;                        // the sampled crowd changes once a month
 const SPEED = 22;                              // world px per second at 1×
 const SYNC_MS = 500;
+const CLOAKS = 0.3;                            // share of grown walkers in legion-red cloaks (veterani)
+const TOGAS = 0.5;                             // share of grown walkers in a citizen's toga (iusLatii)
 
 type Kind = 'person' | 'child' | 'elder' | 'patrician';
 type Mode = 'walk' | 'in' | 'work' | 'stand';
@@ -147,9 +153,10 @@ export class Actors {
   /** Pushes the walkers, convoys and animals in view onto the draw list. */
   items(s: GameState, vis: Rect, push: Push): void {
     const x0 = vis.x * TILE, y0 = vis.y * TILE, x1 = (vis.x + vis.w) * TILE, y1 = (vis.y + vis.h) * TILE;
+    const L = looks(s);
     for (const w of this.walkers.values()) {
       if (w.mode === 'in' || w.alpha <= 0 || w.x < x0 || w.y < y0 || w.x > x1 || w.y > y1) continue;
-      push(w.y, w.x, (g) => this.draw(g, w));
+      push(w.y, w.x, (g) => this.draw(g, w, L));
     }
     this.convoys.items(s, vis, push);
   }
@@ -264,11 +271,13 @@ export class Actors {
     }
   }
 
-  private draw(g: CanvasRenderingContext2D, w: Walker): void {
+  private draw(g: CanvasRenderingContext2D, w: Walker, L: Looks): void {
     const moving = w.mode === 'walk';
     const step = Math.floor(w.phase * 6) % 2;
     const frame = moving ? (step ? 'walk0' : 'walk1') : w.mode === 'work' && w.kind === 'person' && Math.floor(w.phase * 3) % 2 ? 'work' : 'idle';
-    const name = `a_${w.kind}_${frame}`;
+    const look = w.kind !== 'person' ? w.kind
+      : L.togas && frame !== 'work' && hash2(w.id, 7) < TOGAS ? 'citizen' : L.cloaks && hash2(w.id, 6) < CLOAKS ? 'veteran' : 'person';
+    const name = `a_${look}_${frame}`;
     let spr = w.frames.get(name);
     if (!spr) w.frames.set(name, (spr = tinted(name, w.tint)));
     if (w.facing < 0) spr = mirror(spr);

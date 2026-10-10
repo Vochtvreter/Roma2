@@ -1487,7 +1487,7 @@ export function visibleTiles(c: Camera, margin?: number): Rect;
 3. **Overlay** (if active): the overlay's 1 px/tile canvas scaled up **with smoothing on** at 45% alpha.
 4. **Placement under-layer**: glowing valid slots, coverage preview on road tiles, desirability footprint.
 5. **Y-sorted objects** (by footprint bottom, then x): buildings and houses (via `buildingSprite`), walls and gates, aqueduct spans, trees/stumps/rocks/reeds/ruins, walkers and carts.
-6. **Status marks** above objects: scaffolds and `rise()`, cracked plaster (declining), CLAVSVM plank (closed), unpaid coin, unstaffed pip, Ordo seal on fresh Ordo sites, plan ⌛, want icon over houses (level ≥ 2 only; the first unmet need), ↑ arrows during placement.
+6. **Status marks** above objects: scaffolds and `rise()`, cracked plaster (declining), CLAVSVM plank (closed), unpaid coin, unstaffed pip, Ordo seal on fresh Ordo sites, plan ⌛, want cues (level ≥ 2 only; the first unmet need): a want pip (≤ 8 px, in the colour of the need's icon) inside every wanting house's own roof box, and the full want bubble only over the selected or hovered house (a bubble over every house covers the facade of the house to its north); no want cues while the Domus overlay shows them; ↑ arrows during placement. Then the overlay's marks: houses tinted and outlined in their overlay colour over their sprites (Domus, Aqua), the want icon of one-need houses, ✕ on dry houses, red rings on unstaffed services.
 7. **Particles and floating text**.
 8. **Placement ghost**: sprite at 60% alpha snapped to the slot, red tint + ✕ when invalid, gold *+NN%* when `mult ≥ 1.05`, felling yield, laurel marker on the Ordo's best slot.
 9. **Selection/hover outlines** and `flash()` rectangles.

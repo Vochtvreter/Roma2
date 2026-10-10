@@ -12,7 +12,7 @@ import type { Camera, Push, Xform } from './camera';
 import { Motion, TILE, ZOOM_LEVELS, clampCamera, defaultLevel, makeCamera, nearestLevel, scaleFor, screenToWorld, tilesIn, worldToScreen } from './camera';
 import { Input } from './input';
 import { TerrainPainter } from './terrain';
-import { ForestLayer, natureItems } from './forest';
+import { ForestLayer, forestItems, natureItems } from './forest';
 import { OVERLAY_ALPHA, OverlayPainter } from './overlays';
 import { Minimap } from './minimap';
 import { Placement, label, lPath } from './placement';
@@ -190,12 +190,13 @@ export class MapView {
     this.painter.items(s, vis, cur, push);
     linearItems(s, vis, push);
     natureItems(s, vis, push);
+    forestItems(s, vis, cur, push);
     this.actors.items(s, vis, push);
     this.items.sort((a, b) => a.y - b.y || a.x - b.x);
     for (const it of this.items) it.draw(g);
     // 6–9 · marks, particles, birds, ghost, flashes
     const title = this.time < this.titleUntil;
-    if (!title) this.painter.marks(g, s, this.cam.level, this.time, this._selected);
+    if (!title) this.painter.marks(g, s, this.cam.level, this.time, this._selected, this._placing ? null : this.hoverId, this._overlay === 'domus');
     this.overlays.marks(g, s, this._overlay, vis, this.time);
     this.particles.ambient(dtMs, s, this.painter.drawn, cur, !paused);
     this.particles.draw(g, { x: vis.x * TILE, y: vis.y * TILE, w: vis.w * TILE, h: vis.h * TILE });
@@ -407,9 +408,14 @@ export class MapView {
     this.cb.onClick(tile, id, { button, shift });
   }
 
-  private onToolDrag(phase: 'start' | 'move' | 'end', x: number, y: number, shift: boolean): boolean {
+  private onToolDrag(phase: 'start' | 'move' | 'end' | 'abort', x: number, y: number, shift: boolean): boolean {
     const p = this._placing;
     if (!p || (p.kind !== 'road' && p.kind !== 'pave')) return false;
+    if (phase === 'abort') {                       // a pinch or a cancelled pointer: drop the path, never commit it
+      this.dragFrom = null;
+      this.place.path = null;
+      return true;
+    }
     const kind = p.kind;
     const tile = this.tileAt(x, y);
     if (phase === 'start') {
