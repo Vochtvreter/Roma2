@@ -96,7 +96,7 @@ export function openPosts(v: SimView, cat: LaborCat): number {
 }
 
 /** Best output per hand this season among a category's finished producers of an essential (0 if none). */
-export function perHand(s: GameState, cat: LaborCat, res: Essential): number {
+function perHand(s: GameState, cat: LaborCat, res: Essential): number {
   const season = seasonOf(s.day);
   let best = 0;
   for (const b of s.buildings) {
