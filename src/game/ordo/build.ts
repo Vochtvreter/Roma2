@@ -80,9 +80,9 @@ function closedBlocks(s: GameState): Set<number> {
   return out;
 }
 
-/** The Ordo's slot for a type: A's best slot, or the best one off closed blocks (ties by lowest tile); memo per day and structure. */
+/** The Ordo's slot for a type: A's best slot, or the best one off closed blocks (ties by lowest tile); memo per day and epochs (as pure as A's scoring). */
 export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): number | null {
-  return memo(s, `ordo.slot.${type}.${purpose}`, structEpoch(s), () => {
+  return memo(s, `ordo.slot.${type}.${purpose}`, `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
     const closed = closedBlocks(s);
     const open = (tile: number): boolean => { const blk = blockOfTile(s, tile); return !blk || !closed.has(blk.id); };
     const best = bestSlot(s, type, { owner: 'ordo', purpose });

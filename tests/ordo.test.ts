@@ -1,7 +1,7 @@
 // tests/ordo.test.ts — the Ordo: labour steps, wish list, stakes, saving, emergency ladder, toggles, trade, reasons. Owner: WP-C.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Building, BuildingId, EssentialForecast, GameState, Reason, ReasonCode, SimView } from '../src/game/types';
-import { serialize } from '../src/game/save';
+import { deserialize, serialize } from '../src/game/save';
 import { newCtx, tick, view } from '../src/game/sim';
 import { getMap, idx } from '../src/game/map';
 import { isActiveBlock } from '../src/game/survey';
@@ -200,6 +200,12 @@ describe('building', () => {
     expect(wishList(a, view(a), 6)).toEqual(la);
     expect(serialize(a)).toBe(json);
     for (const w of la) clean(w.reason);
+  });
+
+  it('decides the same after a save and load as without one (its memory lives in the state)', () => {
+    const a = run(fresh(3), 150);
+    const b = deserialize(serialize(a)) as GameState;
+    expect(serialize(run(b, 250))).toBe(serialize(run(a, 250)));
   });
 
   it('reports the day: labour, agenda, ticker', () => {
