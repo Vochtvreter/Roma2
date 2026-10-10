@@ -4,14 +4,14 @@
 // maxPotential; Ordo labour off: today's staffing), consumption = today's need + industry draws, caps, rot, evaporation.
 import { B as B$ } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
-import { dayEpoch as dayEpoch$, dayStruct as dayStruct$, memo as memo$ } from './memo';
+import { dayEpoch as dayEpoch$, memo as memo$ } from './memo';
 import { census } from './census';
 import { buildingRateOf, maxPotential } from './economy';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { dateOf as dateOf$, dayOf as dayOf$, daysInMonth as daysInMonth$, nextSeasonStart as nextSeasonStart$, seasonOf as seasonOf$, seasonStartOf as seasonStartOf$ } from './calendar';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, dayEpoch = dayEpoch$, dayStruct = dayStruct$, memo = memo$, BUILDING_DEFS = BUILDING_DEFS$,
+const B = B$, dayEpoch = dayEpoch$, memo = memo$, BUILDING_DEFS = BUILDING_DEFS$,
   dateOf = dateOf$, dayOf = dayOf$, daysInMonth = daysInMonth$, nextSeasonStart = nextSeasonStart$,
   seasonOf = seasonOf$, seasonStartOf = seasonStartOf$;
 
@@ -23,11 +23,13 @@ const ORDO_FILL: Record<Essential, number> = { grain: B.forecast.GRAIN, water: B
 const SEASONS: readonly SeasonIndex[] = [0, 1, 2, 3];
 const NET_DAYS = 3;      // net3 averages today's staffing over this many days
 
-/** Today's forecast for grain, water and coin (memo on day + structure + Ordo labour toggle; pure). Under manual labour
- *  the projection is today's staffing, so the census epoch joins the key: the Ordo reads the forecast before
- *  assignJobs, and a forecast cached then would describe yesterday's jobs for the rest of the day. */
+/** Today's forecast for grain, water and coin. Under Ordo labour it is made once a day (ARCHITECTURE §9: at most once
+ *  per day), at the council's sitting, where the emergency ladder reads it first; a work finished later that day enters
+ *  tomorrow's. Under manual labour the projection is today's staffing, so the census epoch joins the key: the Ordo
+ *  reads the forecast before assignJobs, and a forecast cached then would describe yesterday's jobs for the rest of the
+ *  day. */
 export function forecast(s: GameState): Forecast {
-  return memo(s, 'forecast', s.ordo.on.labour ? -dayStruct(s) : dayEpoch(s), () => {
+  return memo(s, 'forecast', s.ordo.on.labour ? -(s.day + 1) : dayEpoch(s), () => {
     const stock = s.res.denarii + s.taxAccrued;
     const net30 = s.counters.coinEma;   // 30-day EMA of net denarii per day (accrual basis)
     return {
