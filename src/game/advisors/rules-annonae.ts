@@ -150,11 +150,20 @@ function watchList(s: GameState, short: readonly boolean[]): Person[] {
     .slice(0, 3);
 }
 
+/** Today's grain need per group at the meal: the end-of-day census less those born or arrived today, who came after
+ *  consume() (otherwise every arrival day read as a short meal). */
+function mealNeed(s: GameState, v: SimView): number[] {
+  const gn = v.c.groupNeed.grain, by = v.c.byStage;
+  const fresh = [0, 0, 0, 0];
+  for (const p of s.people) if (p.arrived === s.day || p.born === s.day) fresh[stageOf(p, s.day)]++;
+  return gn.map((n, g) => (by[g] > 0 ? (n * Math.max(0, by[g] - fresh[g])) / by[g] : n));
+}
+
 const mess: AdvisorRule = {
   id: 'annonae.mess', advisor: 'annonae',
-  evaluate(_s, v) {
+  evaluate(s, v) {
     const eaten = todayRate('cons', 'grain', 'eating');
-    const gn = v.c.groupNeed.grain;
+    const gn = mealNeed(s, v);
     const need = gn[0] + gn[1] + gn[2] + gn[3];
     if (eaten === null || need <= 0 || eaten >= need - EPS) return null;
     const short = ratios(eaten, gn).map((x) => x < 1 - EPS);
