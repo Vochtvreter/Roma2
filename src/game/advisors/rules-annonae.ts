@@ -206,20 +206,31 @@ const storage: AdvisorRule = {
     const rotting = rot >= R.ROT_M;
     if (held(s, 'annonae.storage') ? fill < R.STORAGE_CLEAR && rot < R.ROT_CLEAR : !full && !rotting) return null;
     const waste = spill + rot;
+    // full stores alone, or the open sheds' ordinary rot, are a Nota for the tablets: the Ordo keeps grain at 95% of the
+    // cap, so a Monitum on that held the counsel card for most of a game; grain spilling or rotting ≥ 3 a day is one
     return {
-      rule: 'annonae.storage', severity: waste > R.SPILL_C ? 2 : 1, metric: { label: 'Stores', value: Math.round(100 * fill), unit: 'pct' },
-      params: { waste, pct: Math.round(100 * fill), surplus: g.stock - g.need * settingValue(s, 'tradeReserve'), holdDays: rotting ? 0 : R.STORAGE_DAYS },
+      rule: 'annonae.storage', severity: waste > R.SPILL_C ? 2 : spill > EPS || rotting ? 1 : 0, metric: { label: 'Stores', value: Math.round(100 * fill), unit: 'pct' },
+      params: { spill, rot, pct: Math.round(100 * fill), doh: g.doh, surplus: g.stock - g.need * settingValue(s, 'tradeReserve'), holdDays: rotting ? 0 : R.STORAGE_DAYS },
     };
   },
-  title: (_s, a) => (P(a.params.waste) >= 0.05
-    ? `The sheds overflow: ${num(P(a.params.waste))} grain a day spills or rots.`
-    : `The sheds are full: ${P(a.params.pct)}% of our room is taken.`),
+  title(_s, a) {
+    const p = a.params;
+    const spill = P(p.spill), rot = P(p.rot);
+    if (spill >= 0.05) return `The sheds overflow: ${num(spill)} grain a day spills${rot >= 0.05 ? ` and ${num(rot)} rots` : ''}.`;
+    if (rot >= 0.05) return `Grain rots in the open sheds: ${num(rot)} a day.`;
+    return `The sheds are full: ${P(p.pct)}% of our room is taken.`;
+  },
   text(s) {
     const safe = (BUILDING_DEFS.horreum.storage?.grain ?? 0) * fx(s, 'horreaCap');
     return `Grain in the open sheds rots ${num(B.economy.SHED_ROT * 100)}% a day, twice that in Aestas; a Horreum keeps `
       + `${int(safe)} safe. Or sell the surplus while it is ours to sell.`;
   },
-  remedies: (s, _v, a) => three({ kind: 'place', building: 'horreum' }, exportRemedy(s, 'grain', Math.min(B.ordo.CARGO, P(a.params.surplus)))),
+  remedies(s, _v, a) {
+    // with more than twice the grain reserve in store the surplus is for selling, not for another granary
+    const sell = exportRemedy(s, 'grain', Math.min(B.ordo.CARGO, P(a.params.surplus)));
+    const store: Remedy = { kind: 'place', building: 'horreum' };
+    return P(a.params.doh) > 2 * settingValue(s, 'grainReserve') ? three(sell, store) : three(store, sell);
+  },
 };
 
 // ───────────────────────────── 6 · annonae.goods ─────────────────────────────

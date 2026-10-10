@@ -129,12 +129,13 @@ function hubsWanted(s: GameState): number {
   return q?.HUBS ?? 0;
 }
 
-/** Goods named by an active Cave or Periculum advisory (grain for the annona rules, else the rule's own good). */
+/** Goods named by an active Cave or Periculum advisory (grain for the annona rules, else the rule's own good); full
+ *  sheds (annonae.storage) want room, not grain. */
 function wantedGoods(s: GameState): Set<ResId> {
   const out = new Set<ResId>();
   for (const id of RULES) {
     const a = s.guidance.advisories[id];
-    if (!a?.active || a.sev < 2) continue;
+    if (!a?.active || a.sev < 2 || id === 'annonae.storage') continue;
     const res = a.params.res;
     if (typeof res === 'string' && isTrade(res)) out.add(res);
     else if (id.startsWith('annonae.')) out.add(id === 'annonae.goods' ? 'oil' : 'grain');

@@ -33,7 +33,7 @@ import { Rng } from '../src/game/rng';
 import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 
-type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number };
+type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
 interface Fix { levels: [Severity, Setup, number?][]; clear: Setup }
 
@@ -61,6 +61,7 @@ function day(s: GameState, p: Patch = {}): TickContext {
   const g = v.c.groupNeed.grain;
   ctx.rates.cons.grain.eating = p.eat ?? g[0] + g[1] + g[2] + g[3];   // everyone fed unless the patch says otherwise
   if (p.rot !== undefined) ctx.rates.cons.grain.rot = p.rot;
+  if (p.spill !== undefined) ctx.rates.cons.grain.spill = p.spill;
   advisorsDay(s, ctx, v);
   return ctx;
 }
@@ -114,7 +115,11 @@ const FIX: Record<RuleId, Fix> = {
     levels: [[3, () => ({ eat: 1, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } })], [2, () => ({ eat: 3, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } })]],
     clear: () => ({ eat: 16, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } }),
   },
-  'annonae.storage': { levels: [[1, () => ({ grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS], [2, () => ({ rot: 12, grain: { stock: 990, cap: 1000 } })]], clear: () => ({ rot: 0, grain: { stock: 500, cap: 1000 } }) },
+  'annonae.storage': {
+    levels: [[0, () => ({ grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS], [1, () => ({ spill: 4, grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS],
+      [1, () => ({ rot: 4, grain: { stock: 990, cap: 1000 } })], [2, () => ({ rot: 12, grain: { stock: 990, cap: 1000 } })]],
+    clear: () => ({ rot: 0, spill: 0, grain: { stock: 500, cap: 1000 } }),
+  },
   'annonae.goods': {
     levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
       [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'insula', oil: 0.4, declining: true }); s.res.oil = 3; }]],
@@ -362,6 +367,34 @@ describe('fabrum.labour: "We lack N hands" (R10)', () => {
     expect(r.remedies[0].check.ok).toBe(true);
     s.ordo.on.labour = false;
     expect(renderAdvisory(s, fake(s, p), { rule: L, advisor: 'fabrum', memo: m }).remedies[0].remedy).toEqual({ kind: 'open', tab: 'people', anchor: 'labour' });
+  });
+});
+
+describe('annonae.storage: full sheds (R12)', () => {
+  const S = 'annonae.storage';
+  const render = (s: GameState, p: Patch) => renderAdvisory(s, fake(s, p), { rule: S, advisor: 'annonae', memo: s.guidance.advisories[S]! });
+  it('full stores and the open sheds\' ordinary rot stay off the counsel card; spilling grain does not', () => {
+    const s = base();
+    for (let i = 0; i < A.RULES.STORAGE_DAYS; i++) day(s, { rot: 1.1, grain: { stock: 990, cap: 1000, net3: 5 } });
+    expect(s.guidance.advisories[S]!.active).toBe(true);
+    expect(s.guidance.advisories[S]!.sev).toBe(0);
+    expect(activeAdvisories(s, { forCard: true }).map((a) => a.rule)).not.toContain(S);
+    expect(render(s, { rot: 1.1 }).title).toBe('Grain rots in the open sheds: 1.1 a day.');
+    day(s, { spill: 6, rot: 1.1, grain: { stock: 1000, cap: 1000, net3: 5 } });
+    expect(s.guidance.advisories[S]!.sev).toBe(1);
+    expect(render(s, {}).title).toBe('The sheds overflow: 6 grain a day spills and 1.1 rots.');
+  });
+  it('with more than twice the grain reserve in store, selling comes before another granary', () => {
+    const s = base();
+    s.rank = 1;                                                        // Commercium is open
+    day(s, { rot: 4, grain: { stock: 990, cap: 1000, doh: 200 } });
+    const rich = render(s, {}).remedies.map((r) => r.remedy.kind);
+    expect(rich[0]).toBe('contract');
+    expect(rich).toContain('place');
+    const t = base();
+    t.rank = 1;
+    day(t, { rot: 4, grain: { stock: 990, cap: 1000, doh: 30 } });
+    expect(render(t, {}).remedies[0].remedy).toEqual({ kind: 'place', building: 'horreum' });
   });
 });
 
