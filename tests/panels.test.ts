@@ -13,7 +13,7 @@ import { view } from '../src/game/sim';
 import { placeBuilding } from '../src/game/place';
 import { B } from '../src/game/balance';
 import { counselSig } from '../src/ui/counsel';
-import { remedyKey } from '../src/ui/tabs/common';
+import { remedyKey, savingLine } from '../src/ui/tabs/common';
 import { fresh, run } from './util';
 
 function fakeGame(s: GameState): Game {
@@ -166,5 +166,27 @@ describe('remedy buttons follow the best plot (R15)', () => {
     const s = fresh(42);
     expect(remedyKey(s, { remedy: { kind: 'buyNow', res: 'grain', qty: 37 }, check: { ok: true } })).toBe('buyNow');
     expect(remedyKey(s, { remedy: { kind: 'contract', spec: { hub: 'metellianus', mode: 'import', res: 'grain', qty: 33, repeat: false } }, check: { ok: true } })).toBe('contract');
+  });
+});
+
+describe('the Ordo\'s saving line (R16)', () => {
+  const sv = { cost: { denarii: 250, timber: 100 }, for: 'petition' as const };
+
+  it('says the target is set aside and ready once the stores cover it', () => {
+    const s = fresh(42);
+    const g = fakeGame(s);
+    s.res.denarii = 3600;
+    s.res.timber = 290;
+    expect(savingLine(g, sv)).toBe('Set aside for the petition: 250 den · 100 timber, ready');
+  });
+
+  it('names only what is still lacking, never the whole target', () => {
+    const s = fresh(42);
+    const g = fakeGame(s);
+    s.res.denarii = 3600;
+    s.res.timber = 60;
+    const line = savingLine(g, sv);
+    expect(line).toMatch(/^Saving for the petition: 40 timber \(/);
+    expect(line).not.toMatch(/den/);
   });
 });

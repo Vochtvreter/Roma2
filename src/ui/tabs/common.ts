@@ -1,7 +1,7 @@
 // src/ui/tabs/common.ts — shared pieces of the side-panel tabs and the inspector: sections, segmented controls,
 // disabled-with-reason buttons, runways from the ledger, the Ordo's Agenda (DESIGN §10.6, §15.3). Owner: WP-I.
 import { RESOURCES } from '../../game/types';
-import type { ActionResult, BuildingId, Cost, GameState, Remedy, ResId, WishView } from '../../game/types';
+import type { ActionResult, BuildingId, CouncilReport, Cost, GameState, Remedy, ResId, WishView } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
 import { fmtCost, h, img, tip } from '../dom';
 import type { Kid } from '../dom';
@@ -138,6 +138,27 @@ export function lacking(s: GameState, cost: Cost): Cost | null {
   return RESOURCES.some((r) => (m[r] ?? 0) > 0) ? m : null;
 }
 
+/** A wish's state as the ticker and the focus line name it ('Raising: Lumber camp'). */
+export const WISH_STATE: Record<WishView['state'], string> = {
+  staked: 'Staked', building: 'Raising', saving: 'Saving for', waiting: 'Waiting on', proposed: 'Next',
+};
+
+type Saving = NonNullable<CouncilReport['saving']>;
+const SAVING_FOR: Record<Saving['for'], string> = { petition: 'the petition', plan: 'your plan', pin: 'your pinned work', request: 'your request', wish: 'the next work' };
+
+/** What the Ordo saves for, in words ('the petition', 'your pinned work'). */
+export function savingFor(sv: Saving): string {
+  return SAVING_FOR[sv.for] ?? `the ${sv.for}`;
+}
+
+/** The saving line: what the target still lacks with an ETA ('Saving for the petition: 40 stone (≈ 9 days)'), or, once
+ *  the stores cover it, that it is set aside ('Set aside for the petition: 250 den · 100 timber, ready'). Never the whole
+ *  target as if it were lacking. */
+export function savingLine(g: Game, sv: Saving): string {
+  const lack = lacking(g.state, sv.cost);
+  return lack ? `Saving for ${savingFor(sv)}: ${lackLine(g, lack)}` : `Set aside for ${savingFor(sv)}: ${fmtCost(sv.cost)}, ready`;
+}
+
 /** A remedy's discrete identity for a panel signature: a building remedy's type, its target tile and whether it (and the
  *  "Ask the Ordo" beside it) can be used — all structural, so the card rebuilds when the best plot moves or is taken —
  *  any other remedy by its kind only; never live numbers. */
@@ -201,7 +222,7 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
   const refreshSave = (): void => {
     const sv = councilReport(g.state).saving;
     saving.hidden = !sv;
-    if (sv) saving.textContent = `Saving for the ${sv.for}: ${lackLine(g, lacking(g.state, sv.cost) ?? sv.cost)}`;
+    if (sv) saving.textContent = savingLine(g, sv);
   };
   refreshSave();
   up.push(refreshSave);
