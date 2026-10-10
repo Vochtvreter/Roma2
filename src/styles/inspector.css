@@ -37,7 +37,7 @@
 /* ───────── event card ───────── */
 /* #choice reaches down to the bottom edge (it lets clicks through) so a tall card can scroll inside it instead of running
    off the screen (a landscape phone, the veterans' families). */
-#choice { position: absolute; top: calc(var(--hud-h) + 8px); bottom: 8px; left: 50%; transform: translateX(-50%); width: min(470px, calc(100vw - 24px));
+#choice { position: absolute; top: calc(var(--hud-h) + 8px); bottom: 8px; left: 50%; transform: translateX(-50%); width: min(470px, calc(100% - 24px));
   z-index: var(--z-choice); pointer-events: none; }
 #choice > .choice-card { pointer-events: auto; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 /* From 900 px (and on a landscape phone, whose panel is a right-hand drawer) the card sits in the free map between the

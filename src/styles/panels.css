@@ -62,7 +62,7 @@
   #side { box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0,0,0,.35); }
 }
 @media (max-width: 899px) {
-  #side { top: auto; left: 0; width: 100vw; height: 46vh; border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
+  #side { top: auto; left: 0; right: 0; width: auto; height: var(--sheet-open, 46vh); border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
   #side.collapsed { transform: translateY(calc(100% - 52px)); }
   #side-toggle { left: auto; right: 8px; top: -30px; width: 44px; height: 28px; border: var(--border-w) solid var(--line); border-bottom: 0; border-radius: var(--r2) var(--r2) 0 0; }
   #side-toggle::before { content: '▾'; }

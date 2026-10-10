@@ -21,7 +21,8 @@ img.pix { -webkit-user-drag: none; }
 input, textarea { user-select: text; -webkit-user-select: text; }
 
 /* ───────── app frame ───────── */
-#app { position: fixed; inset: 0; overflow: hidden; }
+/* viewport-fit=cover (index.html): the frame keeps clear of the notch, the Dynamic Island and the home indicator */
+#app { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); overflow: hidden; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: var(--z-map); touch-action: none; cursor: crosshair; }
 #app.in-title > :not(#map) { display: none !important; }
 
