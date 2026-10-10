@@ -14,6 +14,7 @@ import { firstWant } from '../game/housing';
 import { capitoliumStage } from '../game/construction';
 import { B } from '../game/balance';
 import { buildingSprite, wantIcon } from './art/index';
+import { CROWN_AT } from './art/capitolium';
 import { alphaMask, hasSprite, makeCanvas, sprite } from './sprites';
 import { fallbackSprite } from './fallback';
 import type { Push } from './camera';
@@ -182,7 +183,7 @@ export class BuildingPainter {
     push(bottom, X, (g) => {
       if (done) g.drawImage(done.cv, left, top);
       if (b.status !== 'done') { rise(g, up.cv, left, top, within); scaffold(g, left, up.cv.width, bottom, Math.round(up.cv.height * within)); }
-      if (crown) { const cr = sprite(`p_crown_${crown}`); g.drawImage(cr, Math.round(left + up.cv.width / 2 - cr.width / 2), top - cr.height + 10); }
+      if (crown) g.drawImage(sprite(`p_crown_${crown}`), left + CROWN_AT.x, top + CROWN_AT.y);   // G2's anchor on p_capitolium_4
     });
   }
 
