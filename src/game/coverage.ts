@@ -84,27 +84,39 @@ function roadSides(road: Uint8Array, x: number, y: number, w: number, h: number)
   return sideTiles(x, y, w, h).filter((i) => road[i] > 0);
 }
 
+// The grid size as module constants: the floods below run thousands of steps per rebuild, and an imported binding is
+// re-read through the module record at every step under the test runner's transform.
+const GW_ = GW, GN_ = GN;
+// Scratch for flood (reused; every call resets the tiles it touched).
+const floodRem = new Int16Array(GN).fill(-1);
+
 /** Floods the road network from each source's tiles up to its radius (max-remaining BFS); marks covered tiles in `out`. */
 function flood(road: Uint8Array, sources: { tiles: number[]; r: number }[], out: Uint8Array): void {
-  const rem = new Int16Array(GN).fill(-1);
+  const rem = floodRem;
+  const touched: number[] = [];
   let maxR = 0;
   for (const src of sources) maxR = Math.max(maxR, src.r);
   const buckets: number[][] = Array.from({ length: maxR + 1 }, () => []);
   for (const src of sources) {
-    for (const t of src.tiles) if (rem[t] < src.r) { rem[t] = src.r; buckets[src.r].push(t); }
+    for (const t of src.tiles) if (rem[t] < src.r) { if (rem[t] < 0) touched.push(t); rem[t] = src.r; buckets[src.r].push(t); }
   }
   for (let r = maxR; r >= 1; r--) {
-    for (const t of buckets[r]) {
+    const cur = buckets[r], next = buckets[r - 1], nr = r - 1;
+    for (let k = 0; k < cur.length; k++) {
+      const t = cur[k];
       if (rem[t] !== r) continue;
-      const x = t % GW;
-      const visit = (j: number): void => { if (road[j] > 0 && rem[j] < r - 1) { rem[j] = r - 1; buckets[r - 1].push(j); } };
-      if (t >= GW) visit(t - GW);
-      if (x < GW - 1) visit(t + 1);
-      if (t < GN - GW) visit(t + GW);
-      if (x > 0) visit(t - 1);
+      const x = t % GW_;
+      let j = t - GW_;
+      if (t >= GW_ && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
+      j = t + 1;
+      if (x < GW_ - 1 && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
+      j = t + GW_;
+      if (t < GN_ - GW_ && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
+      j = t - 1;
+      if (x > 0 && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
     }
   }
-  for (let i = 0; i < GN; i++) if (rem[i] >= 0) out[i] = 1;
+  for (const i of touched) { out[i] = 1; rem[i] = -1; }
 }
 
 // coverage(s) is a function of dayEpoch(s) (its key comes from activeSources, memoised on it): a one-entry fast path
@@ -148,13 +160,17 @@ function buildCoverage(s: GameState, src: { list: Source[] }, key: string): Cove
     layers[l] = out;
   });
   const houseMask = new Map<number, number>();
+  const byIndex = LAYERS.map((l) => layers[l]);
   for (const id of d.houses) {
     const b = getBuilding(s, id);
     if (!b) continue;
     const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
     const sides = sideTiles(b.x, b.y, w, h);
     let mask = 0;
-    LAYERS.forEach((l, k) => { if (sides.some((i) => layers[l][i] === 1)) mask |= 1 << k; });
+    for (let k = 0; k < byIndex.length; k++) {
+      const layer = byIndex[k];
+      for (const i of sides) if (layer[i] === 1) { mask |= 1 << k; break; }
+    }
     houseMask.set(id, mask);
   }
   return { layers, houseMask, key };
@@ -173,20 +189,23 @@ const extra = new Uint8Array(GN);
 
 /** Road tiles within `r` steps of the sources over the roads plus the `extra` overlay (plain BFS, sparse result). */
 function reachWithin(road: Uint8Array, sources: number[], r: number): number[] {
-  seenGen++;
+  const gen = ++seenGen;
   const out: number[] = [];
   const dist: number[] = [];
-  for (const t of sources) if (seen[t] !== seenGen) { seen[t] = seenGen; out.push(t); dist.push(0); }
+  for (const t of sources) if (seen[t] !== gen) { seen[t] = gen; out.push(t); dist.push(0); }
   for (let k = 0; k < out.length; k++) {
     const t = out[k];
     const nd = dist[k] + 1;
     if (nd > r) continue;
-    const x = t % GW;
-    const visit = (j: number): void => { if (seen[j] !== seenGen && (road[j] > 0 || extra[j] === 1)) { seen[j] = seenGen; out.push(j); dist.push(nd); } };
-    if (t >= GW) visit(t - GW);
-    if (x < GW - 1) visit(t + 1);
-    if (t < GN - GW) visit(t + GW);
-    if (x > 0) visit(t - 1);
+    const x = t % GW_;
+    let j = t - GW_;
+    if (t >= GW_ && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
+    j = t + 1;
+    if (x < GW_ - 1 && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
+    j = t + GW_;
+    if (t < GN_ - GW_ && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
+    j = t - 1;
+    if (x > 0 && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
   }
   return out;
 }
