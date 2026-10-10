@@ -9,6 +9,7 @@ import { dateOf as dateOf$, dayOf as dayOf$, formatRoman as formatRoman$ } from 
 import { settingValue } from '../decisions';
 import { tabRevealed } from '../reveal';
 import { missing } from '../state';
+import { census } from '../census';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
@@ -103,8 +104,11 @@ const contract: AdvisorRule = {
   evaluate(s): AdvisoryEval | null {
     const c = s.trade.contracts.find((x) => x.status === 'paused');
     if (!c) return null;
+    // an import that waits for room in full stores sets out on its own once they are drawn down: a quiet Nota (a store
+    // raised for it would only hold more of what we already have enough of)
+    const full = c.pause === 'storage' && c.mode === 'import' && s.res[c.res] >= c.qty;
     return {
-      rule: 'quaestor.contract', severity: 1,
+      rule: 'quaestor.contract', severity: full ? 0 : 1,
       params: { id: c.id, code: c.pause ?? 'reserve', res: c.res, hub: c.hub, mode: c.mode, qty: c.qty, X: settingValue(s, 'tradeReserve') },
     };
   },
@@ -128,15 +132,16 @@ const contract: AdvisorRule = {
       case 'reserve': return `Exports stop where fewer than ${int(P(p.X))} days of ${res} would remain. Lower the reserve, or let the stock grow.`;
       case 'stock': return `It sets out on its own as soon as the stores hold ${int(P(p.qty))} ${res}.`;
       case 'denarii': return `It sets out when the aerarium can pay; taxes come in on ${formatRoman(nextKalends(s.day))}.`;
-      case 'storage': return `It sets out once there is room: use some ${res}, or raise a store.`;
+      case 'storage': return `It sets out on its own once the stores have room for it; until then we hold ${res} enough.`;
       default: return 'Send the caravan to another market.';
     }
   },
-  remedies(_s, _v, a) {
+  remedies(s, _v, a) {
     const p = a.params;
     const min = SETTING_DEFS.tradeReserve.min;
     const lower: Remedy | null = p.code === 'reserve' && P(p.X) > min ? { kind: 'setting', setting: 'tradeReserve', value: Math.max(min, P(p.X) - STEP.TRADE_RESERVE) } : null;
-    const store: Remedy | null = p.code === 'storage' ? { kind: 'place', building: p.res === 'grain' ? 'horreum' : 'apotheca' } : null;
+    // a store only when the stores could never take a full caravan: when they are merely full, the caravan waits
+    const store: Remedy | null = p.code === 'storage' && census(s).caps[p.res as TradeRes] < 2 * P(p.qty) ? { kind: 'place', building: p.res === 'grain' ? 'horreum' : 'apotheca' } : null;
     return three(lower, store, { kind: 'open', tab: 'trade', anchor: `contract-${P(p.id)}` });
   },
 };

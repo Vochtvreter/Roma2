@@ -3,20 +3,19 @@
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B as B$ } from '../balance';
-import type { AdvisorRule, Building, GameState, Remedy, Severity, SimView } from '../types';
+import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, Remedy, Severity, SimView } from '../types';
 import { formatRoman as formatRoman$ } from '../calendar';
-import { previewCoverage } from '../coverage';
 import { petitionNeeds, settingValue } from '../decisions';
 import { seasonMult } from '../economy';
 import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } from '../map';
-import { routeAqueduct } from '../place';
+import { routeAqueduct, validSlots } from '../place';
 import { aestasWork } from '../ordo/water';
 import { bestSlot } from '../site';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
   CLEAR, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
-  placeName, runway, serviceFor, three,
+  placeName, runway, serveSlot, serviceFor, three,
 } from './util';
 import type { CadencedRule } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
@@ -121,6 +120,19 @@ const aestas: AdvisorRule = {
 
 // ───────────────────────────── 9 · aquarum.access ─────────────────────────────
 
+/** The work that brings water to the dry homes, at the slot serving the most of them (util.serveSlot, as the Ordo
+ *  raises it): a fountain once the aqueduct flows, a well where no fountain can reach them; null when neither can. */
+function waterWork(s: GameState, v: SimView, dry: readonly number[]): { type: BuildingId; tile: number; k: number } | null {
+  const types: BuildingId[] = serviceFor(s, 'water', v.d.castellumActive) === 'lacus' ? ['lacus', 'puteus'] : ['puteus'];
+  for (const type of types) {
+    const at = serveSlot(s, type, 'player', 'water', dry);
+    if (at) return { type, ...at };
+  }
+  return null;
+}
+
+const dryIds = (s: GameState, v: SimView): number[] => houseWants(s, v).filter((w) => w.want === 'water').map((w) => w.id).sort((a, b) => a - b);
+
 const access: CadencedRule = {
   every: B.housing.CHECK_EVERY,   // B, not util: rule objects are built at load time, inside an import cycle
   id: 'aquarum.access', advisor: 'aquarum',
@@ -130,26 +142,24 @@ const access: CadencedRule = {
     const min = held(s, 'aquarum.access') ? Math.floor(R.ACCESS_HOUSES / CLEAR) : R.ACCESS_HOUSES;
     if (dry.length < Math.max(1, min)) return null;
     const lapsed = all.some((w) => w.declining && w.lapsed.includes('water'));
+    // no well nor fountain can reach them: a quiet Nota (the card is for what can be done), unless a house lapses
+    const stuck = !lapsed && waterWork(s, v, dryIds(s, v)) === null;
     return {
-      rule: 'aquarum.access', severity: lapsed ? 2 : 1, metric: { label: 'Dry homes', value: dry.length, unit: 'houses' },
+      rule: 'aquarum.access', severity: lapsed ? 2 : stuck ? 0 : 1, metric: { label: 'Dry homes', value: dry.length, unit: 'houses' },
       params: { n: dry.length, tile: dry[Math.floor(dry.length / 2)].tile },
     };
   },
   title: (_s, a) => (P(a.params.n) === 1 ? 'A home fetches water from the river.' : `${P(a.params.n)} homes fetch water from the river.`),
   text(s, v, a) {
-    const type = serviceFor(s, 'water', v.d.castellumActive) ?? 'puteus';
-    const what = type === 'lacus' ? 'a fountain' : 'a well';
-    const slot = bestSlot(s, type, { owner: 'player', purpose: 'waterAccess' });
-    if (!slot) return `They live ${placeName(s, P(a.params.tile))}, and no plot near them can take ${what} yet.`;
-    const dry = new Set(houseWants(s, v).filter((w) => w.want === 'water').map((w) => w.id));
-    const k = previewCoverage(s, type, slot.x, slot.y).reduce((n, c) => n + c.houses.filter((h) => dry.has(h)).length, 0);
-    if (k > 0) return `${what.charAt(0).toUpperCase()}${what.slice(1)} ${placeName(s, slot.tile)} would reach ${k} of them.`;
-    return `They live ${placeName(s, P(a.params.tile))}; ${what} within ${BUILDING_DEFS[type].service?.[0].radius ?? 0} steps of their doors would serve them.`;
+    const w = waterWork(s, v, dryIds(s, v));
+    if (!w) return `They live ${placeName(s, P(a.params.tile))}, and no free plot near them can take a fountain or a well yet.`;
+    const what = w.type === 'lacus' ? 'a fountain' : 'a well';
+    return `${what.charAt(0).toUpperCase()}${what.slice(1)} ${placeName(s, w.tile)} would reach ${w.k} of them.`;
   },
   remedies(s, v) {
-    const type = serviceFor(s, 'water', v.d.castellumActive) ?? 'puteus';
-    const slot = bestSlot(s, type, { owner: 'player', purpose: 'waterAccess' });
-    const place: Remedy = slot ? { kind: 'place', building: type, tile: slot.tile } : { kind: 'place', building: type };
+    const w = waterWork(s, v, dryIds(s, v));
+    const type = w?.type ?? serviceFor(s, 'water', v.d.castellumActive) ?? 'puteus';
+    const place: Remedy | null = w ? { kind: 'place', building: w.type, tile: w.tile } : null;
     return three(place, { kind: 'overlay', overlay: 'aqua', layer: type === 'lacus' ? 'fountain' : 'water' });
   },
 };
@@ -178,19 +188,40 @@ function onAqueduct(label: string): boolean {
   return AQUA_WORDS.some((w) => what.includes(w));
 }
 
+/** The great baths are still to be raised but no free block within CASTELLUM_REACH of the flowing castellum can take
+ *  them (the Ordo keeps such a block from the castellum's staking on, but the player may have built in it). */
+function thermaeBlocked(s: GameState, v: SimView): Building | null {
+  if (s.rank < BUILDING_DEFS.thermae.rank || !v.d.castellumActive || s.buildings.some((b) => b.type === 'thermae')) return null;
+  if (validSlots(s, 'thermae', 'player').size > 0) return null;
+  return s.buildings.find((b) => b.type === 'castellum' && b.status === 'done') ?? null;
+}
+
 const aqueduct: AdvisorRule = {
   id: 'aquarum.aqueduct', advisor: 'aquarum',
-  evaluate(s, v) {
-    if (s.rank < MUNICIPIUM || v.d.castellumActive || (v.d.all.castellum ?? 0) > 0) return null;
-    const f = spring(s);
-    if (!f) return null;
+  evaluate(s, v): AdvisoryEval | null {
+    if (s.rank < MUNICIPIUM) return null;
     const pn = s.rank === MUNICIPIUM ? petitionNeeds(s, v) : null;
     const unmet = pn && pn.rank === COLONIA ? pn.needs.filter((n) => !n.met) : [];
+    const cas = thermaeBlocked(s, v);
+    if (cas) {
+      const waits = unmet.some((n) => /great baths|thermae/i.test(n.label));
+      return { rule: 'aquarum.aqueduct', severity: waits ? 2 : 1, params: { mode: 'thermae', id: cas.id, tile: cas.y * getMap(s.seed).W + cas.x, reach: B.map.CASTELLUM_REACH, waits: waits ? 1 : 0 } };
+    }
+    if (v.d.castellumActive || (v.d.all.castellum ?? 0) > 0) return null;
+    const f = spring(s);
+    if (!f) return null;
     const waits = unmet.length > 0 && unmet.every((n) => onAqueduct(n.label));
     return { rule: 'aquarum.aqueduct', severity: waits ? 2 : 1, params: { dist: f.dist, dir: f.dir, fons: f.tile, waits: waits ? 1 : 0 } };
   },
-  title: (_s, a) => `A spring rises ${int(P(a.params.dist))} paces to the ${a.params.dir}.`,
+  title(_s, a) {
+    if (a.params.mode === 'thermae') return `No free block within ${int(P(a.params.reach))} paces of the castellum can take the great baths.`;
+    return `A spring rises ${int(P(a.params.dist))} paces to the ${a.params.dir}.`;
+  },
   text(s, _v, a) {
+    if (a.params.mode === 'thermae') {
+      const waits = a.params.waits === 1 ? ' Rome will not make us a Colonia until they stand.' : '';
+      return `The thermae draw on the aqueduct and must stand within ${int(P(a.params.reach))} paces of the castellum ${placeName(s, P(a.params.tile))}, on a whole block of their own; every block near it is built on.${waits} Clear a block near the castellum and the Ordo raises them there.`;
+    }
     const slot = bestSlot(s, 'castellum', { owner: 'player' });
     const route = slot ? routeAqueduct(s, slot.x, slot.y) : null;
     const len = route ? route.tiles.length : P(a.params.dist);
@@ -198,7 +229,9 @@ const aqueduct: AdvisorRule = {
     const waits = a.params.waits === 1 ? ' Rome will not make us a Colonia until it flows.' : '';
     return `An aqueduct of ~${int(len)} arches would bring ${int(flow)} amphorae a day and fountains to every street.${waits}`;
   },
-  remedies: () => three({ kind: 'place', building: 'castellum' }, { kind: 'overlay', overlay: 'aqua', layer: 'fountain' }),
+  remedies: (_s, _v, a) => a.params.mode === 'thermae'
+    ? three({ kind: 'building', op: 'center', id: P(a.params.id) }, { kind: 'overlay', overlay: 'aqua', layer: 'fountain' })
+    : three({ kind: 'place', building: 'castellum' }, { kind: 'overlay', overlay: 'aqua', layer: 'fountain' }),
 };
 
 /** The Curator Aquarum's rules, in RULES order. */

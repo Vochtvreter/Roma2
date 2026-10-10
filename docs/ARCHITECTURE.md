@@ -188,6 +188,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   ordo/labour.ts                   C   planLabour, manualPlan                                      (330)
   ordo/build.ts                    C   wish list, agenda, requests                                 (360)
   ordo/trade.ts                    C   trade automation                                            (150)
+  ordo/goods.ts                    C   oil/wine plan: lean-season reserve, projection, shortfall    (130)
   ordo/emergency.ts                C   Lex de annona ladder                                        (120)
   ordo/saving.ts                   C   savingFor, reserved, canSpend                               (90)
   ordo/actions.ts                  C   askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority (110)
@@ -896,7 +897,8 @@ export const B = {
              BUILDERS_MIN: 2, BUILDERS_MAX: 0.3, WATER_BASE: 1.05, WATER_LOW: 1.2, WATER_THIRST: 1.5, WATER_PREFILL: 1.3,
              FOOD_LOW: 1.2, FOOD_HUNGRY: 2, FOOD_HIEMS: 1.4, FOOD_FULL: 0.85, WINTER_FILL: 1.35, REQUESTS_MAX: 3,
              REQUEST_DAYS: 180, TOOLS_PER: 0.5, LUXURY: 1.2, EVOLVE_MIN: 2, EVOLVE_MIN_BLOCK: 3,
-             EXPORT_CAP: 0.95, EXPORT_CAP_MERCATURA: 0.6, IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80 },
+             EXPORT_CAP: 0.95, EXPORT_CAP_MERCATURA: 0.6, IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80,
+             LUXURY_RUNWAY: 60, GOODS_FLOOR: 15 },
   emergency: { PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
              IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
              RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365 },
@@ -1130,6 +1132,8 @@ export function isAquae(s: GameState, b: Building): boolean;
 export function renovationPool(s: GameState, v: SimView): Cost;
 export function housingDay(s: GameState, ctx: TickContext): void;              // slot checks, renovation start/finish, decline/recover/drop (offline: no drop)
 export function goodsDay(s: GameState, ctx: TickContext): void;                // oil/wine delivery and supply EMAs
+export function goodsTier(s: GameState, b: Building): HouseTierId | null;      // the tier whose goods a house draws (T4; a stone house waiting only on them)
+export function goodsDemand(s: GameState): { oil: number; wine: number; servedOil: number; servedWine: number };   // daily draw at full supply
 export function setHousePref(s: GameState, id: number, pref: HousePref): ActionResult;
 ```
 **`construction.ts`**
@@ -1182,9 +1186,13 @@ export function manualPlan(s: GameState, v: SimView): LabourPlan;    // category
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.5 (cadence, concurrency, stakes, savingFor, take/ready/pending)
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
 export function wishList(s: GameState, v: SimView, n: number): WishView[];      // pure; the Agenda and the "would" ghost
+export function keptBlocks(s: GameState): readonly { rect: Rect; for: BuildingId }[];   // blocks kept free for a temple/bathhouse/market hall to come, the theatrum, the thermae (DESIGN §10.5)
+// ordo/goods.ts
+export function goodsPlan(s: GameState, v: SimView, res: 'oil' | 'wine', own?: boolean): GoodsPlan;   // demand, presses by season, lean-season reserve, export keep, projection low/empty day, shortfall (memo per day)
 // ordo/trade.ts
 export function ordoTrade(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.7
 export function ordoTradeWould(s: GameState, v: SimView): Reason | null;
+export function luxuryCaravans(s: GameState, v: SimView, res: 'oil' | 'wine'): { need: number; short: number };   // standing imports the projection lacks
 // ordo/emergency.ts
 export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void; // DESIGN §8.7 steps 1–4 (step 4 calls events.triggerRelief)
 // ordo/saving.ts
@@ -1294,6 +1302,9 @@ export function checkRemedy(s: GameState, r: Remedy): ActionResult;   // never t
 export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them)
 export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, building:center
 export function remedyLabel(s: GameState, r: Remedy): string;
+// advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
+export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
+export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null;   // the garden lifting the most of them
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;

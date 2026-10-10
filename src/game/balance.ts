@@ -179,6 +179,7 @@ export const B = {
     ACCESS_MIN: 2,                                    // wish 5: ≥ 2 houses whose first unmet need is water
     DEFICIT_RESERVE: 0.5,                             // trade 1: grain DoH < Grain reserve × 0.5 with max potential < need
     LUXURY_RUNWAY: 60, MERCHANT_DEAL: 1.1,
+    GOODS_FLOOR: 15,                                  // oil and wine: days of the draw kept below every plan (the import floor)
     MIN_EXPORT: 20,                                   // the smallest surplus worth a caravan
     COMING: 30,                                       // days ahead that "the coming season" means for survival food
     STREET_TILES: 4,                                  // road tiles in one "busy street" paved under Urbs
@@ -266,7 +267,7 @@ export const B = {
       HIEMS_LEAD: 120, HIEMS_SOON: 45, HIEMS_M: 15,
       MESS_CLEAR_DAYS: 3,
       STORAGE_FULL: 0.97, STORAGE_DAYS: 5, ROT_M: 3, SPILL_C: 10, STORAGE_CLEAR: 0.9, ROT_CLEAR: 1,
-      GOODS_DAYS: 30, GOODS_SUPPLY: 0.9,
+      GOODS_DAYS: 30, GOODS_SUPPLY: 0.9, GOODS_LEAD: 90,   // oil/wine: Monitum when the plan runs dry within GOODS_LEAD days, Cave within GOODS_DAYS
       WATER_RUNOUT: [7, 15, 30], AESTAS_LEAD: 90, AESTAS_SOON: 30, AESTAS_M: 10,
       ACCESS_HOUSES: 2,
       IDLE_MIN: 3, IDLE_SHARE: 0.08, IDLE_DAYS: 5, OPEN_SHARE: 0.1,

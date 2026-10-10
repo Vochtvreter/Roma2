@@ -34,6 +34,7 @@ import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
 import { bestFood } from '../src/game/advisors/util';
+import { residents } from '../src/game/census';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -124,7 +125,9 @@ const FIX: Record<RuleId, Fix> = {
     clear: () => ({ rot: 0, spill: 0, grain: { stock: 500, cap: 1000 } }),
   },
   'annonae.goods': {
-    levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
+    // the plan's projection: a Monitum when the stores run dry within GOODS_LEAD days, a Cave within GOODS_DAYS or when a house lapses
+    levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 60 * residents(s, houses(s)[0].id).length * B.housing.GOODS.oil; }],
+      [2, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
       [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'insula', oil: 0.4, declining: true }); s.res.oil = 3; }]],
     clear: (s) => { setTier(s, 'tentoria'); s.res.oil = 1000; },
   },
@@ -210,6 +213,27 @@ describe('rule fixtures', () => {
       });
     });
   }
+});
+
+describe('the Aedilis counsels what can be done (fix batch G)', () => {
+  const E = 'aedilis.evolve';
+  const waitTemple = (s: GameState, rank: 1 | 2): void => {
+    setTier(s, 'tegulata');
+    s.rank = rank;
+    s.fed = 1;
+    ctl.covered = ALL_LAYERS.filter((l) => l !== 'temple');
+    invalidate(s);
+  };
+  it('the remedy is a temple at the free block that serves the most of the waiting houses', () => {
+    const s = base();
+    for (let i = 0; i < every(E); i++) { waitTemple(s, 2); day(s); }
+    const m = s.guidance.advisories[E]!;
+    expect(m.sev).toBeGreaterThanOrEqual(1);
+    const r = renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: m });
+    const place = r.remedies[0].remedy;
+    expect(place).toMatchObject({ kind: 'place', building: 'templum' });
+    expect(r.text).toMatch(/^A temple .* would let \d+ of them grow\.$/);
+  });
 });
 
 describe('hysteresis', () => {

@@ -15,6 +15,7 @@ import { pushActionFx as pushActionFx$ } from './memo';
 import { log, nextId } from './state';
 import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
+import { goodsPlan } from './ordo/goods';
 import { banditCheck } from './events';
 import { HUB_DEFS as HUB_DEFS$, MERCHANT_NAMES as MERCHANT_NAMES$, SEASON_TARGET as SEASON_TARGET$, TRADE_BASE as TRADE_BASE$ } from './data/hubs';
 import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
@@ -110,6 +111,14 @@ function exportKeep(s: GameState, res: TradeRes, v: SimView): { keep: number; wh
     return { keep: days * v.c.need.grain, why: `we keep ${days} days of grain in reserve` };
   }
   const keep = reserved(s, v)[res] ?? 0;
+  if (res === 'oil' || res === 'wine') {
+    // the great houses' draw to the next pressing (wine: LUXURY_RUNWAY days) is never sold (goodsPlan.keep)
+    const plan = goodsPlan(s, v, res);
+    if (plan.demand > 0 && plan.keep > 0) {
+      const until = res === 'oil' ? 'to carry them through Ver and Aestas, when the presses rest' : `for the next ${B.ordo.LUXURY_RUNWAY} days`;
+      return { keep: keep + plan.keep, why: `the great houses draw ${Math.ceil(plan.demand)} ${resName(res)} a day and we keep ${Math.ceil(keep + plan.keep)} ${until}` };
+    }
+  }
   return { keep, why: `the Ordo holds ${Math.ceil(keep)} ${resName(res)} for its works` };
 }
 

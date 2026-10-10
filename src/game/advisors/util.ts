@@ -4,7 +4,7 @@
 import { B as B$ } from '../balance';
 import { HOUSE_TIERS as HOUSE_TIERS$, HUBS as HUBS$ } from '../types';
 import type {
-  AdvisorRule, BuildingId, ContractSpec, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
+  AdvisorRule, BuildingId, ContractSpec, CoverageLayerId, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
   SkillId, TradeRes,
 } from '../types';
 import { seasonOf as seasonOf$ } from '../calendar';
@@ -15,6 +15,13 @@ import { personName } from '../people';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup';
 import { nextTier, shownWant, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
+import { validSlots } from '../place';
+import { houseDesir, previewCovered, previewDesir } from '../coverage';
+import { siteScore } from '../site';
+import { classAt, sizeOf } from '../derived';
+import { rectGap } from '../world/grid';
+import { fxAdd } from '../fx';
+import { layoutEpoch } from '../memo';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { NEED_META as NEED_META$, TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
@@ -207,6 +214,108 @@ export function needRemedy(s: GameState, v: SimView, need: NeedId): Remedy {
   if (need === 'rank') return { kind: 'open', tab: 'council', anchor: 'petition' };
   if (need === 'street') return { kind: 'open', tab: 'build', anchor: 'road' };
   return { kind: 'overlay', overlay: 'domus' };
+}
+
+/** The coverage layers that answer a house need (a temple answers religion too; a macellum the market). */
+const ANSWERS: Partial<Record<NeedId, readonly CoverageLayerId[]>> = {
+  water: ['water', 'fountain'], religion: ['shrine', 'temple'], market: ['market', 'macellum'], temple: ['temple'], baths: ['baths'], macellum: ['macellum'],
+};
+/** Path radius bonus per coverage layer (as coverage.ts applies it to previews). */
+const BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadius' | 'bathsRadius'>> = {
+  shrine: 'shrineRadius', temple: 'shrineRadius', market: 'marketRadius', macellum: 'marketRadius', baths: 'bathsRadius',
+};
+
+/** A set of tiles as a memo key part (kept per set: the Ordo hands the same set all day). */
+function skipKey(skip: ReadonlySet<number> | undefined): string {
+  if (!skip) return '';
+  let k = skipKeys.get(skip);
+  if (k === undefined) { k = [...skip].sort((a, b) => a - b).join(','); skipKeys.set(skip, k); }
+  return k;
+}
+const skipKeys = new WeakMap<ReadonlySet<number>, string>();
+
+/** The slot of `type` that brings the most of the houses `ids` the coverage they wait for (`need`): the valid slots of
+ *  `owner` (none on a `skip` tile), the most of them served, ties by the Ordo's site score, then the lowest tile; null
+ *  when no valid slot reaches any of them — a service raised elsewhere would leave them waiting (DESIGN §10.5 row 6:
+ *  "the slot unblocking the most houses"). A slot farther than its reach + 2 (Chebyshev) from every waiting house cannot
+ *  serve one (coverage runs along the roads from its sides), so only nearer slots are previewed. Memo on the layout, the
+ *  rank, the radius bonuses and the arguments. */
+export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null {
+  const layers = ANSWERS[need] ?? [];
+  const svc = (BUILDING_DEFS[type].service ?? []).filter((x) => layers.includes(x.layer));
+  if (svc.length === 0 || ids.length === 0) return null;
+  const bonus = svc.map((x) => (BONUS[x.layer] ? fxAdd(s, BONUS[x.layer] as 'shrineRadius') : 0));
+  const key = `${layoutEpoch(s)}|${s.rank}|${bonus.join(',')}|${ids.join(',')}|${skipKey(skip)}`;
+  return memo(s, `adv.serve.${type}.${owner}.${need}`, key, () => {
+    const want = new Set(ids);
+    const waiting: { x: number; y: number; w: number; h: number }[] = [];
+    for (const id of ids) {
+      const b = getBuilding(s, id);
+      if (!b) continue;
+      const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      waiting.push({ x: b.x, y: b.y, w, h });
+    }
+    const reach = Math.max(...svc.map((x, k) => x.radius + bonus[k])) + 2;
+    let best: { tile: number; k: number; score: number } | null = null;
+    for (const tile of [...validSlots(s, type, owner).keys()].sort((a, b) => a - b)) {
+      if (skip?.has(tile)) continue;
+      const x = tx(tile), y = ty(tile);
+      const [w, h] = sizeOf(type, classAt(s, type, x, y));
+      const r = { x, y, w, h };
+      if (!waiting.some((hr) => rectGap(r, hr) <= reach)) continue;
+      const served = new Set<number>();
+      for (const p of previewCovered(s, type, x, y)) if (layers.includes(p.layer)) for (const hid of p.houses) if (want.has(hid)) served.add(hid);
+      const k = served.size;
+      if (k === 0 || (best && k < best.k)) continue;
+      const score = siteScore(s, type, x, y, 'evolve').score;
+      if (!best || k > best.k || score > best.score + 1e-9) best = { tile, k, score };
+    }
+    return best ? { tile: best.tile, k: best.k } : null;
+  });
+}
+
+/** The garden slot (for `owner`, none on a `skip` tile) that best lifts the houses `ids`, whose next tier waits on a
+ *  finer street: the most of them brought to their tier's desirability, then the most lift toward it (capped at what
+ *  each still lacks), then the lowest tile; null when no valid slot lifts any of them — a garden raised elsewhere would
+ *  leave them waiting. Only slots within a garden's reach of a waiting house are previewed (memo as serveSlot). */
+export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null {
+  if (ids.length === 0) return null;
+  const key = `${layoutEpoch(s)}|${s.rank}|${ids.join(',')}|${skipKey(skip)}`;
+  return memo(s, `adv.lift.${owner}`, key, () => {
+    const houses: { rect: { x: number; y: number; w: number; h: number }; short: number }[] = [];
+    for (const id of ids) {
+      const b = getBuilding(s, id);
+      const next = b ? nextTier(s, b) : null;
+      const min = next ? TIER_DEFS[next].desirMin : null;
+      if (!b || min === null) continue;
+      const short = min - houseDesir(s, id);
+      const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      if (short > 0) houses.push({ rect: { x: b.x, y: b.y, w, h }, short });
+    }
+    const reach = BUILDING_DEFS.hortus.desir[1];
+    let best: { tile: number; k: number; lift: number } | null = null;
+    for (const tile of [...validSlots(s, 'hortus', owner).keys()].sort((a, b) => a - b)) {
+      if (skip?.has(tile)) continue;
+      const x = tx(tile), y = ty(tile);
+      const [w, h] = sizeOf('hortus', classAt(s, 'hortus', x, y));
+      const r = { x, y, w, h };
+      const near = houses.filter((hh) => rectGap(r, hh.rect) <= reach);
+      if (near.length === 0) continue;
+      const delta = new Map<number, number>();
+      for (const d of previewDesir(s, 'hortus', x, y)) delta.set(d.tile, d.v);
+      let k = 0, lift = 0;
+      for (const hh of near) {
+        let sum = 0;
+        for (let yy = hh.rect.y; yy < hh.rect.y + hh.rect.h; yy++) for (let xx = hh.rect.x; xx < hh.rect.x + hh.rect.w; xx++) sum += delta.get(yy * getMap(s.seed).W + xx) ?? 0;
+        const avg = sum / (hh.rect.w * hh.rect.h);
+        if (avg >= hh.short) k++;
+        lift += Math.min(avg, hh.short);
+      }
+      if (lift <= 1e-9) continue;
+      if (!best || k > best.k || (k === best.k && lift > best.lift + 1e-9)) best = { tile, k, lift };
+    }
+    return best;
+  });
 }
 
 /** A house need as a noun phrase ("a shrine", "water"). */

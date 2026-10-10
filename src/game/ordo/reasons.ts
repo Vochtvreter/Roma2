@@ -111,6 +111,14 @@ const VARIANT: Partial<Record<ReasonCode, { when: (p: Reason['params']) => boole
     when: (p) => !(typeof p.days === 'number' && p.days > 0),
     text: ['Aestas is upon us and our water would fall to {low} days; we keep {keep}, so {a:type} is raised.', '{Type} — Aestas: water would fall to {low} d, we keep {keep}'],
   },
+  luxuryImport: {
+    when: (p) => typeof p.days !== 'number',
+    text: ['Buying {qty} {res} from {hub}: without it our stores would fall {short} short of what the great houses draw.', 'Buying {qty} {res} from {hub} for the great houses'],
+  },
+  luxury: {
+    when: (p) => p.store === 1,
+    text: ['The great houses need {need} days of {res} in store to outlast the lean season, and our stores hold {hold}: {a:type} gives room.', '{Type} — {res} for the lean season: we hold {hold} d, need {need}'],
+  },
   materials: { when: (p) => p.covered === 1, text: ['We have {res} enough for the {for}; {a:type} keeps the supply coming.', '{Type} — keeps the {res} coming'] },
   capitolium: { when: (p) => p.covered === 1, text: ['We have {res} enough for the Capitolium for now; {a:type} keeps the supply coming.', '{Type} — keeps the {res} coming for the Capitolium'] },
 };

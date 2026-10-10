@@ -7,7 +7,7 @@ import { INTEGRATED, fresh, run } from './util';
 import { elapsed } from '../src/game/calendar';
 import { newCtx, tick, view } from '../src/game/sim';
 import { GUIDE, dismissTip, mentorKicker, nextTip, pruneGuide } from '../src/game/guide';
-import { benefitLine, howToGetMore, outputChain } from '../src/game/hints';
+import { anOrdinal, benefitLine, howToGetMore, outputChain } from '../src/game/hints';
 
 /** Plays `days` days; a tip is read (dismissed) the day after it first shows. Returns the elapsed day each tip showed. */
 function play(s: GameState, days: number, step?: (s: GameState) => void): Partial<Record<TipId, number>> {
@@ -143,6 +143,15 @@ describe('hints', () => {
     expect(lines.some((l) => /^You have a field \(\d+ of 6 hands\)\. Next: (staff \d+ more, or )?raise a 2nd \(50 den, 20 timber\)\.$/.test(l))).toBe(true);
     expect(howToGetMore(s, 'wine', view(s)).join(' ')).toMatch(/would sell it once our caravans reach it/);
     expect(benefitLine('horreum')).toBe('+4,000 safe grain storage');
+  });
+  it('puts the spoken article before an ordinal: a 2nd, an 8th, an 11th, an 18th, an 80th, a 100th', () => {
+    const said = [2, 3, 7, 8, 11, 12, 18, 21, 80, 88, 100, 110, 800, 1800, 11000, 18000].map(anOrdinal);
+    expect(said).toEqual(['a 2nd', 'a 3rd', 'a 7th', 'an 8th', 'an 11th', 'a 12th', 'an 18th', 'a 21st', 'an 80th', 'an 88th', 'a 100th',
+      'a 110th', 'an 800th', 'a 1800th', 'an 11000th', 'an 18000th']);
+    const s = run(fresh(42), 2);
+    const ager = s.buildings.filter((b) => b.type === 'ager');
+    for (let k = 0; k < 6; k++) s.buildings.push({ ...ager[0], id: 9000 + k });   // seven fields: "raise an 8th"
+    expect(howToGetMore(s, 'grain', view(s)).some((l) => / raise an 8th \(/.test(l))).toBe(true);
   });
   it('says when a full store\'s building is not yet granted (R03)', () => {
     const s = run(fresh(42), 2);

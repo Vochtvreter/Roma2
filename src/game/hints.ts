@@ -38,6 +38,15 @@ function ordinal(n: number): string {
   return `${n}${suf}`;
 }
 
+/** An ordinal with its article as it is spoken: "a 2nd", "an 8th", "an 11th", "an 18th", "an 80th", "a 100th". The
+ *  article follows the first spoken word, which the leading group of digits names (eight…, eleven, eighteen). */
+export function anOrdinal(n: number): string {
+  const digits = String(Math.floor(Math.abs(n)));
+  const lead = Number(digits.slice(0, digits.length % 3 || 3));
+  const vowel = lead === 11 || lead === 18 || /^8/.test(String(lead));
+  return `${vowel ? 'an' : 'a'} ${ordinal(n)}`;
+}
+
 /** "+40%" / "−15%" for a factor. */
 function pct(x: number): string {
   return `${x >= 1 ? '+' : '−'}${Math.round(Math.abs(x - 1) * 100)}%`;
@@ -114,7 +123,7 @@ function liveLine(s: GameState, v: SimView, type: BuildingId): string {
   if (n === 0) return `You have none yet: raise ${aName(type)} (${costWords(d.cost)}).`;
   const open = slots - hands;
   const staff = open > 0 ? `staff ${open} more, or ` : '';
-  return `You have ${n === 1 ? aName(type) : `${n} ${many}`} (${hands} of ${slots} hands). Next: ${staff}raise a ${ordinal(n + 1)} (${costWords(d.cost)}).`;
+  return `You have ${n === 1 ? aName(type) : `${n} ${many}`} (${hands} of ${slots} hands). Next: ${staff}raise ${anOrdinal(n + 1)} (${costWords(d.cost)}).`;
 }
 
 /** The building card's one-line benefit. */
