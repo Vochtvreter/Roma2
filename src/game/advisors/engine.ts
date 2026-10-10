@@ -67,7 +67,7 @@ export function advisorsDay(s: GameState, ctx: TickContext, v: SimView): void {
 function step(s: GameState, ctx: TickContext, v: SimView, rule: AdvisorRule): void {
   const day = s.day;
   const appointed = s.guidance.appointed.includes(rule.advisor);
-  const e = appointed || APPOINTING.includes(rule.id) ? rule.evaluate(s, v) : null;
+  const e = appointed || APPOINTING.includes(rule.id) ? attempt(() => rule.evaluate(s, v), null) : null;   // a faulty rule never stops the tick
   const m = s.guidance.advisories[rule.id];
   if (m && m.flips.length > 0 && day - m.flips[0] >= A.FLAP_WINDOW) m.flips = m.flips.filter((d) => day - d < A.FLAP_WINDOW);
   if (!m || !m.active) {
