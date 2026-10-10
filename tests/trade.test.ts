@@ -10,7 +10,7 @@ import { nextSeasonStart } from '../src/game/calendar';
 import { view } from '../src/game/sim';
 import {
   buyNow, cancelContract, caravanSlots, cheapestHub, checkDispatch, contractPreview, createContract, emergencyImport, hubOpen, price,
-  regionalPrice, resumeContract, slotsInUse, spawnMerchant, takeOffer, tradeDay, tripDays,
+  regionalPrice, resumeContract, slotsInUse, spawnMerchant, takeOffer, tradeDay, tradeOpen, tripDays,
 } from '../src/game/trade';
 import { HUB_DEFS, TRADE_BASE } from '../src/game/data/hubs';
 import { ctx, fresh, noNaN } from './util';
@@ -328,6 +328,23 @@ describe('the visiting merchant', () => {
     for (let i = 1; i < arrivals.length; i++) expect(arrivals[i] - departures[i - 1]).toBeGreaterThanOrEqual(B.events.MERCHANT_GAP);
     expect(s.eventDays.mercator).toBe(arrivals.at(-1));
     expect(noNaN(s)).toEqual([]);
+  });
+
+  it('never visits while the colony cannot trade: Castra without the Mercatores charter (R28)', () => {
+    const s = fresh(42);
+    s.decisions.paths.charter = 'veterani';
+    s.morale = 70;
+    for (let k = 0; k < 40; k++) s.people.push({ ...s.people[2], id: 50_000 + k, spouse: null, work: null, skills: {} });
+    s.modifiers.push({ id: 'm', label: 'm', until: 1e7, fx: { mul: { merchants: 40 } }, benign: true, source: 'stage' });
+    expect(tradeOpen(s)).toBe(false);
+    let castra = false;
+    stepTrade(s, 1000, () => { castra ||= s.trade.merchant !== null; });
+    expect(castra).toBe(false);
+    s.decisions.paths.charter = 'mercatores';                // the camp market became an emporium
+    expect(tradeOpen(s)).toBe(true);
+    let came = false;
+    stepTrade(s, 300, () => { came ||= s.trade.merchant !== null; });
+    expect(came).toBe(true);
   });
 
   it('selling to him respects the stock and the grain reserve', () => {
