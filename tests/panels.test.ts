@@ -206,3 +206,15 @@ describe('runway display (R59, DESIGN §8.6)', () => {
     expect(fmtRunway(Infinity)).toBe('∞');
   });
 });
+
+describe('text slips (R48)', () => {
+  it('a sentence that ends on a Roman date keeps one full stop', async () => {
+    const { sentence, plural } = await import('../src/ui/dom');
+    const { formatRoman } = await import('../src/game/calendar');
+    const d = formatRoman(B.time.START_DAY);
+    expect(d.endsWith('.')).toBe(true);
+    expect(sentence(`You asked for a well on ${d}`)).toBe(`You asked for a well on ${d}`);
+    expect(sentence('Hiems in 3 days')).toBe('Hiems in 3 days.');
+    expect(plural(1, 'house', 'houses')).toBe('1 house');
+  });
+});

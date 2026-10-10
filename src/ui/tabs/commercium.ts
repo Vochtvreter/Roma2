@@ -100,7 +100,7 @@ function form(g: Game, up: Updater[]): HTMLElement {
     const set = (patch: Partial<ContractSpec>): void => { draft = { ...(draft ?? d), ...patch }; g.sfx('click'); render(); };
     const hubSel = h('select', { class: 'tr-select', 'aria-label': 'Market', onchange: (e: Event) => set({ hub: (e.target as HTMLSelectElement).value as HubId }) },
       HUBS.map((x) => h('option', { value: x, selected: x === d.hub, disabled: !hubOpen(s, x) },
-        `${HUB_DEFS[x].name} · ${HUB_DEFS[x].days} d${HUB_DEFS[x].rank > s.rank ? ` · opens at ${RANK_DEFS[HUB_DEFS[x].rank].name}` : ''}`)));
+        `${HUB_DEFS[x].name} · ${tripDays(s, x, 1)} d${HUB_DEFS[x].rank > s.rank ? ` · opens at ${RANK_DEFS[HUB_DEFS[x].rank].name}` : ''}`)));
     const mode = h('div', { class: 'tab-seg' }, (['export', 'import'] as const).map((m) =>
       h('button', { class: `btn small tab-seg-btn${d.mode === m ? ' sel' : ''}`, type: 'button', onclick: () => set({ mode: m }) }, m === 'export' ? 'Sell (export)' : 'Buy (import)')));
     const goods = h('div', { class: 'tr-goods' }, TRADE_RES.map((r) => {
@@ -204,7 +204,7 @@ function hubCard(g: Game, hub: HubId): HTMLElement {
   const d = HUB_DEFS[hub];
   const open = hubOpen(s, hub);
   return h('div', { class: `tr-hub${open ? '' : ' locked'}`, 'data-anchor': `hub-${hub}` },
-    h('div', { class: 'tr-hub-head' }, h('b', null, d.name), h('span', { class: 'muted' }, ` · ${d.days} days each way`),
+    h('div', { class: 'tr-hub-head' }, h('b', null, d.name), h('span', { class: 'muted' }, ` · from ${tripDays(s, hub, 1)} days each way`),
       open ? null : h('span', { class: 'chip' }, hubLock(s, hub) ?? '')),
     h('div', { class: 'tr-sub' }, d.desc),
     !open ? null : h('div', { class: 'tr-prices' }, h('span', { class: 'pop-k' }, ''), h('span', { class: 'pop-k' }, 'WE BUY'), h('span', { class: 'pop-k' }, 'THEY PAY'),
@@ -219,7 +219,7 @@ export const panel: TabPanel = {
     const t = s.trade;
     return [HUBS.map((x) => +hubOpen(s, x)).join(''), t.contracts.map((c) => `${c.id}:${c.status}:${c.pause ?? ''}`).join(','),
       t.caravans.map((c) => c.id).join(','), t.merchant ? `${t.merchant.name}:${t.merchant.offers.map((o) => +o.taken).join('')}` : '',
-      formVersion, replaceId ?? '', caravanSlots(s)].join('|');
+      formVersion, replaceId ?? '', caravanSlots(s), HUBS.map((x) => tripDays(s, x, 1)).join(',')].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;

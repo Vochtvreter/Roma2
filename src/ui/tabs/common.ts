@@ -3,7 +3,7 @@
 import { RESOURCES } from '../../game/types';
 import type { ActionResult, BuildingId, CouncilReport, Cost, GameState, Remedy, ResId, WishView } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
-import { fmtCost, h, img, tip } from '../dom';
+import { fmtCost, h, img, sentence, tip } from '../dom';
 import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
@@ -232,7 +232,7 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
       btn(g, '✕', () => A.pinBuild(g.state, null), { cls: 'ghost', tip: 'Release the pin.' })));
   }
   for (const r of s.ordo.requests) {
-    box.append(h('div', { class: 'tab-agenda-pin' }, img('i_request', 1), `You asked for ${article(BUILDING_DEFS[r.type].name.toLowerCase())} on ${formatRoman(r.day)}.`));
+    box.append(h('div', { class: 'tab-agenda-pin' }, img('i_request', 1), sentence(`You asked for ${article(BUILDING_DEFS[r.type].name.toLowerCase())} on ${formatRoman(r.day)}`)));
   }
   return box;
 }

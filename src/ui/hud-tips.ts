@@ -3,7 +3,7 @@
 import { EDICTS, RESOURCES } from '../game/types';
 import type { MulKey, RateSource, ResId } from '../game/types';
 import type { Game } from './types';
-import { fmt, fmtDays, fmtRate, h, realTime } from './dom';
+import { fmt, fmtDays, fmtRate, h, plural, realTime, sentence } from './dom';
 import { caps, tipCard, tipHead, tipKicker, tipNote, tipRow, tipSep } from './tipkit';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
@@ -100,8 +100,8 @@ export function outlookLine(g: Game, r: 'grain' | 'water'): string {
   const cr = f.crunch;
   if (!cr) return '';
   const name = SEASON_NAMES[cr.season];
-  const when = cr.startsIn > 0 ? `${name} in ${cr.startsIn} days` : `${name} now`;
-  if (cr.emptyDay !== null && cr.lowestDoh < 1) return `${when}: we would run out on ${formatRoman(cr.emptyDay)}.`;
+  const when = cr.startsIn > 0 ? `${name} in ${plural(cr.startsIn, 'day', 'days')}` : `${name} now`;
+  if (cr.emptyDay !== null && cr.lowestDoh < 1) return sentence(`${when}: we would run out on ${formatRoman(cr.emptyDay)}`);
   return `${when}: our lowest would be ${fmtDays(cr.lowestDoh)} on hand.`;
 }
 
@@ -133,7 +133,7 @@ export function coinTip(g: Game): Node {
   const next = nextKalends(s.day);
   return tipCard(
     tipHead('Coin', 'Aerarium'),
-    tipNote(`${fmt(s.res.denarii)} denarii · ${fmt(s.taxAccrued)} accrued, paid on ${formatRoman(next)} (in ${next - s.day} days)`, 'tip-big'),
+    tipNote(`${fmt(s.res.denarii)} denarii · ${fmt(s.taxAccrued)} accrued, paid on ${formatRoman(next)} (in ${plural(next - s.day, 'day', 'days')})`, 'tip-big'),
     tipSep(), ...ledger(g, 'denarii'),
     tipRow('30-day average', fmtRate(f.net30), f.net30 >= 0 ? 'pos' : 'neg'),
     f.runout !== null ? tipNote(`At this pace the aerarium empties on ${formatRoman(f.runout)} (${realTime(f.runout - s.day, g.speed)}).`, 'bad') : null,
@@ -208,8 +208,8 @@ export function dateTip(g: Game): Node {
     tipNote(formatModern(d), 'tip-big'),
     tipSep(),
     tipRow(`${SEASON_NAMES[se]}`, `day ${seasonDay(d)} of ${seasonLength(d)}`),
-    tipRow('Aestas, the thirsty season', aestas === 0 ? 'now' : `in ${aestas} days`),
-    tipRow('Hiems, the hungry season', hiems === 0 ? 'now' : `in ${hiems} days`),
+    tipRow('Aestas, the thirsty season', aestas === 0 ? 'now' : `in ${plural(aestas, 'day', 'days')}`),
+    tipRow('Hiems, the hungry season', hiems === 0 ? 'now' : `in ${plural(hiems, 'day', 'days')}`),
     tipRow('Next edict window', `${formatRoman(win)} (${win - d} d)`),
     fest ? tipRow(`Next festival: ${fest.name}`, `${formatRoman(fest.day)}`) : null,
     tipNote(`One day passes each second at 1×. ${caps('Kalendae')}: taxes reach the aerarium.`),

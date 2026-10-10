@@ -3,7 +3,7 @@
 // projected days on hand (B.forecast.BANDS), season labels beneath; hover draws the year's stock line with cap and seasons.
 import type { Essential, EssentialForecast, MonthCell, RuleId } from '../game/types';
 import type { Game } from './types';
-import { fmt, fmtDays, fmtRate, fmtRunway, h, img, tip } from './dom';
+import { fmt, fmtDays, fmtRate, fmtRunway, h, img, sentence, tip } from './dom';
 import { tipCard, tipHead, tipNote, tipRow, tipSep } from './tipkit';
 import { fxTags, ledger, moreSection, netRate, outlookLine } from './hud-tips';
 import { forecast } from '../game/forecast';
@@ -110,7 +110,7 @@ function vitalTip(g: Game, res: Essential): Node {
     f.structural ? tipNote('Even every able hand at work could not cover the need: build or import.', 'bad') : null,
     tipSep(),
     chart(f, res),
-    tipNote(`The year ahead: ${low}. ${outlookLine(g, res)}`),
+    tipNote(`The year ahead: ${sentence(low)} ${outlookLine(g, res)}`),
     ...moreSection(g, res),
   );
 }

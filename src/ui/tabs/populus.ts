@@ -154,7 +154,7 @@ function gentes(g: Game, up: Updater[]): HTMLElement {
       const head = s.people.find((p) => p.id === f.head);
       const home = f.home !== null ? getBuilding(s, f.home) : undefined;
       return h('div', { class: 'pop-gens' }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
-        h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${size[f.id]} souls · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
+        h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${plural(size[f.id] ?? 0, 'soul', 'souls')} · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
     };
     list.replaceChildren(...fams.slice(0, GENTES_SHOWN).map(row));
     if (fams.length > GENTES_SHOWN) {

@@ -4,7 +4,7 @@
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, PendingChoice } from '../game/types';
 import type { Game, Updater } from './types';
-import { clear, fmt, fmtCost, h, img, realTime, tip } from './dom';
+import { clear, fmt, fmtCost, h, img, plural, realTime, tip } from './dom';
 import * as A from '../game/actions';
 import { ageOf, census } from '../game/census';
 import { personName } from '../game/people';
@@ -37,7 +37,7 @@ function gate(g: Game): HTMLElement | null {
     const head = people.find((p) => p.id === family.head) ?? people[0];
     const skills = Object.entries(head?.skills ?? {}).filter(([, v]) => (v ?? 0) >= 1);
     return h('div', { class: 'choice-fam' }, h('b', null, `gens ${feminine(family.gens)}`),
-      ` · ${head ? `${personName(head)}, ${ageOf(head, s.day)}` : ''} · ${people.length} souls `,
+      ` · ${head ? `${personName(head)}, ${ageOf(head, s.day)}` : ''} · ${plural(people.length, 'soul', 'souls')} `,
       skills.map(([k, v]) => h('span', { class: 'chip gold' }, `${k} ${Math.floor(v ?? 0)}`)));
   }), h('div', { class: 'choice-beds muted' }, `Free beds in the colony: ${census(s).freeBeds}`));
 }

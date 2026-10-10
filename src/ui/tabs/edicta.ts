@@ -3,7 +3,7 @@
 import { EDICTS, FOCUSES, ORDO_AREAS, PATH_DECISIONS, SETTINGS, SWITCHES } from '../../game/types';
 import type { EdictId, GameState, LaborCat, OrdoArea, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
-import { costEl, fmt, fmtCost, h, img, tip } from '../dom';
+import { costEl, fmt, fmtCost, h, img, sentence, tip } from '../dom';
 import * as A from '../../game/actions';
 import { edictOption, edictWindow, isUnlocked, petitionNeeds, settingValue, switchOn } from '../../game/decisions';
 import { nextTeaser, sectionRevealed } from '../../game/reveal';
@@ -46,7 +46,7 @@ function settingText(id: SettingId, v: number): string {
 function windowLine(s: GameState, id: EdictId): string {
   const w = edictWindow(s, id);
   const inDays = Math.max(0, w.next - s.day);
-  return w.open ? `Window open. A change holds until ${formatRoman(w.next)}.` : `Settled. Next window: ${formatRoman(w.next)} (in ${inDays} ${inDays === 1 ? 'day' : 'days'}).`;
+  return w.open ? sentence(`Window open. A change holds until ${formatRoman(w.next)}`) : `Settled. Next window: ${formatRoman(w.next)} (in ${inDays} ${inDays === 1 ? 'day' : 'days'}).`;
 }
 
 /** Measured impact of an edict option (DESIGN §10.9 tooltips), where it can be measured. */

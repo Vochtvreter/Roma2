@@ -139,6 +139,11 @@ export function costEl(s: GameState, c: Cost, reserved?: Cost): HTMLElement {
   return el;
 }
 
+/** Ends a sentence with a full stop unless it already has one: a Roman date ends in its own ('Kal. Apr.'). */
+export function sentence(text: string): string {
+  return /[.!?…]$/.test(text) ? text : `${text}.`;
+}
+
 /** '1 house' / '3 houses' (the number formatted with fmt). */
 export function plural(n: number, one: string, many: string): string {
   return `${fmt(n)} ${n === 1 ? one : many}`;

@@ -24,7 +24,7 @@ const APPOINTED_AT: Record<AdvisorId, string> = {
   aedilis: 'Appointed at Vicus, or when a house has waited five days.',
   augur: 'Appointed with the first dispatch, or on Kal. Sept.',
 };
-const METRIC_UNIT = { days: 'd', houses: 'houses', den: 'den', pct: '%', souls: 'souls' } as const;
+const METRIC_UNIT = { days: ['d', 'd'], houses: ['house', 'houses'], den: ['den', 'den'], pct: ['%', '%'], souls: ['soul', 'souls'] } as const;
 
 let filter: AdvisorId | null = null;
 
@@ -66,7 +66,10 @@ function card(g: Game, a: ActiveAdvisory, up: Updater[]): HTMLElement {
     const st = g.state;
     const m = st.guidance.advisories[a.rule];
     metric.hidden = !m?.metric;
-    if (m?.metric) metric.textContent = `${fmt(m.metric.value)} ${METRIC_UNIT[m.metric.unit]}`;
+    if (m?.metric) {
+      const n = fmt(m.metric.value);
+      metric.textContent = `${n} ${METRIC_UNIT[m.metric.unit][n === '1' ? 0 : 1]}`;
+    }
     if (st.day === day) return;
     day = st.day;
     const cur = activeAdvisories(st).find((x) => x.rule === a.rule);
