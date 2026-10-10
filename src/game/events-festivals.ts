@@ -19,9 +19,9 @@ export interface FestivalDef {
   morale: number; moraleDays: number;
 }
 
-const DUR = 30;                                      // TODO(balance): move to B.events (festival morale, days)
-const SATURNALIA_BIRTHS = { MUL: 1.2, DAYS: 90 };    // TODO(balance): move to B.events
-const LANTERN_DAYS = 7;                              // TODO(balance): move to B.events
+const DUR = B.events.DUR;                            // festival morale, days
+const SATURNALIA_BIRTHS = B.events.SATURNALIA_BIRTHS;
+const LANTERN_DAYS = B.events.LANTERN_DAYS;
 
 /** The six festivals (DESIGN §12.3) in calendar order. */
 export const FESTIVAL_DEFS: Record<FestivalId, FestivalDef> = {
@@ -125,6 +125,8 @@ export function festivalsDay(s: GameState, ctx: TickContext): void {
     if (id === 'robigalia') {
       s.counters.robigaliaYear = d.year;
       s.counters.festivalsKept.robigalia = (s.counters.festivalsKept.robigalia ?? 0) + 1;
+      // blight weight ×0.5 for the rest of the year (Feriae Nullae keeps no Robigalia: blight strikes twice as often)
+      addModifier(s, { id: 'robigalia', label: 'Robigalia kept: blight ×0.5', until: dayOf(d.year + 1, 1, 1), fx: { mul: { blight: B.events.ROBIGO.KEPT } }, benign: true, source: 'robigalia' });
       log(s, 'event', 'The Robigalia: a red dog for Robigus; the rust will spare our wheat this year.');
     } else if (id === 'lustrum') {
       if (!isLustrum(s.day)) continue;
