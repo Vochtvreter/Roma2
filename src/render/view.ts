@@ -407,9 +407,14 @@ export class MapView {
     this.cb.onClick(tile, id, { button, shift });
   }
 
-  private onToolDrag(phase: 'start' | 'move' | 'end', x: number, y: number, shift: boolean): boolean {
+  private onToolDrag(phase: 'start' | 'move' | 'end' | 'abort', x: number, y: number, shift: boolean): boolean {
     const p = this._placing;
     if (!p || (p.kind !== 'road' && p.kind !== 'pave')) return false;
+    if (phase === 'abort') {                       // a pinch or a cancelled pointer: drop the path, never commit it
+      this.dragFrom = null;
+      this.place.path = null;
+      return true;
+    }
     const kind = p.kind;
     const tile = this.tileAt(x, y);
     if (phase === 'start') {

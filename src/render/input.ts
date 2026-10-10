@@ -23,8 +23,9 @@ export interface InputHandlers {
   fling(vx: number, vy: number): void;
   zoom(steps: number, sx: number, sy: number): void;
   tap(sx: number, sy: number, info: TapInfo): void;
-  /** A tool drag (road/pave): return true from 'start' to own the drag instead of panning. */
-  toolDrag(phase: 'start' | 'move' | 'end', sx: number, sy: number, shift: boolean): boolean;
+  /** A tool drag (road/pave): return true from 'start' to own the drag instead of panning. 'end' commits the path;
+   *  'abort' (a second finger joins, or the pointer is cancelled) drops it without laying anything. */
+  toolDrag(phase: 'start' | 'move' | 'end' | 'abort', sx: number, sy: number, shift: boolean): boolean;
   cancel(): void;
 }
 
@@ -74,8 +75,8 @@ export class Input {
     this.pointers.set(e.pointerId, p);
     this.h.fling(0, 0);
     if (this.pointers.size === 2) {
-      // second finger: a pinch replaces any press (a tool drag in progress is abandoned)
-      if (this.press?.tool) this.h.toolDrag('end', this.press.lx, this.press.ly, false);
+      // second finger: a pinch replaces any press (a tool drag in progress is abandoned, never committed)
+      if (this.press?.tool) this.h.toolDrag('abort', this.press.lx, this.press.ly, false);
       this.press = null;
       const [a, b] = [...this.pointers.values()];
       this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, t0: e.timeStamp, moved: false };
@@ -158,7 +159,7 @@ export class Input {
     this.el.style.cursor = '';
     if (this.pointers.size < 2) this.pinch = null;
     if (this.press?.id === e.pointerId) {
-      if (this.press.tool) this.h.toolDrag('end', this.press.lx, this.press.ly, false);
+      if (this.press.tool) this.h.toolDrag('abort', this.press.lx, this.press.ly, false);
       this.press = null;
     }
   }
