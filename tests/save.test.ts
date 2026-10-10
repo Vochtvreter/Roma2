@@ -7,8 +7,8 @@ import { nextId } from '../src/game/state';
 import { invalidate } from '../src/game/memo';
 import { newCtx, tick } from '../src/game/sim';
 import {
-  DEFAULT_PREFS, KEYS, MIGRATIONS, SAVE_VERSION, addFasti, clearSave, deserialize, exportText, fastiEntry, hasSave, importText, loadFasti,
-  loadGame, loadPrefs, saveGame, savePrefs, serialize,
+  DEFAULT_PREFS, KEYS, MIGRATIONS, SAVE_VERSION, addFasti, claimSave, clearSave, deserialize, exportText, fastiEntry, hasSave, importText,
+  lastExported, loadFasti, loadGame, loadPrefs, markExported, ownsSave, saveGame, savePrefs, serialize,
 } from '../src/game/save';
 import { decidedLines, describeAway, keepDecided, offlineDays, offlineRun, simulateOffline, wonWhileAway } from '../src/game/offline';
 import type { Decided } from '../src/game/offline';
@@ -78,6 +78,20 @@ describe('round trip', () => {
 });
 
 describe('sanitiser', () => {
+  it('bounds the day: a corrupt ±1e12 loads as a playable colony instead of breaking the calendar (R55)', () => {
+    for (const day of [1e12, -1e12, 1e300]) {
+      const r = raw(fresh(7));
+      r.day = day;
+      const back = deserialize(JSON.stringify(r))!;
+      expect(back).not.toBeNull();
+      expect(back.day).toBeGreaterThanOrEqual(B.time.START_DAY);
+      expect(back.day).toBeLessThanOrEqual(B.time.START_DAY + 1_000_000);
+      expect(() => run(back, 3)).not.toThrow();
+    }
+    const ok = run(fresh(7), 40);
+    expect(deserialize(serialize(ok))!.day).toBe(ok.day);   // a real day is kept as it is
+  });
+
   it('turns NaN and ±Infinity into finite numbers (0, then clamped to range)', () => {
     const s = fresh();
     s.res.grain = Number.NaN;
@@ -226,7 +240,10 @@ describe('localStorage', () => {
   beforeEach(() => { installStorage(); });
 
   it('uses the namespaced keys; saves with the wall clock; loads; clears', () => {
-    expect(KEYS).toEqual({ save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1' });
+    expect(KEYS).toEqual({
+      save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1',
+      owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1',
+    });
     expect(hasSave()).toBe(false);
     expect(loadGame()).toBeNull();
     const s = run(fresh(), 5);
@@ -248,6 +265,30 @@ describe('localStorage', () => {
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
     expect(loadFasti()).toEqual([]);
     expect(() => { savePrefs(DEFAULT_PREFS); addFasti(fastiEntry(fresh())); clearSave(); }).not.toThrow();
+  });
+
+  it('one tab owns the save: the last to claim it; nobody claimed or storage blocked = owned (R02)', () => {
+    expect(ownsSave('a')).toBe(true);                     // nobody has claimed it yet
+    claimSave('a');
+    expect(localStorage.getItem(KEYS.owner)).toBe('a');
+    expect(ownsSave('a')).toBe(true);
+    claimSave('b');                                       // a second tab enters a game
+    expect(ownsSave('a')).toBe(false);
+    expect(ownsSave('b')).toBe(true);
+    Reflect.deleteProperty(globalThis, 'localStorage');
+    expect(ownsSave('a')).toBe(true);                     // no storage: no other tab can be known, nor save
+    expect(() => claimSave('a')).not.toThrow();
+  });
+
+  it('remembers when a copy was last exported (R54)', () => {
+    expect(lastExported()).toBe(0);
+    markExported(1_700_000_000_000);
+    expect(lastExported()).toBe(1_700_000_000_000);
+    localStorage.setItem(KEYS.exported, 'soon');
+    expect(lastExported()).toBe(0);
+    Reflect.deleteProperty(globalThis, 'localStorage');
+    expect(lastExported()).toBe(0);
+    expect(() => markExported(1)).not.toThrow();
   });
 
   it('prefs merge over the defaults; invalid fields fall back', () => {

@@ -29,17 +29,34 @@ function pathName(id: PathOptionId): string {
   return id;
 }
 
-function textModal(kicker: string, title: string, text: string, onLoad?: (t: string) => boolean): void {
+/** A save-text modal: shows `text` to copy, or (with onLoad) takes a pasted save. With `confirmLabel`, Load asks for a
+ *  second click first, as every other replacement of a stored colony does (ARCHITECTURE §11.3). */
+function textModal(kicker: string, title: string, text: string, onLoad?: (t: string) => boolean, confirmLabel?: string): void {
   let close: () => void = () => undefined;
   const area = h('textarea', { class: 'modal-text', rows: '6', spellcheck: 'false', 'aria-label': 'Save text', value: text });
   const status = h('div', { class: 'modal-status', role: 'status' });
-  const load = onLoad ? h('button', { class: 'btn primary', onclick: () => {
-    if (onLoad(area.value)) close(); else status.textContent = 'That text is not a Castra Valeria save.';
-  } }, 'Load') : null;
-  close = openModal(h('div', null,
-    h('p', { class: 'modal-p' }, onLoad ? 'Paste the text of an exported colony.' : 'Keep this text: a newer version of the game may read it.'),
-    area, h('div', { class: 'modal-actions' }, load), status), { kicker, title, wide: true });
+  let load: HTMLButtonElement | null = null;
+  if (onLoad) {
+    const run = (): void => { if (onLoad(area.value)) close(); else status.textContent = 'That text is not a Castra Valeria save.'; };
+    load = h('button', { class: 'btn primary' }, 'Load');
+    if (confirmLabel) confirm2(load, confirmLabel, run); else load.addEventListener('click', run);
+  }
+  const prompt = !onLoad ? 'Keep this text: a newer version of the game may read it.'
+    : confirmLabel ? 'Paste the text of an exported colony. Loading it replaces the colony saved in this browser.' : 'Paste the text of an exported colony.';
+  close = openModal(h('div', null, h('p', { class: 'modal-p' }, prompt), area, h('div', { class: 'modal-actions' }, load), status), { kicker, title, wide: true });
   area.focus();
+}
+
+/** The Continue line of a stored save, or null when it cannot be read or summed up (the title then offers its raw text). */
+function readSave(): { summary: string; victory: boolean; legacy: number } | null {
+  try {
+    const s = loadGame();
+    if (!s) return null;
+    return { summary: `${s.name} · ${RANK_DEFS[s.rank].name} · ${formatRoman(s.day, { year: true })} · ${fmt(s.people.length)} souls`, victory: s.victory, legacy: s.legacy };
+  } catch (e) {
+    console.error('[title] the saved colony could not be read', e);
+    return null;
+  }
 }
 
 function fastiRow(f: FastiEntry): HTMLElement {
@@ -48,6 +65,12 @@ function fastiRow(f: FastiEntry): HTMLElement {
     h('span', { class: 'title-fasti-name' }, f.name, f.legacy ? h('span', { class: 'title-stars' }, ' ' + '★'.repeat(Math.min(5, f.legacy))) : null),
     h('span', { class: 'title-fasti-meta' }, `${when} · ${fmt(f.peakPop)} souls · ${awayTime(f.playMs).replace(/ \d+ s$/, '')}`),
     f.paths.length ? h('span', { class: 'title-fasti-paths' }, f.paths.map(pathName).join(' · ')) : null);
+}
+
+let notice: string | null = null;
+/** A line above the title's buttons (toasts are hidden on the title), kept until it is cleared: another tab took the colony. */
+export function setTitleNotice(text: string | null): void {
+  notice = text;
 }
 
 /** The title screen in #title-screen. */
@@ -63,12 +86,13 @@ export class TitleScreen {
     clear(this.root);
     this.root.classList.remove('gone');
     const exists = hasSave();
-    const saved = exists ? loadGame() : null;
+    const saved = exists ? readSave() : null;
     const btns = h('div', { class: 'title-btns' });
+    if (notice) btns.appendChild(h('div', { class: 'title-warn', role: 'status' }, notice));
     if (saved) {
       btns.appendChild(h('button', { class: 'btn primary big title-continue', onclick: () => { g.sfx('click'); g.continueGame(); } },
         h('span', null, 'Continue'),
-        h('span', { class: 'title-info' }, `${saved.name} · ${RANK_DEFS[saved.rank].name} · ${formatRoman(saved.day, { year: true })} · ${fmt(saved.people.length)} souls`)));
+        h('span', { class: 'title-info' }, saved.summary)));
     } else if (exists) {
       btns.appendChild(h('div', { class: 'title-warn' }, 'The saved colony could not be read: it may come from a newer version, or be damaged. Founding a new colony replaces it.'));
       btns.appendChild(h('button', { class: 'btn', onclick: () => textModal('TABVLAE', 'The raw save', rawSave()) }, 'Export raw save'));
@@ -80,7 +104,10 @@ export class TitleScreen {
     btns.append(found,
       h('div', { class: 'title-row' },
         h('button', { class: 'btn', onclick: () => { g.sfx('click'); openHowTo(g); } }, 'How to play'),
-        h('button', { class: 'btn', onclick: () => { g.sfx('click'); textModal('TABVLAE', 'Import a save', '', (t) => g.importSave(t)); } }, 'Import a save')));
+        h('button', { class: 'btn', onclick: () => {
+          g.sfx('click');
+          textModal('TABVLAE', 'Import a save', '', (t) => g.importSave(t), exists ? 'Click again: replace the saved colony' : undefined);
+        } }, 'Import a save')));
     const fasti = loadFasti();
     const aquila = hasSprite('f_aquila') ? img('f_aquila', 4, 'title-aquila') : h('img', { class: 'pix title-aquila', src: 'favicon.svg', alt: '', draggable: 'false' });
     this.root.appendChild(h('div', { class: 'title-box' },
