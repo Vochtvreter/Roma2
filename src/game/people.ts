@@ -13,14 +13,14 @@ import { careShare } from './civic';
 import { log, nextId } from './state';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
-import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { aTier } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, PRAENOMINA as PRAENOMINA$, feminine as feminine$ } from './data/names';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
   toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
-  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
+  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$,
   DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$,
   getBuilding = getBuilding$, getPerson = getPerson$;
 
@@ -209,7 +209,7 @@ export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Fami
   s.stats.immigrants += n;
   ctx.fx.push({ kind: 'arrive', family: fam.family.id, n, home });
   const tier = getBuilding(s, home)?.house?.tier;
-  const where = tier ? ` in a ${TIER_DEFS[tier].name.toLowerCase()}` : '';
+  const where = tier ? ` in ${aTier(tier)}` : '';
   log(s, 'good', `The ${gentilic(fam.family.gens)} arrive along the via: ${n} ${n === 1 ? 'soul settles' : 'souls settle'}${where}.`, undefined, home);
   touchPeople(s);
   return true;

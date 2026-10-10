@@ -8,6 +8,8 @@ import {
   firstWant, goodsDay, houseTax, housesUnlockedBy, housingDay, nextTier, setHousePref, targetTier, unmetNeeds,
 } from '../src/game/housing';
 import { invalidate, touchPeople } from '../src/game/memo';
+import { log } from '../src/game/state';
+import { aTier } from '../src/game/data/housing';
 import { B } from '../src/game/balance';
 import { ctx, fresh } from './util';
 
@@ -154,6 +156,32 @@ describe('evolution (DESIGN §7.2)', () => {
     cover(houses[2], ['water']);                        // a shrine is its first want, even with the market missing
     pin.preview = [{ layer: 'shrine', houses: [houses[0].id, houses[1].id, houses[2].id] }];
     expect(housesUnlockedBy(s, 'lararium', 37, 29)).toEqual([houses[0].id, houses[2].id].sort((a, c) => a - c));
+  });
+});
+
+describe('house names in running text (R48)', () => {
+  it('"tents" take no article and a plural verb; the other tiers a or an', () => {
+    expect(aTier('tentoria')).toBe('tents');
+    expect(aTier('casa')).toBe('a wattle-and-thatch hut');
+    expect(aTier('insula')).toBe('an apartment block');
+    expect(aTier('domus')).toBe('an atrium house');
+    const { s, houses } = setup();
+    const h = houses[0];
+    cover(h, ['water']);
+    for (const o of houses.slice(1)) cover(o, []);
+    days(s, 40);
+    expect(h.house!.tier).toBe('casa');
+    const line = s.log.find((e) => e.ref === h.id && e.text.includes('wattle-and-thatch'))!.text;
+    expect(line).toMatch(/^The tents of the gens \w+ become a wattle-and-thatch hut\.$/);
+  });
+
+  it('the founding line carries no date of its own; no sentence ends on a doubled full stop', () => {
+    const s = fresh();
+    expect(s.log[0].text).toMatch(/^24 souls of \d+ families pitch their tents at /);
+    log(s, 'info', 'Settled until Kal. Sept..');
+    expect(s.log.at(-1)!.text).toBe('Settled until Kal. Sept.');
+    log(s, 'info', 'Due pridie Kal. Aug.. The rest waits...');
+    expect(s.log.at(-1)!.text).toBe('Due pridie Kal. Aug. The rest waits...');
   });
 });
 

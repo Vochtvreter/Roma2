@@ -11,7 +11,6 @@ import { plotOrigin as plotOrigin$ } from './survey';
 import { footprintOf as footprintOf$ } from './derived';
 import { roadPathFor } from './place';
 import { invalidate as invalidate$ } from './memo';
-import { formatRoman as formatRoman$ } from './calendar';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { EDICT_DEFS as EDICT_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from './data/decisions';
 import { COLONY_NAMES as COLONY_NAMES$ } from './data/names';
@@ -21,7 +20,7 @@ import { getBuilding, getPerson } from './lookup';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, ADVISORS = ADVISORS$, EDICTS = EDICTS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
   SETTINGS = SETTINGS$, SWITCHES = SWITCHES$, TRADE_RES = TRADE_RES$, GAME_SEED_XOR = GAME_SEED_XOR$, getMap = getMap$,
-  plotOrigin = plotOrigin$, footprintOf = footprintOf$, invalidate = invalidate$, formatRoman = formatRoman$,
+  plotOrigin = plotOrigin$, footprintOf = footprintOf$, invalidate = invalidate$,
   BUILDING_DEFS = BUILDING_DEFS$, EDICT_DEFS = EDICT_DEFS$, SETTING_DEFS = SETTING_DEFS$, SWITCH_DEFS = SWITCH_DEFS$,
   COLONY_NAMES = COLONY_NAMES$;
 
@@ -242,7 +241,7 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
   if (track.length > 0) s.roads = [...new Set([...s.roads, ...track])].sort((a, c) => a - c);
   invalidate(s);
 
-  log(s, 'info', `${formatRoman(day, { year: true })}: ${s.people.length} souls of ${s.families.length} families pitch their tents at ${name}.`, ['highlight']);
+  log(s, 'info', `${s.people.length} souls of ${s.families.length} families pitch their tents at ${name}.`, ['highlight']);
   return s;
 }
 
@@ -255,7 +254,8 @@ export function nextId(s: GameState): number {
 
 /** Appends an Annales line for today; the log is trimmed to B.LOG_CAP (oldest dropped). */
 export function log(s: GameState, kind: LogKind, text: string, tags?: LogTag[], ref?: number): void {
-  const e: GameState['log'][number] = { day: s.day, kind, text };
+  // a sentence ending on an abbreviated date ("Kal. Sept.") takes no second full stop
+  const e: GameState['log'][number] = { day: s.day, kind, text: text.replace(/(?<!\.)\.\.(?=\s|$)/g, '.') };
   if (tags && tags.length > 0) e.tags = tags;
   if (ref !== undefined) e.ref = ref;
   s.log.push(e);
