@@ -195,8 +195,10 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     if ((hw.want[n] ?? 0) < min || (n === 'baths' && (d.all.balneum ?? 0) + (d.all.thermae ?? 0) > 0)) continue;
     yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n }));
   }
-  // 7 · works the next petition names
-  for (const t of PETITION_WORKS[s.rank + 1] ?? []) if (!d.all[t]) yield* yieldOf(make(t, 'rank', { rank: s.rank + 1 }));
+  // 7 · works the next petition names (the Vicus petition only once the Lex coloniae is proclaimed)
+  if (s.rank > 0 || s.decisions.paths.charter !== undefined) {
+    for (const t of PETITION_WORKS[s.rank + 1] ?? []) if (!d.all[t]) yield* yieldOf(make(t, 'rank', { rank: s.rank + 1 }));
+  }
   // 8 · producers of what the saving target, the pending wish, renovations or the Capitolium lack (ETA > 30 days),
   //     then of whatever those producers themselves lack (a quarry short of timber calls for a lumber camp)
   const { lack, forOf } = needsFor(s, v, walk.pending);
