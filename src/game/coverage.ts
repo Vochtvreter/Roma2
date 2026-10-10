@@ -127,30 +127,64 @@ export function houseHas(s: GameState, houseId: number, layer: CoverageLayerId):
   return ((mask >> LAYERS.indexOf(layer)) & 1) === 1;
 }
 
-/**
- * Coverage of a would-be building at (x, y) as if built and fully staffed (its streets or auto-road included):
- * per service layer, the covered road tiles and every house a covered road tile touches (sorted ids).
- */
-export function previewCoverage(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: Uint8Array; houses: number[] }[] {
+// Scratch buffers for the sparse previews (reused; every call resets what it touched).
+const seen = new Int32Array(GN);
+let seenGen = 0;
+const extra = new Uint8Array(GN);
+
+/** Road tiles within `r` steps of the sources over the roads plus the `extra` overlay (plain BFS, sparse result). */
+function reachWithin(road: Uint8Array, sources: number[], r: number): number[] {
+  seenGen++;
+  const out: number[] = [];
+  const dist: number[] = [];
+  for (const t of sources) if (seen[t] !== seenGen) { seen[t] = seenGen; out.push(t); dist.push(0); }
+  for (let k = 0; k < out.length; k++) {
+    const t = out[k];
+    const nd = dist[k] + 1;
+    if (nd > r) continue;
+    const x = t % GW;
+    const visit = (j: number): void => { if (seen[j] !== seenGen && (road[j] > 0 || extra[j] === 1)) { seen[j] = seenGen; out.push(j); dist.push(nd); } };
+    if (t >= GW) visit(t - GW);
+    if (x < GW - 1) visit(t + 1);
+    if (t < GN - GW) visit(t + GW);
+    if (x > 0) visit(t - 1);
+  }
+  return out;
+}
+
+/** Sparse preview: per service layer of a would-be building at (x, y), the covered road tiles and the houses they serve. */
+export function previewCovered(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: number[]; houses: number[] }[] {
   const svc = BUILDING_DEFS[type].service ?? [];
   if (svc.length === 0) return [];
   const d = derived(s);
   const cls = classAt(s, type, x, y);
   const [w, h] = sizeOf(type, cls);
-  const road = d.road.slice();
   const blk = cls === 'rural' ? null : blockOfTile(s, y * GW + x);
   const lines = cls === 'rural' ? autoRoad(s, x, y, w, h) ?? [] : blk ? blockStreetTiles(s, blk.id) : [];
-  for (const i of lines) road[i] = 1;
-  const sides = roadSides(road, x, y, w, h);
+  for (const i of lines) extra[i] = 1;
+  const sides = sideTiles(x, y, w, h).filter((i) => d.road[i] > 0 || extra[i] === 1);
   const houseSides = housesBySide(s);
-  return svc.map((sv) => {
+  const out = svc.map((sv) => {
     const bonus = RADIUS_BONUS[sv.layer];
     const r = sv.radius + (bonus ? fxAdd(s, bonus) : 0);
-    const tiles = new Uint8Array(GN);
-    if (sides.length > 0) flood(road, [{ tiles: sides, r }], tiles);
+    const tiles = sides.length > 0 ? reachWithin(d.road, sides, r) : [];
     const hs = new Set<number>();
-    for (let i = 0; i < GN; i++) if (tiles[i]) for (const id of houseSides.get(i) ?? []) hs.add(id);
+    for (const i of tiles) for (const id of houseSides.get(i) ?? []) hs.add(id);
     return { layer: sv.layer, tiles, houses: [...hs].sort((a, c) => a - c) };
+  });
+  for (const i of lines) extra[i] = 0;
+  return out;
+}
+
+/**
+ * Coverage of a would-be building at (x, y) as if built and fully staffed (its streets or auto-road included):
+ * per service layer, the covered road tiles and every house a covered road tile touches (sorted ids).
+ */
+export function previewCoverage(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: Uint8Array; houses: number[] }[] {
+  return previewCovered(s, type, x, y).map((p) => {
+    const tiles = new Uint8Array(GN);
+    for (const i of p.tiles) tiles[i] = 1;
+    return { layer: p.layer, tiles, houses: p.houses };
   });
 }
 

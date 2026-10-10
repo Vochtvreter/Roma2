@@ -3,12 +3,12 @@
 // water) holds the percentage it adds or takes (+20, −40); `forum` holds road steps; `covers`/`unblocks` hold houses;
 // `felling` holds timber; `clay`, `district` and `via` hold nothing.
 import { B } from './balance';
-import { T } from './types';
+import { LAYERS, T } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote } from './types';
 import { getMap, isWooded, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
 import { censusEpoch, memo, structEpoch } from './memo';
-import { desirability, houseHas, previewCoverage, previewDesir } from './coverage';
+import { coverage, desirability, previewCovered, previewDesir } from './coverage';
 import { firstWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
 import { getBuilding } from './state';
@@ -150,13 +150,15 @@ export function siteMult(s: GameState, b: Building): number {
 
 /** Per-call scoring context: house wants and current coverage, gathered once for many candidate slots. */
 interface ScoreCtx {
-  houses: { id: number; rect: Rect; want: NeedId | null; level: number; desir: number }[];
+  houses: { id: number; rect: Rect; want: NeedId | null; level: number; desir: number; mask: number }[];
+  byId: Map<number, ScoreCtx['houses'][number]>;
 }
 
 function scoreCtx(s: GameState): ScoreCtx {
   const d = derived(s);
   const desir = desirability(s);
   const houses: ScoreCtx['houses'] = [];
+  const masks = coverage(s).houseMask;
   for (const id of d.houses) {
     const b = getBuilding(s, id);
     if (!b || !b.house) continue;
@@ -164,9 +166,9 @@ function scoreCtx(s: GameState): ScoreCtx {
     let sum = 0;
     const tiles = rectTiles(rect.x, rect.y, rect.w, rect.h);
     for (const i of tiles) sum += desir[i];
-    houses.push({ id, rect, want: firstWant(s, b), level: ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'].indexOf(b.house.tier), desir: tiles.length ? sum / tiles.length : 0 });
+    houses.push({ id, rect, want: firstWant(s, b), level: ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'].indexOf(b.house.tier), desir: tiles.length ? sum / tiles.length : 0, mask: masks.get(id) ?? 0 });
   }
-  return { houses };
+  return { houses, byId: new Map(houses.map((hh) => [hh.id, hh])) };
 }
 
 /** Road steps from the forum to a footprint: the nearest built road beside it, else the grid distance to the forum. */
@@ -193,15 +195,14 @@ function score(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: numb
   const toFossa = rectGap(r, sv.castrum);
   const housesWithin = (gap: number): number => ctx.houses.filter((hh) => rectGap(r, hh.rect) <= gap).length;
   const cover = (): { unblock: number; newly: number; t4: number } => {
-    const prev = previewCoverage(s, type, x, y);
     let unblock = 0, newly = 0, t4 = 0;
     const covered = new Map<number, CoverageLayerId[]>();
-    for (const p of prev) for (const id of p.houses) covered.set(id, [...(covered.get(id) ?? []), p.layer]);
-    for (const hh of ctx.houses) {
-      const ls = covered.get(hh.id);
-      if (!ls) continue;
+    for (const p of previewCovered(s, type, x, y)) for (const id of p.houses) covered.set(id, [...(covered.get(id) ?? []), p.layer]);
+    for (const [id, ls] of covered) {
+      const hh = ctx.byId.get(id);
+      if (!hh) continue;
       if (hh.want && (NEED_LAYERS[hh.want] ?? []).some((l) => ls.includes(l))) unblock++;
-      if (ls.some((l) => !houseHas(s, hh.id, l))) { newly++; if (hh.level >= 4) t4++; }
+      if (ls.some((l) => ((hh.mask >> LAYERS.indexOf(l)) & 1) === 0)) { newly++; if (hh.level >= 4) t4++; }
     }
     return { unblock, newly, t4 };
   };
@@ -267,7 +268,7 @@ function score(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: numb
       for (const i of rectTiles(hh.rect.x, hh.rect.y, hh.rect.w, hh.rect.h)) g += gain.get(i) ?? 0;
       lift += Math.min(g / (hh.rect.w * hh.rect.h), B.housing.DESIR_DOMUS - hh.desir);
     }
-    sc += lift;
+    sc += lift + SC.SERVICE.STEPS * stepsToForum(s, r);
   } else {
     sc += SC.RURAL.DIST * toFossa;
   }

@@ -9,8 +9,8 @@ import { derived } from '../derived';
 import { blockStreets, isFutureBlock } from '../survey';
 import { memo, structEpoch } from '../memo';
 import { GN, GW, forN4, onGrid } from './grid';
-import { costField, walkBack } from './search';
-import type { CostField } from './search';
+import { bfsField, costField, walkBack } from './search';
+import type { CostField, StepField } from './search';
 import { aqueductCostT, roadCostT } from './rules';
 
 const M = B.map;
@@ -44,28 +44,23 @@ function roadSteps(s: GameState): Float64Array {
   return step;
 }
 
-/** Cheapest dirt-road connection of every tile to the built network, ≤ ROAD_MAX new tiles (memo on structEpoch). */
-export function roadField(s: GameState): CostField {
-  return memo(s, 'roadField', structEpoch(s), () => {
-    const road = derived(s).road;
-    const net: number[] = [];
-    for (let i = 0; i < GN; i++) if (road[i] > 0) net.push(i);
-    return costField(net, roadSteps(s), M.ROAD_MAX);
-  });
+/** A cost field paired with a breadth-first field over the same tiles: the cheapest path when it fits the tile cap, else the shortest. */
+export interface Reach { cost: CostField; bfs: StepField; max: number }
+
+function reachFrom(sources: number[], step: Float64Array, max: number, steps0: number): Reach {
+  const pass = new Uint8Array(GN);
+  for (let i = 0; i < GN; i++) pass[i] = step[i] < Infinity ? 1 : 0;
+  return { cost: costField(sources, step, max, steps0), bfs: bfsField(sources, pass, max, steps0), max };
 }
 
-/** True when a tile is on the network or can be joined to it by an auto-road. */
-export function roadReachable(s: GameState, i: number): boolean {
-  return roadField(s).cost[i] < Infinity;
-}
-
-/** New road tiles joining a w×h rural footprint at (x, y) to the network from its best side tile; [] if it touches; null if cut off. */
-export function autoRoad(s: GameState, x: number, y: number, w: number, h: number): number[] | null {
-  const f = roadField(s);
-  let best = -1;
+/** Best side tile of a w×h footprint: the cheapest by cost, else the nearest by steps; −1 when none is reachable. */
+function bestSide(r: Reach, x: number, y: number, w: number, h: number): { tile: number; cheap: boolean } {
+  let best = -1, near = -1;
   const consider = (i: number): void => {
-    if (f.cost[i] === Infinity) return;
-    if (best < 0 || f.cost[i] < f.cost[best] || (f.cost[i] === f.cost[best] && i < best)) best = i;
+    const c = r.cost.cost[i];
+    if (c < Infinity && (best < 0 || c < r.cost.cost[best] || (c === r.cost.cost[best] && i < best))) best = i;
+    const k = r.bfs.steps[i];
+    if (k <= r.max && (near < 0 || k < r.bfs.steps[near] || (k === r.bfs.steps[near] && i < near))) near = i;
   };
   for (let px = x; px < x + w; px++) {
     if (onGrid(px, y - 1)) consider((y - 1) * GW + px);
@@ -75,8 +70,30 @@ export function autoRoad(s: GameState, x: number, y: number, w: number, h: numbe
     if (onGrid(x - 1, py)) consider(py * GW + x - 1);
     if (onGrid(x + w, py)) consider(py * GW + x + w);
   }
-  if (best < 0) return null;
-  const path = walkBack(f, best);
+  return best >= 0 ? { tile: best, cheap: true } : { tile: near, cheap: false };
+}
+
+/** Dirt-road connections of every tile to the built network, ≤ ROAD_MAX new tiles (memo on structEpoch). */
+export function roadField(s: GameState): Reach {
+  return memo(s, 'roadField', structEpoch(s), () => {
+    const road = derived(s).road;
+    const net: number[] = [];
+    for (let i = 0; i < GN; i++) if (road[i] > 0) net.push(i);
+    return reachFrom(net, roadSteps(s), M.ROAD_MAX, 0);
+  });
+}
+
+/** True when a tile is on the network or can be joined to it by an auto-road. */
+export function roadReachable(s: GameState, i: number): boolean {
+  return roadField(s).bfs.steps[i] <= M.ROAD_MAX;
+}
+
+/** New road tiles joining a w×h rural footprint at (x, y) to the network from its best side tile; [] if it touches; null if cut off. */
+export function autoRoad(s: GameState, x: number, y: number, w: number, h: number): number[] | null {
+  const f = roadField(s);
+  const side = bestSide(f, x, y, w, h);
+  if (side.tile < 0) return null;
+  const path = walkBack(side.cheap ? f.cost : f.bfs, side.tile);
   path.pop();                                              // the network tile it joins
   return path.sort((a, b) => a - b);
 }
@@ -123,35 +140,24 @@ function aqueductSteps(s: GameState): Float64Array {
   return step;
 }
 
-/** Cheapest aqueduct from any free spring (one castellum per spring) to every tile, ≤ AQUEDUCT_MAX tiles (memo on structEpoch). */
-export function aqueductField(s: GameState): CostField {
+/** Aqueducts from any free spring (one castellum per spring) to every tile, ≤ AQUEDUCT_MAX tiles (memo on structEpoch). */
+export function aqueductField(s: GameState): Reach {
   return memo(s, 'aqueductField', structEpoch(s), () => {
     const map = getMap(s.seed);
     const used = new Set<number>();
     for (const b of s.buildings) if (b.type === 'castellum' && b.route && b.route.length > 0) used.add(b.route[0]);
-    const free = map.fontes.filter((f) => !used.has(f));
-    return costField(free, aqueductSteps(s), M.AQUEDUCT_MAX, 1);
+    const taken = derived(s).buildingAt;
+    const free = map.fontes.filter((f) => !used.has(f) && taken[f] === 0);
+    return reachFrom(free, aqueductSteps(s), M.AQUEDUCT_MAX, 1);
   });
 }
 
 /** The aqueduct route (spring first) to a side tile of a 2×2 castellum at (x, y), or null when no free spring is in reach. */
 export function aqueductRoute(s: GameState, x: number, y: number, w: number, h: number): { fons: number; tiles: number[] } | null {
   const f = aqueductField(s);
-  let best = -1;
-  const consider = (i: number): void => {
-    if (f.cost[i] === Infinity) return;
-    if (best < 0 || f.cost[i] < f.cost[best] || (f.cost[i] === f.cost[best] && i < best)) best = i;
-  };
-  for (let px = x; px < x + w; px++) {
-    if (onGrid(px, y - 1)) consider((y - 1) * GW + px);
-    if (onGrid(px, y + h)) consider((y + h) * GW + px);
-  }
-  for (let py = y; py < y + h; py++) {
-    if (onGrid(x - 1, py)) consider(py * GW + x - 1);
-    if (onGrid(x + w, py)) consider(py * GW + x + w);
-  }
-  if (best < 0) return null;
-  const tiles = walkBack(f, best).reverse();
+  const side = bestSide(f, x, y, w, h);
+  if (side.tile < 0) return null;
+  const tiles = walkBack(side.cheap ? f.cost : f.bfs, side.tile).reverse();
   return { fons: tiles[0], tiles };
 }
 

@@ -4,7 +4,7 @@
 // block streets and aqueduct routes live in world/roads.ts; site rules in world/siterules.ts.
 import { B } from './balance';
 import { RESOURCES } from './types';
-import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId } from './types';
+import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId, WorldMap } from './types';
 import { getMap, idx, inBounds, tx, ty } from './map';
 import { activeRings, halfOrigin, isActiveBlock, isFutureBlock, plotOrigin } from './survey';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
@@ -257,20 +257,14 @@ function computeSlots(s: GameState, type: BuildingId, owner: Owner): Map<number,
   }
   if (def.place.includes('rural')) {
     const [w, h] = sizeOf(type, 'rural');
-    const c = sv.castrum;
+    const base = ruralBase(s, owner);
+    const terr = terrainMask(map, type);
     const blocked = new Uint8Array(GN);
-    for (let i = 0; i < GN; i++) {
-      const x = tx(i), y = ty(i);
-      const b = sv.blockAt[i];
-      blocked[i] = d.territory[i] !== 1 || (x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h) || sv.street[i] === 1
-        || d.road[i] > 0 || d.pomerium[i] === 1 || d.reservedTile[i] === 1 || d.buildingAt[i] !== 0
-        || (owner === 'ordo' && b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank))
-        || terrainFail(type, map.terrain[i], map.feature[i]) !== null ? 1 : 0;
-    }
+    for (let i = 0; i < GN; i++) blocked[i] = base[i] | terr[i];
     const ps = new PrefixSum(blocked);
     const rule = ruleTester(s, type, w, h);
-    const field = roadField(s);
-    const reach = (i: number): boolean => field.cost[i] < Infinity;
+    const steps = roadField(s).bfs.steps;
+    const reach = (i: number): boolean => steps[i] <= B.map.ROAD_MAX;
     for (let y = 0; y + h <= map.H; y++) {
       for (let x = 0; x + w <= map.W; x++) {
         if (ps.sum(x, y, w, h) > 0 || !rule(x, y) || !anySide(x, y, w, h, reach)) continue;
@@ -279,6 +273,41 @@ function computeSlots(s: GameState, type: BuildingId, owner: Owner): Map<number,
     }
   }
   return out;
+}
+
+/** Tiles no rural work of `owner` may cover on the current structure (checks 7, 8 and 10), memo on structEpoch. */
+function ruralBase(s: GameState, owner: Owner): Uint8Array {
+  return memo(s, `ruralBase:${owner}`, structEpoch(s), () => {
+    const sv = getMap(s.seed).survey;
+    const d = derived(s);
+    const c = sv.castrum;
+    const m = new Uint8Array(GN);
+    for (let i = 0; i < GN; i++) {
+      const x = tx(i), y = ty(i);
+      const b = sv.blockAt[i];
+      m[i] = d.territory[i] !== 1 || (x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h) || sv.street[i] === 1
+        || d.road[i] > 0 || d.pomerium[i] === 1 || d.reservedTile[i] === 1 || d.buildingAt[i] !== 0
+        || (owner === 'ordo' && b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank)) ? 1 : 0;
+    }
+    return m;
+  });
+}
+
+const terrainMasks = new WeakMap<WorldMap, Map<string, Uint8Array>>();
+
+/** Tiles check 9 forbids to a type on a map (river, crag, sacred ground, and rock/ore unless it digs them). */
+function terrainMask(map: WorldMap, type: BuildingId): Uint8Array {
+  const kind = type === 'fodina' || type === 'lapicidina' ? type : 'other';
+  let byKind = terrainMasks.get(map);
+  if (!byKind) { byKind = new Map(); terrainMasks.set(map, byKind); }
+  let m = byKind.get(kind);
+  if (!m) {
+    const probe: BuildingId = kind === 'other' ? 'ager' : kind;
+    m = new Uint8Array(GN);
+    for (let i = 0; i < GN; i++) m[i] = terrainFail(probe, map.terrain[i], map.feature[i]) ? 1 : 0;
+    byKind.set(kind, m);
+  }
+  return m;
 }
 
 /** Places a building: validates, pays (or plans), fells, lays streets or the auto-road, logs, invalidates (ARCHITECTURE §8.2). */

@@ -51,16 +51,20 @@ export function costField(sources: ArrayLike<number>, step: ArrayLike<number>, m
   return { cost, steps, prev };
 }
 
-/** The tiles from `start` back to its source, both included. */
-export function walkBack(f: CostField, start: number): number[] {
+/** The tiles from `start` back to its source, both included (along a cost field or a breadth-first field). */
+export function walkBack(f: { prev: Int32Array }, start: number): number[] {
   const out: number[] = [];
   for (let i = start; i >= 0; i = f.prev[i]) out.push(i);
   return out;
 }
 
-/** Breadth-first path length (in tiles, sources count `steps0`) from `sources` over passable tiles, up to `maxSteps`; 0xffff where unreached. */
-export function stepField(sources: ArrayLike<number>, passable: ArrayLike<number>, maxSteps: number, steps0 = 0): Uint16Array {
+/** Breadth-first result: path length in tiles (0xffff where unreached) and the next tile toward the source. */
+export interface StepField { steps: Uint16Array; prev: Int32Array }
+
+/** Breadth-first path lengths (sources count `steps0`) from `sources` over passable tiles, up to `maxSteps`. */
+export function bfsField(sources: ArrayLike<number>, passable: ArrayLike<number>, maxSteps: number, steps0 = 0): StepField {
   const d = new Uint16Array(GN).fill(0xffff);
+  const prev = new Int32Array(GN).fill(-1);
   const q = new Int32Array(GN);
   let head = 0, tail = 0;
   for (let k = 0; k < sources.length; k++) {
@@ -69,15 +73,23 @@ export function stepField(sources: ArrayLike<number>, passable: ArrayLike<number
     d[s] = steps0;
     q[tail++] = s;
   }
+  const visit = (i: number, j: number, nd: number): void => {
+    if (passable[j] && d[j] === 0xffff) { d[j] = nd; prev[j] = i; q[tail++] = j; }
+  };
   while (head < tail) {
     const i = q[head++];
     const nd = d[i] + 1;
     if (nd > maxSteps) continue;
     const x = i % GW;
-    if (i >= GW && passable[i - GW] && d[i - GW] === 0xffff) { d[i - GW] = nd; q[tail++] = i - GW; }
-    if (x < GW - 1 && passable[i + 1] && d[i + 1] === 0xffff) { d[i + 1] = nd; q[tail++] = i + 1; }
-    if (i < GN - GW && passable[i + GW] && d[i + GW] === 0xffff) { d[i + GW] = nd; q[tail++] = i + GW; }
-    if (x > 0 && passable[i - 1] && d[i - 1] === 0xffff) { d[i - 1] = nd; q[tail++] = i - 1; }
+    if (i >= GW) visit(i, i - GW, nd);
+    if (x < GW - 1) visit(i, i + 1, nd);
+    if (i < GN - GW) visit(i, i + GW, nd);
+    if (x > 0) visit(i, i - 1, nd);
   }
-  return d;
+  return { steps: d, prev };
+}
+
+/** Breadth-first path lengths only (see bfsField). */
+export function stepField(sources: ArrayLike<number>, passable: ArrayLike<number>, maxSteps: number, steps0 = 0): Uint16Array {
+  return bfsField(sources, passable, maxSteps, steps0).steps;
 }

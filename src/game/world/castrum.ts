@@ -214,15 +214,20 @@ export function finishSite(bt: BaseTerrain, seed: number, c: SiteCand, attempt: 
     feature[f] = F.fons;
   }
   fontes.sort((a, b) => a - b);
+  const road = startRoads(sv, terrain, feature, distArr);
+  const sites = new Sites(sv, terrain, feature, distArr, road);
 
-  // ore: two veins of 2–4 tiles on hills or rock, each with open ground beside it for the mine
+  // ore: two veins of 2–4 tiles on hills or rock, each with room for a mine the roads can reach
   const oreOk = (i: number): boolean => free(i) && isHillsRockT(terrain[i]);
+  const mine = sites.blocked(TERR[2], true, true);
+  const [mw, mh] = BUILDING_DEFS.fodina.size;
   const oreCands: number[] = [];
   for (let i = 0; i < GN; i++) {
     if (!oreOk(i) || !inBand(i, G.ORE_DIST)) continue;
-    let open = false;
-    forN4(i, (j) => { if (terrain[j] !== T.rock && terrain[j] !== T.crag && terrain[j] !== T.river) open = true; });
-    if (open) oreCands.push(i);
+    const x = i % GW, y = (i - x) / GW;
+    let room = false;
+    for (let oy = y - mh + 1; oy <= y && !room; oy++) for (let ox = x - mw + 1; ox <= x && !room; ox++) room = sites.fits(mine, ox, oy, mw, mh);
+    if (room) oreCands.push(i);
   }
   const starts: number[] = [];
   for (let k = 0; k < G.ORE_VEINS; k++) {
@@ -253,37 +258,57 @@ export function finishSite(bt: BaseTerrain, seed: number, c: SiteCand, attempt: 
   }
   base.fontes = fontes;
   const map: WorldMap = { ...base, survey: sv };
-  const fails = checkGuarantees(map, reach, aq, distArr);
+  const fails = checkGuarantees(map, reach, aq, distArr, sites);
   return { map, fails };
 }
 
+/** Road reach from the start network (castrum streets, gates, via) in tiles, BFS up to ROAD_MAX; 0xffff beyond. */
+function startRoads(sv: Survey, terrain: Uint8Array, feature: Uint8Array, dist: Uint8Array): Uint16Array {
+  const pass = new Uint8Array(GN);
+  for (let i = 0; i < GN; i++) {
+    const f = feature[i];
+    pass[i] = dist[i] === 0 || f === F.lucus || f === F.ruins || f === F.fons || roadCostT(terrain[i]) === Infinity ? 0 : 1;
+  }
+  return stepField(startNetwork(sv), pass, M.ROAD_MAX);
+}
+
+/** Rural site tests on a finished map at the start network (the Ordo's rules: off every unmasked ring block). */
+class Sites {
+  /** Wraps the map layers used by every test. */
+  constructor(private sv: Survey, private terrain: Uint8Array, private feature: Uint8Array, private dist: Uint8Array, private road: Uint16Array) {}
+
+  /** Prefix sums of the tiles a rural work may not cover within `terr` of the castrum (rock and ore only if allowed). */
+  blocked(terr: number, rock: boolean, ore: boolean): PrefixSum {
+    const { sv, terrain, feature, dist } = this;
+    const m = new Uint8Array(GN);
+    for (let i = 0; i < GN; i++) {
+      const b = sv.blockAt[i];
+      const f = feature[i], t = terrain[i];
+      m[i] = dist[i] > terr || dist[i] === 0 || sv.street[i] === 1 || this.road[i] === 0 || (b >= 0 && sv.blocks[b].ring > 0 && !sv.blocks[b].masked)
+        || t === T.river || t === T.crag || f === F.lucus || f === F.ruins || f === F.fons
+        || (t === T.rock && !rock) || (f === F.ore && !ore) ? 1 : 0;
+    }
+    return new PrefixSum(m);
+  }
+
+  /** True when a side tile of the footprint is on the network or within ROAD_MAX new tiles of it. */
+  roadOk(x: number, y: number, w: number, h: number): boolean {
+    return anySide(x, y, w, h, (i) => this.road[i] <= M.ROAD_MAX);
+  }
+
+  /** The footprint lies on the map, covers no blocked tile and a road can reach it. */
+  fits(blocked: PrefixSum, x: number, y: number, w: number, h: number): boolean {
+    return x >= 0 && y >= 0 && x + w <= GW && y + h <= GH && blocked.sum(x, y, w, h) === 0 && this.roadOk(x, y, w, h);
+  }
+}
+
 /** DESIGN §3.3 step 8 on a finished map; sets map.startAger to the Ordo's best start field. Returns the failures. */
-function checkGuarantees(map: WorldMap, reach: Uint8Array, aqSteps: Uint16Array, dist: Uint8Array): string[] {
+function checkGuarantees(map: WorldMap, reach: Uint8Array, aqSteps: Uint16Array, dist: Uint8Array, sites: Sites): string[] {
   const { terrain, feature, survey: sv } = map;
   const fails: string[] = [];
-  const net = startNetwork(sv);
-  const isNet = new Uint8Array(GN);
-  for (const i of net) isNet[i] = 1;
   const rect = sv.castrum;
-  const pass = new Uint8Array(GN);
-  const blockedFlatM = new Uint8Array(GN), blockedDigM = new Uint8Array(GN);
-  for (let i = 0; i < GN; i++) {
-    const b = sv.blockAt[i];
-    const future = b >= 0 && sv.blocks[b].ring > 0 && !sv.blocks[b].masked;
-    const f = feature[i], t = terrain[i];
-    const sacred = f === F.lucus || f === F.ruins || f === F.fons;
-    const inRect = dist[i] === 0;
-    pass[i] = inRect || sacred || roadCostT(t) === Infinity ? 0 : 1;
-    const blocked = dist[i] > TERR[0] || inRect || sv.street[i] === 1 || isNet[i] === 1 || future
-      || t === T.river || t === T.crag || sacred || f === F.ore;
-    blockedDigM[i] = blocked ? 1 : 0;
-    blockedFlatM[i] = blocked || t === T.rock ? 1 : 0;
-  }
-  const road = stepField(net, pass, M.ROAD_MAX);
-  const reachRoad = (i: number): boolean => road[i] <= M.ROAD_MAX;
-  const roadOk = (x: number, y: number, w: number, h: number): boolean => anySide(x, y, w, h, reachRoad);
-  const blockedFlat = new PrefixSum(blockedFlatM);
-  const blockedDig = new PrefixSum(blockedDigM);
+  const flat = sites.blocked(TERR[0], false, false);
+  const dig = sites.blocked(TERR[0], true, false);
   const fertile = new PrefixSum(maskOf((i) => isFertileT(terrain[i])));
   const hillsRock = new PrefixSum(maskOf((i) => isHillsRockT(terrain[i])));
   const wood = new PrefixSum(map.woodMax);
@@ -294,7 +319,7 @@ function checkGuarantees(map: WorldMap, reach: Uint8Array, aqSteps: Uint16Array,
   let farms = 0, best = -Infinity, bestTile = -1;
   for (let y = 0; y + fh <= GH; y++) {
     for (let x = 0; x + fw <= GW; x++) {
-      if (blockedFlat.sum(x, y, fw, fh) > 0 || fertile.sum(x, y, fw, fh) < B.site.AGER_FERTILE || !roadOk(x, y, fw, fh)) continue;
+      if (!sites.fits(flat, x, y, fw, fh) || fertile.sum(x, y, fw, fh) < B.site.AGER_FERTILE) continue;
       const score = B.score.AGER.SITE * agerBase(terrain, x, y).mult + B.score.AGER.DIST * rectGap({ x, y, w: fw, h: fh }, rect);
       if (score > best) { best = score; bestTile = y * GW + x; }
       let free = true;
@@ -315,19 +340,30 @@ function checkGuarantees(map: WorldMap, reach: Uint8Array, aqSteps: Uint16Array,
   let quarry = false, lumber = false;
   for (let y = 0; y < GH && !(quarry && lumber); y++) {
     for (let x = 0; x < GW; x++) {
-      if (!quarry && x + qw <= GW && y + qh <= GH && blockedDig.sum(x, y, qw, qh) === 0
-        && hillsRock.sum(x - 1, y - 1, qw + 2, qh + 2) >= B.site.QUARRY_MIN && roadOk(x, y, qw, qh)) quarry = true;
-      if (!lumber && x + lw <= GW && y + lh <= GH && blockedFlat.sum(x, y, lw, lh) === 0
-        && wood.sum(x - r4, y - r4, lw + 2 * r4, lh + 2 * r4) - wood.sum(x, y, lw, lh) >= G.LUMBER_SITE_WOOD && roadOk(x, y, lw, lh)) lumber = true;
+      if (!quarry && sites.fits(dig, x, y, qw, qh) && hillsRock.sum(x - 1, y - 1, qw + 2, qh + 2) >= B.site.QUARRY_MIN) quarry = true;
+      if (!lumber && sites.fits(flat, x, y, lw, lh)
+        && wood.sum(x - r4, y - r4, lw + 2 * r4, lh + 2 * r4) - wood.sum(x, y, lw, lh) >= G.LUMBER_SITE_WOOD) lumber = true;
     }
   }
   if (!quarry) fails.push('quarry');
   if (!lumber) fails.push('lumber');
 
-  // clay (Vicus), ore (Oppidum) and a spring (Municipium, within an aqueduct's reach), all on our side of the river
-  const any = (pred: (i: number) => boolean): boolean => { for (let i = 0; i < GN; i++) if (pred(i)) return true; return false; };
-  if (!any((i) => feature[i] === F.clay && reach[i] === 1 && dist[i] <= TERR[1])) fails.push('clay');
-  if (!any((i) => feature[i] === F.ore && reach[i] === 1 && dist[i] <= TERR[2])) fails.push('ore');
+  // a kiln on a clay bank (Vicus), a mine on a vein (Oppidum) and a spring within an aqueduct's reach (Municipium)
+  const [kw, kh] = BUILDING_DEFS.figlina.size;
+  const [mw, mh] = BUILDING_DEFS.fodina.size;
+  const kiln = sites.blocked(TERR[1], false, false);
+  const mine = sites.blocked(TERR[2], true, true);
+  const clay = new PrefixSum(maskOf((i) => feature[i] === F.clay));
+  const ore = new PrefixSum(maskOf((i) => feature[i] === F.ore));
+  let kilnOk = false, mineOk = false;
+  for (let y = 0; y < GH && !(kilnOk && mineOk); y++) {
+    for (let x = 0; x < GW; x++) {
+      if (!kilnOk && clay.sum(x - 1, y - 1, kw + 2, kh + 2) > 0 && sites.fits(kiln, x, y, kw, kh)) kilnOk = true;
+      if (!mineOk && ore.sum(x, y, mw, mh) > 0 && sites.fits(mine, x, y, mw, mh)) mineOk = true;
+    }
+  }
+  if (!kilnOk) fails.push('clay');
+  if (!mineOk) fails.push('ore');
   if (!map.fontes.some((i) => reach[i] === 1 && dist[i] <= TERR[3] && aqSteps[i] <= M.AQUEDUCT_MAX)) fails.push('fons');
   const last = sv.via[sv.via.length - 1];
   if (last === undefined || (last % GW !== 0 && last % GW !== GW - 1)) fails.push('via');
