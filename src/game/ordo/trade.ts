@@ -12,6 +12,7 @@ import { capitoliumFlow } from '../construction';
 import { missing } from '../state';
 import { BUILDING_DEFS } from '../data/buildings';
 import { TRADE_BASE } from '../data/hubs';
+import { RANK_DEFS } from '../data/ranks';
 import { canSpend, capitoliumAhead, etaDays, outputRates, reserved, savingParts } from './saving';
 import { houseWants, walkWishes } from './build';
 import { chronicle } from './chronicle';
@@ -92,22 +93,35 @@ export function tradeMoves(s: GameState, v: SimView): TradeMove[] {
     const lack = missing(s, w.cost);
     for (const r of TRADE_RES) if ((lack[r] ?? 0) > 0) buy(r, lack[r] ?? 0, 'wishImport', w.days === null ? { for: w.type } : { for: w.type, days: w.days });
   }
-  // 4 · surplus to the hub paying best per day of the round trip (Materia sells its materials last)
+  // 4 · surplus to the hub paying best per day of the round trip (Materia sells its materials last). While the next
+  //     petition still counts markets traded with (Oppidum 2, Colonia 5), the best market not yet traded with comes
+  //     first, as the build list raises the works a petition names (DESIGN §9.1, §10.5 row 7).
   const order = s.decisions.focus === 'materia' ? [...TRADE_RES.filter((r) => !MATERIALS.includes(r)), ...MATERIALS] : TRADE_RES;
+  const newHubs = s.trade.hubsTraded.length < hubsWanted(s);
+  const going = new Set<HubId>([...s.trade.contracts.map((c) => c.hub), ...out.map((m) => m.spec.hub)]);
   for (const res of order) {
     const qty = Math.floor(Math.min(B.ordo.CARGO, surplus(s, v, res)));
     if (free <= 0 || qty < MIN_EXPORT || busy(s, 'export', res)) continue;
-    let hub: HubId | null = null, best = 0;
+    let hub: HubId | null = null, best = 0, fresh = false;
     for (const h of HUBS) {
       const p = hubOpen(s, h) ? price(s, h, res, 'sell') : null;
       const value = p === null ? 0 : (p * qty) / (2 * tripDays(s, h, qty));
-      if (value > best) { best = value; hub = h; }
+      const isNew = newHubs && !s.trade.hubsTraded.includes(h) && !going.has(h) && value > 0;
+      if ((isNew && !fresh) || (isNew === fresh && value > best)) { best = value; hub = h; fresh = isNew; }
     }
+    if (hub) going.add(hub);
     if (!hub) continue;
     out.push({ spec: { hub, mode: 'export', res, qty, repeat: false }, reason: { code: 'surplusExport', params: { res, qty, hub } } });
     free--;
   }
   return out;
+}
+
+/** Markets the next petition wants traded with (B.progress.PETITION: Oppidum 2, Colonia 5); 0 when it names none. */
+function hubsWanted(s: GameState): number {
+  const next = RANK_DEFS[s.rank + 1];
+  const q = next ? (B.progress.PETITION as Readonly<Record<string, { HUBS?: number }>>)[next.id] : undefined;
+  return q?.HUBS ?? 0;
 }
 
 /** Goods named by an active Cave or Periculum advisory (grain for the annona rules, else the rule's own good). */
