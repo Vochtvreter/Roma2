@@ -14,7 +14,7 @@ import { RANK_DEFS } from '../data/ranks';
 import { SETTING_DEFS } from '../data/decisions';
 import { TIER_DEFS } from '../data/housing';
 import {
-  CLEAR, HOUSE_CADENCE, R, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
+  CLEAR, HOUSE_CADENCE, R, STEP, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
 } from './util';
 import type { CadencedRule, HouseWant } from './util';
 
@@ -164,7 +164,7 @@ const beds: AdvisorRule = {
   remedies(s, _v, a) {
     if (a.params.mode === 'roll') return three({ kind: 'open', tab: 'council', anchor: 'petition' });
     const def = SETTING_DEFS.spareBeds;
-    const more = Math.min(def.max, settingValue(s, 'spareBeds') + 4);
+    const more = Math.min(def.max, settingValue(s, 'spareBeds') + STEP.SPARE_BEDS);
     return three({ kind: 'place', building: 'area' }, more > settingValue(s, 'spareBeds') ? { kind: 'setting', setting: 'spareBeds', value: more } : null);
   },
 };

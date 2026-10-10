@@ -13,7 +13,7 @@ import { getBuilding, missing } from '../state';
 import { BUILDING_DEFS, BUILD_ORDER } from '../data/buildings';
 import { SETTING_DEFS } from '../data/decisions';
 import {
-  CLEAR, R, aName, bName, buildingPlace, days, held, idleBySkill, importRemedy, int, listJoin, namesOf, num, openPosts, resName, three,
+  CLEAR, R, STEP, aName, bName, buildingPlace, days, held, idleBySkill, importRemedy, int, listJoin, namesOf, num, openPosts, resName, three,
 } from './util';
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
@@ -154,7 +154,7 @@ const stalled: AdvisorRule = {
     const p = a.params;
     const type = p.type as BuildingId;
     const share = SETTING_DEFS.builderShare;
-    const more = Math.min(share.max, Math.round((settingValue(s, 'builderShare') + 0.05) * 100) / 100);
+    const more = Math.min(share.max, Math.round((settingValue(s, 'builderShare') + STEP.BUILDER_SHARE) * 100) / 100);
     const lacking = TRADE_RES.find((r) => (missing(s, BUILDING_DEFS[type].cost)[r] ?? 0) > 0) as TradeRes | undefined;
     return three(
       { kind: 'building', op: 'prioritise', id: P(p.id) },
@@ -189,7 +189,7 @@ const capitolium: AdvisorRule = {
   remedies(s, _v, a) {
     const res = a.params.res as ResId | 'crew' | '';
     const magna: Remedy = { kind: 'edict', edict: 'opera', option: 'magna' };
-    if (res === 'crew' || res === '') return three(magna, { kind: 'setting', setting: 'builderShare', value: Math.min(SETTING_DEFS.builderShare.max, settingValue(s, 'builderShare') + 0.05) });
+    if (res === 'crew' || res === '') return three(magna, { kind: 'setting', setting: 'builderShare', value: Math.min(SETTING_DEFS.builderShare.max, settingValue(s, 'builderShare') + STEP.BUILDER_SHARE) });
     if (res === 'denarii') return three({ kind: 'edict', edict: 'tributum', option: 'grave' }, magna);
     const prod = PRODUCER[res];
     const trade = (TRADE_RES as readonly string[]).includes(res) ? importRemedy(s, res as TradeRes, B.ordo.CARGO) : null;

@@ -13,7 +13,7 @@ import { bestSlot } from '../site';
 import { BUILDING_DEFS } from '../data/buildings';
 import { SETTING_DEFS } from '../data/decisions';
 import {
-  CLEAR, HOUSE_CADENCE, R, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
+  CLEAR, HOUSE_CADENCE, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
   placeName, runway, serviceFor, three,
 } from './util';
 import type { CadencedRule } from './util';
@@ -21,7 +21,6 @@ import type { CadencedRule } from './util';
 const AESTAS = 1;
 const MUNICIPIUM = 3, COLONIA = 4;
 const EPS = 1e-6;
-const RESERVE_STEP = 5;   // the Water reserve remedy raises the setting by 5 steps (5 days)
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 
 /** Finished, open, staffed works that draw water (concrete works, baths), in id order. */
@@ -100,7 +99,7 @@ const aestas: AdvisorRule = {
   },
   remedies(s) {
     const def = SETTING_DEFS.waterReserve;
-    const want = Math.min(def.max, settingValue(s, 'waterReserve') + RESERVE_STEP * def.step);
+    const want = Math.min(def.max, settingValue(s, 'waterReserve') + STEP.WATER_RESERVE);
     const reserve: Remedy | null = s.ordo.on.build && want > settingValue(s, 'waterReserve') ? { kind: 'setting', setting: 'waterReserve', value: want } : null;
     return three({ kind: 'place', building: 'cisterna' }, { kind: 'place', building: 'puteus' }, reserve);
   },

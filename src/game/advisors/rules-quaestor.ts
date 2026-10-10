@@ -11,7 +11,7 @@ import { missing } from '../state';
 import { BUILDING_DEFS } from '../data/buildings';
 import { SETTING_DEFS } from '../data/decisions';
 import { HUB_DEFS } from '../data/hubs';
-import { R, bestHub, days, exportRemedy, held, inDays, int, listJoin, lowLadder, num, resName, runway, three, todayRate } from './util';
+import { R, STEP, bestHub, days, exportRemedy, held, inDays, int, listJoin, lowLadder, num, resName, runway, three, todayRate } from './util';
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 /** Works whose closing saves coin without starving or unhousing anyone (DESIGN §11.6 "costliest optional"). */
@@ -33,9 +33,9 @@ function costliest(s: GameState): Building | null {
 function surplus(s: GameState, v: SimView): { res: TradeRes; qty: number } | null {
   let best: { res: TradeRes; qty: number; value: number } | null = null;
   for (const r of TRADE_RES) {
-    const keep = r === 'grain' ? v.f.grain.need * settingValue(s, 'tradeReserve') : 0.3 * v.c.caps[r];
+    const keep = r === 'grain' ? v.f.grain.need * settingValue(s, 'tradeReserve') : STEP.SURPLUS_KEEP * v.c.caps[r];
     const qty = Math.min(B.ordo.CARGO, Math.floor(s.res[r] - keep));
-    const h = qty >= 10 ? bestHub(s, r, 'sell', qty) : null;
+    const h = qty >= STEP.SURPLUS_MIN ? bestHub(s, r, 'sell', qty) : null;
     if (h && (!best || h.unit * qty > best.value)) best = { res: r, qty, value: h.unit * qty };
   }
   return best;
@@ -130,7 +130,7 @@ const contract: AdvisorRule = {
   remedies(_s, _v, a) {
     const p = a.params;
     const min = SETTING_DEFS.tradeReserve.min;
-    const lower: Remedy | null = p.code === 'reserve' && P(p.X) > min ? { kind: 'setting', setting: 'tradeReserve', value: Math.max(min, P(p.X) - 10) } : null;
+    const lower: Remedy | null = p.code === 'reserve' && P(p.X) > min ? { kind: 'setting', setting: 'tradeReserve', value: Math.max(min, P(p.X) - STEP.TRADE_RESERVE) } : null;
     const store: Remedy | null = p.code === 'storage' ? { kind: 'place', building: p.res === 'grain' ? 'horreum' : 'apotheca' } : null;
     return three(lower, store, { kind: 'open', tab: 'trade', anchor: `contract-${P(p.id)}` });
   },

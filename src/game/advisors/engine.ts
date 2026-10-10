@@ -97,15 +97,15 @@ function step(s: GameState, ctx: TickContext, v: SimView, rule: CadencedRule): v
 function raise(s: GameState, ctx: TickContext, rule: AdvisorRule, prev: AdvisoryMemo | undefined, e: AdvisoryEval): void {
   const flips = prev ? prev.flips : [];
   flips.push(s.day);
-  const m: AdvisoryMemo = { rule: rule.id, active: true, sev: e.severity, since: s.day, lowerSince: null, params: { ...e.params }, flips };
-  if (e.metric) m.metric = { ...e.metric };
+  const m: AdvisoryMemo = { rule: rule.id, active: true, sev: e.severity, since: s.day, lowerSince: null, params: plain(e.params), flips };
+  if (e.metric) m.metric = { ...e.metric, value: finite(e.metric.value) };
   s.guidance.advisories[rule.id] = m;
   announce(s, ctx, rule, m);
 }
 
 function update(s: GameState, ctx: TickContext, rule: AdvisorRule, m: AdvisoryMemo, e: AdvisoryEval): void {
-  m.params = { ...e.params };
-  if (e.metric) m.metric = { ...e.metric };
+  m.params = plain(e.params);
+  if (e.metric) m.metric = { ...e.metric, value: finite(e.metric.value) };
   else delete m.metric;
   if (e.severity > m.sev) {
     m.sev = e.severity;
@@ -118,6 +118,17 @@ function update(s: GameState, ctx: TickContext, rule: AdvisorRule, m: AdvisoryMe
   } else {
     m.lowerSince = null;
   }
+}
+
+function finite(x: number): number {
+  return Number.isFinite(x) ? x : 0;
+}
+
+/** A JSON-safe copy of eval params (the save holds no NaN or ±Infinity). */
+function plain(p: AdvisoryEval['params']): AdvisoryMemo['params'] {
+  const out: AdvisoryMemo['params'] = {};
+  for (const [k, x] of Object.entries(p)) if (x !== undefined) out[k] = typeof x === 'number' ? finite(x) : x;
+  return out;
 }
 
 /** The rule no longer holds: clear after DOWNGRADE_DAYS stable days and MIN_LIFE, unless it is flapping. */
