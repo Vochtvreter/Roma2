@@ -37,7 +37,7 @@ export function unlockLabel(u: UnlockRef): string {
 export function dangerLabel(a: ActiveAdvisory): string {
   const m = a.memo.metric;
   if (a.rule === 'quaestor.coin' && a.memo.params.unpaid) return 'Unpaid works';
-  if (a.rule === 'aedilis.declining' && m) return `${fmt(m.value)} homes declining`;
+  if (a.rule === 'aedilis.declining' && m) return `${fmt(m.value)} ${m.value === 1 ? 'home' : 'homes'} declining`;
   if (m) return `${m.label} ${fmt(Math.max(0, Math.floor(m.value)))}${UNIT[m.unit] ?? ''}`;
   return ADVISOR_DEFS[a.advisor].office;
 }

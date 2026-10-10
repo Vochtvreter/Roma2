@@ -158,13 +158,16 @@ function template(r: Reason, short: boolean): string {
   return flipped ? flip[short ? 1 : 0] : (short ? SHORT : TEXT)[r.code] ?? r.code;
 }
 
+/** "1 homes" → "1 home" (the templates count homes in the plural). */
+const one = (t: string): string => t.replace(/(^|[^\d.,])1 homes\b/g, '$11 home');
+
 /** Full sentence for tooltips and the Annales. */
 export function reasonText(r: Reason): string {
-  return fill(template(r, false), r.params);
+  return one(fill(template(r, false), r.params));
 }
 
 /** Ticker fragment (no trailing period); a `state` param prefixes Raising / Staked / Next / The Ordo would raise. */
 export function reasonShort(r: Reason): string {
   const st = typeof r.params.state === 'string' ? STATE[r.params.state] ?? '' : '';
-  return st + fill(template(r, true), r.params);
+  return st + one(fill(template(r, true), r.params));
 }
