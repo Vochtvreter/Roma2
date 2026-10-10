@@ -71,9 +71,10 @@ export function houseWants(s: GameState, v: SimView): HouseWants {
 }
 
 /** The Ordo's slot for a type: A's best slot (validSlots for owner 'ordo' already keeps off reserved blocks and blocks
- *  holding a player plan or unfinished player site); memo per day and epochs (as pure as A's scoring). */
+ *  holding a player plan or unfinished player site). Chosen once a day per structure: the wish walk runs again after
+ *  every change of jobs or people, and a full scoring pass each time cost more than the whole rest of the Ordo. */
 export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): number | null {
-  return memo(s, `ordo.slot.${type}.${purpose}`, dayEpoch(s), () =>
+  return memo(s, `ordo.slot.${type}.${purpose}`, dayStruct(s), () =>
     bestSlot(s, type, { owner: 'ordo', purpose })?.tile ?? null);
 }
 
