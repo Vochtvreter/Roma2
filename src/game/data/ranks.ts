@@ -32,7 +32,7 @@ export const RANK_DEFS: RankDef[] = [
   {
     index: 3, id: 'municipium', name: 'Municipium', title: 'Duumvir',
     fee: { denarii: 2500, stone: 400, concrete: 200, iron: 60 }, dignitas: 100,
-    ceiling: 900, territory: 44, rings: [0, 1, 2], immRate: 0.0035, subsidy: 0,
+    ceiling: 900, territory: 44, rings: [0, 1, 2], immRate: 0.003, subsidy: 0,
     unlocks: ['castellum', 'lacus', 'thermae', 'theatrum'],
     hubs: ['augusta'], forumStage: 3,
   },

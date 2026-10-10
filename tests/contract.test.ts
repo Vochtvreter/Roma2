@@ -165,7 +165,7 @@ const at = (o: unknown, path: string): unknown => path.split('.').reduce<unknown
 const TUNED: Record<string, string> = {
   'people.BIRTH_RATE': 'WP-J balance: 0.20 → 0.09, growth mainly from Rome\'s roll (DESIGN §6.5, §18.3)',
   'construction.CAP_WORK': 'WP-J balance: 160,000 → 320,000 for the 1,800–3,000-day Capitolium band (DESIGN §9.5)',
-  'construction.CAP_MAT.denarii': 'WP-J balance: 40,000 → 120,000, the Capitolium is the age\'s great expense (DESIGN §9.5)',
+  'construction.CAP_MAT.denarii': 'WP-J balance: 40,000 → 160,000, the Capitolium is the age\'s great expense (DESIGN §9.5)',
   'ordo.EXPORT_CAP': 'WP-J balance: 0.8 → 0.95, no hands worked for export but under Mercatura (DESIGN §10.7)',
 };
 
@@ -192,7 +192,7 @@ describe('balance.ts mirrors the contract (ARCHITECTURE §7, DESIGN §18.3)', ()
       ['CASTRUM 31×21', [m.INTERIOR_W, m.INTERIOR_H], [31, 21]], ['TERRITORY [20,26,34,44,999]', m.TERRITORY, [20, 26, 34, 44, 999]],
       ['rings by rank [0],[0,1],[0,1,2]…', m.RINGS, [[0], [0, 1], [0, 1, 2], [0, 1, 2], [0, 1, 2]]],
       ['NEED child .6 youth .85 adult 1 elder .75', p.NEED, [0.6, 0.85, 1, 0.75]], ['BIRTH 0.09/yr', p.BIRTH_RATE, 0.09],
-      ['MARRY 1/400', p.MARRY_P, 1 / 400], ['IMM_RATE [0.014,0.011,0.0075,0.0035,0.04]', p.IMM_RATE, [0.014, 0.011, 0.0075, 0.0035, 0.04]],
+      ['MARRY 1/400', p.MARRY_P, 1 / 400], ['IMM_RATE [0.014,0.011,0.0075,0.003,0.04]', p.IMM_RATE, [0.014, 0.011, 0.0075, 0.003, 0.04]],
       ['CEILING [100,260,560,900,1500]', p.CEILING, [100, 260, 560, 900, 1500]], ['POP_CAP 1500', p.POP_CAP, 1500],
       ['SKILL_XP 0.004', p.SKILL_XP, 0.004], ['SKILL_BONUS 0.04', p.SKILL_BONUS, 0.04], ['ELDER_OUT 0.7', p.ELDER_OUT, 0.7],
       ['RETIRE 65', p.RETIRE, 65], ['MULT_CAP 2.5', e.MULT_CAP, 2.5], ['PRODUCTIVITY 0.85 + 0.30·m', [e.PROD_BASE, e.PROD_MORALE], [0.85, 0.3]],
