@@ -1,17 +1,23 @@
 // src/game/world/roads.ts — auto-roads, block streets, aqueduct routes and felling on the live state (DESIGN §3.4, §3.7,
 // §3.8, §5.3). Owner: WP-A. The cost fields are memoised on the structure epoch: one Dijkstra from the road network
 // (or from the free springs) serves every footprint until something is built.
-import { B } from '../balance';
-import { F } from '../types';
+import { B as B$ } from '../balance';
+import { F as F$ } from '../types';
 import type { GameState } from '../types';
-import { getMap, woodAt } from '../map';
-import { derived } from '../derived';
-import { blockStreets, isFutureBlock } from '../survey';
-import { memo, structEpoch } from '../memo';
-import { GN, GW, forN4, onGrid } from './grid';
-import { bfsField, costField, walkBack } from './search';
+import { getMap as getMap$, woodAt as woodAt$ } from '../map';
+import { derived as derived$ } from '../derived';
+import { blockStreets as blockStreets$, isFutureBlock as isFutureBlock$ } from '../survey';
+import { layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
+import { GN as GN$, GW as GW$, forN4 as forN4$, onGrid as onGrid$ } from './grid';
+import { bfsField as bfsField$, costField as costField$, walkBack as walkBack$ } from './search';
 import type { CostField, StepField } from './search';
-import { aqueductCostT, roadCostT } from './rules';
+import { aqueductCostT as aqueductCostT$, roadCostT as roadCostT$ } from './rules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, F = F$, getMap = getMap$, woodAt = woodAt$, derived = derived$, blockStreets = blockStreets$,
+  isFutureBlock = isFutureBlock$, layoutEpoch = layoutEpoch$, memo = memo$, GN = GN$, GW = GW$, forN4 = forN4$,
+  onGrid = onGrid$, bfsField = bfsField$, costField = costField$, walkBack = walkBack$, aqueductCostT = aqueductCostT$,
+  roadCostT = roadCostT$;
 
 const M = B.map;
 // Aqueduct steps not listed in DESIGN §3.8
@@ -73,9 +79,9 @@ function bestSide(r: Reach, x: number, y: number, w: number, h: number): { tile:
   return best >= 0 ? { tile: best, cheap: true } : { tile: near, cheap: false };
 }
 
-/** Dirt-road connections of every tile to the built network, ≤ ROAD_MAX new tiles (memo on structEpoch). */
+/** Dirt-road connections of every tile to the built network, ≤ ROAD_MAX new tiles (memo on the layout epoch). */
 export function roadField(s: GameState): Reach {
-  return memo(s, 'roadField', structEpoch(s), () => {
+  return memo(s, 'roadField', layoutEpoch(s), () => {
     const road = derived(s).road;
     const net: number[] = [];
     for (let i = 0; i < GN; i++) if (road[i] > 0) net.push(i);
@@ -93,8 +99,20 @@ export function autoRoad(s: GameState, x: number, y: number, w: number, h: numbe
   return path.sort((a, b) => a - b);
 }
 
-/** A block's unbuilt street sides plus the shortest connection along survey streets to the network (new tiles, sorted). */
-export function blockStreetTiles(s: GameState, blockId: number): number[] {
+/** A block's unbuilt street sides plus the shortest connection along survey streets to the network (new tiles, sorted).
+ *  Memoised per block on the layout epoch (placement checks and coverage previews ask for the same blocks over and
+ *  over); the array is shared, callers only read it. */
+export function blockStreetTiles(s: GameState, blockId: number): readonly number[] {
+  const m = memo(s, 'blockStreetTiles', layoutEpoch(s), () => new Map<number, readonly number[]>());
+  let out = m.get(blockId);
+  if (!out) {
+    out = computeBlockStreets(s, blockId);
+    m.set(blockId, out);
+  }
+  return out;
+}
+
+function computeBlockStreets(s: GameState, blockId: number): number[] {
   const sv = getMap(s.seed).survey;
   const blk = sv.blocks[blockId];
   if (!blk) return [];
@@ -135,9 +153,9 @@ function aqueductSteps(s: GameState): Float64Array {
   return step;
 }
 
-/** Aqueducts from any free spring (one castellum per spring) to every tile, ≤ AQUEDUCT_MAX tiles (memo on structEpoch). */
+/** Aqueducts from any free spring (one castellum per spring) to every tile, ≤ AQUEDUCT_MAX tiles (memo on the layout epoch). */
 function aqueductField(s: GameState): Reach {
-  return memo(s, 'aqueductField', structEpoch(s), () => {
+  return memo(s, 'aqueductField', layoutEpoch(s), () => {
     const map = getMap(s.seed);
     const used = new Set<number>();
     for (const b of s.buildings) if (b.type === 'castellum' && b.route && b.route.length > 0) used.add(b.route[0]);

@@ -1,10 +1,13 @@
 // src/game/world/rules.ts — terrain rules shared by map generation, placement and scoring (DESIGN §3.2, §3.7, §3.8, §5.1).
 // Owner: WP-A. Pure functions of terrain arrays; no game state, no map cache.
-import { B } from '../balance';
-import { T } from '../types';
+import { B as B$ } from '../balance';
+import { T as T$ } from '../types';
 import type { Terrain } from '../types';
-import { GH, GW, onGrid } from './grid';
-import { BUILDING_DEFS } from '../data/buildings';
+import { GH as GH$, GW as GW$, onGrid as onGrid$ } from './grid';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, T = T$, GH = GH$, GW = GW$, onGrid = onGrid$, BUILDING_DEFS = BUILDING_DEFS$;
 
 const S = B.site;
 

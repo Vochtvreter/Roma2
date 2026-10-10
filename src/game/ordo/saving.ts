@@ -2,18 +2,62 @@
 // Saving target = petition fee (once its other requirements are met) + player plans + pin + requests + the pending wish.
 // Every Ordo spend except survival draws only on stock above it (and keeps the treasury floor); renovations and
 // export contracts read the same reservation, so saving never deadlocks building or renovation.
-import { B } from '../balance';
-import { RESOURCES } from '../types';
+import { B as B$ } from '../balance';
+import { PATH_DECISIONS as PATH_DECISIONS$, RESOURCES as RESOURCES$, SETTINGS as SETTINGS$ } from '../types';
 import type { Building, BuildingId, Cost, GameState, Reason, ResId, SimView } from '../types';
 import { addCost, canAfford, missing, scaleCost } from '../state';
 import { petitionNeeds, settingValue } from '../decisions';
 import { capitoliumFlow } from '../construction';
-import { censusEpoch, dayEpoch, memo, structEpoch } from '../memo';
-import { seasonOf } from '../calendar';
+import { dayEpoch as dayEpoch$, memo as memo$, structEpoch as structEpoch$ } from '../memo';
+import { seasonOf as seasonOf$ } from '../calendar';
 import { buildingRate } from '../economy';
-import { fx } from '../fx';
+import { fx as fx$ } from '../fx';
 import { placementCost } from '../place';
 import { walkWishes } from './build';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, PATH_DECISIONS = PATH_DECISIONS$, SETTINGS = SETTINGS$, dayEpoch = dayEpoch$,
+  memo = memo$, structEpoch = structEpoch$, seasonOf = seasonOf$, fx = fx$;
+
+/** The player's orders as the council's memos read them, and a version for each reading: `parts` turns when the pin, a
+ *  request or a path changes (what the saving parts read), `walk` when any of those or the focus or a setting does (what
+ *  the wish walk reads). Field-by-field compares instead of serialising the orders at every read; the versions come
+ *  from one counter, so they are unique across states. */
+interface Orders { pin: BuildingId | null; reqs: { type: BuildingId; day: number }[]; paths: (string | undefined)[];
+  focus: string; settings: number[]; parts: number; walk: number }
+const orders = new WeakMap<GameState, Orders>();
+let ordersCounter = 0;
+
+/** The current versions of the player's orders on `s` (see Orders). */
+export function ordersOf(s: GameState): Orders {
+  let o = orders.get(s);
+  if (!o) {
+    o = { pin: null, reqs: [], paths: [], focus: '', settings: [], parts: ++ordersCounter, walk: ++ordersCounter };
+    orders.set(s, o);
+    copyOrders(o, s);
+    return o;
+  }
+  const d = s.decisions, rq = s.ordo.requests;
+  let parts = o.pin === s.ordo.pin && o.reqs.length === rq.length;
+  for (let i = 0; parts && i < rq.length; i++) parts = o.reqs[i].type === rq[i].type && o.reqs[i].day === rq[i].day;
+  for (let i = 0; parts && i < PATH_DECISIONS.length; i++) parts = o.paths[i] === d.paths[PATH_DECISIONS[i]];
+  let walk = parts && o.focus === d.focus;
+  for (let i = 0; walk && i < SETTINGS.length; i++) walk = o.settings[i] === d.settings[SETTINGS[i]];
+  if (walk) return o;
+  if (!parts) o.parts = ++ordersCounter;
+  o.walk = ++ordersCounter;
+  copyOrders(o, s);
+  return o;
+}
+
+function copyOrders(o: Orders, s: GameState): void {
+  const d = s.decisions;
+  o.pin = s.ordo.pin;
+  o.reqs = s.ordo.requests.map((r) => ({ type: r.type, day: r.day }));
+  o.paths = PATH_DECISIONS.map((p) => d.paths[p]);
+  o.focus = d.focus;
+  o.settings = SETTINGS.map((k) => d.settings[k]);
+}
 
 /** What a saving part is for, in priority order. */
 export type SavingKind = 'petition' | 'plan' | 'pin' | 'request' | 'wish';
@@ -25,9 +69,10 @@ export function workCost(s: GameState, type: BuildingId, routeLen = 0): Cost {
   return placementCost(s, type, routeLen);
 }
 
-/** The player-ordered parts of the saving target in priority order: petition fee, plans, pin, requests. */
+/** The player-ordered parts of the saving target in priority order: petition fee, plans, pin, requests. Set at the
+ *  council's sitting like the wish walk (memo on day, structure epoch and the player's orders). */
 export function savingParts(s: GameState, v: SimView): SavingPart[] {
-  const key = `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.ordo.pin}|${JSON.stringify(s.ordo.requests)}|${JSON.stringify(s.decisions.paths)}`;
+  const key = `${s.day}|${structEpoch(s)}|${ordersOf(s).parts}`;
   return memo(s, 'ordo.parts', key, () => {
     const out: SavingPart[] = [];
     const pn = petitionNeeds(s, v);

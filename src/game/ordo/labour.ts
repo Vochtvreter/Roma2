@@ -3,20 +3,27 @@
 // tools → oil → services → focus split → leftovers). Within a step: High priority first, then the best output per hand
 // this season, then lowest id (Hearthlands' marginal-yield staffing). Each labour line keeps the Reason of the step that
 // first staffed its category; later steps may add detail to it (the winter stock to the food line).
-import { B } from '../balance';
-import { HOUSE_TIERS, LABOR_CATS, RESOURCES } from '../types';
+import { B as B$ } from '../balance';
+import { HOUSE_TIERS as HOUSE_TIERS$, LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$ } from '../types';
 import type { Building, BuildingDef, BuildingId, CoverageLayerId, GameState, LaborCat, LabourLine, LabourPlan, NeedId, Reason, ReasonCode, ResId, SimView } from '../types';
-import { nextSeasonStart, seasonLength, seasonOf } from '../calendar';
-import { maxPotential, seasonMult } from '../economy';
+import { nextSeasonStart as nextSeasonStart$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
+import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
-import { getBuilding } from '../state';
-import { dayEpoch, memo } from '../memo';
-import { roadNeighbors } from '../derived';
-import { BUILDING_DEFS } from '../data/buildings';
-import { TIER_DEFS } from '../data/housing';
-import { FOCUS_DEFS } from '../data/decisions';
+import { getBuilding as getBuilding$ } from '../lookup';
+import { jobsEpoch as jobsEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
+import { roadNeighbors as roadNeighbors$ } from '../derived';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { houseWants, materialNeeds } from './build';
-import { fullRate } from './saving';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
+  nextSeasonStart = nextSeasonStart$, seasonLength = seasonLength$, seasonOf = seasonOf$, jobsEpoch = jobsEpoch$,
+  layoutEpoch = layoutEpoch$,
+  memo = memo$, roadNeighbors = roadNeighbors$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
+  FOCUS_DEFS = FOCUS_DEFS$,
+  getBuilding = getBuilding$;
 
 /** Works that stop drawing water while the Lex de annona pauses them (DESIGN §8.12 step 2): they get no hands. */
 export const WATER_PAUSED: readonly BuildingId[] = ['caementarium', 'balneum', 'thermae'];
@@ -24,10 +31,14 @@ const NEED_LAYERS: Partial<Record<NeedId, CoverageLayerId[]>> = {
   water: ['water', 'fountain'], religion: ['shrine', 'temple'], market: ['market', 'macellum'], temple: ['temple'], baths: ['baths'], macellum: ['macellum'],
 };
 const LEFTOVER: LaborCat[] = ['materials', 'industry', 'services', 'food', 'water'];
+const RES_N = RESOURCES.length;
+const RES_IDX = Object.fromEntries(RESOURCES.map((r, k) => [r, k])) as Record<ResId, number>;
 const MANUAL_ORDER: LaborCat[] = ['water', 'food', 'services', 'builders', 'materials', 'industry'];
 const FAR = 1e9;
+const DAY_SPAN = 1e6;   // as memo.ts: epoch × DAY_SPAN + day is exact in float64
 
-interface Post { b: Building; def: BuildingDef; cat: LaborCat; res: ResId | null; rate: number; layers: CoverageLayerId[] }
+/** A staffable post; `i` is its place in the day's order (the plan keeps its hands in an array by it). */
+interface Post { b: Building; def: BuildingDef; cat: LaborCat; res: ResId | null; rate: number; layers: CoverageLayerId[]; i: number }
 
 const r1 = (x: number): number => Math.round(x * 10) / 10;
 
@@ -38,20 +49,27 @@ function reason(code: ReasonCode, params: Record<string, number | string | undef
   return { code, params: p };
 }
 
-/** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id. */
+/** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id
+ *  (memo on the day, the jobs and layout epochs and the water pause: who works where moves the rates, and the works
+ *  themselves the list; a house's tier moves neither). Both epochs come from one rising counter, so their maximum moves
+ *  whenever either does. */
 function posts(s: GameState): Post[] {
-  return memo(s, 'ordo.posts', dayEpoch(s) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
+  const e = Math.max(jobsEpoch(s), layoutEpoch(s));
+  return memo(s, 'ordo.posts', (e * DAY_SPAN + s.day) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
     const out: Post[] = [];
+    const season = seasonOf(s.day);
     for (const b of s.buildings) {
       const def = BUILDING_DEFS[b.type];
       if (b.status !== 'done' || !b.open || def.slots <= 0 || !def.labor) continue;
       if ((b.damagedUntil ?? 0) > s.day || (b.idleUntil ?? 0) > s.day) continue;
       if (s.ordo.emergency.waterPause && WATER_PAUSED.includes(b.type)) continue;
       const res = def.output?.res ?? null;
-      const rate = res ? (fullRate(s, b)[res] ?? 0) / def.slots : 0;
-      out.push({ b, def, cat: def.labor, res, rate, layers: (def.service ?? []).map((x) => x.layer) });
+      const rate = res ? buildingRateOf(s, b, season, 'full', res) / def.slots : 0;   // = fullRate(s, b)[res] / slots
+      out.push({ b, def, cat: def.labor, res, rate, layers: (def.service ?? []).map((x) => x.layer), i: 0 });
     }
-    return out.sort((a, c) => c.b.prio - a.b.prio || c.rate - a.rate || a.b.id - c.b.id);
+    out.sort((a, c) => c.b.prio - a.b.prio || c.rate - a.rate || a.b.id - c.b.id);
+    for (let i = 0; i < out.length; i++) out[i].i = i;
+    return out;
   });
 }
 
@@ -76,6 +94,30 @@ function workableSites(s: GameState, v: SimView): Building[] {
   return out;
 }
 
+/** The plan's hands by building id: every post that took a hand, filled from the highest id down (a record that starts
+ *  at a high key keeps sparse elements, not a backing array as long as the highest id). */
+function perRecord(s: GameState, all: readonly Post[], hands: Int32Array): Record<number, number> {
+  const byId = postsById(all);
+  const per: Record<number, number> = {};
+  for (let k = s.buildings.length - 1; k >= 0; k--) {
+    const p = byId.get(s.buildings[k].id);
+    if (p && hands[p.i] > 0) per[p.b.id] = hands[p.i];
+  }
+  return per;
+}
+
+/** The posts of one order by building id (kept per order array). */
+function postsById(all: readonly Post[]): Map<number, Post> {
+  let m = postIndex.get(all);
+  if (!m) {
+    m = new Map();
+    for (const p of all) m.set(p.b.id, p);
+    postIndex.set(all, m);
+  }
+  return m;
+}
+const postIndex = new WeakMap<readonly Post[], Map<number, Post>>();
+
 /** The Ordo's daily labour plan with a Reason per line (DESIGN §10.4). Pure. */
 export function planLabour(s: GameState, v: SimView): LabourPlan {
   const { c, f } = v;
@@ -83,8 +125,10 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   const all = posts(s);
   const season = seasonOf(s.day);
   const focus = s.decisions.focus;
-  const per: Record<number, number> = {};
-  const made: Partial<Record<ResId, number>> = {};
+  // hands per post (by its place in the order) and output made per resource (by index), read and written hand by hand;
+  // the plan's record by building id is filled once at the end
+  const hands = new Int32Array(all.length);
+  const made = new Float64Array(RES_N);
   const lines = new Map<LaborCat, { n: number; reason: Reason }>();
   const hungry = Math.max(...s.needs.hunger) > B.ordo.HUNGER_AT;
   let foodCap = Math.floor(W * (hungry ? B.ordo.FOOD_CAP_HUNGRY : B.ordo.FOOD_CAP));
@@ -96,23 +140,38 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   };
   /** Up to `n` hands to a post (slots, free hands and the food cap permitting); returns how many. */
   const add = (p: Post, n: number, why: Reason): number => {
-    let k = Math.min(n, p.def.slots - (per[p.b.id] ?? 0), free);
+    let k = Math.min(n, p.def.slots - hands[p.i], free);
     if (p.res === 'grain') k = Math.min(k, foodCap - food);
     if (k <= 0) return 0;
-    per[p.b.id] = (per[p.b.id] ?? 0) + k;
+    hands[p.i] += k;
     free -= k;
     if (p.res === 'grain') food += k;
-    if (p.res) made[p.res] = (made[p.res] ?? 0) + p.rate * k;
+    if (p.res) made[RES_IDX[p.res]] += p.rate * k;
     note(p.cat, k, why);
     return k;
   };
-  /** One hand at a time to the best producer of `res` until its output reaches `goal`; returns hands added. */
+  /** One hand at a time to the best producer of `res` until its output reaches `goal`; returns hands added. Each post
+   *  takes hands while `add(p, 1)` would (its slots, the free hands, the food cap), the output summed hand by hand;
+   *  the post's hands are noted once (the same line, reason and count as hand by hand). */
   const toward = (res: ResId, goal: number, why: Reason): number => {
     let n = 0;
+    const grain = res === 'grain', ri = RES_IDX[res];
     for (const p of all) {
-      if ((made[res] ?? 0) >= goal) break;
+      if (made[ri] >= goal) break;
       if (p.res !== res || p.rate <= 0) continue;
-      while ((made[res] ?? 0) < goal && add(p, 1, why) === 1) n++;
+      const slots = p.def.slots, rate = p.rate;
+      let have = hands[p.i], m = made[ri], k = 0;
+      while (m < goal && have < slots && free > 0 && (!grain || food < foodCap)) {
+        have++; free--; k++;
+        if (grain) food++;
+        m += rate * 1;
+      }
+      if (k > 0) {
+        hands[p.i] = have;
+        made[ri] = m;
+        note(p.cat, k, why);
+        n += k;
+      }
     }
     return n;
   };
@@ -120,7 +179,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   const feed = (res: ResId, goal: number, why: Reason): number => {
     let n = toward(res, goal, why);
     const draw: Partial<Record<ResId, number>> = {};
-    for (const p of all) if (p.res === res && per[p.b.id]) for (const r of RESOURCES) draw[r] = (draw[r] ?? 0) + (p.def.inputs?.[r] ?? 0) * per[p.b.id];
+    for (const p of all) if (p.res === res && hands[p.i]) for (const r of RESOURCES) draw[r] = (draw[r] ?? 0) + (p.def.inputs?.[r] ?? 0) * hands[p.i];
     for (const r of RESOURCES) if ((draw[r] ?? 0) > 0 && s.res[r] < (draw[r] as number) * B.ordo.MATERIALS_ETA) n += toward(r, draw[r] as number, why);
     return n;
   };
@@ -128,7 +187,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   const useful = (p: Post): boolean => {
     if (p.res && s.res[p.res] >= B.ordo.STORE_FULL * c.caps[p.res]) return false;
     const inp = p.def.inputs;
-    return !inp || RESOURCES.every((r) => (inp[r] ?? 0) * ((per[p.b.id] ?? 0) + 1) <= s.res[r]);
+    return !inp || RESOURCES.every((r) => (inp[r] ?? 0) * (hands[p.i] + 1) <= s.res[r]);
   };
   const fill = (cat: LaborCat, n: number, why: Reason): number => {
     let k = 0;
@@ -142,11 +201,11 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   const prefill = season === 0 && (f.water.crunch?.lowestDoh ?? FAR) < wr;
   const [wBase, wWhy] = thirsty ? [B.ordo.WATER_THIRST, 'thirst'] : prefill ? [B.ordo.WATER_PREFILL, 'prefill'] : f.water.doh < wr ? [B.ordo.WATER_LOW, 'low'] : [B.ordo.WATER_BASE, ''];
   let draw = 0;
-  made.water = 0;
+  const WATER = RES_IDX.water;
   for (const b of s.buildings) {
     const def = BUILDING_DEFS[b.type];
     if (b.status !== 'done' || (s.ordo.emergency.waterPause && WATER_PAUSED.includes(b.type))) continue;
-    if (def.passive?.res === 'water') made.water += def.passive.perDay * seasonMult(s, b.type, season);
+    if (def.passive?.res === 'water') made[WATER] += def.passive.perDay * seasonMult(s, b.type, season);
     const n = c.staffed[b.id] ?? 0;
     draw += (def.inputs?.water ?? 0) * n + (def.waterDraw && (def.slots === 0 || n > 0) ? def.waterDraw : 0);
   }
@@ -193,7 +252,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   const req = all.filter((p) => p.layers.some((l) => layers.has(l)));
   const sReason = reason('requiredService', { n: req.length });
   for (const p of req) add(p, 1, sReason);
-  for (const p of req) add(p, Math.ceil(p.def.slots * B.economy.SERVICE_FULL) - (per[p.b.id] ?? 0), sReason);
+  for (const p of req) add(p, Math.ceil(p.def.slots * B.economy.SERVICE_FULL) - hands[p.i], sReason);
 
   // 4 · builders while a site is workable (plus the Capitolium crew in monument mode), ≤ 30% of the workforce
   if (sites.length > 0 || capSite) {
@@ -254,7 +313,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
 
   const out: LabourLine[] = [];
   for (const [cat, l] of lines) out.push({ cat, target: cat === 'builders' ? builders : l.n, have: c.catStaffed[cat], slots: c.catSlots[cat], reason: l.reason });
-  return { perBuilding: per, builders, lines: out };
+  return { perBuilding: perRecord(s, all, hands), builders, lines: out };
 }
 
 /** Manual labour: the player's category targets → buildings (prioritised categories first; High first, then nearest the forum). */

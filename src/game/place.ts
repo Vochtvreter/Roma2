@@ -2,26 +2,39 @@
 // canPlace runs the twelve checks of the §8.2 table in order and returns the first failure; validSlots answers the
 // same question for every origin at once (masks and prefix sums) and must agree with canPlace. Felling, auto-roads,
 // block streets and aqueduct routes live in world/roads.ts; site rules in world/siterules.ts.
-import { B } from './balance';
-import { RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId, WorldMap } from './types';
-import { getMap, idx, inBounds, tx, ty } from './map';
-import { activeRings, halfOrigin, isActiveBlock, isFutureBlock, plotOrigin } from './survey';
-import { blockOfTile, classAt, derived, sizeOf } from './derived';
-import { dayStruct, invalidate, memo, structEpoch, touchPeople } from './memo';
-import { addCost, canAfford, getBuilding, log, missing, nextId, pay, refund, scaleCost } from './state';
+import { getMap as getMap$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
+import { activeRings as activeRings$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, plotOrigin as plotOrigin$ } from './survey';
+import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, sizeOf as sizeOf$ } from './derived';
+import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layoutEpoch$, memo as memo$, touchPeople as touchPeople$ } from './memo';
+import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { cancelSite } from './construction';
 import { buildingRate } from './economy';
-import { seasonOf } from './calendar';
-import { fx } from './fx';
+import { seasonOf as seasonOf$ } from './calendar';
+import { fx as fx$ } from './fx';
 import { siteMultAt } from './site';
-import { reasonText } from './ordo/reasons';
-import { BUILDING_DEFS } from './data/buildings';
-import { RANK_DEFS } from './data/ranks';
-import { RESOURCE_DEFS } from './data/resources';
-import { GN, PrefixSum, anySide, rectTiles } from './world/grid';
-import { aqueductRoute, autoRoad, blockStreetTiles, fell, roadField, standingTimber } from './world/roads';
-import { RULE_REASON, ruleFail, ruleTester, terrainFail, woodDependent } from './world/siterules';
+import { reasonText as reasonText$ } from './ordo/reasons';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
+import { GN as GN$, PrefixSum, anySide as anySide$, rectTiles as rectTiles$ } from './world/grid';
+import { aqueductRoute as aqueductRoute$, autoRoad as autoRoad$, blockStreetTiles as blockStreetTiles$, fell as fell$, roadField as roadField$, standingTimber as standingTimber$ } from './world/roads';
+import { RULE_REASON as RULE_REASON$, ruleFail as ruleFail$, ruleTester as ruleTester$, terrainFail as terrainFail$, woodDependent as woodDependent$ } from './world/siterules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
+  activeRings = activeRings$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$, isFutureBlock = isFutureBlock$,
+  plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$, derived = derived$, sizeOf = sizeOf$,
+  dayLayout = dayLayout$, invalidate = invalidate$, layoutEpoch = layoutEpoch$, memo = memo$,
+  touchPeople = touchPeople$, seasonOf = seasonOf$, fx = fx$, reasonText = reasonText$, BUILDING_DEFS = BUILDING_DEFS$,
+  RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$, GN = GN$, anySide = anySide$, rectTiles = rectTiles$,
+  aqueductRoute = aqueductRoute$, autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$, fell = fell$,
+  roadField = roadField$, standingTimber = standingTimber$, RULE_REASON = RULE_REASON$, ruleFail = ruleFail$,
+  ruleTester = ruleTester$, terrainFail = terrainFail$, woodDependent = woodDependent$,
+  getBuilding = getBuilding$;
 
 const URBAN: readonly PlaceClass[] = ['plot', 'half', 'block'];
 const PLOT = B.map.PLOT;
@@ -202,7 +215,7 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
   const route = type === 'castellum' ? aqueductRoute(s, at.x, at.y, w, h) : null;
   if (type === 'castellum' && !route) return fail('noFons', RULE_REASON.noFons);
   // 12 · a road can reach a rural work
-  let lines: number[] = [];
+  let lines: readonly number[] = [];
   if (cls === 'rural') {
     const road = autoRoad(s, at.x, at.y, w, h);
     if (road === null) return fail('noRoad', R.noRoad);
@@ -225,9 +238,9 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
   return out;
 }
 
-/** Every valid origin tile of a type for an owner → site multiplier (memo on type + owner + structEpoch, + day for wood rules). */
+/** Every valid origin tile of a type for an owner → site multiplier (memo on type + owner + layout epoch, + day for wood rules). */
 export function validSlots(s: GameState, type: BuildingId, owner: Owner): Map<number, number> {
-  const key = woodDependent(type) ? dayStruct(s) : structEpoch(s);
+  const key = woodDependent(type) ? dayLayout(s) : layoutEpoch(s);
   return memo(s, `validSlots:${type}:${owner}`, key, () => computeSlots(s, type, owner));
 }
 
@@ -275,9 +288,9 @@ function computeSlots(s: GameState, type: BuildingId, owner: Owner): Map<number,
   return out;
 }
 
-/** Tiles no rural work of `owner` may cover on the current structure (checks 7, 8 and 10), memo on structEpoch. */
+/** Tiles no rural work of `owner` may cover on the current structure (checks 7, 8 and 10), memo on the layout epoch. */
 function ruralBase(s: GameState, owner: Owner): Uint8Array {
-  return memo(s, `ruralBase:${owner}`, structEpoch(s), () => {
+  return memo(s, `ruralBase:${owner}`, layoutEpoch(s), () => {
     const sv = getMap(s.seed).survey;
     const d = derived(s);
     const c = sv.castrum;
@@ -450,7 +463,7 @@ export function roadPathFor(s: GameState, footprint: number[]): number[] | null 
 
 /** Street tiles a block needs (its unbuilt sides plus the connection along survey lines to the network). */
 export function streetsForBlock(s: GameState, blockId: number): number[] {
-  return blockStreetTiles(s, blockId);
+  return blockStreetTiles(s, blockId).slice();
 }
 
 /** The aqueduct route from the nearest reachable free spring to a castellum at (x, y), spring first, or null. */

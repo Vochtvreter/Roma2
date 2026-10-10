@@ -3,20 +3,28 @@
 // the road tiles beside its footprint; a road tile is covered within the service's effective radius in whole steps, and
 // a house is covered when a road tile beside it is. The flood reruns only when the structure or a radius changes.
 // Desirability: Σ v · (1 − d/(r + 1)) over every source within its range (Chebyshev d from the source's footprint).
-import { B } from './balance';
-import { F, LAYERS, T } from './types';
+import { B as B$ } from './balance';
+import { BUILDINGS as BUILDINGS$, F as F$, LAYERS as LAYERS$, T as T$ } from './types';
 import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
-import { getMap } from './map';
-import { dayEpoch, memo, structEpoch } from './memo';
-import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
+import { getMap as getMap$ } from './map';
+import { dayEpoch as dayEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
+import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, footprintOf as footprintOf$, sizeOf as sizeOf$ } from './derived';
 import { peopleIndex } from './census';
-import { fxAdd } from './fx';
-import { getBuilding } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { RANK_DEFS } from './data/ranks';
-import { GH, GN, GW, sideTiles } from './world/grid';
-import { autoRoad, blockStreetTiles } from './world/roads';
+import { fxAdd as fxAdd$ } from './fx';
+import { getBuilding as getBuilding$ } from './lookup';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+import { GH as GH$, GN as GN$, GW as GW$, sideTiles as sideTiles$ } from './world/grid';
+import { autoRoad as autoRoad$, blockStreetTiles as blockStreetTiles$ } from './world/roads';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, BUILDINGS = BUILDINGS$, F = F$, LAYERS = LAYERS$, T = T$, getMap = getMap$, dayEpoch = dayEpoch$,
+  layoutEpoch = layoutEpoch$, memo = memo$, blockOfTile = blockOfTile$, classAt = classAt$,
+  derived = derived$, footprintOf = footprintOf$, sizeOf = sizeOf$, fxAdd = fxAdd$, BUILDING_DEFS = BUILDING_DEFS$,
+  TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, GH = GH$, GN = GN$, GW = GW$, sideTiles = sideTiles$,
+  autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$,
+  getBuilding = getBuilding$;
 
 /** Path radius bonus that applies to each layer (DESIGN §9.3). */
 const RADIUS_BONUS: Partial<Record<CoverageLayerId, AddKey>> = {
@@ -25,39 +33,63 @@ const RADIUS_BONUS: Partial<Record<CoverageLayerId, AddKey>> = {
 
 /** Effective radius of a building's service layer: DESIGN §5.2 activity rule, unpaid halving, path bonuses; 0 when inactive. */
 export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerId): number {
+  const bonus = RADIUS_BONUS[layer];
+  return radiusWith(b, layer, peopleIndex(s).byWork, bonus ? fxAdd(s, bonus) : 0);
+}
+
+/** effectiveRadius with the workers by building and the layer's path bonus already looked up. */
+function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<number, readonly unknown[]>, bonus: number): number {
   const def = BUILDING_DEFS[b.type];
   const svc = def.service?.find((x) => x.layer === layer);
   if (!svc || b.status !== 'done') return 0;
   let r = svc.radius;
   if (def.slots > 0) {
     if (!b.open) return 0;
-    const n = peopleIndex(s).byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
+    const n = byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
     if (n <= 0) return 0;
     if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);
   }
   if (b.unpaid) r = Math.floor(r * B.economy.UNPAID);
-  const bonus = RADIUS_BONUS[layer];
-  if (bonus && r > 0) r += fxAdd(s, bonus);
+  if (RADIUS_BONUS[layer] && r > 0) r += bonus;
   return Math.max(0, r);
 }
 
 interface Source { id: number; layer: number; r: number }
 
-/** The active services and their radii, and the coverage key they make (re-read once per day or on a structure/staffing change). */
-function activeSources(s: GameState): { key: string; list: Source[] } {
-  const epoch = structEpoch(s);
+/** The active services and their radii under a layout epoch (re-read once per day or on a structure/staffing change). */
+function activeSources(s: GameState): { epoch: number; list: Source[] } {
+  const epoch = layoutEpoch(s);
   return memo(s, 'covSources', dayEpoch(s), () => {
     const list: Source[] = [];
-    for (const b of s.buildings) {
+    const byWork = peopleIndex(s).byWork;
+    const bonus: Partial<Record<AddKey, number>> = {};   // each path bonus looked up once per pass
+    for (const b of serviceWorks(s)) {
       const svc = BUILDING_DEFS[b.type].service;
       if (!svc || b.status !== 'done') continue;
       for (const sv of svc) {
-        const r = effectiveRadius(s, b, sv.layer);
+        const key = RADIUS_BONUS[sv.layer];
+        const add = key ? bonus[key] ??= fxAdd(s, key) : 0;
+        const r = radiusWith(b, sv.layer, byWork, add);
         if (r > 0) list.push({ id: b.id, layer: LAYERS.indexOf(sv.layer), r });
       }
     }
-    return { key: `${epoch}|${list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(',')}`, list };
+    return { epoch, list };
   });
+}
+
+/** Finished works with a service, in building order (memo on the layout epoch: completions and removals bump it). */
+function serviceWorks(s: GameState): Building[] {
+  return memo(s, 'covServiceWorks', layoutEpoch(s), () => s.buildings.filter((b) => BUILDING_DEFS[b.type].service && b.status === 'done'));
+}
+
+/** Coverage keys are built only when the sources change: the same structure epoch and the same (id, layer, radius) list
+ *  make the same key, so the last coverage is reused without a string per check. */
+const covBuilt = new WeakMap<GameState, { epoch: number; list: Source[]; road: Uint8Array; rank: number; cov: Coverage }>();
+
+function sameSources(a: readonly Source[], b: readonly Source[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let k = 0; k < a.length; k++) if (a[k].id !== b[k].id || a[k].layer !== b[k].layer || a[k].r !== b[k].r) return false;
+  return true;
 }
 
 /** Road tiles beside a w×h footprint at (x, y), on a given road layer. */
@@ -65,34 +97,46 @@ function roadSides(road: Uint8Array, x: number, y: number, w: number, h: number)
   return sideTiles(x, y, w, h).filter((i) => road[i] > 0);
 }
 
+// The grid size as module constants: the floods below run thousands of steps per rebuild, and an imported binding is
+// re-read through the module record at every step under the test runner's transform.
+const GW_ = GW, GN_ = GN;
+// Scratch for flood (reused; every call resets the tiles it touched).
+const floodRem = new Int16Array(GN).fill(-1);
+
 /** Floods the road network from each source's tiles up to its radius (max-remaining BFS); marks covered tiles in `out`. */
 function flood(road: Uint8Array, sources: { tiles: number[]; r: number }[], out: Uint8Array): void {
-  const rem = new Int16Array(GN).fill(-1);
+  const rem = floodRem;
+  const touched: number[] = [];
   let maxR = 0;
   for (const src of sources) maxR = Math.max(maxR, src.r);
   const buckets: number[][] = Array.from({ length: maxR + 1 }, () => []);
   for (const src of sources) {
-    for (const t of src.tiles) if (rem[t] < src.r) { rem[t] = src.r; buckets[src.r].push(t); }
+    for (const t of src.tiles) if (rem[t] < src.r) { if (rem[t] < 0) touched.push(t); rem[t] = src.r; buckets[src.r].push(t); }
   }
   for (let r = maxR; r >= 1; r--) {
-    for (const t of buckets[r]) {
+    const cur = buckets[r], next = buckets[r - 1], nr = r - 1;
+    for (let k = 0; k < cur.length; k++) {
+      const t = cur[k];
       if (rem[t] !== r) continue;
-      const x = t % GW;
-      const visit = (j: number): void => { if (road[j] > 0 && rem[j] < r - 1) { rem[j] = r - 1; buckets[r - 1].push(j); } };
-      if (t >= GW) visit(t - GW);
-      if (x < GW - 1) visit(t + 1);
-      if (t < GN - GW) visit(t + GW);
-      if (x > 0) visit(t - 1);
+      const x = t % GW_;
+      let j = t - GW_;
+      if (t >= GW_ && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
+      j = t + 1;
+      if (x < GW_ - 1 && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
+      j = t + GW_;
+      if (t < GN_ - GW_ && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
+      j = t - 1;
+      if (x > 0 && road[j] > 0 && rem[j] < nr) { if (rem[j] < 0) touched.push(j); rem[j] = nr; next.push(j); }
     }
   }
-  for (let i = 0; i < GN; i++) if (rem[i] >= 0) out[i] = 1;
+  for (const i of touched) { out[i] = 1; rem[i] = -1; }
 }
 
 // coverage(s) is a function of dayEpoch(s) (its key comes from activeSources, memoised on it): a one-entry fast path
 // for the hot readers (houseHas per house per need) skips the two memo lookups.
 const covLast = new WeakMap<GameState, { k: number; c: Coverage }>();
 
-/** Coverage layers over built roads and the per-house layer mask (memo on structEpoch + the effective radii). */
+/** Coverage layers over built roads and the per-house layer mask (memo on the layout epoch + the effective radii). */
 export function coverage(s: GameState): Coverage {
   const k = dayEpoch(s);
   const last = covLast.get(s);
@@ -104,35 +148,62 @@ export function coverage(s: GameState): Coverage {
 
 function coverageOf(s: GameState): Coverage {
   const src = activeSources(s);
-  const key = src.key;
-  return memo(s, 'coverage', key, () => {
-    const d = derived(s);
-    const layers = {} as Record<CoverageLayerId, Uint8Array>;
-    LAYERS.forEach((l, k) => {
-      const out = new Uint8Array(GN);
-      const srcs: { tiles: number[]; r: number }[] = [];
-      for (const x of src.list) {
-        if (x.layer !== k) continue;
-        const b = getBuilding(s, x.id);
-        if (!b) continue;
-        const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
-        srcs.push({ tiles: roadSides(d.road, b.x, b.y, w, h), r: x.r });
-      }
-      if (srcs.length > 0) flood(d.road, srcs, out);
-      layers[l] = out;
-    });
-    const houseMask = new Map<number, number>();
-    for (const id of d.houses) {
-      const b = getBuilding(s, id);
+  const last = covBuilt.get(s);
+  if (last && last.epoch === src.epoch && sameSources(last.list, src.list)) return last.cov;
+  const key = `${src.epoch}|${src.list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(',')}`;
+  const d = derived(s);
+  // A new layout with the same sources over the same road tiles at the same rank (a house or a work finished, a plot laid
+  // beside the roads) floods the same tiles: the layers are kept and only the house masks are read again.
+  const cov = last && last.rank === s.rank && sameSources(last.list, src.list) && sameRoad(last.road, d.road)
+    ? { layers: last.cov.layers, houseMask: houseMasks(s, d, last.cov.layers), key }
+    : buildCoverage(s, src, key);
+  covBuilt.set(s, { epoch: src.epoch, list: src.list, road: d.road, rank: s.rank, cov });
+  return cov;
+}
+
+function sameRoad(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function buildCoverage(s: GameState, src: { list: Source[] }, key: string): Coverage {
+  const d = derived(s);
+  const layers = {} as Record<CoverageLayerId, Uint8Array>;
+  LAYERS.forEach((l, k) => {
+    const out = new Uint8Array(GN);
+    const srcs: { tiles: number[]; r: number }[] = [];
+    for (const x of src.list) {
+      if (x.layer !== k) continue;
+      const b = getBuilding(s, x.id);
       if (!b) continue;
       const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
-      const sides = sideTiles(b.x, b.y, w, h);
-      let mask = 0;
-      LAYERS.forEach((l, k) => { if (sides.some((i) => layers[l][i] === 1)) mask |= 1 << k; });
-      houseMask.set(id, mask);
+      srcs.push({ tiles: roadSides(d.road, b.x, b.y, w, h), r: x.r });
     }
-    return { layers, houseMask, key };
+    if (srcs.length > 0) flood(d.road, srcs, out);
+    layers[l] = out;
   });
+  return { layers, houseMask: houseMasks(s, d, layers), key };
+}
+
+/** Each house's layer mask: the layers covering a road tile beside it. */
+function houseMasks(s: GameState, d: ReturnType<typeof derived>, layers: Record<CoverageLayerId, Uint8Array>): Map<number, number> {
+  const houseMask = new Map<number, number>();
+  const byIndex = LAYERS.map((l) => layers[l]);
+  for (const id of d.houses) {
+    const b = getBuilding(s, id);
+    if (!b) continue;
+    const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+    const sides = sideTiles(b.x, b.y, w, h);
+    let mask = 0;
+    for (let k = 0; k < byIndex.length; k++) {
+      const layer = byIndex[k];
+      for (const i of sides) if (layer[i] === 1) { mask |= 1 << k; break; }
+    }
+    houseMask.set(id, mask);
+  }
+  return houseMask;
 }
 
 /** True when the house is covered by the layer. */
@@ -148,28 +219,61 @@ const extra = new Uint8Array(GN);
 
 /** Road tiles within `r` steps of the sources over the roads plus the `extra` overlay (plain BFS, sparse result). */
 function reachWithin(road: Uint8Array, sources: number[], r: number): number[] {
-  seenGen++;
+  const gen = ++seenGen;
   const out: number[] = [];
   const dist: number[] = [];
-  for (const t of sources) if (seen[t] !== seenGen) { seen[t] = seenGen; out.push(t); dist.push(0); }
+  for (const t of sources) if (seen[t] !== gen) { seen[t] = gen; out.push(t); dist.push(0); }
   for (let k = 0; k < out.length; k++) {
     const t = out[k];
     const nd = dist[k] + 1;
     if (nd > r) continue;
-    const x = t % GW;
-    const visit = (j: number): void => { if (seen[j] !== seenGen && (road[j] > 0 || extra[j] === 1)) { seen[j] = seenGen; out.push(j); dist.push(nd); } };
-    if (t >= GW) visit(t - GW);
-    if (x < GW - 1) visit(t + 1);
-    if (t < GN - GW) visit(t + GW);
-    if (x > 0) visit(t - 1);
+    const x = t % GW_;
+    let j = t - GW_;
+    if (t >= GW_ && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
+    j = t + 1;
+    if (x < GW_ - 1 && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
+    j = t + GW_;
+    if (t < GN_ - GW_ && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
+    j = t - 1;
+    if (x > 0 && seen[j] !== gen && (road[j] > 0 || extra[j] === 1)) { seen[j] = gen; out.push(j); dist.push(nd); }
   }
   return out;
 }
 
-/** Sparse preview: per service layer of a would-be building at (x, y), the covered road tiles and the houses they serve. */
-export function previewCovered(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: number[]; houses: number[] }[] {
+/** One service layer of a would-be building: the covered road tiles and the houses they serve (sorted ids). */
+export interface PreviewLayer { layer: CoverageLayerId; tiles: number[]; houses: number[] }
+
+// The previews of one structure: everything previewCovered reads (roads, blocks, auto-roads, the houses beside each road
+// tile, the rank's placement classes) moves only with the structure epoch, and the radius bonuses with the paths and
+// modifiers, so a slot's preview is computed once per structure (the Ordo rescores its candidate slots every day).
+interface PreviewCache { e: number; rank: number; shrine: number; market: number; baths: number; m: Map<number, readonly PreviewLayer[]> }
+const previews = new WeakMap<GameState, PreviewCache>();
+const TYPE_INDEX = new Map<BuildingId, number>(BUILDINGS.map((t, k) => [t, k]));
+
+/** Sparse preview: per service layer of a would-be building at (x, y), the covered road tiles and the houses they serve.
+ *  Memoised per layout epoch, rank and radius bonuses: the arrays are shared, callers only read them. */
+export function previewCovered(s: GameState, type: BuildingId, x: number, y: number): readonly PreviewLayer[] {
   const svc = BUILDING_DEFS[type].service ?? [];
   if (svc.length === 0) return [];
+  if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= GW || y >= GH) return computePreview(s, type, x, y);
+  const e = layoutEpoch(s);
+  const shrine = fxAdd(s, 'shrineRadius'), market = fxAdd(s, 'marketRadius'), baths = fxAdd(s, 'bathsRadius');
+  let c = previews.get(s);
+  if (!c || c.e !== e || c.rank !== s.rank || c.shrine !== shrine || c.market !== market || c.baths !== baths) {
+    c = { e, rank: s.rank, shrine, market, baths, m: new Map() };
+    previews.set(s, c);
+  }
+  const k = (TYPE_INDEX.get(type) as number) * GN + y * GW + x;
+  let out = c.m.get(k);
+  if (!out) {
+    out = computePreview(s, type, x, y);
+    c.m.set(k, out);
+  }
+  return out;
+}
+
+function computePreview(s: GameState, type: BuildingId, x: number, y: number): PreviewLayer[] {
+  const svc = BUILDING_DEFS[type].service ?? [];
   const d = derived(s);
   const cls = classAt(s, type, x, y);
   const [w, h] = sizeOf(type, cls);
@@ -202,9 +306,9 @@ export function previewCoverage(s: GameState, type: BuildingId, x: number, y: nu
   });
 }
 
-/** Road-side tile → the houses it serves (memo on structEpoch). */
+/** Road-side tile → the houses it serves (memo on the layout epoch). */
 export function housesBySide(s: GameState): Map<number, number[]> {
-  return memo(s, 'housesBySide', structEpoch(s), () => {
+  return memo(s, 'housesBySide', layoutEpoch(s), () => {
     const out = new Map<number, number[]>();
     for (const id of derived(s).houses) {
       const b = getBuilding(s, id);
@@ -256,18 +360,33 @@ function desirOf(s: GameState, b: Building): readonly [number, number] {
   return BUILDING_DEFS[b.type].desir;
 }
 
-/** Desirability key: the structure plus the houses whose tier gives them desirability (insulae, domus), read once a day. */
+/** Desirability key: the layout plus the houses whose tier gives them desirability (insulae, domus), read again once a
+ *  day and on every change of the census epoch: a tier changed inside the housing pass is seen by the houses checked
+ *  after it as soon as a change of people (an eviction) bumps that epoch, before the pass ends and bumps the structure. */
 function desirKey(s: GameState): string {
-  const epoch = structEpoch(s);
+  const epoch = layoutEpoch(s);
   return memo(s, 'desirTiers', dayEpoch(s), () => {
     const parts: string[] = [];
-    for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier[0]}`);
+    for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier}`);
     return `${epoch}|${parts.join(',')}`;
   });
 }
 
-/** Desirability per tile, clamped to DESIR_CLAMP (memo on structEpoch and the tiers of the insulae and domus). */
+// desirability(s) is a function of dayEpoch(s) (its key comes from desirKey, memoised on it): a one-entry fast path for
+// the hot readers (houseDesir per house per need) skips the two memo lookups.
+const desirLast = new WeakMap<GameState, { k: number; f: Float32Array }>();
+
+/** Desirability per tile, clamped to DESIR_CLAMP (memo on the layout epoch and the tiers of the insulae and domus). */
 export function desirability(s: GameState): Float32Array {
+  const k = dayEpoch(s);
+  const last = desirLast.get(s);
+  if (last && last.k === k) return last.f;
+  const f = desirabilityOf(s);
+  desirLast.set(s, { k, f });
+  return f;
+}
+
+function desirabilityOf(s: GameState): Float32Array {
   return memo(s, 'desirability', desirKey(s), () => {
     const map = getMap(s.seed);
     const field = natureDesir(map).slice();
@@ -286,16 +405,28 @@ export function desirability(s: GameState): Float32Array {
   });
 }
 
+// Per desirability field, each house's average: a new field is computed whenever the structure (and with it any
+// footprint) or a tier that gives desirability changes, so the field's identity keys the per-house values.
+const houseDesirs = new WeakMap<Float32Array, Map<number, number>>();
+
 /** A house's desirability: the average over its footprint tiles. */
 export function houseDesir(s: GameState, houseId: number): number {
-  const b = getBuilding(s, houseId);
-  if (!b) return 0;
-  const tiles = footprintOf(b, s);
-  if (tiles.length === 0) return 0;
   const d = desirability(s);
-  let sum = 0;
-  for (const i of tiles) sum += d[i];
-  return sum / tiles.length;
+  let m = houseDesirs.get(d);
+  if (!m) { m = new Map(); houseDesirs.set(d, m); }
+  let v = m.get(houseId);
+  if (v === undefined) {
+    v = 0;
+    const b = getBuilding(s, houseId);
+    const tiles = b ? footprintOf(b, s) : [];
+    if (tiles.length > 0) {
+      let sum = 0;
+      for (const i of tiles) sum += d[i];
+      v = sum / tiles.length;
+    }
+    m.set(houseId, v);
+  }
+  return v;
 }
 
 /** Desirability a would-be building at (x, y) would add, per affected tile (unclamped influence of the finished work). */

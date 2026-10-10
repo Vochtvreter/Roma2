@@ -2,22 +2,32 @@
 // Pomerium = unmasked blocks of the active rings (the reserved forum and Area Capitolina blocks included), the active
 // streets and the forum. Reserved tiles = the Area Capitolina and every aqueduct route (while it is built and after:
 // the arches stand there for good).
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { Block, Building, BuildingId, Derived, GameState, PlaceClass } from './types';
-import { getMap, H, W, idx, inBounds, tx, ty } from './map';
-import { activeRings, isActiveBlock } from './survey';
-import { memo, structEpoch } from './memo';
-import { BUILDING_DEFS } from './data/buildings';
-import { RANK_DEFS } from './data/ranks';
+import { getMap as getMap$, H as H$, W as W$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
+import { activeRings as activeRings$, isActiveBlock as isActiveBlock$ } from './survey';
+import { layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, getMap = getMap$, H = H$, W = W$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
+  activeRings = activeRings$, isActiveBlock = isActiveBlock$, layoutEpoch = layoutEpoch$, memo = memo$,
+  BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$;
 
 const PLOT = B.map.PLOT;
 const BLOCK = B.map.BLOCK;
 const URBAN: readonly PlaceClass[] = ['plot', 'half', 'block'];
 
-/** Structural derived data of a state (memo on structEpoch). */
+/** Structural derived data of a state (memo on the layout epoch: house tiers do not enter). */
 export function derived(s: GameState): Derived {
-  return memo(s, 'derived', structEpoch(s), () => computeDerived(s));
+  const e = layoutEpoch(s);
+  if (s === lastDerived.s && e === lastDerived.e) return lastDerived.d as Derived;   // the last read, without a memo call
+  const d = memo(s, 'derived', e, () => computeDerived(s));
+  lastDerived = { s, e, d };
+  return d;
 }
+let lastDerived: { s: GameState | null; e: number; d: Derived | null } = { s: null, e: 0, d: null };
 
 /** Footprint size of a type in a placement class: plot 2×2, half 4×2, block 4×4, rural/fixed from the def. */
 export function sizeOf(type: BuildingId, cls: PlaceClass): [number, number] {

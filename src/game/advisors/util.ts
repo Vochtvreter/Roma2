@@ -1,24 +1,30 @@
 // src/game/advisors/util.ts — shared helpers of the advisor rules: severity ladders, the tick channel, the house-wants
 // memo, and the words that name people, places, markets and fractions (DESIGN §11.1, §11.4–11.6). Owner: WP-E.
 // Load order: only function bodies here touch other game modules, so any file may import this one.
-import { B } from '../balance';
-import { HOUSE_TIERS, HUBS } from '../types';
+import { B as B$ } from '../balance';
+import { HOUSE_TIERS as HOUSE_TIERS$, HUBS as HUBS$ } from '../types';
 import type {
   AdvisorRule, BuildingId, ContractSpec, Essential, GameState, HouseTierId, HubId, LaborCat, NeedId, Person, Rates, Remedy, ResId, RuleId, Severity, SimView,
   SkillId, TradeRes,
 } from '../types';
-import { seasonOf } from '../calendar';
+import { seasonOf as seasonOf$ } from '../calendar';
 import { seasonMult } from '../economy';
-import { distToRect, getMap, tx, ty } from '../map';
-import { memo, structEpoch } from '../memo';
+import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } from '../map';
+import { memo as memo$, structEpoch as structEpoch$ } from '../memo';
 import { personName } from '../people';
-import { getBuilding, getPerson } from '../state';
+import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup';
 import { nextTier, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
-import { BUILDING_DEFS } from '../data/buildings';
-import { NEED_META, TIER_DEFS } from '../data/housing';
-import { RANK_DEFS } from '../data/ranks';
-import { RESOURCE_DEFS } from '../data/resources';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { NEED_META as NEED_META$, TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from '../data/resources';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HOUSE_TIERS = HOUSE_TIERS$, HUBS = HUBS$, seasonOf = seasonOf$, distToRect = distToRect$,
+  getMap = getMap$, tx = tx$, ty = ty$, memo = memo$, structEpoch = structEpoch$, BUILDING_DEFS = BUILDING_DEFS$,
+  NEED_META = NEED_META$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$,
+  getBuilding = getBuilding$, getPerson = getPerson$;
 
 /** Hysteresis release factor: an advisory clears only past its threshold × CLEAR (DESIGN §11.4). */
 export const CLEAR = B.advisors.CLEAR;
@@ -130,20 +136,25 @@ export function bestFood(s: GameState): BuildingId {
 export interface HouseWant { id: number; tile: number; tier: HouseTierId; next: HouseTierId | null; unmet: NeedId[]; want: NeedId | null; declining: boolean; lapsed: NeedId[] }
 
 const PREFS = ['auto', 'insula', 'domus'] as const;
+const TIER_CODE = Object.fromEntries(HOUSE_TIERS.map((t, k) => [t, k])) as Record<HouseTierId, number>;
+const PREF_CODE = Object.fromEntries(PREFS.map((p, k) => [p, k])) as Record<(typeof PREFS)[number], number>;
 
-/** Everything a house's needs read besides the structure: coverage, the fed index, rank, and per house its tier, decline,
- *  goods and preference. Built on every call (one pass over the houses): tiers change on renovation and the goods EMAs
- *  cross SUPPLIED without bumping an epoch, so a signature cached per day and epochs went stale within the day. */
+/** Everything a house's needs read besides the structure: the fed index, rank, and per house its tier, decline, goods,
+ *  preference and coverage mask (the needs read coverage only through houseHas, that is the mask). Built on every call
+ *  (one pass over the houses): tiers change on renovation and the goods EMAs cross SUPPLIED without bumping an epoch, so a
+ *  signature cached per day and epochs went stale within the day; a coverage rebuilt with the same masks (a service's
+ *  staffing moved its radius over no house) keeps the signature. */
 function houseSig(s: GameState, v: SimView): string {
   const S = B.housing.SUPPLIED;
+  const masks = v.cov.houseMask;
   const codes: number[] = [];
   for (const id of v.d.houses) {
     const h = getBuilding(s, id)?.house;
     if (!h) continue;
     const bits = (h.declining ? 4 : 0) + (h.oil >= S ? 2 : 0) + (h.wine >= S ? 1 : 0);
-    codes.push(48 + (HOUSE_TIERS.indexOf(h.tier) * 8 + bits) * 3 + PREFS.indexOf(h.pref));
+    codes.push(48 + (TIER_CODE[h.tier] * 8 + bits) * 3 + PREF_CODE[h.pref], 48 + (masks.get(id) ?? 0));
   }
-  return `${structEpoch(s)}|${v.cov.key}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
+  return `${structEpoch(s)}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
 }
 
 /** Every finished house with its wants. Pure, and memoised on everything the needs read (houseSig), so it is recomputed only when the structure, coverage, fed index or a house changes — not every day. */

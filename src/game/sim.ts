@@ -1,12 +1,12 @@
 // src/game/sim.ts — the daily tick in its exact order (ARCHITECTURE §9), the live SimView and rate ledgers.
 // The scaffold writes the order against the stubs; WP-B owns this file afterwards and may only add private
 // housekeeping details. Reordering any step needs the integrator.
-import { B } from './balance';
-import { RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { RESOURCES as RESOURCES$ } from './types';
 import type { GameState, RateSource, Rates, ResId, SimView, TickContext } from './types';
 import { Rng } from './rng';
-import { isKalends, seasonOf, seasonStartOf } from './calendar';
-import { derived } from './derived';
+import { isKalends as isKalends$, seasonOf as seasonOf$, seasonStartOf as seasonStartOf$ } from './calendar';
+import { derived as derived$ } from './derived';
 import { census } from './census';
 import { forecast } from './forecast';
 import { coverage } from './coverage';
@@ -21,6 +21,10 @@ import { eventsDay } from './events';
 import { checkObjectives, updateCounters } from './objectives';
 import { advisorsDay } from './advisors/engine';
 import { pruneGuide } from './guide';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, RESOURCES = RESOURCES$, isKalends = isKalends$, seasonOf = seasonOf$, seasonStartOf = seasonStartOf$,
+  derived = derived$;
 
 /** Advances the colony by one day (ARCHITECTURE §9; the order is part of the contract). */
 export function tick(s: GameState, ctx: TickContext): void {

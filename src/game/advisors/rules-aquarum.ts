@@ -2,22 +2,26 @@
 // aquarum.aqueduct) (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
-import { B } from '../balance';
+import { B as B$ } from '../balance';
 import type { AdvisorRule, Building, GameState, Remedy, Severity, SimView } from '../types';
-import { formatRoman, seasonLength } from '../calendar';
+import { formatRoman as formatRoman$, seasonLength as seasonLength$ } from '../calendar';
 import { previewCoverage } from '../coverage';
 import { petitionNeeds, settingValue } from '../decisions';
 import { maxPotential, seasonMult } from '../economy';
-import { distToRect, getMap, tx, ty } from '../map';
+import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } from '../map';
 import { routeAqueduct } from '../place';
 import { bestSlot } from '../site';
-import { BUILDING_DEFS } from '../data/buildings';
-import { SETTING_DEFS } from '../data/decisions';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
   CLEAR, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
   placeName, runway, serviceFor, three,
 } from './util';
 import type { CadencedRule } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, formatRoman = formatRoman$, seasonLength = seasonLength$, distToRect = distToRect$, getMap = getMap$,
+  tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, SETTING_DEFS = SETTING_DEFS$;
 
 const AESTAS = 1;
 const MUNICIPIUM = 3, COLONIA = 4;
@@ -26,7 +30,8 @@ const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 
 /** Finished, open, staffed works that draw water (concrete works, baths), in id order. */
 function waterDraws(s: GameState, v: SimView): Building[] {
-  return s.buildings.filter((b) => b.status === 'done' && b.open && (v.c.staffed[b.id] ?? 0) > 0
+  const staffed = v.c.staffed;   // the census once, not a view read per building
+  return s.buildings.filter((b) => b.status === 'done' && b.open && (staffed[b.id] ?? 0) > 0
     && (BUILDING_DEFS[b.type].waterDraw !== undefined || BUILDING_DEFS[b.type].inputs?.water !== undefined));
 }
 

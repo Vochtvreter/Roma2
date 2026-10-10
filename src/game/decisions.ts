@@ -3,15 +3,15 @@
 // Edicts and settings unlock with their milestone; an edict changes at most once per season window (locked until the
 // next season's Kalends). Paths are permanent and never chosen automatically; the petition checklist is rendered from
 // petitionNeeds() and its fee is paid by choosePath.
-import { B } from './balance';
-import { PATH_DECISIONS } from './types';
+import { B as B$ } from './balance';
+import { PATH_DECISIONS as PATH_DECISIONS$ } from './types';
 import type {
   ActionResult, BuildingId, Cost, EdictId, FocusId, GameState, PathDecisionId, PathOptionId, RankIndex, SettingId, SimView, SwitchId, UnlockRef,
 } from './types';
-import { aucYear, formatAuc, formatRoman, nextSeasonStart } from './calendar';
-import { invalidate, pushActionFx } from './memo';
+import { aucYear as aucYear$, formatAuc as formatAuc$, formatRoman as formatRoman$, nextSeasonStart as nextSeasonStart$ } from './calendar';
+import { invalidate as invalidate$, pushActionFx as pushActionFx$ } from './memo';
 import { canAfford, log, pay, scaleCost } from './state';
-import { fx } from './fx';
+import { fx as fx$ } from './fx';
 import { dignitas } from './civic';
 import { houseHas } from './coverage';
 import { ceremonyPaving } from './place';
@@ -19,9 +19,15 @@ import { startCapitolium } from './construction';
 import { view } from './sim';
 import { FIRST_HIEMS_OVER, MILESTONES, housesAtLeast, milestoneDone, milestoneIndex } from './objectives';
 import { overlayRevealed, sectionRevealed, switchRevealed, toolRevealed } from './reveal';
-import { EDICT_DEFS, FOCUS_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
-import { BUILDING_DEFS } from './data/buildings';
-import { RANK_DEFS } from './data/ranks';
+import { EDICT_DEFS as EDICT_DEFS$, FOCUS_DEFS as FOCUS_DEFS$, PATH_DEFS as PATH_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from './data/decisions';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, PATH_DECISIONS = PATH_DECISIONS$, aucYear = aucYear$, formatAuc = formatAuc$, formatRoman = formatRoman$,
+  nextSeasonStart = nextSeasonStart$, invalidate = invalidate$, pushActionFx = pushActionFx$, fx = fx$,
+  EDICT_DEFS = EDICT_DEFS$, FOCUS_DEFS = FOCUS_DEFS$, PATH_DEFS = PATH_DEFS$, SETTING_DEFS = SETTING_DEFS$,
+  SWITCH_DEFS = SWITCH_DEFS$, BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$;
 
 const OPPIDUM = 2;
 const COLONIA = 4;

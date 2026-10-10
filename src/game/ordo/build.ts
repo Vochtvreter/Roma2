@@ -5,26 +5,37 @@
 // of a good the target lacks. Survival wishes ignore the reserve, the treasury floor, the stake and the site limit.
 // Never: demolish, move, convert, build in reserved blocks or blocks holding unfinished player works, place on future-ring
 // blocks (canPlace for owner 'ordo'), raise a hortus or pave except under Urbs (or on request).
-import { B } from '../balance';
-import { NEEDS, RESOURCES } from '../types';
-import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, ResId, SimView, TickContext, WishView } from '../types';
-import { dateOf, seasonLength, seasonOf } from '../calendar';
-import { addCost, canAfford, getBuilding, log, missing } from '../state';
-import { memo, structEpoch, censusEpoch, dayEpoch, dayStruct } from '../memo';
+import { B as B$ } from '../balance';
+import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
+import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
+import { dateOf as dateOf$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
+import { addCost, canAfford, log, missing } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
+import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
-import { canPlace, pave, placeBuilding, validSlots } from '../place';
-import { houseDesir, previewCoverage } from '../coverage';
-import { buildingRate, maxPotential, seasonMult } from '../economy';
-import { fxAdd } from '../fx';
-import { idx, tx, ty } from '../map';
-import { BUILDING_DEFS } from '../data/buildings';
-import { TIER_DEFS } from '../data/housing';
-import { FOCUS_DEFS } from '../data/decisions';
-import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
+import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
+import { desirability, houseDesir, previewCovered } from '../coverage';
+import { buildingRateOf, maxPotential, seasonMult } from '../economy';
+import { fxAdd as fxAdd$ } from '../fx';
+import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
+import { canSpend, capitoliumAhead, etaDays, floorOk, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
 import { houseWants as eachHouseWant } from '../advisors/util';
 import { peopleIndex } from '../census';
+import { classAt as classAt$, sizeOf as sizeOf$ } from '../derived';
+import { rectGap as rectGap$ } from '../world/grid';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$, seasonLength = seasonLength$,
+  seasonOf = seasonOf$, memo = memo$, structEpoch = structEpoch$, dayEpoch = dayEpoch$, dayStruct = dayStruct$,
+  layoutEpoch = layoutEpoch$,
+  fxAdd = fxAdd$, idx = idx$, tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
+  FOCUS_DEFS = FOCUS_DEFS$, classAt = classAt$, sizeOf = sizeOf$, rectGap = rectGap$,
+  getBuilding = getBuilding$;
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
 const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food
@@ -47,30 +58,51 @@ export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reas
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
 /** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus, T4 residents. */
-export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Record<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
+export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Map<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
 
 /** The houses' wants (memo on day + epochs + the fed gate). Each house's next tier and unmet needs come from the
  *  advisors' list, which is memoised on everything those read (advisors/util houseWants), not recomputed daily. */
 export function houseWants(s: GameState, v: SimView): HouseWants {
   return memo(s, 'ordo.houses', dayEpoch(s) * 2 + (s.fed >= B.needs.FED_MIN ? 1 : 0), () => {
-    const out: HouseWants = { want: {}, first: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
-    for (const w of eachHouseWant(s, v)) {
+    // the same as the last reckoning while the advisors' list, the homes, the desirability and every listed house's
+    // renovation stand (the list itself is kept on everything else these read: tiers, preferences, coverage, fed, rank)
+    const list = eachHouseWant(s, v);
+    const byHome = peopleIndex(s).byHome;
+    const desir = desirability(s);
+    const last = houseWantsLast.get(s);
+    if (last && last.list === list && last.byHome === byHome && last.desir === desir && sameRenovating(s, list, last.renovating)) return last.value;
+    const value = reckonHouseWants(s, list, byHome);
+    houseWantsLast.set(s, { list, byHome, desir, renovating: list.map((w) => !!getBuilding(s, w.id)?.house?.renovating), value });
+    return value;
+  });
+}
+
+const houseWantsLast = new WeakMap<GameState, { list: unknown; byHome: unknown; desir: unknown; renovating: boolean[]; value: HouseWants }>();
+
+function sameRenovating(s: GameState, list: readonly { id: number }[], was: readonly boolean[]): boolean {
+  for (let k = 0; k < list.length; k++) if (!!getBuilding(s, list[k].id)?.house?.renovating !== was[k]) return false;
+  return true;
+}
+
+function reckonHouseWants(s: GameState, list: ReturnType<typeof eachHouseWant>, byHome: ReturnType<typeof peopleIndex>['byHome']): HouseWants {
+  {
+    const out: HouseWants = { want: {}, first: new Map(), renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
+    for (const w of list) {
       const b = getBuilding(s, w.id);
       if (!b?.house || !w.next) continue;
-      if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first[w.id] = w.unmet[0]; }
+      if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first.set(w.id, w.unmet[0]); }
       else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[w.next].renovation);
       if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, w.id) < B.housing.DESIR_DOMUS) out.t3Low++;
     }
-    const byHome = peopleIndex(s).byHome;   // residents per home (census index) rather than a lookup per person
-    for (const [home, list] of byHome) {
+    for (const [home, residents] of byHome) {   // residents per home (census index) rather than a lookup per person
       // the goods feed T4 homes and the homes that wait only for them (their first want): counting those too lets the
       // Ordo press or import the first oil, without which no house could ever become an insula or a domus
-      const tier = getBuilding(s, home)?.house?.tier, first = out.first[home];
-      if (tier === 'insula' || tier === 'domus' || first === 'oil' || first === 'wine') out.t4Res += list.length;
-      if (tier === 'domus' || first === 'wine') out.domusRes += list.length;
+      const tier = getBuilding(s, home)?.house?.tier, first = out.first.get(home);
+      if (tier === 'insula' || tier === 'domus' || first === 'oil' || first === 'wine') out.t4Res += residents.length;
+      if (tier === 'domus' || first === 'wine') out.domusRes += residents.length;
     }
     return out;
-  });
+  }
 }
 
 /** The Ordo's slot for a type: A's best slot (validSlots for owner 'ordo' already keeps off reserved blocks and blocks
@@ -85,12 +117,16 @@ export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): n
  *  wish has a slot and what it costs (tile-independent except a castellum's route); the best slot — a full scoring
  *  pass of every valid slot — is searched only when the wish is placed or shown (lazyTile). */
 function anyOpenSlot(s: GameState, type: BuildingId): number | null {
-  return memo(s, `ordo.any.${type}`, dayStruct(s), () => {
-    let pick: number | null = null;
-    for (const tile of validSlots(s, type, 'ordo').keys()) if (pick === null || tile < pick) pick = tile;
-    return pick;
-  });
+  const slots = validSlots(s, type, 'ordo');
+  let pick = lowestSlot.get(slots);   // the lowest key of a slot map, kept per map (validSlots keeps its map per layout)
+  if (pick === undefined) {
+    pick = null;
+    for (const tile of slots.keys()) if (pick === null || tile < pick) pick = tile;
+    lowestSlot.set(slots, pick);
+  }
+  return pick;
 }
+const lowestSlot = new WeakMap<Map<number, number>, number | null>();
 
 /** Defines `tile` on an object as a getter resolved (and kept) on first read. */
 function lazyTile<T extends object>(o: T, resolve: () => number): T & { tile: number } {
@@ -129,7 +165,10 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     if (type === 'hortus' && s.decisions.focus !== 'urbs') return null;
     if (def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount) return null;
     if (!o.again && unfinished(v, type)) return null;
-    // a service's reach and a castellum's route cost are measured at the best slot; any other row only needs a slot
+    // a service's reach and a castellum's route cost are measured at the best slot; any other row only needs a slot.
+    // A service no valid slot brings to a single waiting house reaches none from the best slot either: the row is
+    // dropped before the slot search (unless its cost overflows a store, which asks for the store first).
+    if (o.serves !== undefined && !overCap(s, c.caps, type) && !anyReach(s, v, type, o.serves)) return null;
     const exact = o.serves !== undefined || type === 'castellum';
     const tile = exact ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
     const chk = tile === null ? null : canPlace(s, type, tile, { owner: 'ordo', ignoreCost: true });
@@ -213,8 +252,8 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   // 8 · producers of what the saving target, the pending wish, renovations or the Capitolium lack (ETA > 30 days),
   //     then of whatever those producers themselves lack (a quarry short of timber calls for a lumber camp)
   const { lack, forOf } = needsFor(s, v, walk.pending);
-  const full = outputRates(s, 'full');
   const queue: { r: ResId; q: number; for: string }[] = MATERIALS.filter((r) => (lack[r] ?? 0) > 0).map((r) => ({ r, q: lack[r] ?? 0, for: forOf[r] ?? 'wish' }));
+  const full = queue.length > 0 ? outputRates(s, 'full') : {};   // the producers' full rates matter only when something is lacking
   const asked = new Set<ResId>();
   for (let k = 0; k < queue.length; k++) {
     const { r, q } = queue[k];
@@ -239,11 +278,77 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   if (focus === 'urbs' && hw.t3Low > 0) yield* yieldOf(make('hortus', 'beauty', { n: hw.t3Low }));
 }
 
+/** A work's cost (any slot but a castellum's) exceeds a store cap. */
+function overCap(s: GameState, caps: Record<ResId, number>, type: BuildingId): boolean {
+  const cost = placementCost(s, type, 0);
+  return RESOURCES.some((r) => (cost[r] ?? 0) > caps[r]);
+}
+
+/** Some valid Ordo slot of `type` would cover a house whose first want is `need` (the cached coverage previews). A slot
+ *  covers road tiles within its radius in steps of its sides, and a house only through a road tile beside it, so a slot
+ *  farther than radius + 2 (Chebyshev) from every waiting house cannot reach one: its preview is not needed. The answer
+ *  is kept per type and need while everything it reads stands: the waiting houses, the slot map, the layout (footprints
+ *  and previews), the rank and the radius bonuses (previews), so the daily walk re-reads it instead of re-scanning. */
+function anyReach(s: GameState, v: SimView, type: BuildingId, need: NeedId): boolean {
+  const first = houseWants(s, v).first;
+  const ids: number[] = [];
+  for (const id of v.d.houses) if (first.get(id) === need && getBuilding(s, id)) ids.push(id);
+  if (ids.length === 0) return false;
+  const slots = validSlots(s, type, 'ordo');
+  const layout = layoutEpoch(s), rank = s.rank;
+  const shrine = fxAdd(s, 'shrineRadius'), market = fxAdd(s, 'marketRadius'), baths = fxAdd(s, 'bathsRadius');
+  let byKey = reachLast.get(s);
+  if (!byKey) { byKey = new Map(); reachLast.set(s, byKey); }
+  const key = `${type}|${need}`;
+  const c = byKey.get(key);
+  if (c && c.slots === slots && c.layout === layout && c.rank === rank && c.shrine === shrine && c.market === market
+    && c.baths === baths && sameIds(c.ids, ids)) return c.value;
+  const value = reachAny(s, type, need, ids, first, slots);
+  byKey.set(key, { slots, layout, rank, shrine, market, baths, ids, value });
+  return value;
+}
+interface ReachMemo { slots: Map<number, number>; layout: number; rank: number; shrine: number; market: number; baths: number; ids: number[]; value: boolean }
+const reachLast = new WeakMap<GameState, Map<string, ReachMemo>>();
+
+function sameIds(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false;
+  return true;
+}
+
+function reachAny(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[], first: ReadonlyMap<number, NeedId>, slots: Map<number, number>): boolean {
+  const waiting: Rect[] = [];
+  for (const id of ids) {
+    const b = getBuilding(s, id);
+    if (!b) continue;
+    const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+    waiting.push({ x: b.x, y: b.y, w, h });
+  }
+  let reach = 0;
+  for (const sv of BUILDING_DEFS[type].service ?? []) {
+    const bonus = RADIUS_BONUS[sv.layer];
+    reach = Math.max(reach, sv.radius + (bonus ? fxAdd(s, bonus) : 0));
+  }
+  reach += 2;
+  for (const tile of slots.keys()) {
+    const x = tx(tile), y = ty(tile);
+    const [w, h] = sizeOf(type, classAt(s, type, x, y));
+    const r: Rect = { x, y, w, h };
+    if (!waiting.some((hr) => rectGap(r, hr) <= reach)) continue;
+    for (const layer of previewCovered(s, type, x, y)) for (const hid of layer.houses) if (first.get(hid) === need) return true;
+  }
+  return false;
+}
+/** Path radius bonus per coverage layer (as coverage.ts applies it to previews). */
+const RADIUS_BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadius' | 'bathsRadius'>> = {
+  shrine: 'shrineRadius', temple: 'shrineRadius', market: 'marketRadius', macellum: 'marketRadius', baths: 'bathsRadius',
+};
+
 /** Houses waiting for `need` that a work of `type` at `tile` would cover (A's coverage preview, fully staffed). */
 function reaches(s: GameState, v: SimView, type: BuildingId, tile: number, need: NeedId): number {
   const first = houseWants(s, v).first;
   const covered = new Set<number>();
-  for (const layer of previewCoverage(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) covered.add(h);
+  for (const layer of previewCovered(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first.get(h) === need) covered.add(h);
   return covered.size;
 }
 
@@ -261,7 +366,7 @@ function foodSlotsShort(s: GameState, v: SimView): boolean {
 /** Oil the groves press per day with every slot filled, averaged over the year. */
 function olivePotential(s: GameState): number {
   let oil = 0;
-  for (const b of s.buildings) if (b.type === 'olivetum' && b.status === 'done') for (let k = 0; k < 4; k++) oil += (buildingRate(s, b, k as 0, 'full').oil ?? 0) / 4;
+  for (const b of s.buildings) if (b.type === 'olivetum' && b.status === 'done') for (let k = 0; k < 4; k++) oil += buildingRateOf(s, b, k as 0, 'full', 'oil') / 4;
   return oil;
 }
 
@@ -271,10 +376,13 @@ function withFloor(s: GameState, w: Wish): Cost {
   return den > 0 && !w.survival ? { ...w.cost, denarii: den + treasuryFloor(s) } : w.cost;
 }
 
-/** Walks the wish table (pure; memo on day, epochs, stock, fed gate and the player's orders and settings). */
+/** Walks the wish table: the council's session (DESIGN §10.5). The walk is made once a day, at the council's sitting
+ *  (runOrdo's labour plan reads it first), and made again only when the works change (a placement, a completion) or
+ *  the player's orders do; the stock and the people of that hour decide it for the rest of the day, so the saving
+ *  target the renovations, the trade and the Capitolium respect is the one the council set (memo on day, structure
+ *  epoch and the player's orders and settings). */
 export function walkWishes(s: GameState, v: SimView): Walk {
-  const key = [s.day, structEpoch(s), censusEpoch(s), RESOURCES.map((r) => s.res[r]).join(','), s.fed >= B.needs.FED_MIN, s.ordo.pin,
-    JSON.stringify(s.ordo.requests), s.decisions.focus, JSON.stringify(s.decisions.settings), JSON.stringify(s.decisions.paths)].join('|');
+  const key = `${s.day}|${structEpoch(s)}|${ordersOf(s).walk}`;
   return memo(s, 'ordo.walk', key, () => {
     const base = addCost(partsCost(savingParts(s, v)), capitoliumAhead(s));
     const out: Walk = { list: [], take: null, pending: null };

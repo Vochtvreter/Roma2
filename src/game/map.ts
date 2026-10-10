@@ -2,12 +2,16 @@
 // `getMap` is a pure function of the seed: terrain (world/gen.ts), then the best castrum site that passes every
 // guarantee (world/castrum.ts), retrying the next-best sites and then regenerated terrain (seed + 1000·k, k ≤ 8).
 // Only the seed is saved; the last four maps are cached.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { GameState, Rect, Terrain, WorldMap } from './types';
-import { genTerrain } from './world/gen';
-import { finishSite, rankSites } from './world/castrum';
+import { genTerrain as genTerrain$ } from './world/gen';
+import { finishSite as finishSite$, rankSites as rankSites$ } from './world/castrum';
 import type { Attempt } from './world/castrum';
-import { fertilityOf, isFertileT } from './world/rules';
+import { fertilityOf as fertilityOf$, isFertileT as isFertileT$ } from './world/rules';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, genTerrain = genTerrain$, finishSite = finishSite$, rankSites = rankSites$, fertilityOf = fertilityOf$,
+  isFertileT = isFertileT$;
 
 /** Map width in tiles (112). */
 export const W: number = B.map.W;

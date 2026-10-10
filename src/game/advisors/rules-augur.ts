@@ -2,12 +2,15 @@
 // (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
-import { RESOURCES } from '../types';
+import { RESOURCES as RESOURCES$ } from '../types';
 import type { AdvisorRule, AdvisoryEval } from '../types';
 import { petitionNeeds } from '../decisions';
 import { missing } from '../state';
-import { RANK_DEFS } from '../data/ranks';
+import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { R, days, int, listJoin, netToday, resName, three } from './util';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const RESOURCES = RESOURCES$, RANK_DEFS = RANK_DEFS$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 

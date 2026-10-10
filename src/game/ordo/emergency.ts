@@ -3,16 +3,19 @@
 // when it starts and once when it lifts, tagged 'decided' (the away report lists it). Turning the switch off lifts all.
 // "Runs out in" is the forecast's run-out day (net < 0); rations lift on days on hand at the edict's own portion, so
 // the cut portion cannot end its own measure early.
-import { B } from '../balance';
-import { HUBS } from '../types';
+import { B as B$ } from '../balance';
+import { HUBS as HUBS$ } from '../types';
 import type { EssentialForecast, GameState, HubId, SimView, TickContext } from '../types';
 import { edictOption, switchOn } from '../decisions';
 import { emergencyImport, hubOpen, price, tripDays } from '../trade';
 import { triggerRelief } from '../events';
 import { portion } from '../economy';
-import { touchPeople } from '../memo';
+import { touchPeople as touchPeople$ } from '../memo';
 import { chronicle } from './chronicle';
 import { WATER_PAUSED } from './labour';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HUBS = HUBS$, touchPeople = touchPeople$;
 
 const LEVEL = { none: 0, parcae: 1, arctae: 2 } as const;
 

@@ -4,7 +4,10 @@
 // (never saved, never read by the sim).
 import type { GameState, LogKind, LogTag, Reason } from '../types';
 import { log } from '../state';
-import { reasonText } from './reasons';
+import { reasonText as reasonText$ } from './reasons';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const reasonText = reasonText$;
 
 const today = new WeakMap<GameState, { day: number; reasons: Reason[] }>();
 

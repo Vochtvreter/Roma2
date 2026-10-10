@@ -3,21 +3,27 @@
 // Distance improves the price in both directions: far hubs sell cheaper and pay more, but take longer. Contracts are
 // dispatched by tradeDay whenever a caravan slot is free, pause themselves with a typed code (one log line on pause,
 // one on resume) and resume on their own when the cause clears. Exports pay on return; imports pay at dispatch.
-import { B } from './balance';
-import { HUBS, TRADE_RES } from './types';
+import { B as B$ } from './balance';
+import { HUBS as HUBS$, TRADE_RES as TRADE_RES$ } from './types';
 import type { ActionResult, Caravan, Contract, ContractSpec, FxEvent, GameState, HubId, Merchant, MerchantOffer, PauseCode, Reason, SimView, TickContext, TradeRes } from './types';
 import type { Rng } from './rng';
 import { census } from './census';
-import { derived } from './derived';
-import { elapsed, formatRoman, seasonOf } from './calendar';
-import { fx, fxAdd } from './fx';
-import { pushActionFx } from './memo';
+import { derived as derived$ } from './derived';
+import { elapsed as elapsed$, formatRoman as formatRoman$, seasonOf as seasonOf$ } from './calendar';
+import { fx as fx$, fxAdd as fxAdd$ } from './fx';
+import { pushActionFx as pushActionFx$ } from './memo';
 import { log, nextId } from './state';
 import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
 import { banditCheck } from './events';
-import { HUB_DEFS, MERCHANT_NAMES, SEASON_TARGET, TRADE_BASE } from './data/hubs';
-import { RESOURCE_DEFS } from './data/resources';
+import { HUB_DEFS as HUB_DEFS$, MERCHANT_NAMES as MERCHANT_NAMES$, SEASON_TARGET as SEASON_TARGET$, TRADE_BASE as TRADE_BASE$ } from './data/hubs';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, HUBS = HUBS$, TRADE_RES = TRADE_RES$, derived = derived$, elapsed = elapsed$, formatRoman = formatRoman$,
+  seasonOf = seasonOf$, fx = fx$, fxAdd = fxAdd$, pushActionFx = pushActionFx$, HUB_DEFS = HUB_DEFS$,
+  MERCHANT_NAMES = MERCHANT_NAMES$, SEASON_TARGET = SEASON_TARGET$, TRADE_BASE = TRADE_BASE$,
+  RESOURCE_DEFS = RESOURCE_DEFS$;
 
 const VICUS = 1;
 const OPPIDUM = 2;

@@ -1,18 +1,23 @@
 // src/game/fx.ts — the typed effect bus (ARCHITECTURE §8.1, DESIGN §9.3).
 // Sources: chosen path options, the current option of every edict, active timed modifiers. Focus contributes
 // nothing; legacy and emergency portions are applied by economy.ts, not here.
-// Memoised per state on paths + edicts + active modifiers (compared field by field, no string building).
-import { ADD_KEYS, EDICTS, MUL_KEYS, PATH_DECISIONS } from './types';
-import type { AddKey, Effects, GameState, Modifier, MulKey } from './types';
-import { EDICT_DEFS, PATH_DEFS } from './data/decisions';
+// Memoised per state on paths + edicts + active modifiers (compared field by field, no string building); a new day keeps
+// the cache unless a modifier began or ran out in between.
+import { ADD_KEYS as ADD_KEYS$, EDICTS as EDICTS$, MUL_KEYS as MUL_KEYS$, PATH_DECISIONS as PATH_DECISIONS$ } from './types';
+import type { AddKey, EdictId, Effects, GameState, Modifier, MulKey, PathDecisionId } from './types';
+import { EDICT_DEFS as EDICT_DEFS$, PATH_DEFS as PATH_DEFS$ } from './data/decisions';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const ADD_KEYS = ADD_KEYS$, EDICTS = EDICTS$, MUL_KEYS = MUL_KEYS$, PATH_DECISIONS = PATH_DECISIONS$,
+  EDICT_DEFS = EDICT_DEFS$, PATH_DEFS = PATH_DEFS$;
 
 /** One effect source with its display label. */
 export interface FxSource { label: string; fx: Effects }
 
 interface FxCache {
   day: number;
-  edicts: string[];
-  paths: (string | undefined)[];
+  edicts: Partial<Record<EdictId, string>>;
+  paths: Partial<Record<PathDecisionId, string>>;
   mods: Modifier[];
   untils: number[];
   fxs: Effects[];
@@ -24,17 +29,36 @@ interface FxCache {
 const cache = new WeakMap<GameState, FxCache>();
 const MUL_SET: ReadonlySet<string> = new Set<string>(MUL_KEYS);
 
+// valid() runs on every fx read (thousands a day), so the edicts and paths are compared field by field with literal names:
+// a loop over the id lists reads with a computed key, about ten times slower. Each list below must name every id (the
+// `satisfies` checks make a missing or unknown id a type error, and the module refuses to load if a list falls short).
+const EDICT_FIELDS = { rationes: 1, tributum: 1, opera: 1, hospites: 1, horae: 1, nundinae: 1, feriae: 1, silvae: 1, aquae: 1 } satisfies Record<EdictId, 1>;
+const PATH_FIELDS = { charter: 1, path1: 1, path2: 1, path3: 1, path4: 1 } satisfies Record<PathDecisionId, 1>;
+if (Object.keys(EDICT_FIELDS).length !== EDICTS.length || Object.keys(PATH_FIELDS).length !== PATH_DECISIONS.length) {
+  throw new Error('fx.ts: the edict and path field lists must name every id');
+}
+
+function sameEdicts(a: Partial<Record<EdictId, string>>, b: Partial<Record<EdictId, string>>): boolean {
+  return a.rationes === b.rationes && a.tributum === b.tributum && a.opera === b.opera && a.hospites === b.hospites
+    && a.horae === b.horae && a.nundinae === b.nundinae && a.feriae === b.feriae && a.silvae === b.silvae && a.aquae === b.aquae;
+}
+
+function samePaths(a: Partial<Record<PathDecisionId, string>>, b: Partial<Record<PathDecisionId, string>>): boolean {
+  return a.charter === b.charter && a.path1 === b.path1 && a.path2 === b.path2 && a.path3 === b.path3 && a.path4 === b.path4;
+}
+
 function valid(s: GameState, c: FxCache): boolean {
-  if (c.day !== s.day) return false;
-  const ed = s.decisions.edicts;
-  for (let i = 0; i < EDICTS.length; i++) if (ed[EDICTS[i]] !== c.edicts[i]) return false;
-  const pa = s.decisions.paths;
-  for (let i = 0; i < PATH_DECISIONS.length; i++) if (pa[PATH_DECISIONS[i]] !== c.paths[i]) return false;
+  if (!sameEdicts(s.decisions.edicts, c.edicts) || !samePaths(s.decisions.paths, c.paths)) return false;
   const mods = s.modifiers;
   if (mods.length !== c.mods.length) return false;
   for (let i = 0; i < mods.length; i++) {
     const m = mods[i];
     if (m !== c.mods[i] || m.until !== c.untils[i] || m.fx !== c.fxs[i]) return false;
+  }
+  if (c.day !== s.day) {
+    // another day: the same sources unless a modifier began or ran out between the two days
+    for (const m of mods) if ((m.until > c.day) !== (m.until > s.day)) return false;
+    c.day = s.day;
   }
   return true;
 }
@@ -66,13 +90,20 @@ function build(s: GameState): FxCache {
   }
   return {
     day: s.day,
-    edicts: EDICTS.map((e) => s.decisions.edicts[e]),
-    paths: PATH_DECISIONS.map((d) => s.decisions.paths[d]),
+    edicts: copyFields(s.decisions.edicts, EDICTS),
+    paths: copyFields(s.decisions.paths, PATH_DECISIONS),
     mods: s.modifiers.slice(),
     untils: s.modifiers.map((m) => m.until),
     fxs: s.modifiers.map((m) => m.fx),
     sources, mul, add,
   };
+}
+
+/** The listed fields of a record (absent ones stay absent, so a later comparison reads undefined on both sides). */
+function copyFields<K extends string>(o: Partial<Record<K, string>>, ids: readonly K[]): Partial<Record<K, string>> {
+  const out: Partial<Record<K, string>> = {};
+  for (const k of ids) if (o[k] !== undefined) out[k] = o[k];
+  return out;
 }
 
 function get(s: GameState): FxCache {

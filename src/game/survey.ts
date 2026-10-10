@@ -5,10 +5,13 @@
 // Streets: every interior pitch line (not through the forum or the sacred way), the four gate causeways across the
 // fossa (built with the castrum streets), and the pitch lines around each UNMASKED ring block — land around masked
 // blocks (river loam, outcrops, the grove) carries no chalk lines and stays free rural land.
-import { B } from './balance';
-import { F, T } from './types';
+import { B as B$ } from './balance';
+import { F as F$, T as T$ } from './types';
 import type { Block, GateId, RankIndex, Rect, Survey, WorldMap } from './types';
-import { RANK_DEFS } from './data/ranks';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, F = F$, T = T$, RANK_DEFS = RANK_DEFS$;
 
 const W = B.map.W;
 const H = B.map.H;

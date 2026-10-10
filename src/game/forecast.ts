@@ -2,13 +2,18 @@
 // A pure day-by-day projection from today's stock to the end of the 12th month cell, using the economy module:
 // production per season (Ordo labour on: min(maxPotential, need × 1.35 grain / × 1.10 water), the crunch season at
 // maxPotential; Ordo labour off: today's staffing), consumption = today's need + industry draws, caps, rot, evaporation.
-import { B } from './balance';
+import { B as B$ } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
-import { dayEpoch, dayStruct, memo } from './memo';
+import { dayEpoch as dayEpoch$, memo as memo$ } from './memo';
 import { census } from './census';
-import { buildingRate, maxPotential } from './economy';
-import { BUILDING_DEFS } from './data/buildings';
-import { dateOf, dayOf, daysInMonth, nextSeasonStart, seasonOf, seasonStartOf } from './calendar';
+import { buildingRateOf, maxPotential } from './economy';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { dateOf as dateOf$, dayOf as dayOf$, daysInMonth as daysInMonth$, nextSeasonStart as nextSeasonStart$, seasonOf as seasonOf$, seasonStartOf as seasonStartOf$ } from './calendar';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, dayEpoch = dayEpoch$, memo = memo$, BUILDING_DEFS = BUILDING_DEFS$,
+  dateOf = dateOf$, dayOf = dayOf$, daysInMonth = daysInMonth$, nextSeasonStart = nextSeasonStart$,
+  seasonOf = seasonOf$, seasonStartOf = seasonStartOf$;
 
 const DOH_NONE = B.forecast.DOH_NONE;   // days on hand when nobody needs the essential (finite for metrics)
 const CELLS = B.forecast.CELLS;
@@ -18,11 +23,13 @@ const ORDO_FILL: Record<Essential, number> = { grain: B.forecast.GRAIN, water: B
 const SEASONS: readonly SeasonIndex[] = [0, 1, 2, 3];
 const NET_DAYS = 3;      // net3 averages today's staffing over this many days
 
-/** Today's forecast for grain, water and coin (memo on day + structure + Ordo labour toggle; pure). Under manual labour
- *  the projection is today's staffing, so the census epoch joins the key: the Ordo reads the forecast before
- *  assignJobs, and a forecast cached then would describe yesterday's jobs for the rest of the day. */
+/** Today's forecast for grain, water and coin. Under Ordo labour it is made once a day (ARCHITECTURE §9: at most once
+ *  per day), at the council's sitting, where the emergency ladder reads it first; a work finished later that day enters
+ *  tomorrow's. Under manual labour the projection is today's staffing, so the census epoch joins the key: the Ordo
+ *  reads the forecast before assignJobs, and a forecast cached then would describe yesterday's jobs for the rest of the
+ *  day. */
 export function forecast(s: GameState): Forecast {
-  return memo(s, 'forecast', s.ordo.on.labour ? -dayStruct(s) : dayEpoch(s), () => {
+  return memo(s, 'forecast', s.ordo.on.labour ? -(s.day + 1) : dayEpoch(s), () => {
     const stock = s.res.denarii + s.taxAccrued;
     const net30 = s.counters.coinEma;   // 30-day EMA of net denarii per day (accrual basis)
     return {
@@ -40,7 +47,7 @@ function currentFlows(s: GameState, res: Essential, season: SeasonIndex): { prod
   for (const b of s.buildings) {
     const def = BUILDING_DEFS[b.type];
     if (b.status !== 'done' || (def.output?.res !== res && def.passive?.res !== res && !def.inputs?.[res] && !(res === 'water' && def.waterDraw))) continue;
-    const v = buildingRate(s, b, season, 'current')[res] ?? 0;
+    const v = buildingRateOf(s, b, season, 'current', res);
     if (v > 0) prod += v;
     else draw -= v;
   }
@@ -79,21 +86,25 @@ export function projectEssential(s: GameState, res: Essential): EssentialForecas
   let y = d0.year, m = d0.month, st = stock;
   let lowestDoh = doh(stock), lowestDay = s.day;
   let day = s.day;
+  const grain = res === 'grain';
   for (let k = 0; k < CELLS; k++) {
     const end = dayOf(y, m, 1) + daysInMonth(y, m);   // first day of the next month
     let minSt = st;
     let minDay = day;
     const q = seasonOf(end - 1);                        // seasons change only on a Kalends
     const p = prodBy[q];
+    // the month's factors read once (the same operands in the same order: (x × a) × b, so the same floats)
+    const a = grain ? E.SHED_ROT : E.EVAPORATION, b = grain ? E.ROT_SEASON[q] : E.EVAP_SEASON[q];
     while (day + 1 < end) {
       day++;
       st = Math.min(cap, Math.max(0, st + p - cons));
-      if (res === 'grain') st -= Math.max(0, st - horrea) * E.SHED_ROT * E.ROT_SEASON[q];
-      else st -= st * E.EVAPORATION * E.EVAP_SEASON[q];
+      if (grain) st -= Math.max(0, st - horrea) * a * b;
+      else st -= st * a * b;
       if (st < minSt) { minSt = st; minDay = day; }
       if (day >= crunchStart && day < crunchEnd) {
         deficit += cons - p;
-        if (doh(st) < crunchLow) { crunchLow = doh(st); crunchLowDay = day; }
+        const d = need > 0 ? st / need : DOH_NONE;     // doh(st)
+        if (d < crunchLow) { crunchLow = d; crunchLowDay = day; }
         if (crunchEmpty === null && st <= 0) crunchEmpty = day;
       }
     }

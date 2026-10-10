@@ -1,20 +1,28 @@
 // src/game/people.ts — names, job assignment, life events, immigration, families (ARCHITECTURE §8.3, DESIGN §6). Owner: WP-B.
 // Every loop over people is O(n): indexes come from census.peopleIndex, and randomness is drawn in person-id order.
-import { B } from './balance';
-import { BUILDER, SKILLS } from './types';
+import { B as B$ } from './balance';
+import { BUILDER as BUILDER$, SKILLS as SKILLS$ } from './types';
 import type { Building, DeathCause, Family, GameState, LabourPlan, Person, SkillId, TickContext } from './types';
 import type { Rng } from './rng';
-import { ageOf, canWork, census, houseBeds, peopleIndex } from './census';
-import { derived, roadNeighbors } from './derived';
-import { toRoman } from './calendar';
-import { fx } from './fx';
-import { memo, structEpoch, touchPeople } from './memo';
+import { ablePeople, ageOf, census, houseBeds, peopleIndex } from './census';
+import { derived as derived$, roadNeighbors as roadNeighbors$ } from './derived';
+import { toRoman as toRoman$ } from './calendar';
+import { fx as fx$ } from './fx';
+import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, touchPeople as touchPeople$ } from './memo';
 import { careShare } from './civic';
-import { getBuilding, getPerson, log, nextId } from './state';
-import { BUILDING_DEFS } from './data/buildings';
-import { TIER_DEFS } from './data/housing';
-import { RANK_DEFS } from './data/ranks';
-import { DAUGHTER_COG, GENTES_IMMIGRANT, PRAENOMINA, feminine } from './data/names';
+import { log, nextId } from './state';
+import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
+import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
+import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
+import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, PRAENOMINA as PRAENOMINA$, feminine as feminine$ } from './data/names';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
+  toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
+  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
+  DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$,
+  getBuilding = getBuilding$, getPerson = getPerson$;
 
 const P = B.people;
 const YEAR = B.time.YEAR_DAYS;
@@ -55,48 +63,56 @@ function otherSkill(p: Person, skill: SkillId | null): number {
  *  High priority first, then id, each with the best-skilled idle worker; builders = plan.builders (fabri first). */
 export function assignJobs(s: GameState, plan: LabourPlan): void {
   let changed = false;
-  const at = new Map<number, Person[]>();
+  const at = new Map<number, { b: Building; list: Person[] }>();
   const builders: Person[] = [];
   const release = (p: Person): void => { p.work = null; changed = true; };
+  const ableList = ablePeople(s);   // canWork today for everyone, from the census's pass over people
+  // ableList is a subsequence of s.people in the same order (the census's pass, kept per people epoch and day), so one
+  // walk alongside it answers "is p able?" without a set of 400 people per day
+  let j = 0;
   for (const p of s.people) {
+    const able = ableList[j] === p;
+    if (able) j++;
     if (p.work === null) continue;
-    if (!canWork(s, p)) { release(p); continue; }
+    if (!able) { release(p); continue; }
     if (p.work === BUILDER) { builders.push(p); continue; }
     const b = getBuilding(s, p.work);
     if (!b || b.status !== 'done' || !b.open) { release(p); continue; }
-    const list = at.get(b.id);
-    if (list) list.push(p);
-    else at.set(b.id, [p]);
+    const e = at.get(b.id);
+    if (e) e.list.push(p);
+    else at.set(b.id, { b, list: [p] });
   }
   const target = (b: Building): number => {
     if (b.status !== 'done' || !b.open) return 0;
     return Math.max(0, Math.min(BUILDING_DEFS[b.type].slots, Math.floor(plan.perBuilding[b.id] ?? 0)));
   };
   const leastFirst = (skill: SkillId | null) => (a: Person, c: Person): number => skillOf(a, skill) - skillOf(c, skill) || c.id - a.id;
-  for (const [id, list] of at) {
-    const b = getBuilding(s, id) as Building;
+  for (const { b, list } of at.values()) {
     const t = target(b);
     if (list.length > t) list.sort(leastFirst(BUILDING_DEFS[b.type].skill)).slice(0, list.length - t).forEach(release);
   }
   const nb = Math.max(0, Math.floor(plan.builders));
   if (builders.length > nb) builders.sort(leastFirst('fabri')).slice(0, builders.length - nb).forEach(release);
 
-  // idle pool, sorted lazily per skill: best in the skill, then least gifted elsewhere (specialists stay free for their
-  // own trade), then lowest id; a pointer skips the taken
-  const pool = s.people.filter((p) => p.work === null && canWork(s, p));
-  const sorted = new Map<string, { list: Person[]; at: number }>();
+  // idle pool: each pick takes the best untaken worker in the skill, then the least gifted elsewhere (specialists stay
+  // free for their own trade), then the lowest id. A day moves a handful of hands, so each pick scans the pool for the
+  // first in that order instead of sorting the whole pool per skill (keys computed once per skill and person).
+  const pool = ableList.filter((p) => p.work === null);
+  const keyed = new Map<string, { k: number[]; o: number[] }>();
   const pick = (skill: SkillId | null): Person | null => {
     const key = skill ?? '';
-    let e = sorted.get(key);
+    let e = keyed.get(key);
     if (!e) {
-      // keys computed once per person, not per comparison (the same total order: ties end on the id)
-      const keyed = pool.map((p) => ({ p, k: skillOf(p, skill), o: otherSkill(p, skill) }));
-      keyed.sort((a, c) => c.k - a.k || a.o - c.o || a.p.id - c.p.id);
-      e = { list: keyed.map((x) => x.p), at: 0 };
-      sorted.set(key, e);
+      e = { k: pool.map((p) => skillOf(p, skill)), o: pool.map((p) => otherSkill(p, skill)) };
+      keyed.set(key, e);
     }
-    while (e.at < e.list.length && e.list[e.at].work !== null) e.at++;
-    return e.at < e.list.length ? e.list[e.at++] : null;
+    const { k, o } = e;
+    let best = -1;
+    for (let i = 0; i < pool.length; i++) {
+      if (pool[i].work !== null) continue;
+      if (best < 0 || k[i] > k[best] || (k[i] === k[best] && (o[i] < o[best] || (o[i] === o[best] && pool[i].id < pool[best].id)))) best = i;
+    }
+    return best < 0 ? null : pool[best];
   };
   const fill = (n: number, skill: SkillId | null, work: number): void => {
     for (; n > 0; n--) {
@@ -106,17 +122,25 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
       changed = true;
     }
   };
-  const order = s.buildings.filter((b) => target(b) > (at.get(b.id)?.length ?? 0)).sort((a, b) => b.prio - a.prio || a.id - b.id);
-  for (const b of order) fill(target(b) - (at.get(b.id)?.length ?? 0), BUILDING_DEFS[b.type].skill, b.id);
+  // works short of their target (hands counted before the releases above, as the lists still hold them), each target
+  // read once; a work without a planned figure has target 0 and is never short
+  const order: { b: Building; n: number }[] = [];
+  for (const b of s.buildings) {
+    if (b.status !== 'done' || !b.open || plan.perBuilding[b.id] === undefined) continue;
+    const n = target(b) - (at.get(b.id)?.list.length ?? 0);
+    if (n > 0) order.push({ b, n });
+  }
+  order.sort((x, y) => y.b.prio - x.b.prio || x.b.id - y.b.id);
+  for (const { b, n } of order) fill(n, BUILDING_DEFS[b.type].skill, b.id);
   fill(nb - Math.min(builders.length, nb), 'fabri', BUILDER);
-  if (changed) touchPeople(s);
+  if (changed) touchJobs(s);   // only `work` moved: the people-only parts of the census are kept
 }
 
 // ───────────────────────────── housing people ─────────────────────────────
 
-/** Road steps from a house to the forum (min over its road neighbours; FAR when unreachable), memo on structEpoch. */
+/** Road steps from a house to the forum (min over its road neighbours; FAR when unreachable), memo on the layout epoch. */
 export function forumSteps(s: GameState, b: Building): number {
-  const m = memo(s, 'forumSteps', structEpoch(s), () => new Map<number, number>());
+  const m = memo(s, 'forumSteps', layoutEpoch(s), () => new Map<number, number>());
   let v = m.get(b.id);
   if (v === undefined) {
     const steps = derived(s).stepsToForum;

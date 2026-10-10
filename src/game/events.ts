@@ -4,21 +4,25 @@
 // ≥ CHOICE_GAP days between cards; ≥ HARMFUL_GAP days between harmful events. Offline: benign instant events only,
 // rolled on half the days; no new cards except the auto-accepted relief; a pending card resolves at expiry to its
 // default. This module is the one place that branches on ctx.offline for events (ARCHITECTURE §10.6).
-import { B } from './balance';
-import { EVENTS, RESOURCES } from './types';
+import { B as B$ } from './balance';
+import { EVENTS as EVENTS$, RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Caravan, EventId, GameState, SimView, TickContext } from './types';
-import { Rng, withRng } from './rng';
-import { elapsed } from './calendar';
-import { fx } from './fx';
-import { pushActionFx } from './memo';
+import { Rng, withRng as withRng$ } from './rng';
+import { elapsed as elapsed$ } from './calendar';
+import { fx as fx$ } from './fx';
+import { pushActionFx as pushActionFx$ } from './memo';
 import { canAfford, log, NEVER, pay } from './state';
 import { newCtx, view } from './sim';
 import { spawnMerchant } from './trade';
 import { applyFrigus, EVENT_DEFS } from './events-catalogue';
 import type { EvCtx, EventDef } from './events-catalogue';
 import { festivalsDay } from './events-festivals';
-import { HUB_DEFS } from './data/hubs';
-import { RESOURCE_DEFS } from './data/resources';
+import { HUB_DEFS as HUB_DEFS$ } from './data/hubs';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, EVENTS = EVENTS$, RESOURCES = RESOURCES$, withRng = withRng$, elapsed = elapsed$, fx = fx$,
+  pushActionFx = pushActionFx$, HUB_DEFS = HUB_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$;
 
 const E = B.events;
 const RELIEF_STREAM = 0x5bd1e995;

@@ -14,15 +14,15 @@
 //    (`params.watch`), so no rule is raised more than FLAP_MAX times in any window and a real danger is never
 //    suppressed.
 //  · cadence: a rule with `every` (the house rules) is evaluated only when day % every == 0 and left untouched between.
-import { B } from '../balance';
-import { ADVISORS, RULES } from '../types';
+import { B as B$ } from '../balance';
+import { ADVISORS as ADVISORS$, RULES as RULES$ } from '../types';
 import type {
   ActionResult, ActiveAdvisory, AdvisorId, AdvisorRule, AdvisoryEval, AdvisoryMemo, GameState, Remedy, RuleId, SimView, TickContext,
 } from '../types';
-import { nextSeasonStart } from '../calendar';
+import { nextSeasonStart as nextSeasonStart$ } from '../calendar';
 import { log } from '../state';
 import { view } from '../sim';
-import { ADVISOR_DEFS } from '../data/advisors';
+import { ADVISOR_DEFS as ADVISOR_DEFS$ } from '../data/advisors';
 import { checkRemedy, remedyLabel } from './remedies';
 import { blockedHouses, lendRates, markAway, tidy } from './util';
 import type { CadencedRule } from './util';
@@ -32,6 +32,9 @@ import { FABRUM_RULES } from './rules-fabrum';
 import { QUAESTOR_RULES } from './rules-quaestor';
 import { AEDILIS_RULES } from './rules-aedilis';
 import { AUGUR_RULES } from './rules-augur';
+// Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
+// runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
+const B = B$, ADVISORS = ADVISORS$, RULES = RULES$, nextSeasonStart = nextSeasonStart$, ADVISOR_DEFS = ADVISOR_DEFS$;
 
 /** Every advisor rule in RULES order (one file per advisor). */
 export const RULE_DEFS: AdvisorRule[] = [...ANNONAE_RULES, ...AQUARUM_RULES, ...FABRUM_RULES, ...QUAESTOR_RULES, ...AEDILIS_RULES, ...AUGUR_RULES];

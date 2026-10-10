@@ -6,12 +6,13 @@ import {
   ADVISORS, BUILDER, BUILDINGS, EDICTS, EVENTS, FOCUSES, HOUSE_TIERS, HUBS, LABOR_CATS, MILESTONE_IDS, PATH_DECISIONS, RESOURCES, RULES, SETTINGS,
   PATH_OPTIONS, SKILLS, SWITCHES, TIPS, TRADE_RES,
 } from './types';
-import type { FastiEntry, GameState, PathDecisionId, PathOptionId, Prefs, RankIndex, Speed } from './types';
+import type { Building, FastiEntry, GameState, PathDecisionId, PathOptionId, Person, Prefs, RankIndex, Speed } from './types';
 import { NEVER, newGame } from './state';
 import { MILESTONES } from './objectives';
 import { H, W } from './map';
 import { EDICT_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
 import { RANK_DEFS } from './data/ranks';
+import { buildingShape, personShape, stateShape } from './shapes';
 
 /** Current save format version (written by newGame). */
 export const SAVE_VERSION = 1;
@@ -106,7 +107,7 @@ function sanitiseDecisions(s: GameState): void {
 
 /** Buildings, people and families: known types, finite numbers, sorted ids, no dangling homes, jobs or spouses. */
 function sanitiseEntities(s: GameState): void {
-  s.buildings = byId(s.buildings, (o) => (BUILDINGS as readonly unknown[]).includes(o.type));
+  s.buildings = byId<Building>(s.buildings, (o) => (BUILDINGS as readonly unknown[]).includes(o.type)).map(buildingShape);
   for (const b of s.buildings) {
     b.x = Math.round(finite(b.x)); b.y = Math.round(finite(b.y));
     b.progress = clamp(finite(b.progress), 0, 1);
@@ -115,7 +116,7 @@ function sanitiseEntities(s: GameState): void {
     if (b.house && !HOUSE_TIERS.includes(b.house.tier)) b.house.tier = 'tentoria';
     if (b.house && !PREFS.includes(b.house.pref)) b.house.pref = 'auto';
   }
-  s.people = byId(s.people);
+  s.people = byId<Person>(s.people).map(personShape);
   s.families = byId(s.families);
   const bIds = new Set(s.buildings.map((b) => b.id));
   const pIds = new Set(s.people.map((p) => p.id));
@@ -244,7 +245,7 @@ export function deserialize(json: string): GameState | null {
     fillDefaults(cur, newGame({ seed: cur.seed, now: 0 }) as unknown as Obj);
     const s = cur as unknown as GameState;
     sanitise(s);
-    return s;
+    return stateShape(s);   // the live state's object shapes (shapes.ts): same keys, same order, same bytes
   } catch {
     return null;
   }
