@@ -88,8 +88,21 @@ function flood(road: Uint8Array, sources: { tiles: number[]; r: number }[], out:
   for (let i = 0; i < GN; i++) if (rem[i] >= 0) out[i] = 1;
 }
 
+// coverage(s) is a function of dayEpoch(s) (its key comes from activeSources, memoised on it): a one-entry fast path
+// for the hot readers (houseHas per house per need) skips the two memo lookups.
+const covLast = new WeakMap<GameState, { k: number; c: Coverage }>();
+
 /** Coverage layers over built roads and the per-house layer mask (memo on structEpoch + the effective radii). */
 export function coverage(s: GameState): Coverage {
+  const k = dayEpoch(s);
+  const last = covLast.get(s);
+  if (last && last.k === k) return last.c;
+  const c = coverageOf(s);
+  covLast.set(s, { k, c });
+  return c;
+}
+
+function coverageOf(s: GameState): Coverage {
   const src = activeSources(s);
   const key = src.key;
   return memo(s, 'coverage', key, () => {
