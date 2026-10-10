@@ -1,7 +1,7 @@
 // src/game/offline.ts — offline catch-up: literally N ticks with ctx.offline, and the away report (ARCHITECTURE §11.5, DESIGN §14). Owner: WP-D.
 import { B } from './balance';
 import { BUILDINGS, HOUSE_TIERS } from './types';
-import type { AwayReport, GameState, LogEntry, OfflineRun, RankIndex, Snapshot } from './types';
+import type { AwayReport, GameState, LogEntry, LogKind, OfflineRun, RankIndex, Snapshot } from './types';
 import { formatRoman } from './calendar';
 import { BUILDING_DEFS } from './data/buildings';
 import { TIER_DEFS } from './data/housing';
@@ -42,13 +42,33 @@ function track(lowest: AwayReport['lowest'], s: GameState): void {
   if (w < lowest.water.doh) lowest.water = { doh: w, day: s.day };
 }
 
-/** Today's log entries: 'decided' texts (≤ 12) and 'highlight' entries (≤ 40, newest kept). */
-function collect(s: GameState, decided: string[], highlights: LogEntry[]): void {
+/** One "decided in your name" line: repeats of a decision (numbers aside) fold into its latest wording with a count. */
+export interface Decided { key: string; text: string; kind: LogKind; n: number }
+/** Routine council work, given up first when the letter is full (rations, relief and events are kept longer). */
+const ROUTINE: readonly LogKind[] = ['ordo', 'trade'];
+
+/** Adds a decision: an earlier one with the same wording (digits aside) counts it; over DECIDED_MAX, the oldest routine
+ *  line goes, or the oldest line when only emergencies and events are left. */
+export function keepDecided(list: Decided[], e: LogEntry): void {
+  const key = e.text.replace(/[\d.,]+/g, '#');
+  const hit = list.find((x) => x.key === key);
+  if (hit) { hit.text = e.text; hit.n++; return; }
+  list.push({ key, text: e.text, kind: e.kind, n: 1 });
+  if (list.length <= DECIDED_MAX) return;
+  const k = list.findIndex((x) => ROUTINE.includes(x.kind));
+  list.splice(Math.max(0, k), 1);
+}
+
+/** The letter's lines: the latest wording of each decision, with "(×n)" when it was taken n times. */
+export const decidedLines = (list: readonly Decided[]): string[] => list.map((x) => (x.n > 1 ? `${x.text} (×${x.n})` : x.text));
+
+/** Today's log entries: 'decided' entries (≤ 12 lines, grouped) and 'highlight' entries (≤ 40, newest kept). */
+function collect(s: GameState, decided: Decided[], highlights: LogEntry[]): void {
   let k = s.log.length;
   while (k > 0 && s.log[k - 1].day === s.day) k--;
   for (let i = k; i < s.log.length; i++) {
     const e = s.log[i];
-    if (e.tags?.includes('decided') && decided.length < DECIDED_MAX) decided.push(e.text);
+    if (e.tags?.includes('decided')) keepDecided(decided, e);
     if (e.tags?.includes('highlight')) {
       highlights.push(e);
       if (highlights.length > HIGHLIGHTS_MAX) highlights.shift();
@@ -68,7 +88,7 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
   if (days < 1) return null;
   const before = snapshot(s);
   const lowest: AwayReport['lowest'] = { grain: { doh: Infinity, day: s.day }, water: { doh: Infinity, day: s.day } };
-  const decided: string[] = [];
+  const decided: Decided[] = [];
   const highlights: LogEntry[] = [];
   let done = 0;
   let stopped = false;
@@ -86,14 +106,26 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
       }
       return done >= days || stopped;
     },
-    report: () => ({
-      awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided, highlights, lowest,
-      awaiting: {
-        petition: readyPetitionRank(s),
-        advisories: activeAdvisories(s, { forCard: true }).slice(0, AWAITING_MAX).map((a) => a.rule),
-      },
-    }),
+    report: () => {
+      const petition = readyPetitionRank(s);
+      return {
+        awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided: decidedLines(decided), highlights: highlights.slice(), lowest,
+        awaiting: {
+          petition,
+          // the ready petition has its own line (with its button): the Augur's advisory saying the same is left out
+          advisories: activeAdvisories(s, { forCard: true }).filter((a) => petition === null || a.rule !== 'augur.petition')
+            .slice(0, AWAITING_MAX).map((a) => a.rule),
+        },
+      };
+    },
   };
+}
+
+/** True when the Capitolium was dedicated during the absence the report covers. The catch-up ticks with throwaway contexts,
+ *  so the one-off 'victory' fx is lost: the app replays it from this (the Victory dispatch and the Fasti entry). */
+export function wonWhileAway(s: GameState, r: AwayReport): boolean {
+  const vd = s.stats.victoryDay;
+  return s.victory && vd !== null && vd > r.before.day && vd <= r.after.day;
 }
 
 /** Runs an absence to completion synchronously and returns its report (null when nothing would be simulated). */
@@ -112,6 +144,8 @@ export function awayDuration(ms: number): string {
   return m > 0 ? `${m} min ${r} s` : `${r} s`;
 }
 
+/** Ends a sentence with a full stop, unless it already ends in one (every Roman date ends in an abbreviation's stop). */
+export const sentence = (t: string): string => (t.endsWith('.') ? t : `${t}.`);
 const signed = (n: number): string => (n >= 0 ? `+${Math.round(n)}` : `−${Math.round(-n)}`);
 const days = (d: number): string => (Number.isFinite(d) ? `${Math.round(d)} days` : 'plenty');
 
@@ -135,7 +169,7 @@ export function describeAway(r: AwayReport): { heading: string; city: string; st
   }
   const g = r.lowest.grain, w = r.lowest.water;
   const low = g.doh <= w.doh ? { what: 'Grain', ...g } : { what: 'Water', ...w };
-  const lowest = Number.isFinite(low.doh) ? `${low.what} fell to ${Math.round(low.doh)} days on ${formatRoman(low.day)}.` : 'Grain and water never ran short.';
+  const lowest = Number.isFinite(low.doh) ? sentence(`${low.what} fell to ${Math.round(low.doh)} days on ${formatRoman(low.day)}`) : 'Grain and water never ran short.';
   const awaiting = r.awaiting.petition !== null ? `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.` : null;
   return {
     heading, city, stores,

@@ -84,6 +84,9 @@ export class Inspector {
     root.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
   }
 
+  /** True while a clicked (sticky) card is pinned: Esc closes it before opening the menu. */
+  get pinned(): boolean { return this.sticky !== null; }
+
   /** Shows a target: a sticky one (click) stays until replaced or cleared; a transient one (hover) shows over it. */
   show(t: InspectTarget | null, sticky: boolean): void {
     const before = JSON.stringify([this.hover ?? this.sticky, !this.hover]);

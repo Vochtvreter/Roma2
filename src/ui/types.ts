@@ -31,6 +31,7 @@ export interface Game {
   startPlacing(p: PlacingState): void; cancelPlacing(): void;
   placeAt(tile: number, shift: boolean): void;   // actions.place(owner 'player', replaceId) → act(); keeps placing if shift (desktop) else cancels
   inspect(t: InspectTarget | null, sticky: boolean): void;
+  inspecting(): boolean;              // a clicked inspector card (building, block or ground) is pinned
   select(id: number | null): void;    // view.select + inspect building
   focusTile(tile: number): void;      // centre + flash
   openTab(tab: TabId, anchor?: string): void;

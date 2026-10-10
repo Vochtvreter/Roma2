@@ -16,10 +16,16 @@ import { buildingShape, personShape, stateShape } from './shapes';
 
 /** Current save format version (written by newGame). */
 export const SAVE_VERSION = 1;
-/** Namespaced localStorage keys. */
-export const KEYS: { save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1' } = {
+/** Namespaced localStorage keys: the save, prefs, Fasti, the tab that owns the save, and when a copy was last exported. */
+export const KEYS: {
+  save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1';
+  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1';
+} = {
   save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1',
+  owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1',
 };
+/** Days past START_DAY a save may claim (a corrupt day of 1e12 would otherwise break the calendar for good). */
+const DAY_SPAN = 1_000_000;
 /** Migrations: MIGRATIONS[n] turns a version-n save into version n + 1 (and sets the new version); `any` is allowed here only. */
 export const MIGRATIONS: Record<number, (raw: any) => any> = {};
 /** Preferences of a first visit. */
@@ -167,7 +173,7 @@ function sanitiseEvents(s: GameState): void {
 
 /** Repairs a filled-in save in place: ranges, unknown ids, dangling references, sort orders (ARCHITECTURE §11.2 step 5). */
 function sanitise(s: GameState): void {
-  s.day = Math.round(finite(s.day, B.time.START_DAY));
+  s.day = clamp(Math.round(finite(s.day, B.time.START_DAY)), B.time.START_DAY, B.time.START_DAY + DAY_SPAN);
   s.rng = Math.round(finite(s.rng)) | 0;
   s.legacy = Math.max(0, Math.round(finite(s.legacy)));
   s.legacyBonus = Math.max(0, finite(s.legacyBonus));
@@ -279,6 +285,31 @@ export function hasSave(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Marks the tab `sid` as the one playing the stored colony (it enters a game); any other open tab yields. */
+export function claimSave(sid: string): void {
+  try { localStorage.setItem(KEYS.owner, sid); } catch { /* storage blocked: one tab is all we can know of */ }
+}
+
+/** True when the tab `sid` may write the save: it holds the claim, nobody does, or storage cannot be read. */
+export function ownsSave(sid: string): boolean {
+  try {
+    const owner = localStorage.getItem(KEYS.owner);
+    return owner === null || owner === sid;
+  } catch {
+    return true;
+  }
+}
+
+/** Records that the player copied an export (wall-clock ms), for the keep-a-copy reminder. */
+export function markExported(now: number): void {
+  try { localStorage.setItem(KEYS.exported, String(now)); } catch { /* storage blocked */ }
+}
+
+/** When the player last copied an export (wall-clock ms), 0 when never. */
+export function lastExported(): number {
+  try { return finite(Number(localStorage.getItem(KEYS.exported) ?? 0)); } catch { return 0; }
 }
 
 /** Removes the stored save. */

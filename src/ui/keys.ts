@@ -6,7 +6,7 @@ import { OVERLAYS } from '../game/types';
 import type { OverlayId, Speed, TabId } from '../game/types';
 import type { Game } from './types';
 import { closeTopModal, modalCount, openMenu } from './modals';
-import { overlayRevealed, toolRevealed } from '../game/reveal';
+import { overlayRevealed, tabRevealed, toolRevealed } from '../game/reveal';
 import { B } from '../game/balance';
 
 const PAN_PX_S = 520;                       // CSS px per second while a pan key is held
@@ -25,7 +25,7 @@ export function escape(g: Game): void {
   if (modalCount() > 0) { closeTopModal(); return; }
   if (g.mode !== 'game') return;
   if (g.view.placing) { g.cancelPlacing(); return; }
-  if (g.view.selected !== null) { g.select(null); g.inspect(null, true); return; }
+  if (g.view.selected !== null || g.inspecting()) { g.select(null); g.inspect(null, true); return; }   // also a pinned ground card
   g.sfx('click');
   openMenu(g);
 }
@@ -46,6 +46,7 @@ export function initKeys(g: Game, dev: boolean): void {
   window.addEventListener('blur', () => held.clear());
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.defaultPrevented) return;   // a focused control (side tabs' arrow keys, a slider) already handled it
     if (e.key === 'Escape') { e.preventDefault(); escape(g); return; }
     if (typing(e.target) || g.mode !== 'game' || modalCount() > 0) return;
     const k = e.key.toLowerCase();
@@ -67,7 +68,7 @@ export function initKeys(g: Game, dev: boolean): void {
     if (k >= '1' && k <= '4') { g.setSpeed(SPEEDS[Number(k) - 1]); return; }
     if (k === '5' && dev) { g.setSpeed(B.time.DEV_SPEED as Speed); return; }
     const tab = TAB_KEYS[k];
-    if (tab) { g.openTab(tab); return; }
+    if (tab) { if (tabRevealed(g.state, tab)) g.openTab(tab); return; }   // progressive reveal: no hotkey for a hidden tab
     if (k === 'o') {
       if (e.shiftKey) { g.view.setOverlay('none'); g.changed(); return; }
       const list: OverlayId[] = OVERLAYS.filter((o) => o === 'none' || overlayRevealed(g.state, o));

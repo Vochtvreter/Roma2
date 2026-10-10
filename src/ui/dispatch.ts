@@ -6,7 +6,7 @@ import type { Game } from './types';
 import { fmt, fmtDays, h, img } from './dom';
 import type { Kid } from './dom';
 import { waxSeal } from './tipkit';
-import { openModal } from './modals';
+import { exportDue, openExportImport, openModal } from './modals';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
 import { forecast } from '../game/forecast';
 import { view } from '../game/sim';
@@ -16,6 +16,8 @@ import { TIER_DEFS } from '../game/data/housing';
 import { PATH_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { B } from '../game/balance';
+import { sentence, wonWhileAway } from '../game/offline';
+import { typeSprite } from './tabs/common';
 
 const ONES = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
   'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
@@ -57,7 +59,7 @@ function works(b: Snapshot, a: Snapshot): HTMLElement[] {
     if (n <= 0) continue;
     const name = t === 'area' ? (n === 1 ? 'a house plot' : 'house plots') : BUILDING_DEFS[t].name;
     const label = t === 'area' ? (n > 1 ? `${n} ${name}` : name) : n > 1 ? `${name} ×${n}` : name;
-    out.push(h('span', { class: 'disp-work' }, img(t === 'area' ? 'h_tentoria_0' : `b_${t}`, 1, 'disp-work-ico'), label));
+    out.push(h('span', { class: 'disp-work' }, img(typeSprite(t), 1, 'disp-work-ico'), label));
   }
   return out;
 }
@@ -73,22 +75,11 @@ function homes(b: Snapshot, a: Snapshot): string {
   return parts.join(' · ');
 }
 
-/** Repeated council decisions collapse into their latest wording with a count (numbers aside, they are one decision). */
-function grouped(lines: string[]): string[] {
-  const out: { key: string; text: string; n: number }[] = [];
-  for (const t of lines) {
-    const key = t.replace(/[\d.,]+/g, '#');
-    const hit = out.find((x) => x.key === key);
-    if (hit) { hit.text = t; hit.n++; } else out.push({ key, text: t, n: 1 });
-  }
-  return out.map((x) => (x.n > 1 ? `${x.text} (×${x.n})` : x.text));
-}
-
 function lowest(r: AwayReport): string {
   const parts: string[] = [];
   if (Number.isFinite(r.lowest.grain.doh)) parts.push(`Grain fell to ${doh(r.lowest.grain.doh)} on ${formatRoman(r.lowest.grain.day)}`);
   if (Number.isFinite(r.lowest.water.doh)) parts.push(`water to ${doh(r.lowest.water.doh)} on ${formatRoman(r.lowest.water.day)}`);
-  return parts.length ? `${parts.join('; ')}.` : 'The stores never ran thin.';
+  return parts.length ? sentence(parts.join('; ')) : 'The stores never ran thin.';
 }
 
 function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null {
@@ -124,15 +115,18 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
   return h('div', { class: 'disp-body' },
     h('div', { class: 'disp-head' }, `from ${formatRoman(b.day)} to ${formatRoman(a.day, { year: true })}`,
       h('span', { class: 'disp-dim' }, ` · ${fmt(r.days)} days · you were away ${awayTime(r.awayMs)}`),
-      r.days < r.daysPlanned ? h('span', { class: 'disp-dim' }, ' · the Capitolium was dedicated and the clock stopped') : null),
+      wonWhileAway(g.state, r) ? h('span', { class: 'disp-dim' }, ' · the Capitolium was dedicated and the clock stopped') : null),
     line('THE CITY', city),
     line('STORES', stores),
     line('WORKS RAISED', w.length ? h('span', { class: 'disp-works' }, w) : 'None this time.'),
     hm ? line('HOMES', hm) : null,
-    r.decided.length ? line('DECIDED IN YOUR NAME', h('ul', { class: 'disp-list' }, grouped(r.decided).map((d) => h('li', null, d)))) : null,
+    r.decided.length ? line('DECIDED IN YOUR NAME', h('ul', { class: 'disp-list' }, r.decided.map((d) => h('li', null, d)))) : null,
     hl.length ? line('IN THE ANNALES', h('ul', { class: 'disp-list' }, hl.map((e) => h('li', null, h('span', { class: 'disp-date' }, formatRoman(e.day)), ' ', e.text)))) : null,
     line('LOWEST POINT', lowest(r)),
     awaiting(g, r, close),
+    exportDue(g.state) ? line('KEEP A COPY', h('div', { class: 'disp-await' }, h('span', { class: 'disp-mark' }, '◆'),
+      h('span', { class: 'disp-await-text' }, 'The colony lives only in this browser, and Safari forgets sites left unvisited for a week.'),
+      h('button', { class: 'btn small', onclick: () => openExportImport(g) }, 'Export a copy'))) : null,
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-note' }, 'Time away passes at half speed, up to five years.'),
       h('span', { class: 'disp-sign' }, '— Ordo Decurionum'),

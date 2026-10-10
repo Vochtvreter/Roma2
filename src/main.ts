@@ -10,14 +10,17 @@ import { B } from './game/balance';
 import { newGame } from './game/state';
 import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { nextColonyLegacy } from './game/decisions';
-import { addFasti, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, saveGame, savePrefs } from './game/save';
-import { offlineRun, simulateOffline } from './game/offline';
+import {
+  KEYS, addFasti, claimSave, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, ownsSave, saveGame, savePrefs,
+} from './game/save';
+import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
 import { idx } from './game/map';
 import { blockOfTile, derived } from './game/derived';
 import { bestSlot } from './game/site';
+import { canPlace } from './game/place';
 import * as actions from './game/actions';
 import { applyRemedy as applySimRemedy, checkRemedy } from './game/advisors/remedies';
 import { MapView } from './render/view';
@@ -27,15 +30,17 @@ import { footprintRect } from './render/buildings';
 import { UI } from './ui/index';
 import { initTooltips } from './ui/dom';
 import { initKeys } from './ui/keys';
+import { setTitleNotice } from './ui/title';
 import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
-import { closeAllModals, modalCount } from './ui/modals';
+import { closeAllModals, exportDue, modalCount } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
 const SAVE_FAIL = 'Could not save: storage is full or blocked. Use Menu → Export.';
+const BROKEN = 'Something went wrong and the clock stopped. Use Menu → Export to keep a copy of the colony, then reload.';
 
 /** The running application: owns the state, the loop and the mode; the UI talks to it through Game. */
 class App implements Game {
@@ -56,6 +61,13 @@ class App implements Game {
   private run: OfflineRun | null = null;
   private saveWarned = false;
   private pathCount = 0;
+  /** This page's claim on the save: another tab that enters a game takes it, and this one yields (R02). */
+  private readonly sid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  /** Set when the loop threw: nothing is saved over the last good save (R55). */
+  private broken = false;
+  private titleFailed = false;
+  private nudged = false;
+  private persistAsked = false;
 
   constructor() {
     registerAllArt();
@@ -67,7 +79,7 @@ class App implements Game {
     initTooltips();
     const canvas = document.getElementById('map') as HTMLCanvasElement;
     const minimap = document.getElementById('minimap') as HTMLCanvasElement | null;
-    this.state = loadGame() ?? newGame({ seed: TITLE_SEED, now: Date.now() });
+    this.state = loadGame() ?? this.titleState();
     this.view = new MapView(canvas, minimap, {
       onHover: (tile, id) => this.onHover(tile, id),
       onClick: (tile, id, e) => this.onClick(tile, id, e.shift),
@@ -78,10 +90,17 @@ class App implements Game {
     this.ui = new UI(this);
     this.ui.build();
     initKeys(this, DEV);
-    this.view.attach(this.state);
+    try { this.view.attach(this.state); } catch (e) {   // a save that loads but cannot be drawn: a fresh map behind the title
+      console.error('[castra] the saved colony could not be shown', e);
+      this.state = this.titleState();
+      this.view.attach(this.state);
+    }
     window.addEventListener('resize', () => this.view.resize());
     document.addEventListener('visibilitychange', () => this.onVisibility());
-    window.addEventListener('pagehide', () => { if (this.mode === 'game') this.save(); });
+    window.addEventListener('pagehide', () => { if (this.mode === 'game') this.write(false); });
+    // another tab entered a game: it owns the save now (R02); a page restored from the back-forward cache checks too
+    window.addEventListener('storage', (e) => { if (e.key === KEYS.owner && this.mode !== 'title' && !ownsSave(this.sid)) this.yieldToOtherTab(); });
+    window.addEventListener('pageshow', (e) => { if (e.persisted && this.mode !== 'title' && !ownsSave(this.sid)) this.yieldToOtherTab(); });
     this.ui.showTitle();
     requestAnimationFrame((t) => { this.last = t; this.frame(t); });
   }
@@ -148,6 +167,10 @@ class App implements Game {
     this.ui.inspector.show(t, sticky);
   }
 
+  inspecting(): boolean {
+    return this.ui.inspector.pinned;
+  }
+
   select(id: number | null): void {
     this.view.select(id);
     this.inspect(id === null ? null : { kind: 'building', id }, true);
@@ -177,7 +200,11 @@ class App implements Game {
     const check = checkRemedy(s, r);
     if (!check.ok) { toast(check.reason, 'bad'); this.sfx('error'); return; }
     switch (r.kind) {
-      case 'place': this.startPlacing({ kind: 'building', type: r.building, at: r.tile ?? bestSlot(s, r.building, { owner: 'player' })?.tile }); return;
+      case 'place': {   // a remedy's tile can be taken since it was rendered (the Ordo built there): the best slot instead
+        const at = r.tile !== undefined && canPlace(s, r.building, r.tile, { owner: 'player' }).ok ? r.tile : bestSlot(s, r.building, { owner: 'player' })?.tile;
+        this.startPlacing({ kind: 'building', type: r.building, at });
+        return;
+      }
       case 'open': this.openTab(r.tab, r.anchor); return;
       case 'overlay': this.view.setOverlay(r.overlay, r.layer); return;
       case 'contract': this.prefillContract(r.spec); return;
@@ -201,7 +228,7 @@ class App implements Game {
     const s = newGame({ seed: hashStr(String(now)), legacy, legacyBonus, now });
     this.enter(s);
     this.paused = true;
-    this.save();
+    this.write(false);
     this.ui.showDispatch('founding');
   }
 
@@ -210,14 +237,17 @@ class App implements Game {
     if (!s) { toast('The saved colony could not be read.', 'bad'); return; }
     this.enter(s);
     this.paused = true;
+    if (this.broken) return;   // it loaded but cannot be shown: the toast says to export it
+    // the standard was never raised: the founding letter again, and no catch-up of a colony that never started (R09)
+    if (s.day === B.time.START_DAY) { this.ui.showDispatch('founding'); return; }
     const awayMs = Math.max(0, Date.now() - s.lastSave);
     const run = offlineRun(s, awayMs);
     if (run) this.startCatchup(run);
-    else this.setSpeed(this.prefs.speed);
+    else { this.setSpeed(this.prefs.speed); this.remindExport(); }
   }
 
   toTitle(): void {
-    if (this.mode === 'game') this.save();
+    if (this.mode === 'game') this.write(false);
     closeAllModals();
     this.cancelPlacing();
     this.select(null);
@@ -227,14 +257,9 @@ class App implements Game {
     this.ui.showTitle();
   }
 
+  /** A save the player asked for (Menu → Save, Save & quit): a failure is reported every time. */
   save(): boolean {
-    if (this.mode !== 'game') return false;
-    const ok = saveGame(this.state, Date.now());
-    savePrefs(this.prefs);
-    if (!ok && !this.saveWarned) { this.saveWarned = true; toast(SAVE_FAIL, 'bad', undefined, 8000); }
-    if (ok) this.saveWarned = false;
-    this.saveTimer = 0;
-    return ok;
+    return this.write(true);
   }
 
   exportSave(): string {
@@ -247,7 +272,7 @@ class App implements Game {
     closeAllModals();
     this.enter(s);
     this.paused = true;
-    this.save();
+    this.write(false);
     toast(`${s.name} restored.`, 'good');
     return true;
   }
@@ -269,13 +294,16 @@ class App implements Game {
     closeAllModals();
     this.state = s;
     this.mode = 'game';
+    this.broken = false;
+    claimSave(this.sid);
+    setTitleNotice(null);
     this.acc = 0;
     this.saveTimer = 0;
     this.fxBuf = [];
     drainActionFx();
     this.run = null;
     this.pathCount = Object.keys(s.decisions.paths).length;
-    this.view.attach(s);
+    try { this.view.attach(s); } catch (e) { this.fail(e); }   // a save that loads but cannot be drawn: stop, offer Export
     this.view.setInputEnabled(true);
     try { this.rates = previewRates(s); } catch { this.rates = emptyRates(); }
     this.ui.hideTitle();
@@ -298,27 +326,98 @@ class App implements Game {
     this.ui.hideVeil();
     drainActionFx();
     this.fxBuf = [];
+    // The catch-up ticks drop their fx; a dedication while away is replayed so the next frame opens the Victory dispatch
+    // over the letter and onVictory writes the Fasti entry (construction raises it only once).
+    if (wonWhileAway(this.state, report)) this.fxBuf.push({ kind: 'victory' });
     try { this.rates = previewRates(this.state); } catch { this.rates = emptyRates(); }
     this.mode = 'game';
     this.paused = true;
     this.view.setInputEnabled(true);
-    this.save();
-    if (report.days >= 1) this.ui.showDispatch('away', report);
-    else this.setSpeed(this.prefs.speed);
+    this.write(false);
+    if (report.days >= 1) this.ui.showDispatch('away', report);   // the letter carries its own keep-a-copy line
+    else { this.setSpeed(this.prefs.speed); this.remindExport(); }
     this.changed();
   }
 
   private onVisibility(): void {
     if (document.hidden) {
       this.hiddenAt = Date.now();
-      if (this.mode === 'game') this.save();
+      if (this.mode === 'game') this.write(false);
       return;
     }
-    if (this.mode === 'game' && this.hiddenAt > 0) {
-      const run = offlineRun(this.state, Date.now() - this.hiddenAt);
+    const away = this.hiddenAt > 0 ? Date.now() - this.hiddenAt : 0;
+    this.hiddenAt = 0;
+    if (this.mode === 'title') { this.ui.showTitle(); return; }   // another tab may have saved meanwhile: re-read the save
+    if (!ownsSave(this.sid)) { this.yieldToOtherTab(); return; }   // R02: never catch up a stale copy
+    // R09: a colony whose standard is not yet raised (the founding letter is open) does not run while hidden
+    if (this.mode === 'game' && !this.broken && away > 0 && this.state.day !== B.time.START_DAY) {
+      const run = offlineRun(this.state, away);
       if (run) this.startCatchup(run);
     }
+  }
+
+  /** Writes the save. Not on the title, after a crash, or once another tab owns the save (this tab then yields).
+   *  `loud`: report every failure (the player asked); otherwise the failure toast shows once until a save succeeds. */
+  private write(loud: boolean): boolean {
+    if (this.mode !== 'game') return false;
+    if (this.broken) { if (loud) toast(BROKEN, 'bad', undefined, 8000); return false; }
+    if (!ownsSave(this.sid)) { this.yieldToOtherTab(); return false; }
+    const ok = saveGame(this.state, Date.now());
+    savePrefs(this.prefs);
+    if (!ok && (loud || !this.saveWarned)) toast(SAVE_FAIL, 'bad', undefined, 8000);
+    this.saveWarned = !ok;
+    this.saveTimer = 0;
+    if (ok && !this.persistAsked) {   // ask the browser not to evict the only copy (Safari drops idle sites' storage)
+      this.persistAsked = true;
+      try { void navigator.storage?.persist?.().catch(() => false); } catch { /* not offered */ }
+    }
+    return ok;
+  }
+
+  /** Another tab entered a game and owns the save now: stop at once (nothing more is saved here) and show the title,
+   *  whose Continue loads that tab's colony and plays it here instead (R02). */
+  private yieldToOtherTab(): void {
+    if (this.mode === 'title') return;
+    this.mode = 'title';   // first: nothing below may save
+    this.run = null;
     this.hiddenAt = 0;
+    this.ui.hideVeil();
+    closeAllModals();
+    this.cancelPlacing();
+    this.select(null);
+    this.paused = true;
+    this.view.setInputEnabled(true);
+    setTitleNotice('This colony is now open in another tab. Press Continue to play it here instead.');
+    this.ui.showTitle();
+  }
+
+  /** Once a session, two real days after the last exported copy (or the founding): remind to keep one (R54). */
+  private remindExport(): void {
+    if (this.nudged || this.mode !== 'game' || !exportDue(this.state)) return;
+    this.nudged = true;
+    toast('Keep a copy of the colony: Menu → Export.', 'info', 'i_seal', 10_000, 'It lives only in this browser, and Safari forgets sites left unvisited for a week.');
+  }
+
+  /** The state drifting behind the title when there is no readable save. */
+  private titleState(): GameState {
+    return newGame({ seed: TITLE_SEED, now: Date.now() });
+  }
+
+  /** The loop threw: stop the clock, keep the last good save, and say how to keep the colony (R55). */
+  private fail(e: unknown): void {
+    if (this.mode === 'title') {   // the colony behind the title cannot be drawn: a fresh map instead (once)
+      if (this.titleFailed) return;
+      this.titleFailed = true;
+      console.error('[castra] the title map failed', e);
+      try { this.state = this.titleState(); this.view.attach(this.state); } catch { /* the title stays usable without its map */ }
+      return;
+    }
+    if (this.mode === 'catchup') { this.mode = 'game'; this.run = null; this.ui.hideVeil(); this.view.setInputEnabled(true); }
+    this.paused = true;
+    if (this.broken) return;
+    console.error('[castra] the loop stopped', e);
+    this.broken = true;
+    toast(BROKEN, 'bad', undefined, 60_000);
   }
 
   // ───────────────────────────── map callbacks ─────────────────────────────
@@ -360,8 +459,17 @@ class App implements Game {
 
   // ───────────────────────────── the loop ─────────────────────────────
   private frame(t: number): void {
+    requestAnimationFrame((n) => this.frame(n));   // queued first: a throw below cannot stop the loop
     const dt = Math.min(B.time.DT_CLAMP, Math.max(0, (t - this.last) / 1000));
     this.last = t;
+    try {
+      this.step(t, dt);
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  private step(t: number, dt: number): void {
     const s = this.state;
     if (this.mode === 'catchup' && this.run) {
       const run = this.run;
@@ -371,10 +479,9 @@ class App implements Game {
       this.view.frame(dt * 1000, s, this.speed, true);
       this.ui.frame(t);
       if (done) this.finishCatchup(run);
-      requestAnimationFrame((n) => this.frame(n));
       return;
     }
-    if (this.mode === 'game' && !this.paused && !this.modalOpen) {
+    if (this.mode === 'game' && !this.paused && !this.modalOpen && !this.broken) {
       this.acc += dt * this.speed;
       let steps = 0;
       while (this.acc >= 1 && steps < B.time.MAX_STEPS) {
@@ -396,7 +503,7 @@ class App implements Game {
       if (this.mode === 'game') {
         this.ui.onFx(fx);
         if (fx.some((e) => e.kind === 'victory')) this.onVictory();
-        else if (fx.some((e) => e.kind === 'rank')) this.save();
+        else if (fx.some((e) => e.kind === 'rank')) this.write(false);
       }
     }
     this.view.setInputEnabled(!this.modalOpen && this.mode !== 'catchup');
@@ -405,17 +512,16 @@ class App implements Game {
     if (this.mode === 'game') {
       if (!document.hidden) s.stats.playMs += dt * 1000;
       const paths = Object.keys(s.decisions.paths).length;   // autosave right after a path choice (§11.4)
-      if (paths !== this.pathCount) { this.pathCount = paths; this.save(); }
+      if (paths !== this.pathCount) { this.pathCount = paths; this.write(false); }
       this.saveTimer += dt;
-      if (this.saveTimer >= B.time.AUTOSAVE_S) this.save();
+      if (this.saveTimer >= B.time.AUTOSAVE_S) this.write(false);
     }
-    requestAnimationFrame((n) => this.frame(n));
   }
 
   private onVictory(): void {
     const s = this.state;
     addFasti(fastiEntry(s));
-    this.save();
+    this.write(false);
   }
 
   /** ?dev: simulates an absence of `minutes` on the live colony (simulateOffline) and opens its Litterae Ordinis. */
@@ -423,6 +529,7 @@ class App implements Game {
     if (this.mode !== 'game') return;
     const report = simulateOffline(this.state, Math.max(0, minutes) * 60_000);
     drainActionFx();
+    if (report && wonWhileAway(this.state, report)) this.fxBuf.push({ kind: 'victory' });
     try { this.rates = previewRates(this.state); } catch { this.rates = emptyRates(); }
     this.paused = true;
     if (report) this.ui.showDispatch('away', report);
