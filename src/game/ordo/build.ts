@@ -97,6 +97,28 @@ export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): n
   });
 }
 
+/** The lowest open valid slot of a type (memo on structure and day, like A's validSlots). The walk asks only whether a
+ *  wish has a slot and what it costs (tile-independent except a castellum's route); the best slot — a full scoring
+ *  pass of every valid slot — is searched only when the wish is placed or shown (lazyTile). */
+function anyOpenSlot(s: GameState, type: BuildingId): number | null {
+  return memo(s, `ordo.any.${type}`, `${s.day}|${structEpoch(s)}`, () => {
+    const closed = closedBlocks(s);
+    let pick: number | null = null;
+    for (const tile of validSlots(s, type, 'ordo').keys()) {
+      if (pick !== null && tile >= pick) continue;
+      const blk = blockOfTile(s, tile);
+      if (!blk || !closed.has(blk.id)) pick = tile;
+    }
+    return pick;
+  });
+}
+
+/** Defines `tile` on an object as a getter resolved (and kept) on first read. */
+function lazyTile<T extends object>(o: T, resolve: () => number): T & { tile: number } {
+  let tile: number | undefined;
+  return Object.defineProperty(o, 'tile', { get: () => (tile ??= resolve()), enumerable: true, configurable: true }) as T & { tile: number };
+}
+
 /** What the saving target, a pending wish, waiting renovations and the Capitolium's next month still lack, and for whom. */
 export function needsFor(s: GameState, v: SimView, pending: Wish | null): { lack: Cost; forOf: Partial<Record<ResId, string>> } {
   const sources: [string, Cost][] = savingParts(s, v).map((p): [string, Cost] => [p.type ?? p.kind, p.cost]);
@@ -128,7 +150,9 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     if (type === 'hortus' && s.decisions.focus !== 'urbs') return null;
     if (def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount) return null;
     if (!o.again && unfinished(v, type)) return null;
-    const tile = ordoSlot(s, type, code);
+    // a service's reach and a castellum's route cost are measured at the best slot; any other row only needs a slot
+    const exact = o.serves !== undefined || type === 'castellum';
+    const tile = exact ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
     const chk = tile === null ? null : canPlace(s, type, tile, { owner: 'ordo', ignoreCost: true });
     if (tile === null || !chk?.ok) return null;
     const over = RESOURCES.find((r) => (chk.cost[r] ?? 0) > c.caps[r]);
@@ -137,7 +161,8 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     if (o.serves && reach === 0) return null;
     seen.add(type);
     const p = o.serves ? { type, ...params, reach } : { type, ...params };
-    return { type, tile, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock };
+    const wish = { type, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock };
+    return exact ? { ...wish, tile } : lazyTile(wish, () => ordoSlot(s, type, code) ?? tile);
   };
   const store = (r: ResId, forWhat?: string): Wish | null => {
     const t: BuildingId = r === 'grain' ? 'horreum' : r === 'water' ? 'cisterna' : 'apotheca';
@@ -340,9 +365,13 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
     return true;
   }
   const code: ReasonCode = part.kind === 'pin' ? 'pin' : 'request';
-  const tile = def.rank <= s.rank ? ordoSlot(s, type, code) : null;
+  // the cost is the same on any slot (but a castellum's route), so the best slot is searched only once it is affordable
+  const any = def.rank > s.rank ? null : type === 'castellum' ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
+  const pre = any === null ? null : canPlace(s, type, any, { owner: 'ordo', ignoreCost: true });
+  if (any === null || !pre?.ok || !canAfford(s, pre.cost, above) || !floorOk(s, pre.cost)) return false;
+  const tile = type === 'castellum' ? any : ordoSlot(s, type, code);
   const chk = tile === null ? null : canPlace(s, type, tile, { owner: 'ordo', ignoreCost: true });
-  if (tile === null || !chk?.ok || !canAfford(s, chk.cost, above) || !floorOk(s, chk.cost)) return false;
+  if (tile === null || !chk?.ok) return false;
   const need = NEED_OF[type];
   const n = need ? houseWants(s, v).want[need] ?? 0 : 0;
   const reason: Reason = { code, params: need && n > 0 ? { type, n, want: need } : { type } };
@@ -359,7 +388,8 @@ export function newWishes(s: GameState, v: SimView, n: number): WishView[] {
   const out: WishView[] = [];
   for (const e of walkWishes(s, v).list) {
     if (out.length >= n) break;
-    const w: WishView = { type: e.wish.type, state: e.state === 'proposed' && full && !e.wish.survival ? 'waiting' : e.state, reason: e.wish.reason, tile: e.wish.tile };
+    const wish = e.wish;
+    const w: WishView = lazyTile({ type: wish.type, state: e.state === 'proposed' && full && !wish.survival ? 'waiting' : e.state, reason: wish.reason }, () => wish.tile);
     if (e.lacking && RESOURCES.some((r) => (e.lacking?.[r] ?? 0) > 0)) {
       w.lacking = e.lacking;
       const eta = etaDays(s, v, e.lacking);
