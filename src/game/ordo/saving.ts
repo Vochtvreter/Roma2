@@ -8,7 +8,7 @@ import type { Building, BuildingId, Cost, GameState, Reason, ResId, SimView } fr
 import { addCost, canAfford, missing, scaleCost } from '../state';
 import { petitionNeeds, settingValue } from '../decisions';
 import { capitoliumFlow } from '../construction';
-import { censusEpoch, dayEpoch, memo, structEpoch } from '../memo';
+import { dayEpoch, memo, structEpoch } from '../memo';
 import { seasonOf } from '../calendar';
 import { buildingRate } from '../economy';
 import { fx } from '../fx';
@@ -25,9 +25,10 @@ export function workCost(s: GameState, type: BuildingId, routeLen = 0): Cost {
   return placementCost(s, type, routeLen);
 }
 
-/** The player-ordered parts of the saving target in priority order: petition fee, plans, pin, requests. */
+/** The player-ordered parts of the saving target in priority order: petition fee, plans, pin, requests. Set at the
+ *  council's sitting like the wish walk (memo on day, structure epoch and the player's orders). */
 export function savingParts(s: GameState, v: SimView): SavingPart[] {
-  const key = `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.ordo.pin}|${JSON.stringify(s.ordo.requests)}|${JSON.stringify(s.decisions.paths)}`;
+  const key = `${s.day}|${structEpoch(s)}|${s.ordo.pin}|${JSON.stringify(s.ordo.requests)}|${JSON.stringify(s.decisions.paths)}`;
   return memo(s, 'ordo.parts', key, () => {
     const out: SavingPart[] = [];
     const pn = petitionNeeds(s, v);

@@ -10,11 +10,11 @@ import { NEEDS, RESOURCES } from '../types';
 import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, ResId, SimView, TickContext, WishView } from '../types';
 import { dateOf, seasonLength, seasonOf } from '../calendar';
 import { addCost, canAfford, getBuilding, log, missing } from '../state';
-import { memo, structEpoch, censusEpoch, dayEpoch, dayStruct } from '../memo';
+import { memo, structEpoch, dayEpoch, dayStruct } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
-import { canPlace, pave, placeBuilding, validSlots } from '../place';
-import { houseDesir, previewCoverage } from '../coverage';
+import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
+import { houseDesir, previewCovered } from '../coverage';
 import { buildingRate, maxPotential, seasonMult } from '../economy';
 import { fxAdd } from '../fx';
 import { idx, tx, ty } from '../map';
@@ -126,7 +126,10 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     if (type === 'hortus' && s.decisions.focus !== 'urbs') return null;
     if (def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount) return null;
     if (!o.again && unfinished(v, type)) return null;
-    // a service's reach and a castellum's route cost are measured at the best slot; any other row only needs a slot
+    // a service's reach and a castellum's route cost are measured at the best slot; any other row only needs a slot.
+    // A service no valid slot brings to a single waiting house reaches none from the best slot either: the row is
+    // dropped before the slot search (unless its cost overflows a store, which asks for the store first).
+    if (o.serves !== undefined && !overCap(s, c.caps, type) && !anyReach(s, v, type, o.serves)) return null;
     const exact = o.serves !== undefined || type === 'castellum';
     const tile = exact ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
     const chk = tile === null ? null : canPlace(s, type, tile, { owner: 'ordo', ignoreCost: true });
@@ -203,8 +206,8 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   // 8 · producers of what the saving target, the pending wish, renovations or the Capitolium lack (ETA > 30 days),
   //     then of whatever those producers themselves lack (a quarry short of timber calls for a lumber camp)
   const { lack, forOf } = needsFor(s, v, walk.pending);
-  const full = outputRates(s, 'full');
   const queue: { r: ResId; q: number; for: string }[] = MATERIALS.filter((r) => (lack[r] ?? 0) > 0).map((r) => ({ r, q: lack[r] ?? 0, for: forOf[r] ?? 'wish' }));
+  const full = queue.length > 0 ? outputRates(s, 'full') : {};   // the producers' full rates matter only when something is lacking
   const asked = new Set<ResId>();
   for (let k = 0; k < queue.length; k++) {
     const { r, q } = queue[k];
@@ -229,11 +232,26 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   if (focus === 'urbs' && hw.t3Low > 0) yield* yieldOf(make('hortus', 'beauty', { n: hw.t3Low }));
 }
 
+/** A work's cost (any slot but a castellum's) exceeds a store cap. */
+function overCap(s: GameState, caps: Record<ResId, number>, type: BuildingId): boolean {
+  const cost = placementCost(s, type, 0);
+  return RESOURCES.some((r) => (cost[r] ?? 0) > caps[r]);
+}
+
+/** Some valid Ordo slot of `type` would cover a house whose first want is `need` (the cached coverage previews). */
+function anyReach(s: GameState, v: SimView, type: BuildingId, need: NeedId): boolean {
+  const first = houseWants(s, v).first;
+  for (const tile of validSlots(s, type, 'ordo').keys()) {
+    for (const layer of previewCovered(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) return true;
+  }
+  return false;
+}
+
 /** Houses waiting for `need` that a work of `type` at `tile` would cover (A's coverage preview, fully staffed). */
 function reaches(s: GameState, v: SimView, type: BuildingId, tile: number, need: NeedId): number {
   const first = houseWants(s, v).first;
   const covered = new Set<number>();
-  for (const layer of previewCoverage(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) covered.add(h);
+  for (const layer of previewCovered(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) covered.add(h);
   return covered.size;
 }
 
@@ -261,9 +279,13 @@ function withFloor(s: GameState, w: Wish): Cost {
   return den > 0 && !w.survival ? { ...w.cost, denarii: den + treasuryFloor(s) } : w.cost;
 }
 
-/** Walks the wish table (pure; memo on day, epochs, stock, fed gate and the player's orders and settings). */
+/** Walks the wish table: the council's session (DESIGN §10.5). The walk is made once a day, at the council's sitting
+ *  (runOrdo's labour plan reads it first), and made again only when the works change (a placement, a completion) or
+ *  the player's orders do; the stock and the people of that hour decide it for the rest of the day, so the saving
+ *  target the renovations, the trade and the Capitolium respect is the one the council set (memo on day, structure
+ *  epoch and the player's orders and settings). */
 export function walkWishes(s: GameState, v: SimView): Walk {
-  const key = [s.day, structEpoch(s), censusEpoch(s), RESOURCES.map((r) => s.res[r]).join(','), s.fed >= B.needs.FED_MIN, s.ordo.pin,
+  const key = [s.day, structEpoch(s), s.ordo.pin,
     JSON.stringify(s.ordo.requests), s.decisions.focus, JSON.stringify(s.decisions.settings), JSON.stringify(s.decisions.paths)].join('|');
   return memo(s, 'ordo.walk', key, () => {
     const base = addCost(partsCost(savingParts(s, v)), capitoliumAhead(s));
