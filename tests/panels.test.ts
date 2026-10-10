@@ -106,3 +106,22 @@ describe('panel signatures', () => {
     }
   });
 });
+
+describe('contract form preview', () => {
+  it('shows price, trip days and the gain before sending; refuses with a reason', async () => {
+    const { preview } = await import('../src/ui/tabs/commercium');
+    const s = fresh(42);
+    s.rank = 1;
+    const g = fakeGame(s);
+    const ok = preview(g, { hub: 'durii', mode: 'export', res: 'timber', qty: 40, repeat: false });
+    expect(ok.reason).toBeNull();
+    expect(ok.lines[0]).toMatch(/den each \(base 3\)/);
+    expect(ok.lines[1]).toMatch(/days each way/);
+    expect(ok.lines[2]).toMatch(/base price/);
+    const refused = preview(g, { hub: 'metellianus', mode: 'import', res: 'wine', qty: 20, repeat: false });
+    expect(refused.reason).toMatch(/will not sell us wine/);
+    s.rank = 0;
+    const closed = preview(g, { hub: 'durii', mode: 'export', res: 'timber', qty: 40, repeat: false });
+    expect(closed.reason).toMatch(/does not yet trade with us/);
+  });
+});

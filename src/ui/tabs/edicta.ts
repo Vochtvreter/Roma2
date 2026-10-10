@@ -17,8 +17,7 @@ import { B } from '../../game/balance';
 import { EDICT_DEFS, FOCUS_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from '../../game/data/decisions';
 import { RANK_DEFS } from '../../game/data/ranks';
 import { BUILDING_DEFS } from '../../game/data/buildings';
-import { confirm2 } from '../modals';
-import { btn, caps, fresh, lackLine, lacking, newMark, section, seg, toggle } from './common';
+import { btn, caps, confirmRich, fresh, lackLine, lacking, newMark, section, seg, toggle } from './common';
 import { CAT_LABEL } from './labour';
 
 /** How each permanent choice reads in "Your story" (DESIGN §9.2). */
@@ -94,7 +93,7 @@ function crossroads(g: Game, up: Updater[]): HTMLElement {
     });
     up.push(() => {
       const now = petitionNeeds(g.state, view(g.state));
-      now?.needs.forEach((n, i) => { const el = items[i]; if (el) el.textContent = `${n.met ? '✔' : '○'} ${n.label}`; });
+      now?.needs.forEach((n, i) => { const el = items[i]; if (el) { el.textContent = `${n.met ? '✔' : '○'} ${n.label}`; el.className = n.met ? 'met' : 'unmet'; } });
     });
     card.append(h('ul', { class: 'ed-checklist' }, items,
       h('li', { class: pn.affordable ? 'met' : 'unmet' }, pn.affordable ? '✔ ' : '○ ', 'Fee ', costEl(s, pn.fee))));
@@ -118,9 +117,8 @@ function crossroads(g: Game, up: Updater[]): HTMLElement {
     const body = [h('span', { class: 'ed-opt-name' }, o.name), h('span', { class: 'ed-opt-desc' }, o.desc),
       o.visible ? h('span', { class: 'ed-opt-vis' }, `You will see: ${o.visible}`) : null];
     if (reason) { opts.append(btn(g, body, () => undefined, { cls: 'ed-opt', reason })); continue; }
-    const b = h('button', { class: 'ed-opt', type: 'button' }, body);
-    confirm2(b, `${o.name}: click again. This is for good.`, () => { g.act(A.choosePath(g.state, pn.decision, o.id), { okSfx: 'cornu' }); });
-    opts.append(b);
+    opts.append(confirmRich(h('button', { class: 'ed-opt', type: 'button' }, body), 'Click again to choose. This is for good.',
+      () => { g.act(A.choosePath(g.state, pn.decision, o.id), { okSfx: 'cornu' }); }));
   }
   card.append(opts);
   return card;

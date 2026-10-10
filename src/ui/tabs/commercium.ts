@@ -64,7 +64,7 @@ function priceEl(p: number | null, res: TradeRes, side: 'buy' | 'sell'): HTMLEle
 }
 
 /** The live preview of a contract: price, value, trip days, profit against the base price, whether it leaves now. */
-function preview(g: Game, spec: ContractSpec): { lines: string[]; reason: string | null } {
+export function preview(g: Game, spec: ContractSpec): { lines: string[]; reason: string | null } {
   const s = g.state;
   const lock = hubLock(s, spec.hub);
   if (lock) return { lines: [], reason: `${HUB_DEFS[spec.hub].name} does not yet trade with us: ${lock}.` };

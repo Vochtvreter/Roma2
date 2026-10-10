@@ -86,8 +86,9 @@ export class Inspector {
 
   /** Shows a target: a sticky one (click) stays until replaced or cleared; a transient one (hover) shows over it. */
   show(t: InspectTarget | null, sticky: boolean): void {
+    const before = JSON.stringify([this.hover ?? this.sticky, !this.hover]);
     if (sticky) { this.sticky = t; this.hover = null; } else this.hover = t;
-    this.last = -Infinity;
+    if (JSON.stringify([this.hover ?? this.sticky, !this.hover]) !== before) this.last = -Infinity;   // hover moves re-render at once, not every frame
   }
 
   /** Throttled refresh: rebuild on a changed signature (not under a fresh click), else run the updaters. */
@@ -98,7 +99,7 @@ export class Inspector {
     if (this.sticky?.kind === 'building' && !getBuilding(s, this.sticky.id)) this.sticky = null;
     const t = this.hover ?? this.sticky;
     const sticky = !this.hover;
-    const sig = t ? `${t.kind}|${targetSig(s, t, sticky)}|${+this.collapsed}` : '';
+    const sig = t ? `${t.kind}|${targetSig(s, t, sticky)}|${+this.collapsed}|${+sticky}` : '';
     const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
     if (sig !== this.sig && (!sameTarget || now - this.lastClick > B.ui.CLICK_GUARD_MS)) this.rebuild(t, sig, sticky);
     else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
@@ -120,7 +121,7 @@ export class Inspector {
     card.append(h('div', { class: 'ins-head' }, h('div', { class: 'ins-img' }, img(sprite, 2)),
       h('div', { class: 'ins-titles' }, h('div', { class: 'kicker' }, kicker), h('div', { class: 'ins-title' }, title)),
       h('div', { class: 'ins-ctl' },
-        h('button', { class: 'btn small ghost', type: 'button', 'aria-label': this.collapsed ? 'Expand' : 'Collapse', onclick: () => { this.collapsed = !this.collapsed; this.last = -Infinity; } }, this.collapsed ? '▸' : '▾'),
+        h('button', { class: 'btn small ghost', type: 'button', 'aria-label': this.collapsed ? 'Expand' : 'Collapse', onclick: () => { this.collapsed = !this.collapsed; this.last = -Infinity; this.lastClick = -Infinity; } }, this.collapsed ? '▸' : '▾'),
         sticky ? h('button', { class: 'btn small ghost', type: 'button', 'aria-label': 'Close', onclick: () => { g.select(null); g.inspect(null, true); } }, '✕') : null)));
   }
 

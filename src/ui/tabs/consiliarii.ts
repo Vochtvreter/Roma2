@@ -101,7 +101,7 @@ function portraits(g: Game): HTMLElement {
     const b = btn(g, [img(appointed ? portrait(id, advisorMood(s, id)) : portrait('silhouette'), 2),
       h('span', { class: 'adv-f-office' }, def.office.replace(/^(Praefectus|Curator) /, '')),
       worst >= 0 ? h('span', { class: `adv-pip sev-bg-${worst}` }, String(mine.length)) : null],
-    () => { filter = filter === id ? null : id; g.changed(); },
+    () => { filter = filter === id ? null : id; g.sfx('click'); g.changed(); },
     { cls: `adv-f${filter === id ? ' on' : ''}${appointed ? '' : ' absent'}`, sfx: false,
       tip: `${def.office} · ${def.name}\n${def.domain}.${appointed ? '' : `\n${APPOINTED_AT[id]}`}` });
     b.setAttribute('aria-pressed', String(filter === id));

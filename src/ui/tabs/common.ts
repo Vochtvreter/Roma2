@@ -70,6 +70,23 @@ export function btn(g: Game, label: Kid, run: () => ActionResult | void, o: BtnO
   return b;
 }
 
+const ARM_MS = 3000;
+
+/** Two-click confirm for a button with rich content: the first click arms it and shows `note`, the second runs `fn`. */
+export function confirmRich(b: HTMLButtonElement, note: string, fn: () => void): HTMLButtonElement {
+  let timer = 0;
+  const tag = h('span', { class: 'tab-confirm' }, note);
+  const disarm = (): void => { window.clearTimeout(timer); b.classList.remove('armed'); tag.remove(); };
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (b.classList.contains('armed')) { disarm(); fn(); return; }
+    b.classList.add('armed');
+    b.append(tag);
+    timer = window.setTimeout(disarm, ARM_MS);
+  });
+  return b;
+}
+
 /** A segmented control of mutually exclusive options; the current one glows; disabled options carry a reason. */
 export function seg<T extends string>(g: Game, items: { id: T; label: Kid; tip?: string | (() => Node | string); reason?: string | null; mark?: Kid }[],
   cur: T, pick: (id: T) => ActionResult): HTMLElement {
