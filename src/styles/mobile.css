@@ -4,15 +4,10 @@
 
 /* ───────── tablet and narrow desktop ───────── */
 @media (max-width: 1099px) {
-  #hud { gap: 5px; padding: 0 8px; }
-  .hud-brand { display: none; }
-  .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
-  .hud-stages { width: 40px; }
-  .hud-chip { padding-right: 6px; }
-  .hud-date { min-width: 0; padding-right: 8px; }
-  .hud-date > img { display: none; }
-  .hud-sp { min-width: 28px; }
-  .hud-menu { min-width: 34px; }
+  /* the HUD wraps into two rows: tablets and chips above, date · materials · speed · menu below */
+  :root { --hud-h: 108px; }
+  #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; }
+  .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
   #minimap { display: none; }
   #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
   #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
@@ -27,17 +22,19 @@
   #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
   .hud-brand { display: none; }
   .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
-  .hud-vitals { flex: 2.2 1 0 !important; min-width: 0; gap: 4px; }
-  .hud-vital { flex: 1 1 0; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
-  .hud-chip { flex: 1 1 0 !important; min-width: 0; overflow: hidden; }
+  /* row 1 sizes to its numbers (flex-basis auto) and shares out the rest, so no figure is cut while the row has room */
+  .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
+  .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
+  .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
+  .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
   .hud-date, .hud-speed, .hud-menu { flex: none !important; }
   .vit-strip, .vit-seasons { display: none; }
   .vit-sub, .hud-vital.falling .vit-sub { display: none; }
   .hud-chip { height: 42px; }
   .hud-menu { margin-left: auto; height: 40px; }
   .hud-date { height: 38px; }
-  .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; }
-  .hud-res { min-width: 0; }
+  .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
+  .hud-res { min-width: 56px; }
   .hud-sp { height: 36px; }
 
   #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
@@ -98,6 +95,11 @@
   .modal.parchment .modal-kicker { margin: 4px 36px 0; }
 }
 
+/* narrow tablets and large phones: dignitas steps out of row 1 so the souls keep their beds figure */
+@media (max-width: 699px) {
+  .hud-dignitas { display: none; }
+}
+
 /* ───────── compact phones ───────── */
 @media (max-width: 559px) {
   .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
@@ -109,9 +111,18 @@
   .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
   .hud-coin .hud-sub { font-size: 7px; }
   .hud-stages { display: none; }
-  .hud-chip.hud-souls { flex: 1.5 1 0 !important; }   /* "651/473" needs the room the spirits face does not */
-  .hud-chip.hud-morale { flex: .7 1 0 !important; }
-  .hud-dignitas { display: none; }
+  /* three rows: tablets, coin and souls · date, spirits, speed and menu · the materials, full width and scrolling */
+  :root { --hud-h: 136px; }
+  /* row 1 can never wrap: the tablets and the coin keep their natural width and the souls take what is left (basis 0);
+     if even that runs short (a 360 px phone late in the game) only the souls figure ellipsizes */
+  .hud-vitals, .hud-chip.hud-coin { flex: 0 1 auto !important; }
+  .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
+  .hud-break { order: 1; }
+  .hud-date { order: 2; flex: 1 1 auto !important; }
+  .hud-chip.hud-morale { order: 3; flex: none !important; }
+  .hud-speed, .hud-menu { order: 4; }
+  .hud-menu { margin-left: 0; }
+  .hud-strip { order: 5; flex: 1 0 100% !important; }
   .hud-date-main { font-size: 9px; }
   .hud-date .hud-sub { display: none; }
   .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
