@@ -215,8 +215,14 @@ export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Fami
   return true;
 }
 
-/** Moves homeless people into free beds, family by family (together where one house holds them). */
+/** Moves homeless people into free beds, family by family (together where one house holds them), then relieves the
+ *  over-full houses (relieveCrowding). */
 export function rehouse(s: GameState): void {
+  housePeople(s);
+  relieveCrowding(s);
+}
+
+function housePeople(s: GameState): void {
   const homeless = peopleIndex(s).homeless;
   if (homeless.length === 0) return;
   const byFamily = new Map<number, Person[]>();
@@ -229,6 +235,69 @@ export function rehouse(s: GameState): void {
     const f = s.families.find((x) => x.id === fid);
     const home = houseGroup(s, byFamily.get(fid) as Person[], f?.home ?? null);
     if (f && home !== null && f.home === null) f.home = home;
+  }
+}
+
+/** The residents of one house split into households: each adult with the spouse living there, and the children under
+ *  ADULT with a parent's household (a child without a parent in the house is a household of its own). */
+function households(s: GameState, res: readonly Person[]): Person[][] {
+  const here = new Map<number, Person>();
+  for (const p of res) here.set(p.id, p);
+  const unitOf = new Map<number, Person[]>();
+  const units: Person[][] = [];
+  for (const p of res) {
+    if (unitOf.has(p.id) || ageOf(p, s.day) < P.ADULT) continue;
+    const u = [p];
+    unitOf.set(p.id, u);
+    const sp = p.spouse !== null ? here.get(p.spouse) : undefined;
+    if (sp && !unitOf.has(sp.id)) { u.push(sp); unitOf.set(sp.id, u); }
+    units.push(u);
+  }
+  for (const p of res) {
+    if (unitOf.has(p.id)) continue;
+    const parent = [p.mother, p.father].find((id) => id !== null && unitOf.has(id));
+    let u = parent !== undefined && parent !== null ? unitOf.get(parent) : undefined;
+    if (!u) { u = []; units.push(u); }
+    u.push(p);
+    unitOf.set(p.id, u);
+  }
+  return units;
+}
+
+/** Moves the overflow of over-full houses (a child born into a full home, a fire's halved beds) into free beds elsewhere:
+ *  in evictOverflow's order (newest family first, then newest members), whole households where one house holds them,
+ *  else the overflow alone, split across the best houses. Nobody is made homeless for it, and nobody moves when the
+ *  colony lacks the beds. One pass over the houses a day; the moves themselves are rare. */
+function relieveCrowding(s: GameState): void {
+  const ix = peopleIndex(s);
+  let over: { res: Person[]; n: number }[] | null = null;
+  for (const id of derived(s).houses) {
+    const res = ix.byHome.get(id);
+    if (!res) continue;
+    const b = getBuilding(s, id);
+    const n = b ? res.length - houseBeds(s, b) : 0;
+    if (n > 0) (over ??= []).push({ res, n });
+  }
+  if (!over) return;
+  const moved = new Set<number>();
+  const settle = (group: Person[]): boolean => {
+    const home = houseGroup(s, group);
+    if (home === null) return false;
+    for (const p of group) moved.add(p.id);
+    for (const f of s.families) if (group.some((p) => p.id === f.head)) f.home = getPerson(s, f.head)?.home ?? f.home;
+    return true;
+  };
+  const newest = (a: Person, c: Person): number => c.family - a.family || c.id - a.id;
+  for (const { res, n } of over) {
+    let left = n;
+    const units = households(s, res).map((u) => ({ u, key: u.reduce((x, p) => (newest(x, p) > 0 ? p : x)) }))
+      .sort((a, c) => newest(a.key, c.key)).map((x) => x.u);
+    for (const u of units) {
+      if (left <= 0) break;
+      const room = houseRanking(s)[0]?.free ?? 0;
+      if (u.length <= room && settle(u)) left -= u.length;
+    }
+    if (left > 0) settle(res.filter((p) => !moved.has(p.id)).sort(newest).slice(0, left));
   }
 }
 

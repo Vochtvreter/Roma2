@@ -299,8 +299,9 @@ function computeCensus(s: GameState): Census {
   const hc = countHouses(s, d.houses, ix.byHome);
   const { beds, declining } = hc;
   const byTier = { ...hc.byTier };
-  // A child is born into its parents' home even when that home is full; such a house's crowd fills beds elsewhere in
-  // the reckoning, so the colony's free beds never exceed its beds less its housed souls.
+  // A child is born into its parents' home even when that home is full (people.rehouse moves the overflow into free beds
+  // elsewhere the same day, when the colony has them); until then such a house's crowd fills beds elsewhere in the
+  // reckoning, so the colony's free beds never exceed its beds less its housed souls.
   const freeBeds = Math.max(0, Math.min(hc.freeBeds, beds - (s.people.length - ix.homeless.length)));
 
   const sc = slotCounts(s);

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { BUILDER } from '../src/game/types';
 import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
-import { census, canWork } from '../src/game/census';
+import { census, canWork, houseBeds, residents } from '../src/game/census';
 import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
 import { assignJobs, immigrationDay, peopleDay, personName } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
@@ -18,6 +18,7 @@ import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
 import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run } from './util';
+import { play } from './autoplayer';
 
 const pins = vi.hoisted(() => new Map<number, number>());
 vi.mock('../src/game/site', async (importOriginal) => {
@@ -555,5 +556,31 @@ describe.runIf(INTEGRATED)("the away report's \"decided in your name\" (R18)", (
     offline(off, 120);
     expect(off.buildings.some((b) => b.owner === 'ordo')).toBe(true);
     expect(decidedWorks(off).length).toBeGreaterThan(0);
+  });
+});
+
+describe.runIf(INTEGRATED)('re-housing the crowd of a full home (R29)', () => {
+  it('the decision bot to elapsed 2,000: no house stays over its beds while the colony has the beds for its overflow', { timeout: 120_000 }, () => {
+    let worst = 0, violations = 0, births = 0;
+    const r = play(1, 'decision', {
+      days: 2000, onDay: (s) => {
+        births = s.stats.births;
+        let free = 0;
+        const over: number[] = [];
+        for (const b of s.buildings) {
+          if (!b.house || b.status !== 'done') continue;
+          const n = residents(s, b.id).length - houseBeds(s, b);
+          if (n > 0 && !(b.damagedUntil !== undefined && b.damagedUntil > s.day)) over.push(n);
+          else if (n < 0) free -= n;
+        }
+        for (const n of over) {
+          worst = Math.max(worst, n);
+          if (free >= n) violations++;
+        }
+      },
+    });
+    expect(r.nan).toEqual([]);
+    expect(births).toBeGreaterThan(5);
+    expect(violations, `worst overflow ${worst}`).toBe(0);
   });
 });
