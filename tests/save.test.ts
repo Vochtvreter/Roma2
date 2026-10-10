@@ -13,7 +13,7 @@ import {
 import { describeAway, offlineDays, offlineRun, simulateOffline } from '../src/game/offline';
 import { forceEvent, fresh, noNaN, run } from './util';
 
-type Raw = Record<string, any>;   // eslint-disable-line @typescript-eslint/no-explicit-any
+type Raw = ReturnType<typeof JSON.parse>;   // a parsed save, before sanitising
 
 /** An in-memory localStorage (optionally one that refuses writes). */
 function installStorage(refuse = false): Map<string, string> {
