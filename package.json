@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "perf": "PERF=1 vitest run --reporter=verbose",
     "balance": "BAL_FULL=1 vitest run tests/balance.test.ts --reporter=verbose",
     "trace": "vitest run tests/trace.test.ts --reporter=verbose"
   },
