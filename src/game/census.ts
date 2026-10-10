@@ -37,6 +37,16 @@ let depth = 0;
 
 /** The census of a state (memo on day + censusEpoch + grain portion; invalidate() bumps the census epoch too). */
 export function census(s: GameState): Census {
+  // fast path: the same state, census epoch, day and the two inputs of the grain portion as the last read
+  const f = censusLast;
+  if (f.s === s && f.epoch === censusEpoch(s) && f.day === s.day && f.edict === s.decisions.edicts.rationes && f.em === s.ordo.emergency.rations && f.c) return f.c;
+  const c = censusOf(s);
+  censusLast = { s, epoch: censusEpoch(s), day: s.day, edict: s.decisions.edicts.rationes, em: s.ordo.emergency.rations, c };
+  return c;
+}
+let censusLast: { s: GameState | null; epoch: number; day: number; edict: string | undefined; em: string; c: Census | null } = { s: null, epoch: 0, day: 0, edict: undefined, em: '', c: null };
+
+function censusOf(s: GameState): Census {
   const pk = Math.max(0, PORTION_VALUES.indexOf(portion(s)));
   const key = (censusEpoch(s) * DAY_SPAN + s.day) * PORTION_VALUES.length + pk;
   return memo(s, 'census', key, () => {

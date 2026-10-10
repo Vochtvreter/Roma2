@@ -15,13 +15,22 @@ const epochs = new WeakMap<GameState, Epochs>();
 const slots = new WeakMap<GameState, Map<string, { key: string | number; value: unknown }>>();
 let actionFx: FxEvent[] = [];
 
+// The last state asked about and its records: a tick asks thousands of times about one state, and a pointer compare is
+// cheaper than a WeakMap lookup (the WeakMaps stay the truth; this only remembers the last answer).
+let lastState: GameState | null = null;
+let lastEpochs: Epochs | null = null;
+let lastSlots: Map<string, { key: string | number; value: unknown }> | null = null;
+
 function epochsOf(s: GameState): Epochs {
+  if (s === lastState && lastEpochs) return lastEpochs;
   let e = epochs.get(s);
   if (!e) {
     const struct = ++counter, census = ++counter;
     e = { struct, census, people: census, layout: struct };
     epochs.set(s, e);
   }
+  if (s !== lastState) { lastState = s; lastSlots = null; }
+  lastEpochs = e;
   return e;
 }
 
@@ -96,10 +105,15 @@ export function dayStruct(s: GameState): number {
 
 /** One cached value per (state, slot): recomputed whenever `key` differs from the cached key. */
 export function memo<T>(s: GameState, slot: string, key: string | number, compute: () => T): T {
-  let m = slots.get(s);
+  let m = s === lastState ? lastSlots : null;
   if (!m) {
-    m = new Map();
-    slots.set(s, m);
+    m = slots.get(s) ?? null;
+    if (!m) {
+      m = new Map();
+      slots.set(s, m);
+    }
+    if (s !== lastState) { lastState = s; lastEpochs = null; }
+    lastSlots = m;
   }
   const hit = m.get(slot);
   if (hit && hit.key === key) return hit.value as T;
