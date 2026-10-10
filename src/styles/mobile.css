@@ -204,8 +204,11 @@
   #side.collapsed #side-toggle::before { content: '◂'; }
   #tabs { grid-template-columns: repeat(3, 1fr); }
   #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
+  #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
   #map-tools { bottom: 8px; }
   #app:not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
+  /* the overlay toggles fold into rows of three so the tools fit the free map beside the left column */
+  .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
   #ticker { display: none; }
   #place-banner, #app:has(#side.collapsed) #place-banner { bottom: 8px; }
 }
