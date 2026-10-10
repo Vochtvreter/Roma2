@@ -7,7 +7,7 @@ import { fmt, fmtDays, fmtRate, h, realTime } from './dom';
 import { caps, tipCard, tipHead, tipKicker, tipNote, tipRow, tipSep } from './tipkit';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
-import { view } from '../game/sim';
+import { ONE_OFF_SOURCES, steadyNet, view } from '../game/sim';
 import { fxBreakdown } from '../game/fx';
 import { howToGetMore } from '../game/hints';
 import { dignitas, moraleTarget } from '../game/civic';
@@ -41,12 +41,9 @@ const FESTIVAL_DATES: [string, number, number][] = [
   ['Parilia', 4, 21], ['Robigalia', 4, 25], ['Floralia', 4, 28], ['Ludi Romani', 9, 5], ['Saturnalia', 12, 17],
 ];
 
-/** Net per day of a resource in the last tick's ledger. */
+/** Net per day of a resource in the last tick's ledger: its steady flows (one-day lumps are shown apart, as "today"). */
 export function netRate(g: Game, r: ResId): number {
-  let p = 0, c = 0;
-  for (const v of Object.values(g.rates.prod[r])) p += v ?? 0;
-  for (const v of Object.values(g.rates.cons[r])) c += v ?? 0;
-  return p - c;
+  return steadyNet(g.rates, r);
 }
 
 function sourceLabel(g: Game, src: RateSource, res: ResId): string {
@@ -71,13 +68,17 @@ function sourceLabel(g: Game, src: RateSource, res: ResId): string {
 
 /** The ledger lines of one resource from the last tick's Rates, gains first, largest first, then the net. */
 export function ledger(g: Game, r: ResId): HTMLElement[] {
-  const rows: { label: string; v: number }[] = [];
-  for (const [src, v] of Object.entries(g.rates.prod[r])) if (v && Math.abs(v) >= 0.005) rows.push({ label: sourceLabel(g, src as RateSource, r), v });
-  for (const [src, v] of Object.entries(g.rates.cons[r])) if (v && Math.abs(v) >= 0.005) rows.push({ label: sourceLabel(g, src as RateSource, r), v: -v });
+  const rows: { label: string; v: number; once: boolean }[] = [];
+  const once = (src: string): boolean => ONE_OFF_SOURCES.includes(src as RateSource);
+  for (const [src, v] of Object.entries(g.rates.prod[r])) if (v && Math.abs(v) >= 0.005) rows.push({ label: sourceLabel(g, src as RateSource, r), v, once: once(src) });
+  for (const [src, v] of Object.entries(g.rates.cons[r])) if (v && Math.abs(v) >= 0.005) rows.push({ label: sourceLabel(g, src as RateSource, r), v: -v, once: once(src) });
   rows.sort((a, b) => (b.v > 0 ? 1 : 0) - (a.v > 0 ? 1 : 0) || Math.abs(b.v) - Math.abs(a.v));
-  const out = rows.map((x) => tipRow(`${x.v > 0 ? '+' : '−'} ${x.label}`, fmtRate(x.v).replace('/d', ''), x.v > 0 ? 'pos' : 'neg'));
+  const row = (x: { label: string; v: number }): HTMLElement => tipRow(`${x.v > 0 ? '+' : '−'} ${x.label}`, fmtRate(x.v).replace('/d', ''), x.v > 0 ? 'pos' : 'neg');
+  const out = rows.filter((x) => !x.once).map(row);
   const net = netRate(g, r);
   out.push(tipRow('= a day', `${fmtRate(net).replace('/d', '')} ${net > 0.05 ? '▲' : net < -0.05 ? '▼' : '■'}`, 'total'));
+  const today = rows.filter((x) => x.once);
+  if (today.length) out.push(tipSep(), ...today.map((x) => row({ ...x, label: `${x.label} (today)` })));
   return out;
 }
 

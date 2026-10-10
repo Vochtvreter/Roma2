@@ -3,7 +3,7 @@
 // housekeeping details. Reordering any step needs the integrator.
 import { B } from './balance';
 import { RESOURCES } from './types';
-import type { GameState, Rates, SimView, TickContext } from './types';
+import type { GameState, RateSource, Rates, ResId, SimView, TickContext } from './types';
 import { Rng } from './rng';
 import { isKalends, seasonOf, seasonStartOf } from './calendar';
 import { derived } from './derived';
@@ -87,6 +87,18 @@ export function view(s: GameState): SimView {
     get f() { return forecast(s); },
     get cov() { return coverage(s); },
   };
+}
+
+/** Rate sources that are one-day lumps, not flows: payments for works and renovations, felling, caravans, the merchant,
+ *  festivals, events, the Legate's relief and the debt repaid on the Kalends. A per-day ledger shows them as "today". */
+export const ONE_OFF_SOURCES: readonly RateSource[] = ['construction', 'renovation', 'felling', 'trade', 'merchant', 'festival', 'event', 'relief', 'debt'];
+
+/** Net per day of a resource from a ledger's steady flows (one-off lumps left out). */
+export function steadyNet(r: Rates, res: ResId): number {
+  let n = 0;
+  for (const [src, v] of Object.entries(r.prod[res])) if (!ONE_OFF_SOURCES.includes(src as RateSource)) n += v ?? 0;
+  for (const [src, v] of Object.entries(r.cons[res])) if (!ONE_OFF_SOURCES.includes(src as RateSource)) n -= v ?? 0;
+  return n;
 }
 
 /** A zeroed ledger: one empty source map per resource, for production and consumption. */

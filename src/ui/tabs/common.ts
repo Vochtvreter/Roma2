@@ -11,6 +11,7 @@ import { reasonText } from '../../game/ordo/reasons';
 import { formatRoman } from '../../game/calendar';
 import { getBuilding, missing } from '../../game/state';
 import { B } from '../../game/balance';
+import { steadyNet } from '../../game/sim';
 import { BUILDING_DEFS } from '../../game/data/buildings';
 import { RANK_DEFS } from '../../game/data/ranks';
 
@@ -106,12 +107,9 @@ export function toggle(g: Game, on: boolean, labels: [string, string], set: (on:
   return b;
 }
 
-/** Net change of a resource per day from the last tick's ledger. */
+/** Net change of a resource per day from the last tick's ledger (steady flows; one-day lumps left out). */
 export function netRate(g: Game, r: ResId): number {
-  let n = 0;
-  for (const v of Object.values(g.rates.prod[r])) n += v ?? 0;
-  for (const v of Object.values(g.rates.cons[r])) n -= v ?? 0;
-  return n;
+  return steadyNet(g.rates, r);
 }
 
 /** Days until the stores gather `lack` at today's net rates; null when some lacking good is not growing. */
