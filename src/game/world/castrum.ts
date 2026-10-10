@@ -19,11 +19,11 @@ const FOSSA_OUT = 1 + M.FOSSA;
 const EXT_X = (G.POMERIUM_BOX[0] - M.INTERIOR_W) / 2;            // 15: rings reach this far beyond the interior
 const EXT_Y = (G.POMERIUM_BOX[1] - M.INTERIOR_H) / 2;
 const TERR = RANK_DEFS.map((r) => r.territory);                   // [20, 26, 34, 44, 999]
-const SITE_TRIES = 6;                // distinct castrum sites tried per terrain (TODO(balance): move to B.map.GEN)
-const SITE_SPREAD = 4;               // tried sites differ by at least this many tiles (TODO(balance): move to B.map.GEN)
-const ORE_SPREAD = 8;                // the two veins start at least this far apart (TODO(balance): move to B.map.GEN)
-const FONS_SPREAD = 12;              // two springs at least this far apart (TODO(balance): move to B.map.GEN)
-const GLACIS = [0.85, 0.55, 0.25];   // chance a wood tile 1, 2, 3 tiles outside the fossa is cleared (TODO(balance): move to B.map.GEN)
+const SITE_TRIES = B.map.GEN.SITE_TRIES;     // distinct castrum sites tried per terrain
+const SITE_SPREAD = B.map.GEN.SITE_SPREAD;   // tried sites differ by at least this many tiles
+const ORE_SPREAD = B.map.GEN.ORE_SPREAD;     // the two veins start at least this far apart
+const FONS_SPREAD = B.map.GEN.FONS_SPREAD;   // two springs at least this far apart
+const GLACIS = B.map.GEN.GLACIS;             // chance a wood tile 1, 2, 3 tiles outside the fossa is cleared
 
 /** A candidate castrum site: interior origin and its DESIGN §3.3 score. */
 export interface SiteCand { ix: number; iy: number; score: number }

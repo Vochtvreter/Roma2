@@ -7,20 +7,7 @@ import { GH, GN, GW, chebDistance } from './grid';
 import { fbmField, noise1, stretch } from './noise';
 
 const G = B.map.GEN;
-// Shape constants of the noise and the river course (TODO(balance): move to B.map.GEN).
-const SHAPE = {
-  WARP_SCALE: 30, WARP_AMP: 14,                 // domain warp: organic hill and wood outlines
-  ELEV_STRETCH: 0.35, MOIST_STRETCH: 1.3,        // fBm clusters near 0.5; stretch it to use the DESIGN thresholds
-  RIVER_OFFSET: [0.22, 0.32],                   // river centre offset from the map centre, share of the cross size
-  MEANDER_1: { amp: [0.05, 0.085], len: [34, 56] },   // the big bends (amp: share of the cross size)
-  MEANDER_2: { amp: [0.6, 1.5], len: [17, 27] },      // small wiggles, tiles
-  MEANDER_NOISE: { amp: 2.5, scale: 9 },
-  EDGE_KEEP: 6,                                 // the river centre stays this far from the side edges
-  CARVE: 0.06, CARVE_R: 6,                      // valley carved along the river (elevation units, tiles)
-  WET: 0.1, WET_R: 6,                           // moisture added near the river
-  MEADOW_MOIST: 0.48, MEADOW_RIVER: 5,          // meadow: moist lowland, or the river's wet margin
-  COPSE_P: 0.02, COPSE_MOIST: 0.44, GLADE_P: 0.03,     // single trees in the fields, glades in the woods
-} as const;
+const SHAPE = G.SHAPE;                           // shape constants of the noise and the river course
 
 /** The side of the map the tilt raises (the river's source edge). */
 export type Side = 'N' | 'E' | 'S' | 'W';

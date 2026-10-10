@@ -34,7 +34,7 @@ export const B = {
     LUCUS_DESIR: [3, 3], RIVER_DESIR: [1, 2], PAVED_DESIR: [1, 1],   // [value, range]
     PAVE_STONE: 2,                                    // stone per paved tile
     ROAD_COST: { flat: 1, hills: 1.7, forest: 3, rock: 2.5, street: 0.5, futureBlock: 6 },
-    AQUEDUCT_COST: { hills: 0.8, flat: 1.0, forest: 1.4, river: 2.5, road: 1.2 },
+    AQUEDUCT_COST: { hills: 0.8, flat: 1.0, forest: 1.4, river: 2.5, road: 1.2, wall: 2, plot: 3 },   // wall: over the vallum/fossa; plot: across an unbuilt surveyed plot
     CASTELLUMS_PER_FONS: 1,
     GEN: {
       ELEV_SCALE: 22, ELEV_OCTAVES: 4, ELEV_FBM: 0.75, TILT: 0.35, MOIST_SCALE: 14, MOIST_OFFSET: 100,
@@ -45,6 +45,22 @@ export const B = {
       FONS: [1, 2], FONS_DIST: [22, 44], ORE_VEINS: 2, VEIN_TILES: [2, 4], VEIN_QUALITY: [0.7, 1.4], ORE_DIST: [14, 34],
       LUCUS_DIST: [10, 20], RUINS_DIST: [15, 30], CLAY_SHARE: 0.3,
       LUMBER_SITE_WOOD: 60, LUMBER_SITE_R: 4, RETRY_STEP: 1000, RETRIES: 8,
+      SITE_TRIES: 6, SITE_SPREAD: 4,                // distinct castrum sites tried per terrain, at least this many tiles apart
+      ORE_SPREAD: 8, FONS_SPREAD: 12,               // the two veins / two springs at least this far apart
+      GLACIS: [0.85, 0.55, 0.25],                   // chance a wood tile 1, 2, 3 tiles outside the fossa is cleared
+      SHAPE: {                                      // the noise and the river course (WP-A)
+        WARP_SCALE: 30, WARP_AMP: 14,               // domain warp: organic hill and wood outlines
+        ELEV_STRETCH: 0.35, MOIST_STRETCH: 1.3,     // fBm clusters near 0.5; stretch it to use the DESIGN thresholds
+        RIVER_OFFSET: [0.22, 0.32],                 // river centre offset from the map centre, share of the cross size
+        MEANDER_1: { amp: [0.05, 0.085], len: [34, 56] },   // the big bends (amp: share of the cross size)
+        MEANDER_2: { amp: [0.6, 1.5], len: [17, 27] },      // small wiggles, tiles
+        MEANDER_NOISE: { amp: 2.5, scale: 9 },
+        EDGE_KEEP: 6,                               // the river centre stays this far from the side edges
+        CARVE: 0.06, CARVE_R: 6,                    // valley carved along the river (elevation units, tiles)
+        WET: 0.1, WET_R: 6,                         // moisture added near the river
+        MEADOW_MOIST: 0.48, MEADOW_RIVER: 5,        // meadow: moist lowland, or the river's wet margin
+        COPSE_P: 0.02, COPSE_MOIST: 0.44, GLADE_P: 0.03,   // single trees in the fields, glades in the woods
+      },
     },
   },
 
@@ -84,7 +100,7 @@ export const B = {
     IDLE_FORAGE: 0.3, IDLE_BUILD: 0.3, COIN_ALPHA: 1 / 30, SHED_ROT: 0.003, EVAPORATION: 0.002, OFF_TABLE: 0.6, UNPAID: 0.5,
     PORTIONS: { largae: 1.15, plenae: 1, parcae: 0.85, arctae: 0.7 },
     WOOD: { REPLANT: 0.003, NATURAL: 0.0005, HIEMS: 0.25, MATURE: 0.5, STUMP: 0.25, FELL_WORK: 1 / 12, CATCHMENT: 4, MIN: 40,
-            CATCH_FACTOR: [0.2, 1.3] },
+            CATCH_FACTOR: [0.2, 1.3], CATCH_TIMBER: 2400 },   // standing timber within r4 for a ×1.0 lumber camp
     LEGACY: 0.1,                                      // output +10% per finished colony (§9.6)
     HORREUM: 4000,                                    // mirror of BUILDING_DEFS.horreum.storage.grain
     ROT_SEASON: [1, 2, 1, 1],                         // shed rot multiplier by season (×2 Aestas)
@@ -174,7 +190,7 @@ export const B = {
     HOUSE: { STEPS: -1, DESIR: 0.5, BLOCK_HOUSES: 2, RETENTURA: 2, INDUSTRY: -3, INDUSTRY_R: 3 },
     SERVICE: { UNBLOCK: 3, COVER: 1, STEPS: -0.3, DISTRICT: 3, TEMPLE_FORUM: 5 },
     STORE: { PRAETENTURA: 3, VIA: 2, HOUSE: -1, HOUSE_R: 3 },
-    WATER: { ACCESS: 2, STEPS: -0.2 },
+    WATER: { ACCESS: 2, STEPS: -0.2, DROUGHT: 10 },   // DROUGHT: weight of a well's yield when raised for drink, not reach
     AGER: { SITE: 10, DIST: -0.4, FIELDS: 1.5, HOUSE: -2 },
     RURAL: { SITE: 8, DIST: -0.3 },
     EXTRACT: { SITE: 4, DIST: -0.3 },

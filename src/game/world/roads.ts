@@ -14,9 +14,9 @@ import type { CostField, StepField } from './search';
 import { aqueductCostT, roadCostT } from './rules';
 
 const M = B.map;
-// Aqueduct steps not listed in DESIGN §3.8 (TODO(balance): move to B.map.AQUEDUCT_COST).
-const AQ_WALL = 2;            // over the vallum or the fossa into the castrum
-const AQ_PLOT = 3;            // across an unbuilt surveyed plot (routes keep to the streets where they can)
+// Aqueduct steps not listed in DESIGN §3.8
+const AQ_WALL = M.AQUEDUCT_COST.wall;   // over the vallum or the fossa into the castrum
+const AQ_PLOT = M.AQUEDUCT_COST.plot;   // across an unbuilt surveyed plot (routes keep to the streets where they can)
 
 /** True on a lucus, ruins or spring tile: no road, no aqueduct pier, no building. */
 function isSacredTile(feature: ArrayLike<number>, i: number): boolean {

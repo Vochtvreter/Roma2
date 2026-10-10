@@ -19,9 +19,9 @@ import { aroundSum, woodDependent, woodSums } from './world/siterules';
 
 const S = B.site;
 const SC = B.score;
-const CATCH_FULL = 2400;      // standing timber within r4 for a ×1.0 lumber camp (TODO(balance): move to B.economy.WOOD)
+const CATCH_FULL = B.economy.WOOD.CATCH_TIMBER;   // standing timber within r4 for a ×1.0 lumber camp
 const MAX_NOTES = 3;
-const DROUGHT_SITE = 10;      // weight of a well's yield when it is raised for drink, not reach (TODO(balance): move to B.score.WATER)
+const DROUGHT_SITE = B.score.WATER.DROUGHT;       // weight of a well's yield when it is raised for drink, not reach
 /** Which unmet house need each coverage layer satisfies. */
 const NEED_LAYERS: Partial<Record<NeedId, CoverageLayerId[]>> = {
   water: ['water', 'fountain'], religion: ['shrine', 'temple'], market: ['market', 'macellum'],
