@@ -10,7 +10,7 @@ import { nextSeasonStart as nextSeasonStart$, seasonLength as seasonLength$, sea
 import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
 import { getBuilding as getBuilding$ } from '../lookup';
-import { jobsEpoch as jobsEpoch$, memo as memo$ } from '../memo';
+import { jobsEpoch as jobsEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
 import { roadNeighbors as roadNeighbors$ } from '../derived';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
@@ -20,6 +20,7 @@ import { houseWants, materialNeeds } from './build';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
   nextSeasonStart = nextSeasonStart$, seasonLength = seasonLength$, seasonOf = seasonOf$, jobsEpoch = jobsEpoch$,
+  layoutEpoch = layoutEpoch$,
   memo = memo$, roadNeighbors = roadNeighbors$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
   FOCUS_DEFS = FOCUS_DEFS$,
   getBuilding = getBuilding$;
@@ -49,9 +50,12 @@ function reason(code: ReasonCode, params: Record<string, number | string | undef
 }
 
 /** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id
- *  (memo on the day, the jobs epoch and the water pause: who works where moves the rates, a house's tier does not). */
+ *  (memo on the day, the jobs and layout epochs and the water pause: who works where moves the rates, and the works
+ *  themselves the list; a house's tier moves neither). Both epochs come from one rising counter, so their maximum moves
+ *  whenever either does. */
 function posts(s: GameState): Post[] {
-  return memo(s, 'ordo.posts', (jobsEpoch(s) * DAY_SPAN + s.day) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
+  const e = Math.max(jobsEpoch(s), layoutEpoch(s));
+  return memo(s, 'ordo.posts', (e * DAY_SPAN + s.day) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
     const out: Post[] = [];
     const season = seasonOf(s.day);
     for (const b of s.buildings) {

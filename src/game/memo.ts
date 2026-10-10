@@ -8,9 +8,10 @@ import type { FxEvent, GameState } from './types';
  *  last change other than jobs alone (touchJobs leaves it), so the people-only parts of the census outlive a reassignment;
  *  layout: the struct epoch as of the last change other than house tiers alone (invalidateTiers leaves it), so what
  *  only the map's works, roads and rank decide (derived, roads, coverage floods, slots) outlives a renovation;
- *  homes: the people epoch as of the last change other than house tiers (who lives, where, in which family — what the
- *  people index's home lists read); jobs: the census epoch as of the last change other than house tiers (homes, people or
- *  jobs — what its work lists read). */
+ *  homes: bumped only by touchPeople (who lives, where, in which family — what the people index's home lists read);
+ *  jobs: bumped by touchPeople and touchJobs (people or jobs — what its work lists read). Every write to a person's home,
+ *  work, family or the list of people calls touchPeople or touchJobs (ARCHITECTURE §9), so these outlive structure
+ *  changes: a placement, a completion or a renovation moves nobody. */
 interface Epochs { struct: number; census: number; people: number; layout: number; homes: number; jobs: number }
 
 let counter = 0;
@@ -37,15 +38,14 @@ function epochsOf(s: GameState): Epochs {
   return e;
 }
 
-/** Structure changed (buildings, roads, rank, reserved blocks, staffing open/closed): bumps struct and census epochs. */
+/** Structure changed (buildings, roads, rank, reserved blocks, staffing open/closed): bumps struct and census epochs.
+ *  The homes and jobs epochs stay: a change that also moves people (a demolition, a closed work) calls touchPeople. */
 export function invalidate(s: GameState): void {
   const e = epochsOf(s);
   e.struct = ++counter;
   e.census = ++counter;
   e.people = e.census;
   e.layout = e.struct;
-  e.homes = e.census;
-  e.jobs = e.census;
 }
 
 /** Only house tiers changed (a renovation finished, a house fell back): bumps struct and census epochs like invalidate,
@@ -89,12 +89,12 @@ export function peopleEpoch(s: GameState): number {
   return epochsOf(s).people;
 }
 
-/** The epoch of who lives where: the people epoch as of the last change to anything but house tiers. */
+/** The epoch of who lives where (touchPeople). */
 export function homesEpoch(s: GameState): number {
   return epochsOf(s).homes;
 }
 
-/** The epoch of who works where: the census epoch as of the last change to anything but house tiers. */
+/** The epoch of who works where (touchPeople, touchJobs). */
 export function jobsEpoch(s: GameState): number {
   return epochsOf(s).jobs;
 }
