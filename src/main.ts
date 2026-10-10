@@ -10,7 +10,7 @@ import { B } from './game/balance';
 import { newGame } from './game/state';
 import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { addFasti, exportText, hasSave, importText, loadGame, loadPrefs, saveGame, savePrefs } from './game/save';
-import { offlineRun } from './game/offline';
+import { offlineRun, simulateOffline } from './game/offline';
 import { drainActionFx } from './game/memo';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
@@ -422,6 +422,17 @@ class App implements Game {
     this.save();
   }
 
+  /** ?dev: simulates an absence of `minutes` on the live colony (simulateOffline) and opens its Litterae Ordinis. */
+  awayFixture(minutes: number): void {
+    if (this.mode !== 'game') return;
+    const report = simulateOffline(this.state, Math.max(0, minutes) * 60_000);
+    drainActionFx();
+    try { this.rates = previewRates(this.state); } catch { this.rates = emptyRates(); }
+    this.paused = true;
+    if (report) this.ui.showDispatch('away', report);
+    this.changed();
+  }
+
   /** ?dev: runs `days` online ticks synchronously (fx discarded). */
   skip(days: number): void {
     const s = this.state;
@@ -436,11 +447,12 @@ class App implements Game {
 }
 
 declare global {
-  interface Window { cv?: App; skip?: (days: number) => void }
+  interface Window { cv?: App; skip?: (days: number) => void; away?: (minutes: number) => void }
 }
 
 const app = new App();
 if (DEV) {
   window.cv = app;
   window.skip = (days: number) => app.skip(Math.max(0, Math.floor(days)));
+  window.away = (minutes: number) => app.awayFixture(minutes);
 }

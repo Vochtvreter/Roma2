@@ -62,13 +62,26 @@ function works(b: Snapshot, a: Snapshot): HTMLElement[] {
   return out;
 }
 
+const TIER_PLURAL: Record<string, string> = { tentoria: 'tentoria', casa: 'casae', tegulata: 'casae tegulatae', domusParva: 'domus parvae', insula: 'insulae', domus: 'domus' };
+
 function homes(b: Snapshot, a: Snapshot): string {
   const parts: string[] = [];
   for (const t of HOUSE_TIERS) {
     const n = (a.evolvedBy[t] ?? 0) - (b.evolvedBy[t] ?? 0);
-    if (n > 0) parts.push(`${n} ${n === 1 ? 'home became a' : 'homes became'} ${TIER_DEFS[t].latin.toLowerCase()}`);
+    if (n > 0) parts.push(n === 1 ? `1 home became a ${TIER_DEFS[t].latin.toLowerCase()}` : `${n} homes became ${TIER_PLURAL[t]}`);
   }
   return parts.join(' · ');
+}
+
+/** Repeated council decisions collapse into their latest wording with a count (numbers aside, they are one decision). */
+function grouped(lines: string[]): string[] {
+  const out: { key: string; text: string; n: number }[] = [];
+  for (const t of lines) {
+    const key = t.replace(/[\d.,]+/g, '#');
+    const hit = out.find((x) => x.key === key);
+    if (hit) { hit.text = t; hit.n++; } else out.push({ key, text: t, n: 1 });
+  }
+  return out.map((x) => (x.n > 1 ? `${x.text} (×${x.n})` : x.text));
 }
 
 function lowest(r: AwayReport): string {
@@ -116,7 +129,7 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     line('STORES', stores),
     line('WORKS RAISED', w.length ? h('span', { class: 'disp-works' }, w) : 'None this time.'),
     hm ? line('HOMES', hm) : null,
-    r.decided.length ? line('DECIDED IN YOUR NAME', h('ul', { class: 'disp-list' }, r.decided.map((d) => h('li', null, d)))) : null,
+    r.decided.length ? line('DECIDED IN YOUR NAME', h('ul', { class: 'disp-list' }, grouped(r.decided).map((d) => h('li', null, d)))) : null,
     hl.length ? line('IN THE ANNALES', h('ul', { class: 'disp-list' }, hl.map((e) => h('li', null, h('span', { class: 'disp-date' }, formatRoman(e.day)), ' ', e.text)))) : null,
     line('LOWEST POINT', lowest(r)),
     awaiting(g, r, close),

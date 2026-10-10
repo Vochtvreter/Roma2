@@ -68,6 +68,7 @@ export class Counsel {
   private textDay = -1;
   private clickAt = -Infinity;
   private refresh: (() => void) | null = null;
+  private open = false;                       // mobile: the card is expanded from its portrait chip
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     root.addEventListener('pointerdown', () => { this.clickAt = performance.now(); });
@@ -99,13 +100,18 @@ export class Counsel {
   private build(item: CounselItem): void {
     clear(this.root);
     this.refresh = null;
-    this.root.className = `counsel-${item.kind}`;
+    this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
     this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
     if (item.kind === 'calm') { this.root.appendChild(this.calm()); return; }
     const card = item.kind === 'tip' ? this.tipCard(item.t) : this.advisoryCard(item.a);
-    const toggle = h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.root.classList.toggle('open') }, '▾');
+    const toggle = h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾');
     card.prepend(toggle);
     this.root.appendChild(card);
+  }
+
+  private toggleOpen(): void {
+    this.open = !this.open;
+    this.root.classList.toggle('open', this.open);
   }
 
   private portraitBtn(a: AdvisorId): HTMLElement {
@@ -153,7 +159,7 @@ export class Counsel {
       if (t.target) pulseTarget(t.target);
     } }, 'Show me') : null;
     return h('div', { class: `counsel-card tip${t.urgent ? ' urgent' : ''}`, role: 'note' },
-      h('div', { class: 'counsel-head', onclick: () => this.root.classList.toggle('open') }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
+      h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
         h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, mentorKicker(s)), h('span', { class: 'counsel-title' }, t.title))),
       h('div', { class: 'counsel-body' }, text,
         h('div', { class: 'counsel-actions' },
@@ -182,7 +188,7 @@ export class Counsel {
     };
     const kicker = `${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])} · ${caps(def.office)}`;
     return h('div', { class: `counsel-card adv sev-${sev}${opp ? ' opp' : ''}`, role: sev >= 2 ? 'alert' : 'note' },
-      h('div', { class: 'counsel-head', onclick: () => this.root.classList.toggle('open') }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),
+      h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),
         h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, kicker), metric), title)),
       h('div', { class: 'counsel-body' }, text, this.remedies(r.remedies),
         h('div', { class: 'counsel-foot' },

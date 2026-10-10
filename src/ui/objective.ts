@@ -143,5 +143,6 @@ export class Objective {
 export function milestoneToast(id: string): { text: string; unlock: string } {
   const m = MILESTONES.find((x) => x.id === id);
   const un = m ? m.unlocks.map(unlockLabel) : [];
-  return { text: `Res Gestae: ${m?.text ?? id}`, unlock: un.length ? `Unlocked: ${un.join(', ')}.` : '' };
+  const where = m?.unlocks.some((u) => u.kind === 'edict' || u.kind === 'setting' || u.kind === 'switch' || u.kind === 'section') ? ' See Edicta.' : '';
+  return { text: `Res Gestae: ${m?.text ?? id}`, unlock: un.length ? `Unlocked: ${un.join(', ')}.${where}` : '' };
 }

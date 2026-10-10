@@ -6,7 +6,7 @@ import { OVERLAYS } from '../game/types';
 import type { OverlayId, Speed, TabId } from '../game/types';
 import type { Game } from './types';
 import { closeTopModal, modalCount, openMenu } from './modals';
-import { overlayRevealed } from '../game/reveal';
+import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { B } from '../game/balance';
 
 const PAN_PX_S = 520;                       // CSS px per second while a pan key is held
@@ -76,7 +76,7 @@ export function initKeys(g: Game, dev: boolean): void {
       g.changed();
       return;
     }
-    if (k === 'r') { g.startPlacing({ kind: 'road' }); return; }
+    if (k === 'r') { if (toolRevealed(g.state, 'road')) g.startPlacing({ kind: 'road' }); return; }
     if (k === 'h') { g.view.centerOnForum(); return; }
     if (e.key === '+' || e.key === '=') { g.view.zoomBy(1); return; }
     if (e.key === '-' || e.key === '_') { g.view.zoomBy(-1); return; }
