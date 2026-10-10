@@ -73,23 +73,26 @@ export function activeFactor(s: GameState, b: Building): number {
 /** Per-call multipliers shared by every building: fx lookups hoisted out of the per-building loops. */
 interface Factors { base: number; mul(k: MulKey): number; concrete: number }
 // fx() re-validates its cache on every call; its source list is rebuilt (new identity) exactly when any effect changes,
-// so values looked up once per source list stay correct.
-const fxMemo = new WeakMap<GameState, { src: unknown; m: Map<MulKey, number> }>();
+// so values looked up once per source list stay correct. The factors themselves are kept while the sources, the morale,
+// the legacy and the Aquae edict stand (buildingRate asks for them once per building, many times a day).
+interface FactorCache extends Factors { src: unknown; morale: number; legacy: number; bonus: number; aquae: string }
+const factorMemo = new WeakMap<GameState, FactorCache>();
 
 function factors(s: GameState): Factors {
   const src = fxSources(s);
-  let e = fxMemo.get(s);
-  if (!e || e.src !== src) {
-    e = { src, m: new Map() };
-    fxMemo.set(s, e);
-  }
-  const m = e.m;
+  const aquae = edictOption(s, 'aquae');
+  const c = factorMemo.get(s);
+  if (c && c.src === src && c.morale === s.morale && c.legacy === s.legacy && c.bonus === s.legacyBonus && c.aquae === aquae) return c;
+  const m = c && c.src === src ? (c as FactorCache & { m: Map<MulKey, number> }).m : new Map<MulKey, number>();
   const mul = (k: MulKey): number => {
     let v = m.get(k);
     if (v === undefined) { v = fx(s, k); m.set(k, v); }
     return v;
   };
-  return { base: productivity(s) * mul('labour') * legacyMult(s), mul, concrete: edictOption(s, 'aquae') === 'operibus' ? AQUAE_CONCRETE : 1 };
+  const f = { src, morale: s.morale, legacy: s.legacy, bonus: s.legacyBonus, aquae, m, mul,
+    base: productivity(s) * mul('labour') * legacyMult(s), concrete: aquae === 'operibus' ? AQUAE_CONCRETE : 1 };
+  factorMemo.set(s, f);
+  return f;
 }
 
 /** The building's part of the capped product: site × tool × productivity × fx(key) × fx(labour) × legacy × bonus. */
