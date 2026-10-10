@@ -136,10 +136,22 @@ export function bestFood(s: GameState): BuildingId {
 export interface HouseWant { id: number; tile: number; tier: HouseTierId; next: HouseTierId | null; unmet: NeedId[]; want: NeedId | null; declining: boolean; lapsed: NeedId[] }
 
 const PREFS = ['auto', 'insula', 'domus'] as const;
+const TIER_CODE = Object.fromEntries(HOUSE_TIERS.map((t, k) => [t, k])) as Record<HouseTierId, number>;
+const PREF_CODE = Object.fromEntries(PREFS.map((p, k) => [p, k])) as Record<(typeof PREFS)[number], number>;
+
+/** A number per coverage object (its key's stand-in in the signature): the same object, the same layers. */
+const coverageIds = new WeakMap<object, number>();
+let coverageCount = 0;
+function coverageId(cov: object): number {
+  let id = coverageIds.get(cov);
+  if (id === undefined) { id = ++coverageCount; coverageIds.set(cov, id); }
+  return id;
+}
 
 /** Everything a house's needs read besides the structure: coverage, the fed index, rank, and per house its tier, decline,
  *  goods and preference. Built on every call (one pass over the houses): tiers change on renovation and the goods EMAs
- *  cross SUPPLIED without bumping an epoch, so a signature cached per day and epochs went stale within the day. */
+ *  cross SUPPLIED without bumping an epoch, so a signature cached per day and epochs went stale within the day. The
+ *  coverage enters by object (a coverage is rebuilt, as a new object, whenever its sources change). */
 function houseSig(s: GameState, v: SimView): string {
   const S = B.housing.SUPPLIED;
   const codes: number[] = [];
@@ -147,9 +159,9 @@ function houseSig(s: GameState, v: SimView): string {
     const h = getBuilding(s, id)?.house;
     if (!h) continue;
     const bits = (h.declining ? 4 : 0) + (h.oil >= S ? 2 : 0) + (h.wine >= S ? 1 : 0);
-    codes.push(48 + (HOUSE_TIERS.indexOf(h.tier) * 8 + bits) * 3 + PREFS.indexOf(h.pref));
+    codes.push(48 + (TIER_CODE[h.tier] * 8 + bits) * 3 + PREF_CODE[h.pref]);
   }
-  return `${structEpoch(s)}|${v.cov.key}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
+  return `${structEpoch(s)}|${coverageId(v.cov)}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
 }
 
 /** Every finished house with its wants. Pure, and memoised on everything the needs read (houseSig), so it is recomputed only when the structure, coverage, fed index or a house changes — not every day. */

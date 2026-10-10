@@ -11,7 +11,7 @@ import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, Reas
 import { dateOf as dateOf$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
 import { addCost, canAfford, log, missing } from '../state';
 import { getBuilding as getBuilding$ } from '../lookup';
-import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$ } from '../memo';
+import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
@@ -32,6 +32,7 @@ import { rectGap as rectGap$ } from '../world/grid';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$, seasonLength = seasonLength$,
   seasonOf = seasonOf$, memo = memo$, structEpoch = structEpoch$, dayEpoch = dayEpoch$, dayStruct = dayStruct$,
+  layoutEpoch = layoutEpoch$,
   fxAdd = fxAdd$, idx = idx$, tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
   FOCUS_DEFS = FOCUS_DEFS$, classAt = classAt$, sizeOf = sizeOf$, rectGap = rectGap$,
   getBuilding = getBuilding$;
@@ -275,25 +276,51 @@ function overCap(s: GameState, caps: Record<ResId, number>, type: BuildingId): b
 
 /** Some valid Ordo slot of `type` would cover a house whose first want is `need` (the cached coverage previews). A slot
  *  covers road tiles within its radius in steps of its sides, and a house only through a road tile beside it, so a slot
- *  farther than radius + 2 (Chebyshev) from every waiting house cannot reach one: its preview is not needed. */
+ *  farther than radius + 2 (Chebyshev) from every waiting house cannot reach one: its preview is not needed. The answer
+ *  is kept per type and need while everything it reads stands: the waiting houses, the slot map, the layout (footprints
+ *  and previews), the rank and the radius bonuses (previews), so the daily walk re-reads it instead of re-scanning. */
 function anyReach(s: GameState, v: SimView, type: BuildingId, need: NeedId): boolean {
   const first = houseWants(s, v).first;
+  const ids: number[] = [];
+  for (const id of v.d.houses) if (first[id] === need && getBuilding(s, id)) ids.push(id);
+  if (ids.length === 0) return false;
+  const slots = validSlots(s, type, 'ordo');
+  const layout = layoutEpoch(s), rank = s.rank;
+  const shrine = fxAdd(s, 'shrineRadius'), market = fxAdd(s, 'marketRadius'), baths = fxAdd(s, 'bathsRadius');
+  let byKey = reachLast.get(s);
+  if (!byKey) { byKey = new Map(); reachLast.set(s, byKey); }
+  const key = `${type}|${need}`;
+  const c = byKey.get(key);
+  if (c && c.slots === slots && c.layout === layout && c.rank === rank && c.shrine === shrine && c.market === market
+    && c.baths === baths && sameIds(c.ids, ids)) return c.value;
+  const value = reachAny(s, type, need, ids, first, slots);
+  byKey.set(key, { slots, layout, rank, shrine, market, baths, ids, value });
+  return value;
+}
+interface ReachMemo { slots: Map<number, number>; layout: number; rank: number; shrine: number; market: number; baths: number; ids: number[]; value: boolean }
+const reachLast = new WeakMap<GameState, Map<string, ReachMemo>>();
+
+function sameIds(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false;
+  return true;
+}
+
+function reachAny(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[], first: Record<number, NeedId>, slots: Map<number, number>): boolean {
   const waiting: Rect[] = [];
-  for (const id of v.d.houses) {
-    if (first[id] !== need) continue;
+  for (const id of ids) {
     const b = getBuilding(s, id);
     if (!b) continue;
     const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
     waiting.push({ x: b.x, y: b.y, w, h });
   }
-  if (waiting.length === 0) return false;
   let reach = 0;
   for (const sv of BUILDING_DEFS[type].service ?? []) {
     const bonus = RADIUS_BONUS[sv.layer];
     reach = Math.max(reach, sv.radius + (bonus ? fxAdd(s, bonus) : 0));
   }
   reach += 2;
-  for (const tile of validSlots(s, type, 'ordo').keys()) {
+  for (const tile of slots.keys()) {
     const x = tx(tile), y = ty(tile);
     const [w, h] = sizeOf(type, classAt(s, type, x, y));
     const r: Rect = { x, y, w, h };
