@@ -264,10 +264,16 @@ describe('the Capitolium (DESIGN §9.5)', () => {
     const flow = capitoliumFlow(s);
     expect(flow?.bottleneck).toBe('stone');
     expect(flow?.eta).toBe(null);
+    // the bottleneck in stone a day, not in work units (R23): nothing comes in, the crew would lay its share of the
+    // temple's stone each day
+    expect(flow?.supply).toBe(0);
+    expect(flow!.demand).toBeLessThan(C.CAP_MAT.stone);
     s.res.stone = 1e6;
     const f2 = capitoliumFlow(s);
     expect(f2?.bottleneck).toBe('crew');
     expect(f2?.eta).toBeGreaterThan(0);
+    expect(f2?.demand).toBe(0);
+    expect(flow?.demand).toBeCloseTo((C.CAP_MAT.stone * fx(s, 'capMat') / cap.work) * f2!.rate, 6);   // the crew's work a day × stone per work
   });
 
   it('raises a stage at each quarter (fx, log, morale for 30 days) and completes in victory', () => {

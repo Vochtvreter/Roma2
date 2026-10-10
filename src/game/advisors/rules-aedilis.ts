@@ -14,7 +14,7 @@ import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import {
-  CLEAR, R, STEP, aName, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor,
+  CLEAR, R, STEP, aName, bestFood, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor,
   three, tierWord,
 } from './util';
 import type { CadencedRule, HouseWant } from './util';
@@ -194,6 +194,8 @@ function spirits(m: number): string {
 function termRemedy(s: GameState, label: string): Remedy | null {
   const l = label.toLowerCase();
   if (/ration|portion/.test(l)) {
+    // under the Lex de annona's emergency cut the edict changes nothing until the cut lifts: more grain lifts it
+    if (s.ordo.emergency.rations !== 'none') return { kind: 'place', building: bestFood(s) };
     const cur = edictOption(s, 'rationes');
     return cur === 'parcae' ? { kind: 'edict', edict: 'rationes', option: 'plenae' } : cur === 'plenae' ? { kind: 'edict', edict: 'rationes', option: 'largae' } : null;
   }

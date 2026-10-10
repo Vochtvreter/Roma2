@@ -44,7 +44,7 @@ const TEXT: Record<ReasonCode, string> = {
   rank: 'Rome expects {a:type} of a {rank}: our next petition names it.',
   materials: 'We lack {qty} {res} for the {for}[, ≈ {eta} days at our pace]: {a:type} will bring it in.',
   luxury: 'The great houses want {res} and our groves press too little: {a:type} is planted.',
-  focusPlan: 'The council\'s focus on {focus} calls for {a:type}.',
+  focusPlan: 'The council\'s plan[ for {focus}] calls for {a:type}.',
   beauty: '{A:type} to lift {n} stone houses toward the dignity of a domus.',
   capitolium: 'The Capitolium needs {qty} more {res} to keep rising[, ≈ {eta} days at our pace]: {a:type} will bring it in.',
   needWater: 'Wells drawing {goal} a day for a need of {need}[ — {why}].',
@@ -81,7 +81,7 @@ const SHORT: Record<ReasonCode, string> = {
   storageFull: '{Type} — {res} stores {pct}% full', beds: '{Type} ({free} free beds; we keep {keep})',
   waterAccess: '{Type} — {n} homes lack water', evolve: '{Type} — {n} homes lack {want}',
   rank: '{Type} — the {rank} petition names it', materials: '{Type} — we lack {qty} {res}',
-  luxury: '{Type} — the great houses want {res}', focusPlan: '{Type} — the {focus} plan',
+  luxury: '{Type} — the great houses want {res}', focusPlan: '{Type} — the council\'s[ {focus}] plan',
   beauty: '{Type} — beauty for {n} stone houses', capitolium: '{Type} — the Capitolium needs {res}',
   needWater: 'Staffed the wells: water need {need}/day',
   needFood: 'Staffed the fields: grain need {need}/day[ + winter stock ({stock} of {target})]',
@@ -102,6 +102,17 @@ const FLIPPED: Partial<Record<ReasonCode, [string, string]>> = {
   emergencyRations: ['Lex de annona: grain is back to {doh} days; full rations are restored.', 'Lex de annona: full rations restored'],
   emergencyWater: ['Lex de annona: water is back to {doh} days; the works draw again.', 'Lex de annona: the works draw water again'],
   priority: ['By your hand: {n} on {cat}.', '{Cat}: {n} by your hand'],
+};
+
+/** Sentences for a case of a code its params name: Aestas already upon us (no `days` ahead), a lacking good that the
+ *  stores now hold (`covered`: the work still keeps it coming, but "we lack" would contradict the stock beside it). */
+const VARIANT: Partial<Record<ReasonCode, { when: (p: Reason['params']) => boolean; text: [string, string] }>> = {
+  aestasWater: {
+    when: (p) => !(typeof p.days === 'number' && p.days > 0),
+    text: ['Aestas is upon us and our water would fall to {low} days; we keep {keep}, so {a:type} is raised.', '{Type} — Aestas: water would fall to {low} d, we keep {keep}'],
+  },
+  materials: { when: (p) => p.covered === 1, text: ['We have {res} enough for the {for}; {a:type} keeps the supply coming.', '{Type} — keeps the {res} coming'] },
+  capitolium: { when: (p) => p.covered === 1, text: ['We have {res} enough for the Capitolium for now; {a:type} keeps the supply coming.', '{Type} — keeps the {res} coming for the Capitolium'] },
 };
 
 /** Display name of a work in running text ('house plot', 'horreum', 'shrine', …). */
@@ -159,7 +170,10 @@ function template(r: Reason, short: boolean): string {
   const p = r.params;
   const flip = FLIPPED[r.code];
   const flipped = flip !== undefined && (r.code === 'priority' ? p.manual !== undefined : p.level === 'none' || p.paused === 0);
-  return flipped ? flip[short ? 1 : 0] : (short ? SHORT : TEXT)[r.code] ?? r.code;
+  if (flipped) return flip[short ? 1 : 0];
+  const variant = VARIANT[r.code];
+  if (variant?.when(p)) return variant.text[short ? 1 : 0];
+  return (short ? SHORT : TEXT)[r.code] ?? r.code;
 }
 
 /** "1 homes" → "1 home" (the templates count homes in the plural). */

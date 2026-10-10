@@ -32,8 +32,10 @@ import { B } from '../src/game/balance';
 import { Rng } from '../src/game/rng';
 import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
+import { moraleTarget } from '../src/game/civic';
+import { bestFood } from '../src/game/advisors/util';
 
-type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number };
+type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
 interface Fix { levels: [Severity, Setup, number?][]; clear: Setup }
 
@@ -61,6 +63,7 @@ function day(s: GameState, p: Patch = {}): TickContext {
   const g = v.c.groupNeed.grain;
   ctx.rates.cons.grain.eating = p.eat ?? g[0] + g[1] + g[2] + g[3];   // everyone fed unless the patch says otherwise
   if (p.rot !== undefined) ctx.rates.cons.grain.rot = p.rot;
+  if (p.spill !== undefined) ctx.rates.cons.grain.spill = p.spill;
   advisorsDay(s, ctx, v);
   return ctx;
 }
@@ -99,6 +102,7 @@ const choice = (d: number) => (s: GameState) => {
     options: [{ label: 'Agree', note: '', key: 'a' }, { label: 'Decline politely', note: 'Nothing changes.', key: 'b' }] };
 };
 const merchant = (s: GameState): void => {
+  if (s.rank < 1) s.rank = 1;   // Commercium is open (a Castra colony does not trade)
   s.trade.merchant = { name: 'Syrian spice traders', arrived: s.day, until: s.day + 12, offers: [{ id: 1, kind: 'buy', res: 'grain', qty: 40, price: 2, taken: false }] };
 };
 const pet = (ready: boolean, label = '50 souls') => ({ decision: 'path1', rank: 1, ready, fee: { denarii: 9e9 }, affordable: false, needs: [{ label, met: ready }] });
@@ -114,7 +118,11 @@ const FIX: Record<RuleId, Fix> = {
     levels: [[3, () => ({ eat: 1, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } })], [2, () => ({ eat: 3, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } })]],
     clear: () => ({ eat: 16, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } }),
   },
-  'annonae.storage': { levels: [[1, () => ({ grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS], [2, () => ({ rot: 12, grain: { stock: 990, cap: 1000 } })]], clear: () => ({ rot: 0, grain: { stock: 500, cap: 1000 } }) },
+  'annonae.storage': {
+    levels: [[0, () => ({ grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS], [1, () => ({ spill: 4, grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS],
+      [1, () => ({ rot: 4, grain: { stock: 990, cap: 1000 } })], [2, () => ({ rot: 12, grain: { stock: 990, cap: 1000 } })]],
+    clear: () => ({ rot: 0, spill: 0, grain: { stock: 500, cap: 1000 } }),
+  },
   'annonae.goods': {
     levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
       [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'insula', oil: 0.4, declining: true }); s.res.oil = 3; }]],
@@ -134,11 +142,14 @@ const FIX: Record<RuleId, Fix> = {
   'aquarum.aqueduct': { levels: [[1, (s) => { s.rank = 3; }], [2, (s) => { s.rank = 3; ctl.pet = { ...pet(false, 'Aqueduct flowing'), rank: 4 }; }]], clear: (s) => { s.rank = 0; } },
   'fabrum.labour': {
     levels: [[1, (s) => ({ c: { idle: s.people.slice(0, 5).map((p) => p.id), workforce: 20, catSlots: ZERO, catStaffed: ZERO } }), A.RULES.IDLE_DAYS],
-      [2, () => ({ c: { idle: [], catSlots: { ...ZERO, food: 10 }, catStaffed: ZERO }, water: { net3: -1 } })]],
+      [2, () => ({ c: { idle: [], catSlots: { ...ZERO, food: 10 }, catStaffed: ZERO }, grain: { stock: 10, net3: -1 } })]],
     clear: () => ({ c: { idle: [], catSlots: ZERO, catStaffed: ZERO } }),
   },
   'fabrum.stalled': { levels: [[1, (s) => site(s, 25)], [2, (s) => site(s, 45)]], clear: (s) => site(s, null) },
-  'fabrum.capitolium': { levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 11 }; }]], clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 11 }; } },
+  'fabrum.capitolium': {
+    levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 }; }]],
+    clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 1100, supply: 0, demand: 0 }; },
+  },
   'quaestor.coin': {
     levels: [[3, () => ({ coin: { stock: 1000, net30: -100 } })], [2, () => ({ coin: { stock: 3000, net30: -100 } })], [1, () => ({ coin: { stock: 8000, net30: -100 } })],
       [3, (s) => { s.buildings[1].unpaid = true; }]],
@@ -267,6 +278,55 @@ describe('engine', () => {
     day(s, { grain: ess(500, -100) });
     expect(hush(s, 'annonae.grain.runout').ok).toBe(false);
   });
+  describe('a hush lasts its 30 days (R11)', () => {
+    const G = 'annonae.grain.runout';
+    const at = (r: number): Patch => ({ grain: ess(r * 100, -100) });
+    const onCard = (s: GameState): RuleId[] => activeAdvisories(s, { forCard: true }).map((a) => a.rule);
+    const told = (ctx: TickContext): boolean => ctx.fx.some((f) => f.kind === 'advisory' && f.rule === G);
+    it('a clear and a re-raise at the same severity stay hushed, quietly', () => {
+      const s = base();
+      day(s, at(20));                                               // Cave
+      expect(hush(s, G).ok).toBe(true);
+      for (let i = 0; i < LIFE; i++) day(s, at(200));
+      expect(s.guidance.advisories[G]!.active).toBe(false);
+      const lines = s.log.length;
+      const ctx = day(s, at(20));
+      expect(s.guidance.advisories[G]!.active).toBe(true);
+      expect(s.day).toBeLessThan(s.guidance.advisories[G]!.snoozeUntil!);
+      expect(onCard(s)).not.toContain(G);
+      expect(told(ctx)).toBe(false);
+      expect(s.log.length).toBe(lines);                             // no second Annales line for the same Cave
+    });
+    it('a fall to a watch Nota (flapping) and back stays hushed', () => {
+      const s = base();
+      day(s, at(40));
+      for (let i = 0; i < LIFE; i++) day(s, at(200));
+      day(s, at(40));                                               // second raise inside the flap window
+      expect(hush(s, G).ok).toBe(true);
+      for (let i = 0; i < LIFE; i++) day(s, at(200));
+      expect(s.guidance.advisories[G]!.params.watch).toBe(1);       // kept as a watch Nota
+      expect(s.guidance.advisories[G]!.sev).toBe(0);
+      day(s, at(40));
+      expect(s.guidance.advisories[G]!.sev).toBe(1);
+      expect(onCard(s)).not.toContain(G);
+    });
+    it('a fall and a rise back to the hushed severity stay hushed; a graver one shows', () => {
+      const s = base();
+      day(s, at(20));
+      expect(hush(s, G).ok).toBe(true);
+      for (let i = 0; i <= A.DOWNGRADE_DAYS; i++) day(s, at(40));
+      expect(s.guidance.advisories[G]!.sev).toBe(1);
+      expect(told(day(s, at(20)))).toBe(false);
+      expect(s.guidance.advisories[G]!.sev).toBe(2);
+      expect(onCard(s)).not.toContain(G);
+      const m = base();
+      day(m, at(40));                                               // hushed at Monitum …
+      expect(hush(m, G).ok).toBe(true);
+      expect(told(day(m, at(20)))).toBe(true);                      // … a Cave breaks it
+      expect(onCard(m)).toContain(G);
+      expect(m.guidance.advisories[G]!.snoozeUntil).toBeUndefined();
+    });
+  });
   it('appoints advisors by their triggers and keeps unappointed rules silent', () => {
     const s = fresh(42);
     s.morale = 10;
@@ -284,6 +344,130 @@ describe('engine', () => {
     const b = JSON.parse(JSON.stringify(a)) as GameState;
     run(a, 60); run(b, 60);
     expect(JSON.stringify(b.guidance)).toBe(JSON.stringify(a.guidance));
+  });
+});
+
+describe('fabrum.labour: "We lack N hands" (R10)', () => {
+  const L = 'fabrum.labour';
+  const lack = (p: Patch): Patch => ({ ...p, c: { idle: [], catSlots: { ...ZERO, food: 10, materials: 8 }, catStaffed: { ...ZERO, materials: 1 } } });
+  it('stays quiet while the stores hold months, however negative the 3-day net', () => {
+    const s = base();
+    for (let i = 0; i < 5; i++) day(s, lack({ grain: { stock: 6000, net3: -20 }, water: { stock: 3000, net3: -5 } }));
+    expect(s.guidance.advisories[L]?.active ?? false).toBe(false);
+  });
+  it('stays quiet when the short essential has no open post (it wants a work, not hands)', () => {
+    const s = base();
+    day(s, lack({ water: { stock: 10, net3: -2 } }));                // water short, but no open post at the wells
+    expect(s.guidance.advisories[L]?.active ?? false).toBe(false);
+  });
+  it('raises a Cave on a short runway and first offers the short work\'s hands, usable', () => {
+    const s = base();
+    const p = lack({ grain: { stock: 100, net3: -10 } });
+    day(s, p);
+    const m = s.guidance.advisories[L]!;
+    expect(m.active).toBe(true);
+    expect(m.sev).toBe(2);
+    const r = renderAdvisory(s, fake(s, p), { rule: L, advisor: 'fabrum', memo: m });
+    expect(r.text).toMatch(/grain lasts 10 days/);
+    expect(r.remedies[0].remedy).toEqual({ kind: 'priority', cat: 'food', days: B.ordo.PRIORITY_DAYS });
+    expect(r.remedies[0].check.ok).toBe(true);
+    s.ordo.on.labour = false;
+    expect(renderAdvisory(s, fake(s, p), { rule: L, advisor: 'fabrum', memo: m }).remedies[0].remedy).toEqual({ kind: 'open', tab: 'people', anchor: 'labour' });
+  });
+});
+
+describe('annonae.storage: full sheds (R12)', () => {
+  const S = 'annonae.storage';
+  const render = (s: GameState, p: Patch) => renderAdvisory(s, fake(s, p), { rule: S, advisor: 'annonae', memo: s.guidance.advisories[S]! });
+  it('full stores and the open sheds\' ordinary rot stay off the counsel card; spilling grain does not', () => {
+    const s = base();
+    for (let i = 0; i < A.RULES.STORAGE_DAYS; i++) day(s, { rot: 1.1, grain: { stock: 990, cap: 1000, net3: 5 } });
+    expect(s.guidance.advisories[S]!.active).toBe(true);
+    expect(s.guidance.advisories[S]!.sev).toBe(0);
+    expect(activeAdvisories(s, { forCard: true }).map((a) => a.rule)).not.toContain(S);
+    expect(render(s, { rot: 1.1 }).title).toBe('Grain rots in the open sheds: 1.1 a day.');
+    day(s, { spill: 6, rot: 1.1, grain: { stock: 1000, cap: 1000, net3: 5 } });
+    expect(s.guidance.advisories[S]!.sev).toBe(1);
+    expect(render(s, {}).title).toBe('The sheds overflow: 6 grain a day spills and 1.1 rots.');
+  });
+  it('with more than twice the grain reserve in store, selling comes before another granary', () => {
+    const s = base();
+    s.rank = 1;                                                        // Commercium is open
+    day(s, { rot: 4, grain: { stock: 990, cap: 1000, doh: 200 } });
+    const rich = render(s, {}).remedies.map((r) => r.remedy.kind);
+    expect(rich[0]).toBe('contract');
+    expect(rich).toContain('place');
+    const t = base();
+    t.rank = 1;
+    day(t, { rot: 4, grain: { stock: 990, cap: 1000, doh: 30 } });
+    expect(render(t, {}).remedies[0].remedy).toEqual({ kind: 'place', building: 'horreum' });
+  });
+});
+
+describe('aedilis.morale under emergency rations (R19)', () => {
+  it('offers no rations edict while the Lex de annona\'s cut sets the portion, but food for the granary', () => {
+    const s = base();
+    s.rank = 1;
+    s.guidance.milestoneDays.fed30 = s.day;                          // the rationes edict is unlocked
+    s.ordo.emergency.rations = 'parcae';
+    const terms = moraleTarget(s, view(s)).terms.map((x) => x.label);
+    expect(terms).toContain('Emergency rations: Parcae');
+    s.morale = 30;
+    ctl.morale = { value: 40, terms: [{ label: 'Emergency rations: Parcae', value: -6 }, { label: 'Deaths', value: -4 }] };
+    day(s);
+    const m = s.guidance.advisories['aedilis.morale']!;
+    expect(m.active).toBe(true);
+    const r = renderAdvisory(s, view(s), { rule: 'aedilis.morale', advisor: 'aedilis', memo: m }).remedies.map((x) => x.remedy);
+    expect(r.some((x) => x.kind === 'edict' && x.edict === 'rationes')).toBe(false);
+    expect(r[0]).toEqual({ kind: 'place', building: bestFood(s) });
+    ctl.morale = null;
+    s.ordo.emergency.rations = 'none';
+    expect(moraleTarget(s, view(s)).terms.map((x) => x.label).some((l) => l.startsWith('Emergency'))).toBe(false);
+  });
+});
+
+describe('the Legate\'s relief remedy (R20) and dates in remedy reasons (R48)', () => {
+  it('is disabled during the cooldown under Annona publica too, exactly when applying it would fail', () => {
+    const s = base();
+    s.decisions.paths.path3 = 'annonaPublica';
+    s.ordo.emergency.lastRelief = s.day - 100;
+    const c = checkRemedy(s, { kind: 'relief' });
+    expect(c.ok).toBe(false);
+    expect(c.ok ? '' : c.reason).toMatch(/^The Legate helped us lately; he hears us again on .+\.$/);
+    expect(c.ok ? '' : c.reason).not.toMatch(/\.\.$/);
+    expect(applyRemedy(structuredClone(s), { kind: 'relief' }).ok).toBe(c.ok);
+    s.ordo.emergency.lastRelief = s.day - B.emergency.RELIEF_COOLDOWN;
+    expect(checkRemedy(s, { kind: 'relief' }).ok).toBe(true);
+    expect(applyRemedy(structuredClone(s), { kind: 'relief' }).ok).toBe(true);
+  });
+  it('ends a date in its own point, not two', () => {
+    const s = base();
+    s.ordo.priorities.push({ cat: 'food', until: s.day + 20 });
+    const c = checkRemedy(s, { kind: 'priority', cat: 'food', days: 30 });
+    expect(c.ok ? '' : c.reason).toMatch(/^Food already comes first until .+\.$/);
+    expect(c.ok ? '' : c.reason).not.toMatch(/\.\.$/);
+  });
+});
+
+describe('fabrum.capitolium in the bottleneck material\'s own units (R23)', () => {
+  it('reads "stone is the bottleneck (1.7/day of 3.8)"', () => {
+    const s = base();
+    ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 };
+    day(s);
+    const m = s.guidance.advisories['fabrum.capitolium']!;
+    expect(renderAdvisory(s, view(s), { rule: 'fabrum.capitolium', advisor: 'fabrum', memo: m }).title).toBe('At this flow the Cella rises in 400 days; stone is the bottleneck (1.7/day of 3.8).');
+  });
+});
+
+describe('quaestor.merchant before Commercium opens (R28)', () => {
+  it('a merchant at a Castra the player cannot trade from raises no counsel', () => {
+    const s = base();
+    s.trade.merchant = { name: 'Syrian spice traders', arrived: s.day, until: s.day + 12, offers: [{ id: 1, kind: 'buy', res: 'grain', qty: 40, price: 2, taken: false }] };
+    day(s, { grain: ess(1000, -100) });
+    expect(s.guidance.advisories['quaestor.merchant']?.active ?? false).toBe(false);
+    s.decisions.paths.charter = 'mercatores';                       // the Mercatores charter opens Commercium at Castra
+    day(s, { grain: ess(1000, -100) });
+    expect(s.guidance.advisories['quaestor.merchant']?.active).toBe(true);
   });
 });
 

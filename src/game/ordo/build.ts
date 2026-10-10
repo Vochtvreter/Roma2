@@ -8,15 +8,16 @@
 import { B as B$ } from '../balance';
 import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
 import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
-import { dateOf as dateOf$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
+import { dateOf as dateOf$, seasonOf as seasonOf$ } from '../calendar';
 import { addCost, canAfford, log, missing } from '../state';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
 import { settingValue } from '../decisions';
+import { sectionRevealed } from '../reveal';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
 import { desirability, houseDesir, previewCovered } from '../coverage';
-import { buildingRateOf, maxPotential, seasonMult } from '../economy';
+import { buildingRateOf, seasonMult } from '../economy';
 import { fxAdd as fxAdd$ } from '../fx';
 import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
@@ -24,13 +25,14 @@ import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { canSpend, capitoliumAhead, etaDays, floorOk, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
+import { aestasWork } from './water';
 import { houseWants as eachHouseWant } from '../advisors/util';
 import { peopleIndex } from '../census';
 import { classAt as classAt$, sizeOf as sizeOf$ } from '../derived';
 import { rectGap as rectGap$ } from '../world/grid';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$, seasonLength = seasonLength$,
+const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$,
   seasonOf = seasonOf$, memo = memo$, structEpoch = structEpoch$, dayEpoch = dayEpoch$, dayStruct = dayStruct$,
   layoutEpoch = layoutEpoch$,
   fxAdd = fxAdd$, idx = idx$, tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
@@ -200,18 +202,16 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     for (const t of best) { const w = make(t, 'survivalFood', { doh: Math.floor(f.grain.doh) }, { survival: true }); if (w) { yield w; break; } }
   }
   if (f.water.structural && f.water.doh < B.ordo.SURVIVAL_DOH) {
+    // a well; a cistern only when no well can be raised (not while one already rises: its rain is little and slow)
     const p = { doh: Math.floor(f.water.doh) };
-    yield* yieldOf(make('puteus', 'survivalWater', p, { survival: true }) ?? make('cisterna', 'survivalWater', p, { survival: true }));
+    yield* yieldOf(make('puteus', 'survivalWater', p, { survival: true }) ?? (unfinished(v, 'puteus') ? null : make('cisterna', 'survivalWater', p, { survival: true })));
   }
-  // 2 · Aestas: the summer forecast falls below the water reserve
+  // 2 · Aestas: the summer forecast falls below the water reserve (aestasWork: a cistern while room is what is short)
   const wr = settingValue(s, 'waterReserve');
   const wc = f.water.crunch;
   if (wc && wc.startsIn <= B.advisors.RULES.AESTAS_LEAD && wc.lowestDoh < wr && !unfinished(v, 'cisterna') && !unfinished(v, 'puteus')) {
-    // storage helps only while a full store (and one cistern more) carries the Aestas deficit above the water reserve;
-    // past that a well's yield does (a store that merely covered the deficit raised 25 cisterns in five years)
-    const deficit = f.water.cons - maxPotential(s, 'water', 1);
-    const helps = deficit <= 0 || deficit * seasonLength(s.day + wc.startsIn) + wr * f.water.need <= f.water.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
-    yield* yieldOf(make(helps ? 'cisterna' : 'puteus', 'aestasWater', { days: wc.startsIn, low: Math.floor(wc.lowestDoh), keep: wr }));
+    const t = aestasWork(s, v, f.water, wc, wr);
+    if (t) yield* yieldOf(make(t, 'aestasWater', { ...(wc.startsIn > 0 ? { days: wc.startsIn } : {}), low: Math.floor(wc.lowestDoh), keep: wr }));
   }
   // 3 · Hiems store, then stores that are full. A horreum only when the Hiems need exceeds what our stores can hold: a
   //     shortfall the stores could already hold is the fields' and the hunters' to fix (a horreum every build day while
@@ -272,10 +272,41 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   }
   // 9 · oil for the great houses (groves for the demand × LUXURY: the margin the stores need to carry Ver and Aestas)
   if (BUILDING_DEFS.olivetum.rank <= s.rank && hw.t4Res * B.housing.GOODS.oil * B.ordo.LUXURY > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
-  // 10 · the council focus's build plan; 11 · beauty under Urbs
+  // 10 · the council focus's build plan (named only once the player can see the focus); 11 · beauty under Urbs
   const focus = s.decisions.focus;
-  for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', { focus }));
+  const plan = focusParams(s);
+  for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', plan));
   if (focus === 'urbs' && hw.t3Low > 0) yield* yieldOf(make('hortus', 'beauty', { n: hw.t3Low }));
+}
+
+/** The focus a focusPlan reason names: none before the council's focus is revealed (it is the Ordo's default then, and
+ *  "the Concordia plan" would cite a choice the player has never seen). */
+function focusParams(s: GameState): Reason['params'] {
+  return sectionRevealed(s, 'focus') ? { focus: s.decisions.focus } : {};
+}
+
+/** A materials or Capitolium reason as it stands now (DESIGN §10.6): the lacking quantity from `lack` (today's needs
+ *  unless given), its ETA scaled to it; or the "covered" case once the stores hold what was lacking — a lumber camp's
+ *  own felling often fills the timber store the day it is staked, and "we lack 24 timber" beside "the stores are full"
+ *  read as a contradiction. Other reasons are returned as they are. */
+export function currentReason(s: GameState, v: SimView, r: Reason, lack?: Cost): Reason {
+  if (r.code !== 'materials' && r.code !== 'capitolium') return r;
+  const res = r.params.res;
+  if (typeof res !== 'string' || !(RESOURCES as readonly string[]).includes(res)) return r;
+  const now = lack ? null : materialNeeds(s, v);
+  const q = Math.ceil((lack ?? now?.lack ?? {})[res as ResId] ?? 0);
+  const was = typeof r.params.qty === 'number' ? r.params.qty : 0;
+  const forNow = q > 0 && r.code === 'materials' ? now?.forOf[res as ResId] : undefined;   // whom the good is lacking for today
+  if (q > 0 && q === was && r.params.covered === undefined && (forNow === undefined || forNow === r.params.for)) return r;
+  const p: Reason['params'] = { ...r.params };
+  delete p.covered;
+  delete p.eta;
+  if (q > 0) {
+    p.qty = q;
+    if (forNow !== undefined) p.for = forNow;
+    if (typeof r.params.eta === 'number' && was > 0) p.eta = Math.max(1, Math.ceil((r.params.eta * q) / was));
+  } else p.covered = 1;
+  return { code: r.code, params: p };
 }
 
 /** A work's cost (any slot but a castellum's) exceeds a store cap. */
@@ -422,10 +453,20 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   const full = ordoSites(s) >= maxSites(v);
   const w = full ? walk.list.find((e) => e.state === 'proposed' && e.wish.survival)?.wish : walk.take;
   if (!w) return;
+  const res = w.reason.params.res;
+  const had = typeof res === 'string' && (RESOURCES as readonly string[]).includes(res) ? s.res[res as ResId] : 0;
   const r = placeBuilding(s, w.type, w.tile, { owner: 'ordo', reason: w.reason, noStake: w.survival });
   if (!r.ok) return;
   if (r.id !== undefined) ctx.fx.push({ kind: 'ordoPlaced', id: r.id });
-  chronicle(s, 'ordo', w.reason, { ref: r.id, decided });
+  // the timber felled on the site enters the stores: a lack it made up is told as covered, here and on the site
+  let reason = w.reason;
+  if ((reason.code === 'materials' || reason.code === 'capitolium') && typeof res === 'string' && typeof reason.params.qty === 'number') {
+    const got = s.res[res as ResId] - had;
+    if (got > 0) reason = currentReason(s, v, reason, { [res]: Math.max(0, reason.params.qty - got) });
+    const b = r.id !== undefined ? getBuilding(s, r.id) : undefined;
+    if (b && reason !== w.reason) b.reason = reason;
+  }
+  chronicle(s, 'ordo', reason, { ref: r.id, decided });
 }
 
 /** Urbs: paves the busiest dirt streets nearest the forum, URBS_PAVE streets a month, from unreserved stone. */
@@ -506,7 +547,7 @@ export function wishList(s: GameState, v: SimView, n: number): WishView[] {
     const staked = b.status === 'staked';
     out.push({
       type: b.type, state: staked ? 'staked' : 'building', siteId: b.id, tile: idx(b.x, b.y),
-      reason: b.reason ?? { code: 'focusPlan', params: { type: b.type, focus: s.decisions.focus } },
+      reason: b.reason ? currentReason(s, v, b.reason) : { code: 'focusPlan', params: { type: b.type, ...focusParams(s) } },
       eta: staked ? Math.max(0, B.construction.STAKE_DAYS - (s.day - b.placed)) : Math.ceil((b.work * (1 - b.progress)) / builders),
     });
   }

@@ -5,7 +5,7 @@
 import { B as B$ } from '../balance';
 import type { ActionResult, BuildingId, EdictId, FailCode, GameState, LaborCat, OrdoArea, OverlayId, Remedy, TabId } from '../types';
 import * as act from '../actions';
-import { aucYear as aucYear$, formatRoman as formatRoman$ } from '../calendar';
+import { formatRoman as formatRoman$ } from '../calendar';
 import { census } from '../census';
 import { derived as derived$ } from '../derived';
 import { edictOption, edictWindow, isUnlocked, settingValue, switchOn } from '../decisions';
@@ -23,7 +23,7 @@ import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
 import { aName, bestHub, days, int, rankWord, resName } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, aucYear = aucYear$, formatRoman = formatRoman$, derived = derived$, pushActionFx = pushActionFx$,
+const B = B$, formatRoman = formatRoman$, derived = derived$, pushActionFx = pushActionFx$,
   BUILDING_DEFS = BUILDING_DEFS$, EDICT_DEFS = EDICT_DEFS$, FOCUS_DEFS = FOCUS_DEFS$, SETTING_DEFS = SETTING_DEFS$,
   SWITCH_DEFS = SWITCH_DEFS$, HUB_DEFS = HUB_DEFS$,
   getBuilding = getBuilding$;
@@ -131,7 +131,7 @@ function checkAsk(s: GameState, type: BuildingId): ActionResult {
   const b = buildable(s, type);
   if (!b.ok) return b;
   if (!s.ordo.on.build) return fail('manualOnly', 'Construction is in your hands: place it yourself.');
-  if (s.ordo.requests.some((q) => q.type === type)) return fail('chosen', `The Ordo will raise ${aName(type)} within days.`);
+  if (s.ordo.requests.some((q) => q.type === type)) return fail('chosen', `Asked of the Ordo: it raises ${aName(type)} when the stores allow.`);
   // one at a time: a second ask while the first still rises would only stack up works the advice did not need
   if (type !== 'area' && s.buildings.some((b) => b.type === type && b.status !== 'done')) return fail('chosen', `${aName(type).replace(/^./, (c) => c.toUpperCase())} is already being raised.`);
   if (s.ordo.requests.length >= B.ordo.REQUESTS_MAX) return fail('full', `The Ordo already holds ${B.ordo.REQUESTS_MAX} requests.`);
@@ -153,7 +153,7 @@ function checkPriority(s: GameState, cat: LaborCat, n: number): ActionResult {
   if (!s.ordo.on.labour) return fail('manualOnly', 'Labour is in your hands: assign it yourself.');
   if (cat !== 'builders' && census(s).catSlots[cat] <= 0) return fail('noSlots', `No post on ${CAT_ON[cat]} stands open: raise one first.`);
   const p = s.ordo.priorities.find((x) => x.cat === cat && x.until > s.day);
-  return p ? fail('chosen', `${CAT_FIRST[cat]} already come first until ${formatRoman(p.until)}.`) : OK;
+  return p ? fail('chosen', `${CAT_FIRST[cat]} already ${cat === 'food' ? 'comes' : 'come'} first until ${formatRoman(p.until)}`) : OK;   // the date ends in its point
 }
 
 function checkAssign(s: GameState, cat: LaborCat, n: number): ActionResult {
@@ -174,12 +174,12 @@ function checkEdict(s: GameState, id: EdictId, option: string): ActionResult {
   return OK;
 }
 
+/** As events.triggerRelief judges it: the Legate answers once per RELIEF_COOLDOWN, the Annona publica's free relief
+ *  included (it makes the grain free, not the Legate sooner). */
 function checkRelief(s: GameState): ActionResult {
   if (s.choice) return fail('notReady', 'Another dispatch awaits your answer.');
-  const em = s.ordo.emergency;
-  const free = s.decisions.paths.path3 === 'annonaPublica' && em.freeReliefYear !== aucYear(s.day);
-  const next = em.lastRelief + B.emergency.RELIEF_COOLDOWN;
-  if (!free && em.lastRelief >= 0 && s.day < next) return fail('window', `The Legate helped us lately; he hears us again on ${formatRoman(next)}.`);
+  const next = s.ordo.emergency.lastRelief + B.emergency.RELIEF_COOLDOWN;
+  if (s.day < next) return fail('window', `The Legate helped us lately; he hears us again on ${formatRoman(next)}`);   // the date ends in its point
   return OK;
 }
 

@@ -12,11 +12,19 @@ import { newWishes, ordoBuild, processRequests, wishList } from './build';
 import { ordoTrade, ordoTradeWould } from './trade';
 import { savingFor, savingReason } from './saving';
 import { beginDay, decisionsToday } from './chronicle';
+import { layoutEpoch } from '../memo';
+import { getBuilding } from '../lookup';
+import { view } from '../sim';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$;
 
-const reports = new WeakMap<GameState, CouncilReport>();
+/** The day's report, what it was made from, and the report as shown: made again on read when the focus changed since
+ *  the council sat, and without the sites finished since (a completion later in the tick: the ticker never says
+ *  "Raising" of a work the Annales call finished, nor the Agenda "building 100%"). The rest of the Agenda stands until
+ *  the next sitting, as the council left it. */
+interface Kept { rep: CouncilReport; shown: CouncilReport; layout: number; focus: string; plan: LabourPlan; on: Record<OrdoArea, boolean> }
+const reports = new WeakMap<GameState, Kept>();
 const AGENDA = 3;            // wishes shown in the Agenda (DESIGN §10.6)
 const TICKER_MAX = 5;        // ticker lines per day
 
@@ -35,7 +43,8 @@ export function runOrdo(s: GameState, ctx: TickContext, rng: Rng, v: SimView): L
   processRequests(s, ctx, v);
   if (on.build && s.day % B.ordo.BUILD_EVERY === 0) ordoBuild(s, ctx, v);
   if (on.trade && s.day % B.ordo.TRADE_EVERY === B.ordo.TRADE_OFFSET) ordoTrade(s, ctx, v);
-  reports.set(s, report(s, v, plan, on));
+  const rep = report(s, v, plan, on);
+  reports.set(s, { rep, shown: rep, layout: layoutEpoch(s), focus: s.decisions.focus, plan, on });
   return plan;
 }
 
@@ -66,10 +75,34 @@ function ticker(s: GameState, v: SimView, plan: LabourPlan, agenda: CouncilRepor
   return out.slice(0, TICKER_MAX);
 }
 
-/** The last council report of this state (never saved); an empty report before the first tick. */
+/** The last council report of this state (never saved); an empty report before the first tick. Read only by the UI:
+ *  the day's labour plan stands; the rest is made again after a change of focus, and a site finished since the
+ *  sitting leaves the Agenda and the ticker. */
 export function councilReport(s: GameState): CouncilReport {
-  return reports.get(s) ?? {
-    day: s.day, labour: [], agenda: [], saving: null, trade: [],
-    would: { labour: {}, build: null, trade: null }, ticker: [],
-  };
+  const k = reports.get(s);
+  if (!k) {
+    return {
+      day: s.day, labour: [], agenda: [], saving: null, trade: [],
+      would: { labour: {}, build: null, trade: null }, ticker: [],
+    };
+  }
+  if (k.rep.day !== s.day) return k.shown;
+  if (k.focus !== s.decisions.focus) {
+    k.rep = k.shown = report(s, view(s), k.plan, k.on);
+    k.focus = s.decisions.focus;
+    k.layout = layoutEpoch(s);
+  } else if (k.layout !== layoutEpoch(s)) {
+    k.shown = withoutFinished(s, k.rep);
+    k.layout = layoutEpoch(s);
+  }
+  return k.shown;
+}
+
+/** The report without the Agenda's sites that are finished (or gone) now, and the ticker lines that raise them. */
+function withoutFinished(s: GameState, rep: CouncilReport): CouncilReport {
+  const done = rep.agenda.filter((w) => w.siteId !== undefined && (getBuilding(s, w.siteId)?.status ?? 'done') === 'done');
+  if (done.length === 0) return rep;
+  const raises = (r: Reason): boolean => (r.params.state === 'raising' || r.params.state === 'staked')
+    && done.some((w) => w.type === r.params.type && w.reason.code === r.code);
+  return { ...rep, agenda: rep.agenda.filter((w) => !done.includes(w)), ticker: rep.ticker.filter((r) => !raises(r)) };
 }

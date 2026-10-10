@@ -7,6 +7,7 @@ import { TRADE_RES as TRADE_RES$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, Remedy, RuleId, SimView, TradeRes } from '../types';
 import { dateOf as dateOf$, dayOf as dayOf$, formatRoman as formatRoman$ } from '../calendar';
 import { settingValue } from '../decisions';
+import { tabRevealed } from '../reveal';
 import { missing } from '../state';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
@@ -161,7 +162,7 @@ const merchant: AdvisorRule = {
   id: 'quaestor.merchant', advisor: 'quaestor',
   evaluate(s): AdvisoryEval | null {
     const m = s.trade.merchant;
-    if (!m || m.until <= s.day) return null;
+    if (!m || m.until <= s.day || !tabRevealed(s, 'trade')) return null;   // his wares are for a colony that may trade
     const want = wanted(s);
     const open = m.offers.filter((o) => !o.taken);
     const answer = open.find((o) => o.kind === 'buy' && want.includes(o.res));

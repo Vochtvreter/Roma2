@@ -60,6 +60,31 @@ describe('tip engine', () => {
     expect(nextTip(s)?.id).toBe('event');
     expect(nextTip(s)?.text(s)).toMatch(/cautious path: Agree\. 30 days remain\./);
   });
+  it('keeps tips the player has not earned yet (R13): build, trade, and the urgent starving and thirst', () => {
+    const s = fresh(42);
+    run(s, 1);
+    expect(s.guidance.tips).not.toContain('starving');               // founding grain is above 20 days: "not now", not "never"
+    expect(s.guidance.tips).not.toContain('thirst');
+    // a site the Ordo raised for an "Ask the Ordo" request is the player's, but not the player's own hand
+    const site = { ...s.buildings.find((b) => b.type === 'puteus')!, id: s.nextId++, owner: 'player' as const, reason: { code: 'request' as const, params: { type: 'puteus' } } };
+    s.buildings.push(site);
+    s.rank = 1;
+    s.trade.contracts.push({ id: s.nextId++, hub: 'durii', mode: 'export', res: 'timber', qty: 40, repeat: true, owner: 'ordo', status: 'idle', trips: 0, created: s.day });
+    pruneGuide(s);
+    expect(s.guidance.tips).not.toContain('build');
+    expect(s.guidance.tips).not.toContain('trade');
+    s.buildings.push({ ...site, id: s.nextId++, reason: undefined });
+    s.trade.contracts.push({ ...s.trade.contracts[0], id: s.nextId++, owner: 'player' });
+    pruneGuide(s);
+    expect(s.guidance.tips).toContain('build');
+    expect(s.guidance.tips).toContain('trade');
+    // the starving tip still comes when the children go hungry and the grain runs low
+    dismissTip(s, 'welcome');
+    s.needs.hunger = [60, 10, 10, 10];
+    s.res.grain = 30;
+    s.day++;                                                          // the forecast is made once a day
+    expect(nextTip(s)?.id).toBe('starving');
+  });
   it('raises the away tip after offline ticks and changes the kicker when the mentor dies', () => {
     const s = fresh(42);
     const away = GUIDE.find((g) => g.id === 'away')!;
@@ -118,6 +143,26 @@ describe('hints', () => {
     expect(lines.some((l) => /^You have a field \(\d+ of 6 hands\)\. Next: (staff \d+ more, or )?raise a 2nd \(50 den, 20 timber\)\.$/.test(l))).toBe(true);
     expect(howToGetMore(s, 'wine', view(s)).join(' ')).toMatch(/would sell it once our caravans reach it/);
     expect(benefitLine('horreum')).toBe('+4,000 safe grain storage');
+  });
+  it('says when a full store\'s building is not yet granted (R03)', () => {
+    const s = run(fresh(42), 2);
+    s.res.timber = 300;
+    expect(howToGetMore(s, 'timber', view(s)).at(-1)).toBe('The stores are full (300 of 300): a warehouse adds room. Rome grants it to a Vicus.');
+    s.rank = 1;
+    expect(howToGetMore(s, 'timber', view(s)).at(-1)).toBe('The stores are full (300 of 300): a warehouse adds room.');
+  });
+  it('names a shrine in the wants tip only when a shrine is what the first waiting house wants (R03)', () => {
+    const wants = GUIDE.find((g) => g.id === 'wants')!;
+    const s = fresh(42);
+    let checked = 0;
+    run(s, 900, (st, _c, i) => {
+      if (i % 30 !== 0 || !wants.when(st)) return;
+      const text = wants.text(st);
+      const religion = /the first wants a shrine/.test(text);
+      expect(/A shrine within \d+ steps/.test(text)).toBe(religion);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
   });
   it('shows the output chain with hands, per hand and the day\'s total', () => {
     const s = run(fresh(42), 2);

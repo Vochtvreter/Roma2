@@ -14,7 +14,7 @@ import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
-  CLEAR, R, STEP, aName, bName, buildingPlace, days, held, idleBySkill, importRemedy, int, listJoin, namesOf, num, openPosts, resName, three,
+  CLEAR, R, STEP, aName, bName, buildingPlace, days, held, idleBySkill, importRemedy, int, listJoin, namesOf, num, openPosts, resName, runway, three,
 } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -56,6 +56,16 @@ function suggest(s: GameState, v: SimView): { type: BuildingId; k: number } | nu
   return pick ? { type: pick, k: Math.min(Math.max(1, idle), BUILDING_DEFS[pick].slots) } : null;
 }
 
+/** What the open posts leave short: water or grain running out by their runway, as the essentials rules judge it (a
+ *  negative 3-day net with months in store is no shortage) while posts at the wells or in the fields stand open, or a
+ *  service nobody mans; null when nothing is (wells all manned and still short want a well, not hands). */
+function shortOf(s: GameState, v: SimView, k: number): 'water' | 'food' | 'services' | null {
+  const low = (e: { stock: number; net3: number }, t: readonly number[]): boolean => { const r = runway(e.stock, e.net3); return r !== null && r < t[2] * k; };
+  if (low(v.f.water, R.WATER_RUNOUT) && openPosts(v, 'water') > 0) return 'water';
+  if (low(v.f.grain, R.GRAIN_RUNOUT) && openPosts(v, 'food') > 0) return 'food';
+  return unstaffedService(s, v) ? 'services' : null;
+}
+
 /** A finished, open service with posts and nobody in them. */
 function unstaffedService(s: GameState, v: SimView): boolean {
   const staffed = v.c.staffed;   // the census once, not a view read per building
@@ -76,9 +86,9 @@ const labour: AdvisorRule = {
       if (o > 0) cats.push(`${cat}:${o}`);
     }
     const idle = c.idle.length;
-    const short = v.f.water.net3 < 0 || v.f.grain.net3 < 0 || unstaffedService(s, v);
-    if (idle === 0 && slots > 0 && open > (R.OPEN_SHARE * slots) / k && short) {
-      return { rule: 'fabrum.labour', severity: 2, metric: { label: 'Hands short', value: open, unit: 'souls' }, params: { mode: 'lack', n: open, cats: cats.join(',') } };
+    const why = idle === 0 && slots > 0 && open > (R.OPEN_SHARE * slots) / k ? shortOf(s, v, k) : null;
+    if (why) {
+      return { rule: 'fabrum.labour', severity: 2, metric: { label: 'Hands short', value: open, unit: 'souls' }, params: { mode: 'lack', n: open, cats: cats.join(','), why } };
     }
     const manual = !s.ordo.on.labour;
     if (idle >= Math.max(R.IDLE_MIN, R.IDLE_SHARE * c.workforce) / k && (manual ? open > 0 : open === 0)) {
@@ -97,8 +107,9 @@ const labour: AdvisorRule = {
   text(s, v, a) {
     const p = a.params;
     if (p.mode === 'lack') {
-      return v.c.pop >= v.c.roll ? 'Every able hand is at work, and Rome\'s roll is full: only a petition opens the gates to more.'
-        : 'Every able hand is at work. Houses for newcomers, or gates opened wider, would bring more.';
+      const short = lackWhy(v, p.why);
+      return v.c.pop >= v.c.roll ? `Every able hand is at work${short}, and Rome's roll is full: only a petition opens the gates to more.`
+        : `Every able hand is at work${short}. Houses for newcomers, or gates opened wider, would bring more.`;
     }
     const who = namesOf(idleBySkill(s, v, null));
     if (p.manual === 1) return `${who} wait for orders. Assign them, or give labour back to the Ordo.`;
@@ -107,11 +118,14 @@ const labour: AdvisorRule = {
   },
   remedies(s, v, a) {
     const p = a.params;
-    // at Rome's roll newcomers cannot come; below it, house plots help only while beds are what keeps them out
+    // the short work's hands first (the Ordo's priority, or the labour table when labour is in your hands); then more
+    // hands: at Rome's roll only a petition; below it house plots while beds keep newcomers out, and wider gates
     if (p.mode === 'lack') {
-      if (v.c.pop >= v.c.roll) return three({ kind: 'open', tab: 'council', anchor: 'petition' });
+      const cat: LaborCat = p.why === 'water' || p.why === 'food' ? p.why : 'services';
+      const first: Remedy = s.ordo.on.labour ? { kind: 'priority', cat, days: B.ordo.PRIORITY_DAYS } : { kind: 'open', tab: 'people', anchor: 'labour' };
+      if (v.c.pop >= v.c.roll) return three(first, { kind: 'open', tab: 'council', anchor: 'petition' });
       const bedsShort = v.c.freeBeds < settingValue(s, 'spareBeds');
-      return three(bedsShort ? { kind: 'place', building: 'area' } : null, { kind: 'edict', edict: 'hospites', option: 'patentes' });
+      return three(first, bedsShort ? { kind: 'place', building: 'area' } : null, { kind: 'edict', edict: 'hospites', option: 'patentes' });
     }
     const sg = suggest(s, v);
     const build: Remedy | null = sg ? { kind: 'place', building: sg.type } : null;
@@ -121,6 +135,16 @@ const labour: AdvisorRule = {
     return three({ kind: 'toggleOrdo', area: 'labour', on: true }, { kind: 'assign', cat: best, n: Math.max(1, Math.min(P(p.n), most)) }, build);
   },
 };
+
+/** ", and water lasts 9 days at this rate" — what the open posts leave short (render time, live numbers). */
+function lackWhy(v: SimView, why: unknown): string {
+  if (why === 'water' || why === 'food') {
+    const e = why === 'water' ? v.f.water : v.f.grain;
+    const r = runway(e.stock, e.net3);
+    return r === null ? '' : `, and ${why === 'water' ? 'water' : 'grain'} lasts ${days(Math.floor(r))} at this rate`;
+  }
+  return why === 'services' ? ', and a work our homes need stands unmanned' : '';
+}
 
 // ───────────────────────────── 12 · fabrum.stalled ─────────────────────────────
 
@@ -190,7 +214,7 @@ const capitolium: AdvisorRule = {
     if (f.eta !== null && f.eta <= limit) return null;
     return {
       rule: 'fabrum.capitolium', severity: 1, metric: f.eta !== null ? { label: 'Next stage', value: Math.ceil(f.eta), unit: 'days' } : undefined,
-      params: { stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', rate: f.rate, need: f.need },
+      params: { stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand },
     };
   },
   title(_s, a) {
@@ -198,7 +222,7 @@ const capitolium: AdvisorRule = {
     const stage = STAGES[Math.min(STAGES.length - 1, P(p.stage))];
     const when = P(p.eta) >= 0 ? `the ${stage} rises in ${days(P(p.eta))}` : `the ${stage} will not rise`;
     if (p.res === 'crew' || p.res === '') return `At this flow ${when}; the crew is the bottleneck (${B.construction.CAP_CREW} fabri at most).`;
-    return `At this flow ${when}; ${resName(p.res as ResId)} is the bottleneck (${num(P(p.rate))}/day of ${num(P(p.need))}).`;
+    return `At this flow ${when}; ${resName(p.res as ResId)} is the bottleneck (${num(P(p.supply))}/day of ${num(P(p.demand))}).`;
   },
   text: (_s, _v, a) => `The Capitolium stands at stage ${toRoman(P(a.params.stage)) || 'nought'} of IV. Its materials are drawn as the work proceeds.`,
   remedies(s, _v, a) {
