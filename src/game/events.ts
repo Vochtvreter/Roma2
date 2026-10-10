@@ -111,7 +111,7 @@ export function fireEvent(s: GameState, ctx: TickContext, rng: Rng, v: SimView, 
   s.eventDays[id] = s.day;
   if (def.kind === 'choice') s.counters.lastChoiceDay = s.day;
   if (def.harmful) s.counters.lastHarmfulDay = s.day;
-  if (id !== 'mercator') ctx.fx.push({ kind: 'event', id });
+  if (def.kind === 'choice') ctx.fx.push({ kind: 'event', id });   // a card: the UI chimes and slows for news
   return true;
 }
 
@@ -137,7 +137,6 @@ export function banditCheck(s: GameState, ctx: TickContext, rng: Rng, caravan: C
   else caravan.qty *= 1 - E.BANDIT_LOSS;
   s.eventDays.latrones = s.day;
   s.counters.lastHarmfulDay = s.day;
-  ctx.fx.push({ kind: 'event', id: 'latrones' });
   const lost = caravan.mode === 'export' ? 'the purse' : `the ${what}`;
   log(s, 'bad', `Latrones! Bandits fell on our caravan from ${HUB_DEFS[caravan.hub].name} and took ${Math.round(E.BANDIT_LOSS * 100)}% of ${lost}.`, ['highlight']);
 }

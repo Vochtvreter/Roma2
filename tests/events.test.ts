@@ -59,15 +59,15 @@ function richState(seed = 42): GameState {
   return s;
 }
 
-/** Steps eventsDay alone over `days` (with modifier expiry, as the tick's housekeeping does). */
-function stepEvents(s: GameState, days: number, offline = false, onFx?: (day: number, c: TickContext) => void): void {
+/** Steps eventsDay alone over `days` (with modifier expiry, as the tick's housekeeping does); reports what fired each day. */
+function stepEvents(s: GameState, days: number, offline = false, onDay?: (day: number, fired: EventId[], c: TickContext) => void): void {
   const rng = new Rng(s.rng);
   for (let i = 0; i < days; i++) {
     s.day += 1;
     s.modifiers = s.modifiers.filter((m) => m.until > s.day);
     const c = ctx(offline);
     eventsDay(s, c, rng, view(s));
-    onFx?.(s.day, c);
+    onDay?.(s.day, EVENTS.filter((id) => s.eventDays[id] === s.day), c);
   }
   s.rng = rng.state;
 }
@@ -76,8 +76,10 @@ describe('pacing (real time)', () => {
   it('no event before day 300, ≥ 200 days between cards, ≥ 120 between harmful events, cooldowns kept', () => {
     const s = richState();
     const fired: { id: EventId; day: number }[] = [];
-    stepEvents(s, 12_000, false, (day, c) => {
-      for (const e of c.fx) if (e.kind === 'event') fired.push({ id: e.id, day });
+    stepEvents(s, 12_000, false, (day, ids, c) => {
+      for (const id of ids) fired.push({ id, day });
+      const cards = c.fx.filter((e) => e.kind === 'event').length;
+      expect(cards).toBe(ids.filter((id) => EVENT_DEFS[id].kind === 'choice').length);   // fx 'event' = a new card
     });
     expect(fired.length).toBeGreaterThan(15);
     expect(Math.min(...fired.map((f) => f.day - START))).toBeGreaterThanOrEqual(B.events.START);
@@ -102,7 +104,7 @@ describe('pacing (real time)', () => {
     expect(forceEvent(s, 'legatus')).toBe(true);
     const expires = s.choice!.expires;
     const fired: EventId[] = [];
-    stepEvents(s, 6000, true, (_d, c) => { for (const e of c.fx) if (e.kind === 'event') fired.push(e.id); });
+    stepEvents(s, 6000, true, (_d, ids) => { fired.push(...ids); });
     expect(fired.length).toBeGreaterThan(5);
     for (const id of fired) {
       expect(EVENT_DEFS[id].benign, id).toBe(true);
