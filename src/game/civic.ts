@@ -27,13 +27,15 @@ const B = B$, LABOR_CATS = LABOR_CATS$, MILESTONE_IDS = MILESTONE_IDS$, dayEpoch
 const M = B.morale;
 const HIEMS = 3;
 
-/** The morale term for today's portion (Largae +6 … Arctae −14) and its label. */
+/** The morale term for today's portion (Largae +6 … Arctae −14) and its label ("Emergency rations" while the Lex de
+ *  annona's cut, not the edict, sets the portion). */
 function rationTerm(s: GameState): { label: string; value: number } {
   const p = portion(s);
   const P = B.economy.PORTIONS as Readonly<Record<string, number>>;
   const T = M.RATION_TERMS as Readonly<Record<string, number>>;
   const key = Object.keys(P).find((k) => P[k] === p) ?? 'plenae';
-  return { label: `Rations: ${key[0].toUpperCase()}${key.slice(1)}`, value: T[key] ?? 0 };
+  const cut = s.ordo.emergency.rations !== 'none' && p < (P[s.decisions.edicts.rationes] ?? P.plenae) + 1e-9;
+  return { label: `${cut ? 'Emergency rations' : 'Rations'}: ${key[0].toUpperCase()}${key.slice(1)}`, value: T[key] ?? 0 };
 }
 
 /** Deaths in the last DEATHS_WINDOW days that were not old age (Annales death lines tagged highlight). */

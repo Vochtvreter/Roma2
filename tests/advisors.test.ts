@@ -32,6 +32,8 @@ import { B } from '../src/game/balance';
 import { Rng } from '../src/game/rng';
 import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
+import { moraleTarget } from '../src/game/civic';
+import { bestFood } from '../src/game/advisors/util';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -396,6 +398,28 @@ describe('annonae.storage: full sheds (R12)', () => {
     t.rank = 1;
     day(t, { rot: 4, grain: { stock: 990, cap: 1000, doh: 30 } });
     expect(render(t, {}).remedies[0].remedy).toEqual({ kind: 'place', building: 'horreum' });
+  });
+});
+
+describe('aedilis.morale under emergency rations (R19)', () => {
+  it('offers no rations edict while the Lex de annona\'s cut sets the portion, but food for the granary', () => {
+    const s = base();
+    s.rank = 1;
+    s.guidance.milestoneDays.fed30 = s.day;                          // the rationes edict is unlocked
+    s.ordo.emergency.rations = 'parcae';
+    const terms = moraleTarget(s, view(s)).terms.map((x) => x.label);
+    expect(terms).toContain('Emergency rations: Parcae');
+    s.morale = 30;
+    ctl.morale = { value: 40, terms: [{ label: 'Emergency rations: Parcae', value: -6 }, { label: 'Deaths', value: -4 }] };
+    day(s);
+    const m = s.guidance.advisories['aedilis.morale']!;
+    expect(m.active).toBe(true);
+    const r = renderAdvisory(s, view(s), { rule: 'aedilis.morale', advisor: 'aedilis', memo: m }).remedies.map((x) => x.remedy);
+    expect(r.some((x) => x.kind === 'edict' && x.edict === 'rationes')).toBe(false);
+    expect(r[0]).toEqual({ kind: 'place', building: bestFood(s) });
+    ctl.morale = null;
+    s.ordo.emergency.rations = 'none';
+    expect(moraleTarget(s, view(s)).terms.map((x) => x.label).some((l) => l.startsWith('Emergency'))).toBe(false);
   });
 });
 
