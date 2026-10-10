@@ -164,12 +164,13 @@ const RES_N = RESOURCES.length;
 const RES_IDX = Object.fromEntries(RESOURCES.map((r, k) => [r, k])) as Record<ResId, number>;
 const rateSum = new Float64Array(RES_N);
 const rateHas = new Uint8Array(RES_N);
-const rateOrder: number[] = [];   // resource indices in the order they were first added (the record's key order)
+const rateOrder = new Uint8Array(RES_N);   // resource indices in the order they were first added (the record's key order)
+let rateN = 0;                             // how many of rateOrder are in use (no array to grow and clear per call)
 
 function rateAdd(k: number, v: number): void {
   if (v === 0) return;
   if (rateHas[k]) rateSum[k] += v;
-  else { rateHas[k] = 1; rateSum[k] = 0 + v; rateOrder.push(k); }
+  else { rateHas[k] = 1; rateSum[k] = 0 + v; rateOrder[rateN++] = k; }
 }
 
 /** Fills the scratch with a building's net rates (buildingRate's terms, in its order); the caller reads and clears it. */
@@ -200,8 +201,8 @@ function rateCore(s: GameState, b: Building, season: SeasonIndex, mode: 'current
 export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): Partial<Res> {
   const out: Partial<Res> = {};
   rateCore(s, b, season, mode);
-  for (const k of rateOrder) { out[RESOURCES[k]] = rateSum[k]; rateHas[k] = 0; }
-  rateOrder.length = 0;
+  for (let i = 0; i < rateN; i++) { const k = rateOrder[i]; out[RESOURCES[k]] = rateSum[k]; rateHas[k] = 0; }
+  rateN = 0;
   return out;
 }
 
@@ -210,8 +211,8 @@ export function buildingRateOf(s: GameState, b: Building, season: SeasonIndex, m
   rateCore(s, b, season, mode);
   const k = RES_IDX[res];
   const v = rateHas[k] ? rateSum[k] : 0;
-  for (const j of rateOrder) rateHas[j] = 0;
-  rateOrder.length = 0;
+  for (let i = 0; i < rateN; i++) rateHas[rateOrder[i]] = 0;
+  rateN = 0;
   return v;
 }
 

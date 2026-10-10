@@ -63,28 +63,31 @@ function otherSkill(p: Person, skill: SkillId | null): number {
  *  High priority first, then id, each with the best-skilled idle worker; builders = plan.builders (fabri first). */
 export function assignJobs(s: GameState, plan: LabourPlan): void {
   let changed = false;
-  const at = new Map<number, Person[]>();
+  const at = new Map<number, { b: Building; list: Person[] }>();
   const builders: Person[] = [];
   const release = (p: Person): void => { p.work = null; changed = true; };
   const ableList = ablePeople(s);   // canWork today for everyone, from the census's pass over people
-  const able = new Set(ableList);
+  // ableList is a subsequence of s.people in the same order (the census's pass, kept per people epoch and day), so one
+  // walk alongside it answers "is p able?" without a set of 400 people per day
+  let j = 0;
   for (const p of s.people) {
+    const able = ableList[j] === p;
+    if (able) j++;
     if (p.work === null) continue;
-    if (!able.has(p)) { release(p); continue; }
+    if (!able) { release(p); continue; }
     if (p.work === BUILDER) { builders.push(p); continue; }
     const b = getBuilding(s, p.work);
     if (!b || b.status !== 'done' || !b.open) { release(p); continue; }
-    const list = at.get(b.id);
-    if (list) list.push(p);
-    else at.set(b.id, [p]);
+    const e = at.get(b.id);
+    if (e) e.list.push(p);
+    else at.set(b.id, { b, list: [p] });
   }
   const target = (b: Building): number => {
     if (b.status !== 'done' || !b.open) return 0;
     return Math.max(0, Math.min(BUILDING_DEFS[b.type].slots, Math.floor(plan.perBuilding[b.id] ?? 0)));
   };
   const leastFirst = (skill: SkillId | null) => (a: Person, c: Person): number => skillOf(a, skill) - skillOf(c, skill) || c.id - a.id;
-  for (const [id, list] of at) {
-    const b = getBuilding(s, id) as Building;
+  for (const { b, list } of at.values()) {
     const t = target(b);
     if (list.length > t) list.sort(leastFirst(BUILDING_DEFS[b.type].skill)).slice(0, list.length - t).forEach(release);
   }
@@ -119,8 +122,16 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
       changed = true;
     }
   };
-  const order = s.buildings.filter((b) => target(b) > (at.get(b.id)?.length ?? 0)).sort((a, b) => b.prio - a.prio || a.id - b.id);
-  for (const b of order) fill(target(b) - (at.get(b.id)?.length ?? 0), BUILDING_DEFS[b.type].skill, b.id);
+  // works short of their target (hands counted before the releases above, as the lists still hold them), each target
+  // read once; a work without a planned figure has target 0 and is never short
+  const order: { b: Building; n: number }[] = [];
+  for (const b of s.buildings) {
+    if (b.status !== 'done' || !b.open || plan.perBuilding[b.id] === undefined) continue;
+    const n = target(b) - (at.get(b.id)?.list.length ?? 0);
+    if (n > 0) order.push({ b, n });
+  }
+  order.sort((x, y) => y.b.prio - x.b.prio || x.b.id - y.b.id);
+  for (const { b, n } of order) fill(n, BUILDING_DEFS[b.type].skill, b.id);
   fill(nb - Math.min(builders.length, nb), 'fabri', BUILDER);
   if (changed) touchJobs(s);   // only `work` moved: the people-only parts of the census are kept
 }
