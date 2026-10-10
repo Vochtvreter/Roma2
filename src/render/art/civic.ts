@@ -41,20 +41,24 @@ function templum(): string[] {
   p.rect(27, top + 4, 10, base - top - 4, 'k').rect(28, top + 5, 8, base - top - 5, 'N');
   p.vline(31, top + 5, base - 1, 'n').vline(32, top + 5, base - 1, 'B').rect(29, top + 7, 2, 2, 'y').rect(33, top + 7, 2, 2, 'Y');
   for (const cx of [10, 18, 26, 34, 42, 50]) column(p, cx, top, base - top + 1);
-  // podium and steps
-  p.rect(x0, base + 1, x1 - x0 + 1, 8, 'a');
-  p.hline(x0, x1, base + 1, 'w').hline(x0, x1, base + 2, 'i').hline(x0, x1, base + 8, 'i').vline(x1, base + 1, base + 8, 'i');
-  for (let s = 0; s < 6; s++) {
+  // podium with mouldings, stair cheeks and five steps
+  p.rect(x0, base + 1, x1 - x0 + 1, 9, 'a');
+  p.hline(x0, x1, base + 1, 'w').hline(x0, x1, base + 2, 'i').hline(x0, x1, base + 8, 'i').hline(x0, x1, base + 9, 'O');
+  p.vline(x1, base + 1, base + 9, 'i');
+  for (let s = 0; s < 5; s++) {
     const y = base + 1 + s * 2;
-    p.hline(15 - s, 48 + s, y, 'w').hline(15 - s, 48 + s, y + 1, 'i');
+    p.hline(16 - s, 47 + s, y, 'w').hline(16 - s, 47 + s, y + 1, s === 4 ? 'O' : 'i');
+    p.set(16 - s, y, 'a').set(47 + s, y, 'i').set(47 + s, y + 1, 'O');
   }
-  p.vline(14, base + 1, base + 12, 'O').vline(49, base + 1, base + 12, 'Q');
-  // the altar in the precinct, smoking, and two cypresses
-  p.rect(28, 65, 8, 5, 'a').hline(28, 35, 65, 'w').hline(28, 35, 67, 'F').vline(35, 65, 69, 'i');
-  p.set(31, 64, 'o').set(32, 64, 'y').set(31, 63, 'y').set(32, 62, 'W').set(31, 61, 'W');
+  // the altar in the precinct, two cypresses
+  p.rect(27, 63, 10, 7, 'a').hline(27, 36, 63, 'w').rect(27, 65, 10, 3, 'F').hline(27, 36, 65, 'R').vline(36, 63, 69, 'O');
+  p.vline(27, 63, 69, 'w').hline(27, 36, 70, 'Q').vline(37, 64, 70, 'Q');
   cypress(p, 4, 69, 14);
   cypress(p, 59, 69, 14);
-  return p.outline().rows();
+  p.outline();
+  p.set(31, 62, 'o').set(32, 62, 'y').set(32, 61, 'Y').set(31, 61, 'y').set(32, 60, 'o');   // the altar fire
+  p.set(31, 59, 'W').set(32, 58, 'W').set(31, 57, 'W');
+  return p.rows();
 }
 
 // ───────────────────────────── macellum ─────────────────────────────

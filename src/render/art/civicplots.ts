@@ -3,30 +3,32 @@
 import { Pix } from './gridkit';
 import { amphora, column, cypress, door, hipRoof, paving, pedimentRoof, rakeRow, stoneWall, wall } from './facade';
 
-/** Wayside shrine: a little marble aedicula with the Lar in its niche, an altar with a flame, a cypress. */
+/** Wayside shrine: a marble aedicula on a stepped podium with the Lar in its painted niche, an altar, a cypress. */
 function lararium(): string[] {
   const p = new Pix(32, 28);
-  paving(p, 2, 22, 28, 5);
-  const x0 = 7, x1 = 22, eave = 9;
-  const apex = pedimentRoof(p, x0, x1, eave, 5, 2);
+  paving(p, 1, 23, 30, 4, 'i', 'O');
+  const x0 = 5, x1 = 24, eave = 10;
+  const apex = pedimentRoof(p, x0, x1, eave, 3, 2);
   for (let i = x0; i <= x1; i++) {
     const e = rakeRow(x0, x1, eave, 2, i);
     p.set(i, e, 'w');
     for (let j = e + 1; j <= eave; j++) p.set(i, j, 'a');
   }
-  p.set(14, apex + 2, 'N').set(15, apex + 2, 'N').rect(14, apex - 6, 2, 2, 'N');   // gilt boss and acroterion
-  p.hline(x0, x1, eave + 1, 'i');
-  p.rect(9, 11, 12, 8, 'F').rect(12, 12, 6, 7, 'q').hline(12, 17, 12, 'R');        // painted niche
-  p.rect(14, 14, 2, 4, 'N').set(14, 14, 'y').set(14, 13, 'y');                     // the Lar
-  p.set(12, 16, 'L').set(17, 16, 'L').set(13, 15, 'f').set(16, 15, 'f');            // garland
-  column(p, 8, eave + 1, 9);
-  column(p, 19, eave + 1, 9);
-  p.rect(7, 19, 16, 3, 'a').hline(7, 22, 19, 'w').vline(22, 19, 21, 'i');           // podium
-  p.rect(12, 22, 6, 4, 'a').hline(12, 17, 22, 'w').hline(12, 17, 24, 'F').vline(17, 22, 25, 'i');   // altar
+  p.rect(14, apex + 2, 2, 2, 'N').set(14, apex + 2, 'y');                          // gilt boss
+  p.rect(14, apex - 5, 2, 2, 'N').set(14, apex - 5, 'y');                          // acroterion
+  p.hline(x0, x1, eave + 1, 'w').hline(x0 + 1, x1 - 1, eave + 2, 'i');
+  p.rect(8, 13, 14, 7, 'F').rect(11, 14, 8, 6, 'q').hline(11, 18, 14, 'R');         // painted niche
+  p.rect(14, 15, 2, 5, 'N').set(14, 15, 'y').set(14, 16, 'y').set(13, 17, 'N');     // the Lar with his patera
+  p.set(11, 15, 'L').set(12, 16, 'L').set(17, 16, 'L').set(18, 15, 'L').set(12, 15, 'f').set(17, 15, 'f');   // garland
+  column(p, 6, eave + 2, 9);
+  column(p, 21, eave + 2, 9);
+  p.rect(4, 20, 22, 3, 'a').hline(4, 25, 20, 'w').vline(25, 20, 22, 'i').hline(4, 25, 22, 'i');   // podium
+  p.hline(8, 21, 23, 'w').hline(9, 20, 24, 'i');                                  // step
+  p.rect(12, 23, 6, 4, 'a').hline(12, 17, 23, 'w').hline(12, 17, 25, 'F').vline(17, 23, 26, 'i');   // altar
   p.outline();
-  p.set(14, 21, 'o').set(15, 21, 'y').set(15, 20, 'y').set(14, 19, 'o');            // the flame (unoutlined)
-  cypress(p, 27, 25, 17);
-  p.set(3, 23, 'u').set(3, 22, 'L').set(2, 22, 'l').set(4, 21, 'L');
+  p.set(14, 22, 'o').set(15, 22, 'y').set(15, 21, 'Y').set(14, 20, 'W');           // the flame and a thread of smoke
+  cypress(p, 28, 25, 18);
+  p.set(2, 22, 'u').set(2, 21, 'L').set(1, 21, 'l').set(3, 20, 'L');
   return p.outline().rows();
 }
 
