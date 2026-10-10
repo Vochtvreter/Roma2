@@ -82,7 +82,7 @@ function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null
   const s = g.state;
   const items: HTMLElement[] = [];
   if (r.awaiting.petition !== null) {
-    items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.`,
+    items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), h('span', { class: 'disp-await-text' }, `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.`),
       h('button', { class: 'btn small legate', onclick: () => { close(); g.openTab('council', 'crossroads'); } }, 'Petition Rome')));
   }
   for (const rule of r.awaiting.advisories) {
@@ -90,7 +90,7 @@ function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null
     if (!a) continue;
     const ra = renderAdvisory(s, view(s), a);
     const first = ra.remedies.find((x) => x.check.ok);
-    items.push(h('div', { class: `disp-await sev-${a.memo.sev}` }, h('span', { class: 'disp-mark' }, '●'), ra.title,
+    items.push(h('div', { class: `disp-await s${a.memo.sev}` }, h('span', { class: 'disp-mark' }, '●'), h('span', { class: 'disp-await-text' }, ra.title),
       first ? h('button', { class: 'btn small', onclick: () => { close(); g.applyRemedy(first.remedy); } }, first.label) : null));
   }
   return items.length ? line('AWAITING YOU', ...items) : null;
@@ -123,7 +123,7 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-note' }, 'Time away passes at half speed, up to five years.'),
       h('span', { class: 'disp-sign' }, '— Ordo Decurionum'),
-      h('button', { class: 'btn primary', onclick: () => close() }, 'Return to the city')));
+      h('button', { class: 'btn primary', 'data-autofocus': '', onclick: () => close() }, 'Return to the city')));
 }
 
 function foundingBody(g: Game, start: () => void): HTMLElement {
@@ -146,7 +146,7 @@ function foundingBody(g: Game, start: () => void): HTMLElement {
       h('span', { class: 'disp-fact' }, img('i_season_3', 2), `Hiems in ${hiems} days`)),
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-sign' }, `Datum ${formatRoman(s.day, { year: true })} · Legatus Augusti`),
-      h('button', { class: 'btn primary big', onclick: start }, 'Raise the standard')));
+      h('button', { class: 'btn primary big', 'data-autofocus': '', onclick: start }, 'Raise the standard')));
 }
 
 function victoryBody(g: Game, close: () => void): HTMLElement {
@@ -169,7 +169,7 @@ function victoryBody(g: Game, close: () => void): HTMLElement {
     paths.length ? h('p', { class: 'disp-story' }, 'Your story: ', paths.join(' · ')) : null,
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-sign' }, `Senatus Populusque Romanus · AUC ${toRoman(aucYear(s.day))}`),
-      h('button', { class: 'btn', onclick: () => close() }, 'Keep governing'),
+      h('button', { class: 'btn', 'data-autofocus': '', onclick: () => close() }, 'Keep governing'),
       h('button', { class: 'btn primary disp-two', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
         h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`))));
 }

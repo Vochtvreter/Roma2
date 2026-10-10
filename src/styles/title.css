@@ -7,7 +7,9 @@
 }
 #title-screen.gone { animation: titleOut .65s forwards; pointer-events: none; }
 @keyframes titleOut { to { opacity: 0; transform: scale(1.04); } }
-.title-box { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 100%; margin: auto; }
+.title-box { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 100%; margin: auto; }
+.title-box::before { content: ''; position: absolute; inset: -40px -160px; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse closest-side, rgba(15, 10, 8, .62), rgba(15, 10, 8, .3) 60%, transparent); }
 .title-aquila { width: 128px; height: 128px; filter: drop-shadow(0 0 24px rgba(242, 201, 76, .55)) drop-shadow(0 4px 0 var(--ring)); animation: titleBob 3s ease-in-out infinite; }
 @keyframes titleBob { 50% { transform: translateY(-6px); } }
 .title-kicker { font-family: var(--font-caps); font-size: 11px; letter-spacing: 4px; color: var(--gold); margin-top: 10px; text-shadow: 0 2px 0 var(--ring), 0 0 6px #000, 0 0 2px #000; }

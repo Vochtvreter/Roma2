@@ -81,7 +81,8 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   stack.push(entry);
   root.appendChild(back);
   const f = focusables(box);
-  (f.find((x) => !x.classList.contains('modal-x')) ?? f[0] ?? box).focus();
+  (box.querySelector<HTMLElement>('[data-autofocus]') ?? f.find((x) => !x.classList.contains('modal-x')) ?? f[0] ?? box).focus({ preventScroll: true });
+  box.scrollTop = 0;
   return close;
 }
 

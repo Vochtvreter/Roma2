@@ -5,7 +5,7 @@ import type { Essential, EssentialForecast, MonthCell, RuleId } from '../game/ty
 import type { Game } from './types';
 import { fmt, fmtDays, fmtRate, h, img, tip } from './dom';
 import { tipCard, tipHead, tipNote, tipRow, tipSep } from './tipkit';
-import { outlookLine } from './hud-tips';
+import { fxTags, ledger, netRate, outlookLine } from './hud-tips';
 import { forecast } from '../game/forecast';
 import { activeAdvisories } from '../game/advisors/engine';
 import { MONTH_ABBR, formatRoman } from '../game/calendar';
@@ -60,9 +60,10 @@ function paint(g: Game, t: Tablet, res: Essential, f: EssentialForecast): void {
   const inf = fmtDays(f.doh) === '∞';
   t.days.textContent = inf ? '∞' : String(Math.max(0, Math.floor(f.doh)));
   t.unit.hidden = inf;
-  const arrow = f.net > 0.05 ? '▲' : f.net < -0.05 ? '▼' : '■';
-  t.trend.textContent = `${arrow} ${fmtRate(f.net).replace('/d', '')}`;
-  t.trend.className = `vit-trend num${f.net < -0.05 ? ' bad' : f.net > 0.05 ? ' good' : ''}`;
+  const net = netRate(g, res);   // the last tick's ledger, so the arrow equals the tooltip's "= a day" line
+  const arrow = net > 0.05 ? '▲' : net < -0.05 ? '▼' : '■';
+  t.trend.textContent = `${arrow} ${fmtRate(net).replace('/d', '')}`;
+  t.trend.className = `vit-trend num${net < -0.05 ? ' bad' : net > 0.05 ? ' good' : ''}`;
   const empty = f.net < -0.05 && f.runout !== null && f.runout - g.state.day < WARN_DAYS[res];
   t.sub.textContent = empty && f.runout !== null ? `empty ${formatRoman(f.runout)}` : '';
   t.el.classList.toggle('low', f.doh < B.forecast.BANDS[2]);
@@ -102,9 +103,9 @@ function vitalTip(g: Game, res: Essential): Node {
     tipHead(res === 'grain' ? 'Grain' : 'Water', `${LATIN[res]} · days on hand`),
     tipNote(`${fmt(f.stock)} of ${fmt(f.cap)} · need ${fmt(f.need)} a day · ${fmtDays(f.doh)} on hand`, 'tip-big'),
     tipSep(),
-    tipRow('Gathered a day', `+${fmt(f.prod)}`, 'pos'),
-    tipRow('Used a day', `−${fmt(f.cons)}`, 'neg'),
-    tipRow('Net (3-day average)', fmtRate(f.net3), f.net3 >= 0 ? 'pos' : 'neg'),
+    ...ledger(g, res),
+    tipRow('3-day average', fmtRate(f.net3), f.net3 >= 0 ? 'pos' : 'neg'),
+    fxTags(g, res),
     f.runout !== null && f.net < 0 ? tipNote(`Runs out on ${formatRoman(f.runout)} unless something changes.`, 'bad') : null,
     f.structural ? tipNote('Even every able hand at work could not cover the need: build or import.', 'bad') : null,
     tipSep(),

@@ -92,11 +92,11 @@
 .disp-list { margin: 0; padding-left: 16px; }
 .disp-list li { margin: 1px 0; }
 .disp-date { font-family: var(--font-caps); font-size: 9px; color: #8c7454; }
-.disp-await { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0; }
-.disp-await .btn { margin-left: auto; }
+.disp-await { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 4px 6px; margin: 3px 0; }
+.disp-await .btn { justify-self: end; }
 .disp-mark { color: #8c7454; }
 .disp-await.gold .disp-mark { color: #b07d10; }
-.disp-await.sev-3 .disp-mark { color: #a3291f; } .disp-await.sev-2 .disp-mark { color: #c0621f; }
+.disp-await.s3 .disp-mark { color: #a3291f; } .disp-await.s2 .disp-mark { color: #c0621f; } .disp-await.s1 .disp-mark { color: #b07d10; }
 .disp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; padding-top: 10px;
   border-top: 2px solid rgba(111, 86, 57, .35); }
 .disp-note { font-size: 12px; color: #6f5639; margin-right: auto; font-style: italic; }

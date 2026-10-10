@@ -70,8 +70,8 @@ function sourceLabel(g: Game, src: RateSource, res: ResId): string {
   return SOURCE_LABEL[src] ?? src;
 }
 
-/** The ledger lines of one resource from the last tick's Rates, largest first. */
-function ledger(g: Game, r: ResId): HTMLElement[] {
+/** The ledger lines of one resource from the last tick's Rates, gains first, largest first, then the net. */
+export function ledger(g: Game, r: ResId): HTMLElement[] {
   const rows: { label: string; v: number }[] = [];
   for (const [src, v] of Object.entries(g.rates.prod[r])) if (v && Math.abs(v) >= 0.005) rows.push({ label: sourceLabel(g, src as RateSource, r), v });
   for (const [src, v] of Object.entries(g.rates.cons[r])) if (v && Math.abs(v) >= 0.005) rows.push({ label: sourceLabel(g, src as RateSource, r), v: -v });
@@ -82,7 +82,8 @@ function ledger(g: Game, r: ResId): HTMLElement[] {
   return out;
 }
 
-function fxTags(g: Game, r: ResId): HTMLElement | null {
+/** Chips naming the active effects (paths, edicts, modifiers) on this resource's producers. */
+export function fxTags(g: Game, r: ResId): HTMLElement | null {
   const tags: HTMLElement[] = [];
   for (const k of FX_KEYS[r] ?? []) {
     for (const t of fxBreakdown(g.state, k)) {

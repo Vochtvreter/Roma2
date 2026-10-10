@@ -85,6 +85,8 @@
   .modal-col .btn, .modal-actions .btn { min-height: 44px; }
   .disp-line { grid-template-columns: 1fr; gap: 2px; }
   .disp-stats { grid-template-columns: repeat(2, 1fr); }
+  .disp-await { grid-template-columns: 14px 1fr; }
+  .disp-await .btn { grid-column: 2; }
   .disp-seal { top: -58px; left: -8px; transform: rotate(-10deg) scale(.75); }
   .modal.parchment .modal-title { font-size: 21px; margin: 2px 36px 8px; }
   .modal.parchment .modal-kicker { margin: 4px 36px 0; }

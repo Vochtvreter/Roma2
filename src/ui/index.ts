@@ -270,8 +270,8 @@ export class UI {
 
   private updateOverlayBar(): void {
     const g = this.g;
-    const list = OVERLAYS.filter((o) => o !== 'none' && overlayRevealed(g.state, o));
     const cur = g.view.overlay;
+    const list = OVERLAYS.filter((o) => o !== 'none' && (o === cur || overlayRevealed(g.state, o)));
     const key = `${list.join(',')}|${cur}|${g.view.overlayLayer}`;
     if (key === this.overlayKey) return;
     this.overlayKey = key;
