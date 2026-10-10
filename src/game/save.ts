@@ -12,7 +12,7 @@ import { MILESTONES } from './objectives';
 import { H, W } from './map';
 import { EDICT_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
 import { RANK_DEFS } from './data/ranks';
-import { buildingShape, personShape } from './shapes';
+import { buildingShape, personShape, stateShape } from './shapes';
 
 /** Current save format version (written by newGame). */
 export const SAVE_VERSION = 1;
@@ -245,7 +245,7 @@ export function deserialize(json: string): GameState | null {
     fillDefaults(cur, newGame({ seed: cur.seed, now: 0 }) as unknown as Obj);
     const s = cur as unknown as GameState;
     sanitise(s);
-    return s;
+    return stateShape(s);   // the live state's object shapes (shapes.ts): same keys, same order, same bytes
   } catch {
     return null;
   }
