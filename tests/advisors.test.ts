@@ -423,6 +423,29 @@ describe('aedilis.morale under emergency rations (R19)', () => {
   });
 });
 
+describe('the Legate\'s relief remedy (R20) and dates in remedy reasons (R48)', () => {
+  it('is disabled during the cooldown under Annona publica too, exactly when applying it would fail', () => {
+    const s = base();
+    s.decisions.paths.path3 = 'annonaPublica';
+    s.ordo.emergency.lastRelief = s.day - 100;
+    const c = checkRemedy(s, { kind: 'relief' });
+    expect(c.ok).toBe(false);
+    expect(c.ok ? '' : c.reason).toMatch(/^The Legate helped us lately; he hears us again on .+\.$/);
+    expect(c.ok ? '' : c.reason).not.toMatch(/\.\.$/);
+    expect(applyRemedy(structuredClone(s), { kind: 'relief' }).ok).toBe(c.ok);
+    s.ordo.emergency.lastRelief = s.day - B.emergency.RELIEF_COOLDOWN;
+    expect(checkRemedy(s, { kind: 'relief' }).ok).toBe(true);
+    expect(applyRemedy(structuredClone(s), { kind: 'relief' }).ok).toBe(true);
+  });
+  it('ends a date in its own point, not two', () => {
+    const s = base();
+    s.ordo.priorities.push({ cat: 'food', until: s.day + 20 });
+    const c = checkRemedy(s, { kind: 'priority', cat: 'food', days: 30 });
+    expect(c.ok ? '' : c.reason).toMatch(/^Food already comes first until .+\.$/);
+    expect(c.ok ? '' : c.reason).not.toMatch(/\.\.$/);
+  });
+});
+
 describe('quaestor.merchant before Commercium opens (R28)', () => {
   it('a merchant at a Castra the player cannot trade from raises no counsel', () => {
     const s = base();
