@@ -4,13 +4,13 @@
 // maxPotential; Ordo labour off: today's staffing), consumption = today's need + industry draws, caps, rot, evaporation.
 import { B } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
-import { memo, structEpoch } from './memo';
+import { censusEpoch, memo, structEpoch } from './memo';
 import { census } from './census';
 import { buildingRate, maxPotential } from './economy';
 import { BUILDING_DEFS } from './data/buildings';
 import { dateOf, dayOf, daysInMonth, nextSeasonStart, seasonOf, seasonStartOf } from './calendar';
 
-const DOH_NONE = 9999;   // days on hand when nobody needs the essential (finite for metrics). TODO(balance): B.forecast.DOH_NONE
+const DOH_NONE = B.forecast.DOH_NONE;   // days on hand when nobody needs the essential (finite for metrics)
 const CELLS = B.forecast.CELLS;
 const E = B.economy;
 const CRUNCH: Record<Essential, SeasonIndex> = { grain: 3, water: 1 };
@@ -18,9 +18,11 @@ const ORDO_FILL: Record<Essential, number> = { grain: B.forecast.GRAIN, water: B
 const SEASONS: readonly SeasonIndex[] = [0, 1, 2, 3];
 const NET_DAYS = 3;      // net3 averages today's staffing over this many days
 
-/** Today's forecast for grain, water and coin (memo on day + structure + Ordo labour toggle; pure). */
+/** Today's forecast for grain, water and coin (memo on day + structure + Ordo labour toggle; pure). Under manual labour
+ *  the projection is today's staffing, so the census epoch joins the key: the Ordo reads the forecast before
+ *  assignJobs, and a forecast cached then would describe yesterday's jobs for the rest of the day. */
 export function forecast(s: GameState): Forecast {
-  return memo(s, 'forecast', `${s.day}|${structEpoch(s)}|${s.ordo.on.labour}`, () => {
+  return memo(s, 'forecast', `${s.day}|${structEpoch(s)}|${s.ordo.on.labour ? 'ordo' : censusEpoch(s)}`, () => {
     const stock = s.res.denarii + s.taxAccrued;
     const net30 = s.counters.coinEma;   // 30-day EMA of net denarii per day (accrual basis)
     return {
