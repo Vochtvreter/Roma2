@@ -4,10 +4,13 @@
 
 /* ───────── tablet and narrow desktop ───────── */
 @media (max-width: 1099px) {
-  /* the HUD wraps into two rows: tablets and chips above, date · materials · speed · menu below */
+  /* the HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material below */
   :root { --hud-h: 108px; }
   #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; }
-  .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
+  .hud-speed, .hud-menu { order: 1; }
+  .hud-speed { margin-left: auto; }
+  .hud-break { display: block; flex: 0 0 100% !important; height: 0; order: 2; }
+  .hud-date, .hud-strip { order: 3; }
   #minimap { display: none; }
   #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
   #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
@@ -28,6 +31,8 @@
   .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
   .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
   .hud-date, .hud-speed, .hud-menu { flex: none !important; }
+  .hud-speed, .hud-menu, .hud-date, .hud-strip { order: 3; }
+  .hud-speed { margin-left: 0; }
   .vit-strip, .vit-seasons { display: none; }
   .vit-sub, .hud-vital.falling .vit-sub { display: none; }
   .hud-chip { height: 42px; }
