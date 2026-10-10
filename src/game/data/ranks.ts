@@ -25,14 +25,14 @@ export const RANK_DEFS: RankDef[] = [
   {
     index: 2, id: 'oppidum', name: 'Oppidum', title: 'Praefectus oppidi',
     fee: { denarii: 900, stone: 250, tiles: 150 }, dignitas: 40,
-    ceiling: 560, territory: 34, rings: [0, 1, 2], immRate: 0.0053, subsidy: 0,
+    ceiling: 560, territory: 34, rings: [0, 1, 2], immRate: 0.0075, subsidy: 0,
     unlocks: ['caementarium', 'fodina', 'officina', 'fabrica', 'templum', 'macellum', 'balneum'],
     hubs: ['narbo', 'massilia'], forumStage: 2,
   },
   {
     index: 3, id: 'municipium', name: 'Municipium', title: 'Duumvir',
     fee: { denarii: 2500, stone: 400, concrete: 200, iron: 60 }, dignitas: 100,
-    ceiling: 900, territory: 44, rings: [0, 1, 2], immRate: 0.0019, subsidy: 0,
+    ceiling: 900, territory: 44, rings: [0, 1, 2], immRate: 0.003, subsidy: 0,
     unlocks: ['castellum', 'lacus', 'thermae', 'theatrum'],
     hubs: ['augusta'], forumStage: 3,
   },

@@ -45,7 +45,7 @@ export const COIN_NET: readonly (readonly [number, number])[] = [[3, 3], [6, 10]
 
 const FOLLOW_EVERY = 10;      // advisor-follower: remedy 0 of the top advisory every 10 days (DESIGN §11.5)
 const BUILD_EVERY = 5;        // builder: places the Aedilis/Fabrum build remedies every 5 days (DESIGN §18.5)
-const GARDENS_PER_HOUSE = 1.5;   // builder: from Vicus on, three gardens for every two houses (beautification, DESIGN §10.3)
+const GARDENS_PER_HOUSE = 2;     // builder: from Vicus on, two gardens for every house (beautification, DESIGN §10.3)
 const TIP_READ_DAYS = 3;      // a tip stays on the card this long before the bot clicks "Understood"
 const CHARTER_LATE = 60;      // proclaim the charter by this elapsed day even if its tip never showed
 const FULL_SUMMER = 0.9;      // Largae when the sheds are this full in Aestas

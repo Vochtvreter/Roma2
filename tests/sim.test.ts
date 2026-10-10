@@ -352,7 +352,7 @@ describe('people (DESIGN §6)', () => {
     expect(s.counters.lastBirthBlocked).toBe(blocked);
   });
 
-  it('Rome\'s favour: a Vicus to Municipium above its next charter\'s dignitas draws colonists faster, ×1 at the camp and the Colonia', () => {
+  it('Rome\'s favour: a Vicus above the Oppidum\'s dignitas draws colonists faster, capped; ×1 at the other ranks', () => {
     const s = fresh();
     s.morale = 70;
     const fame = (v: number): void => {
@@ -367,12 +367,12 @@ describe('people (DESIGN §6)', () => {
       return renownFactor(s);
     };
     const R = B.people.RENOWN;
+    expect([R.FROM, R.TO]).toEqual([1, 1]);
     expect(at(0, 60)).toBe(1);                                   // the camp: Rome's roll alone
     expect(at(1, 40)).toBe(1);                                   // a Vicus at the Oppidum bar
     expect(at(1, 44)).toBeCloseTo(1 + R.K * 0.1, 9);              // a tenth above it
-    expect(at(2, 150)).toBeCloseTo(1 + R.K * 0.5, 9);             // an Oppidum against the Municipium's 100
-    expect(at(3, 1000)).toBe(R.MAX);
-    expect(at(4, 1000)).toBe(1);                                  // the Colonia: Rome's last wave
+    expect(at(1, 400)).toBe(R.MAX);
+    for (const rank of [2, 3, 4]) expect(at(rank, 1000)).toBe(1);
     const base = (at(1, 30), immigrationChance(s));
     expect(at(1, 60)).toBeCloseTo(1 + R.K * 0.5, 9);
     expect(immigrationChance(s) / base).toBeCloseTo(1 + R.K * 0.5, 9);

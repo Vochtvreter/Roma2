@@ -586,14 +586,13 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 
 // ───────────────────────────── immigration (DESIGN §6.6) ─────────────────────────────
 
-/** Rome's favour (DESIGN §6.6, §8.11): Rome sends colonists faster to a town of renown. A Vicus, Oppidum or Municipium
- *  is measured against the dignitas the next charter asks: every share of that bar it clears raises immigration by
- *  RENOWN.K × that share, up to ×RENOWN.MAX; at or below the bar it is ×1. The camp is settled by Rome's roll alone and
- *  the Colonia, with no charter left to seek, by Rome's last wave (×1). Houses, services, gardens, the domus, paving,
- *  deeds and fama all count. */
+/** Rome's favour (DESIGN §6.6, §8.11): Rome sends colonists faster to a town of renown. At ranks RENOWN.FROM..TO (the
+ *  Vicus) the colony is measured against the dignitas its next charter asks: every share of that bar it clears raises
+ *  immigration by RENOWN.K × that share, up to ×RENOWN.MAX; at or below the bar, and at other ranks, it is ×1. Houses,
+ *  services, gardens, paving, deeds and fama all count, so what the player builds beyond the Ordo draws colonists. */
 export function renownFactor(s: GameState): number {
-  if (s.rank < 1 || s.rank >= RANK_DEFS.length - 1) return 1;
   const R = P.RENOWN;
+  if (s.rank < R.FROM || s.rank > R.TO || s.rank >= RANK_DEFS.length - 1) return 1;
   return Math.min(R.MAX, 1 + R.K * Math.max(0, dignitas(s).value / RANK_DEFS[s.rank + 1].dignitas - 1));
 }
 
