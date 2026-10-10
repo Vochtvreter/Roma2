@@ -1,11 +1,11 @@
 // src/game/housing.ts — house needs, evolution, renovation, decline, goods (ARCHITECTURE §8.3, DESIGN §7). Owner: WP-B.
 // Houses are checked every CHECK_EVERY days on their own slot ((id + day) % 5 == 0); renovations finish daily.
 import { B } from './balance';
-import { HOUSE_TIERS, RESOURCES } from './types';
+import { HOUSE_TIERS, LAYERS, RESOURCES } from './types';
 import type {
   ActionResult, Building, BuildingId, CoverageLayerId, Cost, GameState, HousePref, HouseTierId, NeedId, SimView, TickContext,
 } from './types';
-import { houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
+import { coverage, houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
 import { derived, footprintOf } from './derived';
 import { fx } from './fx';
 import { dayEpoch, invalidate, memo, touchPeople } from './memo';
@@ -27,6 +27,9 @@ const LAYER_NEEDS: Record<CoverageLayerId, readonly NeedId[]> = {
   water: ['water'], fountain: ['water'], shrine: ['religion'], temple: ['temple', 'religion'],
   market: ['market'], macellum: ['macellum', 'market'], baths: ['baths'], culture: [],
 };
+
+/** Bit of each coverage layer in a house's coverage mask (coverage.houseMask). */
+const LAYER_BIT = Object.fromEntries(LAYERS.map((l, k) => [l, 1 << k])) as Record<CoverageLayerId, number>;
 
 function level(t: HouseTierId): number {
   return TIER_DEFS[t].level;
@@ -62,17 +65,22 @@ export function unmetNeeds(s: GameState, b: Building, tier: HouseTierId): NeedId
   const t = TIER_DEFS[tier];
   const h = b.house;
   const out: NeedId[] = [];
+  let mask = -1;   // houseHas for every layer at once: the coverage mask, read on the first layer asked for
+  const has = (l: CoverageLayerId): boolean => {
+    if (mask < 0) mask = coverage(s).houseMask.get(b.id) ?? 0;
+    return (mask & LAYER_BIT[l]) !== 0;
+  };
   for (const n of t.needs) {
     let met: boolean;
     switch (n) {
-      case 'water': met = houseHas(s, b.id, 'water') || houseHas(s, b.id, 'fountain'); break;
+      case 'water': met = has('water') || has('fountain'); break;
       case 'fed': met = s.fed >= B.needs.FED_MIN; break;
-      case 'religion': met = houseHas(s, b.id, 'shrine') || houseHas(s, b.id, 'temple'); break;
-      case 'market': met = houseHas(s, b.id, 'market') || houseHas(s, b.id, 'macellum'); break;
-      case 'temple': met = houseHas(s, b.id, 'temple'); break;
+      case 'religion': met = has('shrine') || has('temple'); break;
+      case 'market': met = has('market') || has('macellum'); break;
+      case 'temple': met = has('temple'); break;
       case 'desirability': met = t.desirMin === null || houseDesir(s, b.id) >= t.desirMin; break;
-      case 'baths': met = houseHas(s, b.id, 'baths'); break;
-      case 'macellum': met = houseHas(s, b.id, 'macellum'); break;
+      case 'baths': met = has('baths'); break;
+      case 'macellum': met = has('macellum'); break;
       case 'oil': met = (h?.oil ?? 0) >= H.SUPPLIED; break;
       case 'wine': met = (h?.wine ?? 0) >= H.SUPPLIED; break;
       case 'rank': met = s.rank >= t.rank; break;

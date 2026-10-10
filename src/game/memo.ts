@@ -4,7 +4,9 @@
 // module-level cache keyed on an epoch can never confuse two states.
 import type { FxEvent, GameState } from './types';
 
-interface Epochs { struct: number; census: number }
+/** struct: the structure; census: people, homes or jobs (every structure change too); people: the census epoch as of the
+ *  last change other than jobs alone (touchJobs leaves it), so the people-only parts of the census outlive a reassignment. */
+interface Epochs { struct: number; census: number; people: number }
 
 let counter = 0;
 const epochs = new WeakMap<GameState, Epochs>();
@@ -14,7 +16,8 @@ let actionFx: FxEvent[] = [];
 function epochsOf(s: GameState): Epochs {
   let e = epochs.get(s);
   if (!e) {
-    e = { struct: ++counter, census: ++counter };
+    const struct = ++counter, census = ++counter;
+    e = { struct, census, people: census };
     epochs.set(s, e);
   }
   return e;
@@ -25,11 +28,25 @@ export function invalidate(s: GameState): void {
   const e = epochsOf(s);
   e.struct = ++counter;
   e.census = ++counter;
+  e.people = e.census;
 }
 
 /** People, homes or jobs changed: bumps the census epoch. */
 export function touchPeople(s: GameState): void {
+  const e = epochsOf(s);
+  e.census = ++counter;
+  e.people = e.census;
+}
+
+/** Only jobs (`work`) changed: bumps the census epoch like touchPeople, but the people epoch stays (ages, homes,
+ *  families and membership are as they were). */
+export function touchJobs(s: GameState): void {
   epochsOf(s).census = ++counter;
+}
+
+/** The census epoch as of the last change to anything but jobs (see touchJobs). */
+export function peopleEpoch(s: GameState): number {
+  return epochsOf(s).people;
 }
 
 /** Current structure epoch of a state. */

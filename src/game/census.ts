@@ -3,7 +3,7 @@
 import { B } from './balance';
 import { BUILDER, HOUSE_TIERS, LABOR_CATS } from './types';
 import type { Building, Census, GameState, HouseTierId, LaborCat, Person, Quad, StageIndex } from './types';
-import { censusEpoch, memo } from './memo';
+import { censusEpoch, memo, peopleEpoch } from './memo';
 import { derived } from './derived';
 import { caps, horreaCap, portion } from './economy';
 import { fx, fxAdd } from './fx';
@@ -44,27 +44,55 @@ export function census(s: GameState): Census {
   });
 }
 
-/** People indexed by home, work and family (memo on the census epoch). */
+function push(m: Map<number, Person[]>, k: number, p: Person): void {
+  const list = m.get(k);
+  if (list) list.push(p);
+  else m.set(k, [p]);
+}
+
+/** People indexed by home, work and family (memo on the census epoch; the home and family lists on the people epoch, so
+ *  a reassignment of jobs rebuilds only the work lists). */
 export function peopleIndex(s: GameState): PeopleIndex {
   return memo(s, 'peopleIndex', censusEpoch(s), () => {
-    const byHome = new Map<number, Person[]>();
+    const homes = memo(s, 'peopleIndex.homes', peopleEpoch(s), () => {
+      const byHome = new Map<number, Person[]>();
+      const byFamily = new Map<number, Person[]>();
+      const homeless: Person[] = [];
+      for (const p of s.people) {
+        if (p.home === null) homeless.push(p);
+        else push(byHome, p.home, p);
+        push(byFamily, p.family, p);
+      }
+      return { byHome, byFamily, homeless };
+    });
     const byWork = new Map<number, Person[]>();
-    const byFamily = new Map<number, Person[]>();
     const builders: Person[] = [];
-    const homeless: Person[] = [];
-    const push = (m: Map<number, Person[]>, k: number, p: Person): void => {
-      const list = m.get(k);
-      if (list) list.push(p);
-      else m.set(k, [p]);
-    };
     for (const p of s.people) {
-      if (p.home === null) homeless.push(p);
-      else push(byHome, p.home, p);
       if (p.work === BUILDER) builders.push(p);
       else if (p.work !== null) push(byWork, p.work, p);
-      push(byFamily, p.family, p);
     }
-    return { byHome, byWork, byFamily, builders, homeless };
+    return { byHome: homes.byHome, byWork, byFamily: homes.byFamily, builders, homeless: homes.homeless };
+  });
+}
+
+/** The census's pass over people: life stages, the able workers in id order and the patricii (memo on the people epoch
+ *  and the day: ages and sickness move with the day, homes and tiers bump the people epoch, jobs do not enter). */
+function peopleCounts(s: GameState, domusOf: () => Set<number>): { byStage: Quad; workforce: number; patricii: number; able: Person[] } {
+  return memo(s, 'census.people', peopleEpoch(s) * DAY_SPAN + s.day, () => {
+    const day = s.day;
+    const domus = domusOf();
+    const byStage: Quad = [0, 0, 0, 0];
+    const able: Person[] = [];
+    const P = B.people;
+    let patricii = 0;
+    for (const p of s.people) {
+      const age = Math.floor((day - p.born) / YEAR);
+      byStage[age < P.YOUTH ? 0 : age < P.ADULT ? 1 : age < P.ELDER ? 2 : 3]++;
+      const patrician = p.home !== null && domus.has(p.home);
+      if (patrician) patricii++;
+      if (age >= P.ADULT && age < P.RETIRE && !patrician && !(p.sickUntil !== undefined && p.sickUntil > day)) able.push(p);
+    }
+    return { byStage, workforce: able.length, patricii, able };
   });
 }
 
@@ -129,23 +157,16 @@ function computeCensus(s: GameState): Census {
   const day = s.day;
   const d = derived(s);
   const ix = peopleIndex(s);
-  const byStage: Quad = [0, 0, 0, 0];
-  const idle: number[] = [];
   const staffed: Record<number, number> = {};
-  const domus = new Set<number>();
-  for (const id of d.houses) if (getBuilding(s, id)?.house?.tier === 'domus') domus.add(id);
-  const P = B.people;
-  let workforce = 0, patricii = 0;
-  for (const p of s.people) {
-    const age = Math.floor((day - p.born) / YEAR);
-    byStage[age < P.YOUTH ? 0 : age < P.ADULT ? 1 : age < P.ELDER ? 2 : 3]++;
-    const patrician = p.home !== null && domus.has(p.home);
-    if (patrician) patricii++;
-    if (age >= P.ADULT && age < P.RETIRE && !patrician && !(p.sickUntil !== undefined && p.sickUntil > day)) {
-      workforce++;
-      if (p.work === null) idle.push(p.id);
-    }
-  }
+  const pc = peopleCounts(s, () => {
+    const domus = new Set<number>();
+    for (const id of d.houses) if (getBuilding(s, id)?.house?.tier === 'domus') domus.add(id);
+    return domus;
+  });
+  const byStage: Quad = [pc.byStage[0], pc.byStage[1], pc.byStage[2], pc.byStage[3]];
+  const { workforce, patricii } = pc;
+  const idle: number[] = [];
+  for (const p of pc.able) if (p.work === null) idle.push(p.id);
   for (const b of s.buildings) {
     const n = ix.byWork.get(b.id)?.length ?? 0;
     if (n > 0) staffed[b.id] = n;

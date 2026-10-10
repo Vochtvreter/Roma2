@@ -8,7 +8,7 @@ import { ageOf, canWork, census, houseBeds, peopleIndex } from './census';
 import { derived, roadNeighbors } from './derived';
 import { toRoman } from './calendar';
 import { fx } from './fx';
-import { memo, structEpoch, touchPeople } from './memo';
+import { memo, structEpoch, touchJobs, touchPeople } from './memo';
 import { careShare } from './civic';
 import { getBuilding, getPerson, log, nextId } from './state';
 import { BUILDING_DEFS } from './data/buildings';
@@ -109,7 +109,7 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   const order = s.buildings.filter((b) => target(b) > (at.get(b.id)?.length ?? 0)).sort((a, b) => b.prio - a.prio || a.id - b.id);
   for (const b of order) fill(target(b) - (at.get(b.id)?.length ?? 0), BUILDING_DEFS[b.type].skill, b.id);
   fill(nb - Math.min(builders.length, nb), 'fabri', BUILDER);
-  if (changed) touchPeople(s);
+  if (changed) touchJobs(s);   // only `work` moved: the people-only parts of the census are kept
 }
 
 // ───────────────────────────── housing people ─────────────────────────────

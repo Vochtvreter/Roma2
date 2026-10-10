@@ -25,39 +25,58 @@ const RADIUS_BONUS: Partial<Record<CoverageLayerId, AddKey>> = {
 
 /** Effective radius of a building's service layer: DESIGN §5.2 activity rule, unpaid halving, path bonuses; 0 when inactive. */
 export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerId): number {
+  const bonus = RADIUS_BONUS[layer];
+  return radiusWith(b, layer, peopleIndex(s).byWork, bonus ? fxAdd(s, bonus) : 0);
+}
+
+/** effectiveRadius with the workers by building and the layer's path bonus already looked up. */
+function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<number, readonly unknown[]>, bonus: number): number {
   const def = BUILDING_DEFS[b.type];
   const svc = def.service?.find((x) => x.layer === layer);
   if (!svc || b.status !== 'done') return 0;
   let r = svc.radius;
   if (def.slots > 0) {
     if (!b.open) return 0;
-    const n = peopleIndex(s).byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
+    const n = byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
     if (n <= 0) return 0;
     if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);
   }
   if (b.unpaid) r = Math.floor(r * B.economy.UNPAID);
-  const bonus = RADIUS_BONUS[layer];
-  if (bonus && r > 0) r += fxAdd(s, bonus);
+  if (RADIUS_BONUS[layer] && r > 0) r += bonus;
   return Math.max(0, r);
 }
 
 interface Source { id: number; layer: number; r: number }
 
-/** The active services and their radii, and the coverage key they make (re-read once per day or on a structure/staffing change). */
-function activeSources(s: GameState): { key: string; list: Source[] } {
+/** The active services and their radii under a structure epoch (re-read once per day or on a structure/staffing change). */
+function activeSources(s: GameState): { epoch: number; list: Source[] } {
   const epoch = structEpoch(s);
   return memo(s, 'covSources', dayEpoch(s), () => {
     const list: Source[] = [];
+    const byWork = peopleIndex(s).byWork;
+    const bonus: Partial<Record<AddKey, number>> = {};   // each path bonus looked up once per pass
     for (const b of s.buildings) {
       const svc = BUILDING_DEFS[b.type].service;
       if (!svc || b.status !== 'done') continue;
       for (const sv of svc) {
-        const r = effectiveRadius(s, b, sv.layer);
+        const key = RADIUS_BONUS[sv.layer];
+        const add = key ? bonus[key] ??= fxAdd(s, key) : 0;
+        const r = radiusWith(b, sv.layer, byWork, add);
         if (r > 0) list.push({ id: b.id, layer: LAYERS.indexOf(sv.layer), r });
       }
     }
-    return { key: `${epoch}|${list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(',')}`, list };
+    return { epoch, list };
   });
+}
+
+/** Coverage keys are built only when the sources change: the same structure epoch and the same (id, layer, radius) list
+ *  make the same key, so the last coverage is reused without a string per check. */
+const covBuilt = new WeakMap<GameState, { epoch: number; list: Source[]; cov: Coverage }>();
+
+function sameSources(a: readonly Source[], b: readonly Source[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let k = 0; k < a.length; k++) if (a[k].id !== b[k].id || a[k].layer !== b[k].layer || a[k].r !== b[k].r) return false;
+  return true;
 }
 
 /** Road tiles beside a w×h footprint at (x, y), on a given road layer. */
@@ -104,35 +123,41 @@ export function coverage(s: GameState): Coverage {
 
 function coverageOf(s: GameState): Coverage {
   const src = activeSources(s);
-  const key = src.key;
-  return memo(s, 'coverage', key, () => {
-    const d = derived(s);
-    const layers = {} as Record<CoverageLayerId, Uint8Array>;
-    LAYERS.forEach((l, k) => {
-      const out = new Uint8Array(GN);
-      const srcs: { tiles: number[]; r: number }[] = [];
-      for (const x of src.list) {
-        if (x.layer !== k) continue;
-        const b = getBuilding(s, x.id);
-        if (!b) continue;
-        const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
-        srcs.push({ tiles: roadSides(d.road, b.x, b.y, w, h), r: x.r });
-      }
-      if (srcs.length > 0) flood(d.road, srcs, out);
-      layers[l] = out;
-    });
-    const houseMask = new Map<number, number>();
-    for (const id of d.houses) {
-      const b = getBuilding(s, id);
+  const last = covBuilt.get(s);
+  if (last && last.epoch === src.epoch && sameSources(last.list, src.list)) return last.cov;
+  const key = `${src.epoch}|${src.list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(',')}`;
+  const cov = buildCoverage(s, src, key);
+  covBuilt.set(s, { epoch: src.epoch, list: src.list, cov });
+  return cov;
+}
+
+function buildCoverage(s: GameState, src: { list: Source[] }, key: string): Coverage {
+  const d = derived(s);
+  const layers = {} as Record<CoverageLayerId, Uint8Array>;
+  LAYERS.forEach((l, k) => {
+    const out = new Uint8Array(GN);
+    const srcs: { tiles: number[]; r: number }[] = [];
+    for (const x of src.list) {
+      if (x.layer !== k) continue;
+      const b = getBuilding(s, x.id);
       if (!b) continue;
       const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
-      const sides = sideTiles(b.x, b.y, w, h);
-      let mask = 0;
-      LAYERS.forEach((l, k) => { if (sides.some((i) => layers[l][i] === 1)) mask |= 1 << k; });
-      houseMask.set(id, mask);
+      srcs.push({ tiles: roadSides(d.road, b.x, b.y, w, h), r: x.r });
     }
-    return { layers, houseMask, key };
+    if (srcs.length > 0) flood(d.road, srcs, out);
+    layers[l] = out;
   });
+  const houseMask = new Map<number, number>();
+  for (const id of d.houses) {
+    const b = getBuilding(s, id);
+    if (!b) continue;
+    const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+    const sides = sideTiles(b.x, b.y, w, h);
+    let mask = 0;
+    LAYERS.forEach((l, k) => { if (sides.some((i) => layers[l][i] === 1)) mask |= 1 << k; });
+    houseMask.set(id, mask);
+  }
+  return { layers, houseMask, key };
 }
 
 /** True when the house is covered by the layer. */
@@ -316,16 +341,28 @@ export function desirability(s: GameState): Float32Array {
   });
 }
 
+// Per desirability field, each house's average: a new field is computed whenever the structure (and with it any
+// footprint) or a tier that gives desirability changes, so the field's identity keys the per-house values.
+const houseDesirs = new WeakMap<Float32Array, Map<number, number>>();
+
 /** A house's desirability: the average over its footprint tiles. */
 export function houseDesir(s: GameState, houseId: number): number {
-  const b = getBuilding(s, houseId);
-  if (!b) return 0;
-  const tiles = footprintOf(b, s);
-  if (tiles.length === 0) return 0;
   const d = desirability(s);
-  let sum = 0;
-  for (const i of tiles) sum += d[i];
-  return sum / tiles.length;
+  let m = houseDesirs.get(d);
+  if (!m) { m = new Map(); houseDesirs.set(d, m); }
+  let v = m.get(houseId);
+  if (v === undefined) {
+    v = 0;
+    const b = getBuilding(s, houseId);
+    const tiles = b ? footprintOf(b, s) : [];
+    if (tiles.length > 0) {
+      let sum = 0;
+      for (const i of tiles) sum += d[i];
+      v = sum / tiles.length;
+    }
+    m.set(houseId, v);
+  }
+  return v;
 }
 
 /** Desirability a would-be building at (x, y) would add, per affected tile (unclamped influence of the finished work). */
