@@ -13,7 +13,7 @@ import { view } from '../../game/sim';
 import { formatRoman } from '../../game/calendar';
 import { ADVISOR_DEFS } from '../../game/data/advisors';
 import { portrait } from '../../render/art/index';
-import { agendaEl, btn, caps, section } from './common';
+import { agendaEl, btn, caps, remedyKey, section } from './common';
 import type { TabPanel } from './common';
 
 const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
@@ -115,9 +115,11 @@ export const panel: TabPanel = {
   signature(g: Game): string {
     const s = g.state;
     const rep = councilReport(s);
+    const v = view(s);
     return [
       s.guidance.appointed.join(','), filter ?? '',
-      activeAdvisories(s).map((a) => `${a.rule}:${a.memo.sev}:${+hushed(s, a)}`).join(','),
+      // a card's remedies by identity: a place remedy's tile moves once the Ordo builds on it, and the button must follow
+      activeAdvisories(s).map((a) => `${a.rule}:${a.memo.sev}:${+hushed(s, a)}:${renderAdvisory(s, v, a).remedies.map((x) => remedyKey(s, x)).join(';')}`).join(','),
       s.guidance.muted.join(','), +s.ordo.on.build, s.ordo.pin ?? '', s.ordo.requests.length,
       rep.agenda.map((w) => `${w.type}:${w.state}`).join(','), rep.would.build?.type ?? '', +!!rep.saving,
     ].join('|');

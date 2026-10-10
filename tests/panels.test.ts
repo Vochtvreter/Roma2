@@ -7,9 +7,13 @@ import type { Game } from '../src/ui/types';
 import { PANELS } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
 import { DEFAULT_PREFS } from '../src/game/save';
-import { activeAdvisories } from '../src/game/advisors/engine';
+import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
 import { councilReport } from '../src/game/ordo/index';
+import { view } from '../src/game/sim';
+import { placeBuilding } from '../src/game/place';
 import { B } from '../src/game/balance';
+import { counselSig } from '../src/ui/counsel';
+import { remedyKey } from '../src/ui/tabs/common';
 import { fresh, run } from './util';
 
 function fakeGame(s: GameState): Game {
@@ -129,5 +133,38 @@ describe('contract form preview', () => {
     s.rank = 0;
     const closed = preview(g, { hub: 'durii', mode: 'export', res: 'timber', qty: 40, repeat: false });
     expect(closed.reason).toMatch(/does not yet trade with us/);
+  });
+});
+
+describe('remedy buttons follow the best plot (R15)', () => {
+  it('once the Ordo builds on a place remedy\'s tile, the counsel card and Consiliarii signatures change', () => {
+    const s = fresh(42);
+    const g = fakeGame(s);
+    run(s, 5);
+    const placeOf = () => {
+      for (const a of activeAdvisories(s)) {
+        const x = renderAdvisory(s, view(s), a).remedies.find((y) => y.remedy.kind === 'place' && y.remedy.tile !== undefined);
+        if (x && x.remedy.kind === 'place') return { a, x, tile: x.remedy.tile as number, type: x.remedy.building };
+      }
+      return null;
+    };
+    const before = placeOf();
+    expect(before).not.toBeNull();
+    if (!before) return;
+    const item = { kind: 'advisory', a: before.a } as const;
+    const c0 = counselSig(g, item), k0 = remedyKey(s, before.x), p0 = PANELS.advisors.signature(g);
+    expect(placeBuilding(s, before.type, before.tile, { owner: 'ordo' }).ok).toBe(true);
+    const after = placeOf();
+    expect(after?.tile).toBeDefined();
+    expect(after?.tile).not.toBe(before.tile);
+    expect(counselSig(g, item)).not.toBe(c0);
+    if (after) expect(remedyKey(s, after.x)).not.toBe(k0);
+    expect(PANELS.advisors.signature(g)).not.toBe(p0);
+  });
+
+  it('a remedy key holds no live numbers', () => {
+    const s = fresh(42);
+    expect(remedyKey(s, { remedy: { kind: 'buyNow', res: 'grain', qty: 37 }, check: { ok: true } })).toBe('buyNow');
+    expect(remedyKey(s, { remedy: { kind: 'contract', spec: { hub: 'metellianus', mode: 'import', res: 'grain', qty: 33, repeat: false } }, check: { ok: true } })).toBe('contract');
   });
 });

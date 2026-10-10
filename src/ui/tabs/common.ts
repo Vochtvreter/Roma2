@@ -1,12 +1,13 @@
 // src/ui/tabs/common.ts — shared pieces of the side-panel tabs and the inspector: sections, segmented controls,
 // disabled-with-reason buttons, runways from the ledger, the Ordo's Agenda (DESIGN §10.6, §15.3). Owner: WP-I.
 import { RESOURCES } from '../../game/types';
-import type { ActionResult, BuildingId, Cost, GameState, ResId, WishView } from '../../game/types';
+import type { ActionResult, BuildingId, Cost, GameState, Remedy, ResId, WishView } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
 import { fmtCost, h, img, tip } from '../dom';
 import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
+import { checkRemedy } from '../../game/advisors/remedies';
 import { reasonText } from '../../game/ordo/reasons';
 import { formatRoman } from '../../game/calendar';
 import { getBuilding, missing } from '../../game/state';
@@ -135,6 +136,16 @@ export function lackLine(g: Game, lack: Cost): string {
 export function lacking(s: GameState, cost: Cost): Cost | null {
   const m = missing(s, cost);
   return RESOURCES.some((r) => (m[r] ?? 0) > 0) ? m : null;
+}
+
+/** A remedy's discrete identity for a panel signature: a building remedy's type, its target tile and whether it (and the
+ *  "Ask the Ordo" beside it) can be used — all structural, so the card rebuilds when the best plot moves or is taken —
+ *  any other remedy by its kind only; never live numbers. */
+export function remedyKey(s: GameState, x: { remedy: Remedy; check: ActionResult }): string {
+  const r = x.remedy;
+  if (r.kind !== 'place' && r.kind !== 'ask') return r.kind;
+  const ask = r.kind === 'ask' ? x.check.ok : s.ordo.on.build && checkRemedy(s, { kind: 'ask', building: r.building }).ok;
+  return `${r.kind}:${r.building}@${r.kind === 'place' ? r.tile ?? '' : ''}:${x.check.ok ? 1 : 0}${ask ? 1 : 0}`;
 }
 
 /** Sprite name of a building type's card image. */
