@@ -238,7 +238,7 @@ describe('contracts', () => {
     const r = createContract(s, { hub: 'silvanum', mode: 'import', res: 'wine', qty: 20, repeat: false }, 'ordo', { code: 'luxuryImport', params: {} });
     expect(r.ok).toBe(true);
     expect(s.trade.contracts.at(-1)).toMatchObject({ owner: 'ordo', reason: { code: 'luxuryImport' } });
-    expect(s.log.at(-1)?.tags).toContain('decided');
+    expect(s.log.at(-1)?.tags).toBeUndefined();   // chronicle() tags it only when decided in our name (R18)
   });
 });
 

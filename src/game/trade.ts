@@ -149,7 +149,7 @@ export function createContract(s: GameState, spec: ContractSpec, owner?: 'player
   if (reason) c.reason = reason;
   s.trade.contracts.push(c);
   const verb = spec.mode === 'import' ? `buy ${qty} ${resName(spec.res)} from` : `sell ${qty} ${resName(spec.res)} to`;
-  log(s, 'trade', `Contract${c.repeat ? ' (standing)' : ''}: ${verb} ${HUB_DEFS[spec.hub].name}.`, owner === 'ordo' ? ['decided'] : undefined, id);
+  log(s, 'trade', `Contract${c.repeat ? ' (standing)' : ''}: ${verb} ${HUB_DEFS[spec.hub].name}.`, undefined, id);   // an Ordo contract is tagged 'decided' by chronicle() only when due
   return { ok: true, id };
 }
 

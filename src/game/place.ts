@@ -369,7 +369,7 @@ export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts
   const name = def.name.toLowerCase();
   if (owner === 'ordo') {
     const why = opts?.reason ? ` ${reasonText(opts.reason)}` : '';
-    log(s, 'ordo', `The Ordo ${status === 'staked' ? 'stakes out' : 'raises'} ${withArticle(name)}.${why}`, ['decided'], id);
+    log(s, 'ordo', `The Ordo ${status === 'staked' ? 'stakes out' : 'raises'} ${withArticle(name)}.${why}`, undefined, id);   // chronicle() tags it 'decided' only when due (R18)
   } else if (status === 'plan') log(s, 'build', `${def.name} planned: works begin when the stores allow.`, undefined, id);
   else log(s, 'build', `Works begin on ${withArticle(name)}.`, undefined, id);
   if (owner === 'player' && !opts?.reason) {               // the player builds by hand what they had asked of the Ordo

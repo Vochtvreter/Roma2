@@ -270,7 +270,7 @@ describe('placeBuilding: plans, stakes and sites per PlaceOpts', () => {
     const b = s.buildings[s.buildings.length - 1];
     expect([b.status, b.owner, b.reason?.code]).toEqual(['staked', 'ordo', 'aestasWater']);
     const line = s.log[s.log.length - 1];
-    expect([line.kind, line.ref, line.tags]).toEqual(['ordo', b.id, ['decided']]);
+    expect([line.kind, line.ref, line.tags]).toEqual(['ordo', b.id, undefined]);   // chronicle() tags it only when decided in our name (R18)
     const r2 = placeBuilding(s, 'lararium', tileFor(s, 'lararium', 'ordo'), { owner: 'ordo', noStake: true });
     expect(r2.ok && s.buildings[s.buildings.length - 1].status).toBe('building');
     s.res.denarii = 0;

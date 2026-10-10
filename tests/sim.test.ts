@@ -539,3 +539,21 @@ describe.runIf(INTEGRATED)('the opening with the real map, coverage and Ordo (in
     expect(Math.abs(Math.min(...f.water.months.slice(0, aestasEnd + 1).map((m) => m.minDoh)) - low)).toBeLessThanOrEqual(10);
   });
 });
+
+describe.runIf(INTEGRATED)("the away report's \"decided in your name\" (R18)", () => {
+  const offline = (s: GameState, days: number): void => { for (let i = 0; i < days; i++) tick(s, newCtx(true)); };
+  const decidedWorks = (s: GameState): string[] => s.log.filter((e) => e.kind === 'ordo' && e.ref !== undefined && e.tags?.includes('decided')
+    && s.buildings.some((b) => b.id === e.ref && b.owner === 'ordo')).map((e) => e.text);
+
+  it('the Ordo building with its toggle on is not tagged; with the toggle off and Govern while away, it is', () => {
+    const on = fresh(42);
+    offline(on, 120);
+    expect(on.buildings.some((b) => b.owner === 'ordo')).toBe(true);
+    expect(decidedWorks(on)).toEqual([]);
+    const off = fresh(42);
+    off.ordo.on.build = false;
+    offline(off, 120);
+    expect(off.buildings.some((b) => b.owner === 'ordo')).toBe(true);
+    expect(decidedWorks(off).length).toBeGreaterThan(0);
+  });
+});
