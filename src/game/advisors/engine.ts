@@ -7,8 +7,10 @@
 //  · the threshold × CLEAR release lives in each rule's evaluate(): a raised rule keeps evaluating at its lowest
 //    severity until its metric passes threshold × 1.25 (util.lowLadder / util.held); `clear()` may add a
 //    rule-specific release condition;
-//  · severity rises at once (that breaks a hush) and falls — or clears — only after DOWNGRADE_DAYS stable days, and
-//    never before the advisory is MIN_LIFE days old;
+//  · severity rises at once and falls — or clears — only after DOWNGRADE_DAYS stable days, and never before the
+//    advisory is MIN_LIFE days old;
+//  · a hush lasts its HUSH_DAYS whatever the rule does meanwhile: it outlives a clear and a re-raise, a fall to a
+//    watch Nota and back, and a fall and a rise to the severity it was hushed at; only a graver severity breaks it;
 //  · flap limit: `flips` holds the raise/clear days of the last FLAP_WINDOW days (alternating, newest last). A rule
 //    already raised FLAP_MAX times in the window is not cleared but kept on the tablets as a quiet Nota
 //    (`params.watch`), so no rule is raised more than FLAP_MAX times in any window and a real danger is never
@@ -102,8 +104,16 @@ function raise(s: GameState, ctx: TickContext, rule: AdvisorRule, prev: Advisory
   flips.push(s.day);
   const m: AdvisoryMemo = { rule: rule.id, active: true, sev: e.severity, since: s.day, lowerSince: null, params: plain(e.params), flips };
   if (e.metric) m.metric = { ...e.metric, value: finite(e.metric.value) };
+  // the same counsel back inside its hush, no graver than when hushed, stays hushed (and quiet: no new Annales line)
+  const kept = prev !== undefined && hushHolds(s, prev, e.severity);
+  if (kept) { m.snoozeUntil = prev.snoozeUntil; m.snoozeSev = prev.snoozeSev ?? prev.sev; }
   s.guidance.advisories[rule.id] = m;
-  announce(s, ctx, rule, m);
+  if (!kept) announce(s, ctx, rule, m);
+}
+
+/** A hush still running that a severity of `sev` does not break (only a graver one does; never a Periculum). */
+function hushHolds(s: GameState, m: AdvisoryMemo, sev: number): boolean {
+  return m.snoozeUntil !== undefined && m.snoozeUntil > s.day && sev < PERICULUM && sev <= (m.snoozeSev ?? m.sev);
 }
 
 function update(s: GameState, ctx: TickContext, rule: AdvisorRule, m: AdvisoryMemo, e: AdvisoryEval): void {
@@ -111,9 +121,12 @@ function update(s: GameState, ctx: TickContext, rule: AdvisorRule, m: AdvisoryMe
   if (e.metric) m.metric = { ...e.metric, value: finite(e.metric.value) };
   else delete m.metric;
   if (e.severity > m.sev) {
+    const kept = hushHolds(s, m, e.severity);
     m.sev = e.severity;
     m.lowerSince = null;
+    if (kept) return;
     delete m.snoozeUntil;
+    delete m.snoozeSev;
     announce(s, ctx, rule, m);
   } else if (e.severity < m.sev) {
     if (m.lowerSince === null) m.lowerSince = s.day;
@@ -146,8 +159,7 @@ function fade(s: GameState, v: SimView, rule: AdvisorRule, m: AdvisoryMemo): voi
   }
   m.active = false;
   m.lowerSince = null;
-  m.flips.push(day);
-  delete m.snoozeUntil;
+  m.flips.push(day);   // a hush is kept: should the rule be raised again inside it, it stays hushed (raise)
 }
 
 /** Raises within the flap window: flips alternate raise/clear and end with a raise while the memo is active. */
@@ -245,6 +257,7 @@ export function hush(s: GameState, rule: RuleId): ActionResult {
   if (!m || !m.active) return { ok: false, code: 'notFound', reason: 'That advice is no longer given.' };
   if (m.sev >= PERICULUM) return { ok: false, code: 'invalid', reason: 'A Periculum cannot be hushed.' };
   m.snoozeUntil = s.day + A.HUSH_DAYS;
+  m.snoozeSev = m.sev;
   return { ok: true };
 }
 

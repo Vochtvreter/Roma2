@@ -267,6 +267,55 @@ describe('engine', () => {
     day(s, { grain: ess(500, -100) });
     expect(hush(s, 'annonae.grain.runout').ok).toBe(false);
   });
+  describe('a hush lasts its 30 days (R11)', () => {
+    const G = 'annonae.grain.runout';
+    const at = (r: number): Patch => ({ grain: ess(r * 100, -100) });
+    const onCard = (s: GameState): RuleId[] => activeAdvisories(s, { forCard: true }).map((a) => a.rule);
+    const told = (ctx: TickContext): boolean => ctx.fx.some((f) => f.kind === 'advisory' && f.rule === G);
+    it('a clear and a re-raise at the same severity stay hushed, quietly', () => {
+      const s = base();
+      day(s, at(20));                                               // Cave
+      expect(hush(s, G).ok).toBe(true);
+      for (let i = 0; i < LIFE; i++) day(s, at(200));
+      expect(s.guidance.advisories[G]!.active).toBe(false);
+      const lines = s.log.length;
+      const ctx = day(s, at(20));
+      expect(s.guidance.advisories[G]!.active).toBe(true);
+      expect(s.day).toBeLessThan(s.guidance.advisories[G]!.snoozeUntil!);
+      expect(onCard(s)).not.toContain(G);
+      expect(told(ctx)).toBe(false);
+      expect(s.log.length).toBe(lines);                             // no second Annales line for the same Cave
+    });
+    it('a fall to a watch Nota (flapping) and back stays hushed', () => {
+      const s = base();
+      day(s, at(40));
+      for (let i = 0; i < LIFE; i++) day(s, at(200));
+      day(s, at(40));                                               // second raise inside the flap window
+      expect(hush(s, G).ok).toBe(true);
+      for (let i = 0; i < LIFE; i++) day(s, at(200));
+      expect(s.guidance.advisories[G]!.params.watch).toBe(1);       // kept as a watch Nota
+      expect(s.guidance.advisories[G]!.sev).toBe(0);
+      day(s, at(40));
+      expect(s.guidance.advisories[G]!.sev).toBe(1);
+      expect(onCard(s)).not.toContain(G);
+    });
+    it('a fall and a rise back to the hushed severity stay hushed; a graver one shows', () => {
+      const s = base();
+      day(s, at(20));
+      expect(hush(s, G).ok).toBe(true);
+      for (let i = 0; i <= A.DOWNGRADE_DAYS; i++) day(s, at(40));
+      expect(s.guidance.advisories[G]!.sev).toBe(1);
+      expect(told(day(s, at(20)))).toBe(false);
+      expect(s.guidance.advisories[G]!.sev).toBe(2);
+      expect(onCard(s)).not.toContain(G);
+      const m = base();
+      day(m, at(40));                                               // hushed at Monitum …
+      expect(hush(m, G).ok).toBe(true);
+      expect(told(day(m, at(20)))).toBe(true);                      // … a Cave breaks it
+      expect(onCard(m)).toContain(G);
+      expect(m.guidance.advisories[G]!.snoozeUntil).toBeUndefined();
+    });
+  });
   it('appoints advisors by their triggers and keeps unappointed rules silent', () => {
     const s = fresh(42);
     s.morale = 10;

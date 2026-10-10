@@ -312,6 +312,7 @@ export interface AdvisoryMemo {
   lowerSince: number | null;                          // day the evaluated severity first fell below sev
   params: Record<string, number | string>; metric?: Metric;
   snoozeUntil?: number; flips: number[];             // days it was raised or cleared (last 60 days)
+  snoozeSev?: Severity;                               // severity when hushed: the hush outlives a clear, and only a graver one breaks it
 }
 export interface GuidanceState {
   advisories: Partial<Record<RuleId, AdvisoryMemo>>;

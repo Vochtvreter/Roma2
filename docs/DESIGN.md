@@ -781,7 +781,7 @@ Unappointed advisors show as silhouettes (*"Appointed at Vicus"*). Tie order: an
 - **Hysteresis**: raise at the threshold; clear only past threshold × 1.25 (or the rule's explicit clear condition); severity rises at once and falls only after **3 stable days**; an advisory lives at least **3 days**; a rule may not toggle raised ↔ cleared more than twice in 60 days (tested).
 - **Order**: severity, then advisor tie order, then age. *Opportunitas* (petition ready) renders gold, ranks as Monitum and never outranks *Cave*.
 - **Supersede**: `annonae.famine` hides `annonae.grain.runout`; `annonae.mess` is hidden while either is active at ≥ its severity.
-- **Noise control**: *Hush 30 days* on Nota, Monitum and Cave (never Periculum); *Mute rule* for Nota only. An Annales line is written only when an advisory is **new at Cave or above** or **rises** in severity. A bell (*tintinnabulum*) sounds on a new Periculum, at most once per 30 s. *Pause on Periculum* is an optional pref (default off).
+- **Noise control**: *Hush 30 days* on Nota, Monitum and Cave (never Periculum) — the hush lasts its 30 days even if the advisory clears and returns or falls and rises again; only a graver severity breaks it; *Mute rule* for Nota only. An Annales line is written only when an advisory is **new at Cave or above** or **rises** in severity. A bell (*tintinnabulum*) sounds on a new Periculum, at most once per 30 s. *Pause on Periculum* is an optional pref (default off).
 - **Fixable vs structural** (rome's `maxPotential`): if every able adult optimally assigned could cover the need, the remedy is *reassign*; otherwise *build or import*.
 
 ### 11.5 Remedies — typed and pre-checked
