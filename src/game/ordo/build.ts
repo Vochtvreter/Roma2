@@ -13,6 +13,7 @@ import { addCost, canAfford, log, missing } from '../state';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
 import { settingValue } from '../decisions';
+import { sectionRevealed } from '../reveal';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
 import { desirability, houseDesir, previewCovered } from '../coverage';
@@ -271,10 +272,41 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   }
   // 9 · oil for the great houses (groves for the demand × LUXURY: the margin the stores need to carry Ver and Aestas)
   if (BUILDING_DEFS.olivetum.rank <= s.rank && hw.t4Res * B.housing.GOODS.oil * B.ordo.LUXURY > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
-  // 10 · the council focus's build plan; 11 · beauty under Urbs
+  // 10 · the council focus's build plan (named only once the player can see the focus); 11 · beauty under Urbs
   const focus = s.decisions.focus;
-  for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', { focus }));
+  const plan = focusParams(s);
+  for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', plan));
   if (focus === 'urbs' && hw.t3Low > 0) yield* yieldOf(make('hortus', 'beauty', { n: hw.t3Low }));
+}
+
+/** The focus a focusPlan reason names: none before the council's focus is revealed (it is the Ordo's default then, and
+ *  "the Concordia plan" would cite a choice the player has never seen). */
+function focusParams(s: GameState): Reason['params'] {
+  return sectionRevealed(s, 'focus') ? { focus: s.decisions.focus } : {};
+}
+
+/** A materials or Capitolium reason as it stands now (DESIGN §10.6): the lacking quantity from `lack` (today's needs
+ *  unless given), its ETA scaled to it; or the "covered" case once the stores hold what was lacking — a lumber camp's
+ *  own felling often fills the timber store the day it is staked, and "we lack 24 timber" beside "the stores are full"
+ *  read as a contradiction. Other reasons are returned as they are. */
+export function currentReason(s: GameState, v: SimView, r: Reason, lack?: Cost): Reason {
+  if (r.code !== 'materials' && r.code !== 'capitolium') return r;
+  const res = r.params.res;
+  if (typeof res !== 'string' || !(RESOURCES as readonly string[]).includes(res)) return r;
+  const now = lack ? null : materialNeeds(s, v);
+  const q = Math.ceil((lack ?? now?.lack ?? {})[res as ResId] ?? 0);
+  const was = typeof r.params.qty === 'number' ? r.params.qty : 0;
+  const forNow = q > 0 && r.code === 'materials' ? now?.forOf[res as ResId] : undefined;   // whom the good is lacking for today
+  if (q > 0 && q === was && r.params.covered === undefined && (forNow === undefined || forNow === r.params.for)) return r;
+  const p: Reason['params'] = { ...r.params };
+  delete p.covered;
+  delete p.eta;
+  if (q > 0) {
+    p.qty = q;
+    if (forNow !== undefined) p.for = forNow;
+    if (typeof r.params.eta === 'number' && was > 0) p.eta = Math.max(1, Math.ceil((r.params.eta * q) / was));
+  } else p.covered = 1;
+  return { code: r.code, params: p };
 }
 
 /** A work's cost (any slot but a castellum's) exceeds a store cap. */
@@ -421,10 +453,20 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   const full = ordoSites(s) >= maxSites(v);
   const w = full ? walk.list.find((e) => e.state === 'proposed' && e.wish.survival)?.wish : walk.take;
   if (!w) return;
+  const res = w.reason.params.res;
+  const had = typeof res === 'string' && (RESOURCES as readonly string[]).includes(res) ? s.res[res as ResId] : 0;
   const r = placeBuilding(s, w.type, w.tile, { owner: 'ordo', reason: w.reason, noStake: w.survival });
   if (!r.ok) return;
   if (r.id !== undefined) ctx.fx.push({ kind: 'ordoPlaced', id: r.id });
-  chronicle(s, 'ordo', w.reason, { ref: r.id, decided });
+  // the timber felled on the site enters the stores: a lack it made up is told as covered, here and on the site
+  let reason = w.reason;
+  if ((reason.code === 'materials' || reason.code === 'capitolium') && typeof res === 'string' && typeof reason.params.qty === 'number') {
+    const got = s.res[res as ResId] - had;
+    if (got > 0) reason = currentReason(s, v, reason, { [res]: Math.max(0, reason.params.qty - got) });
+    const b = r.id !== undefined ? getBuilding(s, r.id) : undefined;
+    if (b && reason !== w.reason) b.reason = reason;
+  }
+  chronicle(s, 'ordo', reason, { ref: r.id, decided });
 }
 
 /** Urbs: paves the busiest dirt streets nearest the forum, URBS_PAVE streets a month, from unreserved stone. */
@@ -505,7 +547,7 @@ export function wishList(s: GameState, v: SimView, n: number): WishView[] {
     const staked = b.status === 'staked';
     out.push({
       type: b.type, state: staked ? 'staked' : 'building', siteId: b.id, tile: idx(b.x, b.y),
-      reason: b.reason ?? { code: 'focusPlan', params: { type: b.type, focus: s.decisions.focus } },
+      reason: b.reason ? currentReason(s, v, b.reason) : { code: 'focusPlan', params: { type: b.type, ...focusParams(s) } },
       eta: staked ? Math.max(0, B.construction.STAKE_DAYS - (s.day - b.placed)) : Math.ceil((b.work * (1 - b.progress)) / builders),
     });
   }

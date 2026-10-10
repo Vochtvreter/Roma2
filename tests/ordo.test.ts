@@ -13,7 +13,7 @@ import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
 import { manualPlan, planLabour } from '../src/game/ordo/labour';
-import { maxSites, ordoSites, ordoSlot, walkWishes, wishList } from '../src/game/ordo/build';
+import { currentReason, maxSites, ordoSites, ordoSlot, walkWishes, wishList } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
 import { maxPotential } from '../src/game/economy';
 import { projectEssential } from '../src/game/forecast';
@@ -230,6 +230,73 @@ describe('building', () => {
     expect(r.ticker.length).toBeGreaterThan(0);
     for (const t of r.ticker) clean(t);
     expect(r.would).toEqual({ labour: {}, build: null, trade: null });
+  });
+});
+
+describe('reasons that stay true (R47)', () => {
+  it('a lack the stores now hold is told as covered, a smaller one by its number', () => {
+    const s = run(fresh(42), 5);
+    const v = view(s);
+    const r: Reason = { code: 'materials', params: { type: 'lignarius', res: 'timber', qty: 24, for: 'renovation', eta: 40 } };
+    const covered = currentReason(s, v, r, { timber: 0 });
+    expect(reasonText(covered)).toBe('We have timber enough for the renovations; a lumber camp keeps the supply coming.');
+    expect(reasonShort(covered)).toBe('Lumber camp — keeps the timber coming');
+    expect(currentReason(s, v, r, { timber: 12 }).params).toMatchObject({ qty: 12, eta: 20, for: 'renovation' });
+    expect(currentReason(s, v, r, { timber: 24 })).toBe(r);
+    const beds: Reason = { code: 'beds', params: { type: 'area', free: 2, keep: 8 } };
+    expect(currentReason(s, v, beds)).toBe(beds);
+    clean({ code: 'capitolium', params: { type: 'fodina', res: 'ore', covered: 1 } });
+  });
+  it('a lumber camp whose own felling fills the store does not say "we lack timber" (decision bot, 8 seeds)', () => {
+    let placed = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      play(seed, 'decision', {
+        days: 160,
+        onDay: (st) => {
+          for (const b of st.buildings) {
+            if (b.owner !== 'ordo' || b.placed !== st.day || b.reason?.code !== 'materials') continue;
+            placed++;
+            const res = b.reason.params.res as keyof GameState['res'];
+            if (b.reason.params.covered !== 1) expect(st.res[res], `seed ${seed} day ${st.day}: ${reasonText(b.reason)}`).toBeLessThan(census(st).caps[res]);
+            expect(st.log.some((l) => l.day === st.day && l.kind === 'ordo' && l.text === reasonText(b.reason!))).toBe(true);
+          }
+        },
+      });
+    }
+    expect(placed).toBeGreaterThan(0);
+  }, 120_000);
+  it('names the council focus only once the player can see it', () => {
+    expect(reasonText({ code: 'focusPlan', params: { type: 'lignarius' } })).toBe('The council\'s plan calls for a lumber camp.');
+    expect(reasonShort({ code: 'focusPlan', params: { type: 'lignarius' } })).toBe('Lumber camp — the council\'s plan');
+    expect(reasonText({ code: 'focusPlan', params: { type: 'lignarius', focus: 'concordia' } })).toBe('The council\'s plan for Concordia calls for a lumber camp.');
+    const s = run(fresh(42), 12);
+    const plan = (st: GameState): Reason[] => walkWishes(st, view(st)).list.map((e) => e.wish.reason).filter((r) => r.code === 'focusPlan');
+    expect(s.guidance.milestoneDays.charter).toBeUndefined();
+    const before = plan(s);
+    expect(before.length).toBeGreaterThan(0);
+    for (const r of before) expect(r.params.focus).toBeUndefined();
+    const t = structuredClone(s);
+    t.decisions.paths.charter = 'veterani';
+    t.guidance.milestoneDays.charter = t.day;
+    for (const r of plan(t)) expect(r.params.focus).toBe('concordia');
+  });
+  it('a site finished after the council sat leaves the Agenda and the ticker; a new focus makes the report again', () => {
+    const s = fresh(42);
+    let site: Building | undefined;
+    for (let i = 0; i < 60 && !site; i++) {
+      run(s, 1);
+      const a = councilReport(s).agenda.find((w) => w.state === 'building');
+      site = a ? s.buildings.find((b) => b.id === a.siteId) : undefined;
+    }
+    expect(site).toBeDefined();
+    Object.assign(site!, { status: 'done', progress: 1 });
+    invalidate(s);
+    const rep = councilReport(s);
+    expect(rep.agenda.some((w) => w.siteId === site!.id)).toBe(false);
+    expect(rep.ticker.some((r) => r.params.state === 'raising' && r.params.type === site!.type && r.code === site!.reason?.code)).toBe(false);
+    s.decisions.focus = 'copia';
+    expect(councilReport(s)).not.toBe(rep);
+    expect(councilReport(s).agenda.every((w) => w.reason.code !== 'focusPlan' || w.reason.params.focus !== 'concordia')).toBe(true);
   });
 });
 
