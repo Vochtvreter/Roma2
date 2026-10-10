@@ -8,6 +8,7 @@ import { HUBS as HUBS$, RULES as RULES$, TRADE_RES as TRADE_RES$ } from '../type
 import type { ContractSpec, Cost, GameState, HubId, Reason, ResId, SimView, TickContext, TradeRes } from '../types';
 import { cancelContract, caravanSlots, createContract, hubOpen, price, takeOffer, tripDays } from '../trade';
 import { settingValue } from '../decisions';
+import { tabRevealed } from '../reveal';
 import { capitoliumFlow } from '../construction';
 import { missing } from '../state';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
@@ -147,7 +148,8 @@ function wantedGoods(s: GameState): Set<ResId> {
  *  MerchantOffer.kind is the colony's side (WP-D): 'buy' = we buy from him, 'sell' = we sell to him; price is per unit. */
 function merchantDeals(s: GameState, v: SimView, decided: boolean): void {
   const m = s.trade.merchant;
-  if (!m || m.until - s.day > B.ordo.TRADE_EVERY) return;
+  // not before Commercium opens: the Ordo trades only where the player could (an old save may hold a Castra merchant)
+  if (!m || m.until - s.day > B.ordo.TRADE_EVERY || !tabRevealed(s, 'trade')) return;
   const wanted = wantedGoods(s);
   for (const o of m.offers) {
     if (o.taken) continue;

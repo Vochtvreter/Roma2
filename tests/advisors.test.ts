@@ -100,6 +100,7 @@ const choice = (d: number) => (s: GameState) => {
     options: [{ label: 'Agree', note: '', key: 'a' }, { label: 'Decline politely', note: 'Nothing changes.', key: 'b' }] };
 };
 const merchant = (s: GameState): void => {
+  if (s.rank < 1) s.rank = 1;   // Commercium is open (a Castra colony does not trade)
   s.trade.merchant = { name: 'Syrian spice traders', arrived: s.day, until: s.day + 12, offers: [{ id: 1, kind: 'buy', res: 'grain', qty: 40, price: 2, taken: false }] };
 };
 const pet = (ready: boolean, label = '50 souls') => ({ decision: 'path1', rank: 1, ready, fee: { denarii: 9e9 }, affordable: false, needs: [{ label, met: ready }] });
@@ -395,6 +396,18 @@ describe('annonae.storage: full sheds (R12)', () => {
     t.rank = 1;
     day(t, { rot: 4, grain: { stock: 990, cap: 1000, doh: 30 } });
     expect(render(t, {}).remedies[0].remedy).toEqual({ kind: 'place', building: 'horreum' });
+  });
+});
+
+describe('quaestor.merchant before Commercium opens (R28)', () => {
+  it('a merchant at a Castra the player cannot trade from raises no counsel', () => {
+    const s = base();
+    s.trade.merchant = { name: 'Syrian spice traders', arrived: s.day, until: s.day + 12, offers: [{ id: 1, kind: 'buy', res: 'grain', qty: 40, price: 2, taken: false }] };
+    day(s, { grain: ess(1000, -100) });
+    expect(s.guidance.advisories['quaestor.merchant']?.active ?? false).toBe(false);
+    s.decisions.paths.charter = 'mercatores';                       // the Mercatores charter opens Commercium at Castra
+    day(s, { grain: ess(1000, -100) });
+    expect(s.guidance.advisories['quaestor.merchant']?.active).toBe(true);
   });
 });
 

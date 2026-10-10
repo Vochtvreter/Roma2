@@ -349,6 +349,23 @@ describe('trade', () => {
     setOrdo(s, 'trade', false);
     expect(s.trade.contracts.every((c) => c.owner === 'player')).toBe(true);
   });
+  // the merchant's grain on his last council day, with an urgent advisory standing (the quaestor's wanted goods)
+  const lastDay = (rank: 0 | 1, rule: 'annonae.grain.runout' | 'annonae.storage'): GameState => {
+    const s = fresh(42);
+    s.rank = rank;
+    s.res.denarii = 50_000;
+    s.res.grain = 100;
+    invalidate(s);
+    s.trade.merchant = { name: 'Syrian spice traders', arrived: s.day - 5, until: s.day + 3, offers: [{ id: 1, kind: 'buy', res: 'grain', qty: 40, price: 2, taken: false }] };
+    s.guidance.advisories[rule] = { rule, active: true, sev: 2, since: s.day, lowerSince: null, params: {}, flips: [s.day] };
+    ordoTrade(s, ctx(), view(s));
+    return s;
+  };
+  it('deals with the merchant only once Commercium is open to the player (R28), and buys grain only when it is wanted', () => {
+    expect(lastDay(1, 'annonae.grain.runout').res.grain).toBe(140);   // bought (and the merchant, sold out, departs)
+    expect(lastDay(0, 'annonae.grain.runout').res.grain).toBe(100);   // Castra: no trade yet
+    expect(lastDay(1, 'annonae.storage').res.grain).toBe(100);        // full sheds want room, not grain
+  });
 });
 
 describe('water for Aestas (DESIGN §10.5 row 2, §11.11)', () => {
