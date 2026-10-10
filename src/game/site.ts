@@ -445,31 +445,32 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
 }
 
 /** Everything a fast type's scores read besides its own slot parts: the structure (rank, footprints, the slot set),
- *  the coverage and desirability in force, the fed gate, the radius bonuses, each house's tier, renovation, preference
+ *  the desirability in force, the fed gate, the radius bonuses, each house's tier, renovation, preference, coverage mask
  *  and goods, and the timber standing on each candidate slot. While it holds, yesterday's best slot is today's. */
-interface FastSig { struct: number; cov: unknown; desir: unknown; slots: unknown; fed: boolean; bonus: number[]; houses: number[]; fells: number[] }
+interface FastSig { struct: number; desir: unknown; slots: unknown; fed: boolean; bonus: number[]; houses: number[]; fells: number[] }
 const fastBest = new WeakMap<GameState, Map<string, { sig: FastSig; best: ReturnType<typeof bestSlot> }>>();
 const PREF_BITS: Readonly<Record<string, number>> = { auto: 0, insula: 1, domus: 2 };
 
 function fastSig(s: GameState, type: BuildingId, slots: Map<number, number>): FastSig {
   const SUP = B.housing.SUPPLIED;
+  const masks = coverage(s).houseMask;   // the scores read coverage only through each house's mask
   const houses: number[] = [];
   for (const id of derived(s).houses) {
     const h = getBuilding(s, id)?.house;
     if (!h) { houses.push(-1); continue; }
     houses.push((h.renovating ? 1 : 0) + 2 * (PREF_BITS[h.pref] ?? 3) + (h.oil >= SUP ? 8 : 0) + (h.wine >= SUP ? 16 : 0)
-      + 32 * TIER_LEVEL.indexOf(h.tier));
+      + 32 * TIER_LEVEL.indexOf(h.tier) + 256 * (masks.get(id) ?? 0));
   }
   const fells: number[] = [];
   for (const tile of slots.keys()) fells.push(fellOn(s, fixedOf(s, type, tile % GW, Math.floor(tile / GW))));
   return {
-    struct: structEpoch(s), cov: coverage(s), desir: desirability(s), slots, fed: s.fed >= B.needs.FED_MIN,
+    struct: structEpoch(s), desir: desirability(s), slots, fed: s.fed >= B.needs.FED_MIN,
     bonus: [fxAdd(s, 'shrineRadius'), fxAdd(s, 'marketRadius'), fxAdd(s, 'bathsRadius')], houses, fells,
   };
 }
 
 function sameSig(a: FastSig, b: FastSig): boolean {
-  if (a.struct !== b.struct || a.cov !== b.cov || a.desir !== b.desir || a.slots !== b.slots || a.fed !== b.fed) return false;
+  if (a.struct !== b.struct || a.desir !== b.desir || a.slots !== b.slots || a.fed !== b.fed) return false;
   for (let k = 0; k < 3; k++) if (a.bonus[k] !== b.bonus[k]) return false;
   if (a.houses.length !== b.houses.length || a.fells.length !== b.fells.length) return false;
   for (let k = 0; k < a.houses.length; k++) if (a.houses[k] !== b.houses[k]) return false;
