@@ -78,6 +78,7 @@ export class MapView {
   private dragFrom: number | null = null;
   private titleT = 0;
   private sheetY = 0;
+  private sheet: HTMLCanvasElement | null = null;     // ?dev&sheet: a full-page canvas above every UI layer
   private titleUntil = 0;                            // titleDrift() was called this frame: a clean map, no marks
 
   constructor(private readonly canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, private readonly cb: ViewCallbacks) {
@@ -95,6 +96,7 @@ export class MapView {
       toolDrag: (phase, x, y, shift) => this.onToolDrag(phase, x, y, shift),
       cancel: () => this.cb.onCancel(),
     });
+    if (DEV_SHEET) this.sheet = sheetCanvas((dy) => { this.sheetY = Math.min(0, this.sheetY - dy * this.dpr); });
     this.resize();
   }
 
@@ -164,7 +166,7 @@ export class MapView {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = BG;
     g.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    if (DEV_SHEET) { this.drawSheet(); return; }
+    if (this.sheet) { this.drawSheet(this.sheet); return; }
     g.setTransform(xf.k, 0, 0, xf.k, xf.ox, xf.oy);
     g.imageSmoothingEnabled = false;
     // 1–2 · ground, ground layer, trees
@@ -339,14 +341,12 @@ export class MapView {
   }
 
   private drag(dxCss: number, dyCss: number): void {
-    if (DEV_SHEET) { this.sheetY = Math.min(0, this.sheetY + dyCss * this.ratio); return; }
     this.cam.x -= (dxCss * this.ratio) / this.cam.scale;
     this.cam.y -= (dyCss * this.ratio) / this.cam.scale;
     clampCamera(this.cam);
   }
 
   private applyLevel(level: number, anchor?: { sx: number; sy: number }): void {
-    if (DEV_SHEET && anchor) { this.sheetY = Math.min(0, this.sheetY + (level > this.cam.level ? 120 : -120) * this.ratio); return; }
     if (level === this.cam.level && this.cam.scale === scaleFor(level, this.dpr)) return;
     const ax = anchor ? anchor.sx * this.ratio : this.cam.vw / 2, ay = anchor ? anchor.sy * this.ratio : this.cam.vh / 2;
     const before = screenToWorld(this.cam, ax, ay), s0 = this.motion.xform(this.cam).k;
@@ -449,8 +449,13 @@ export class MapView {
   }
 
   /** ?dev&sheet: every registered and every required sprite in a labelled grid by group at 2× (missing ones in red). */
-  private drawSheet(): void {
-    const g = this.g, d = this.dpr, sc = 2 * Math.max(1, Math.round(d));
+  private drawSheet(cv: HTMLCanvasElement): void {
+    const d = this.dpr, sc = 2 * Math.max(1, Math.round(d));
+    if (cv.width !== Math.round(innerWidth * d) || cv.height !== Math.round(innerHeight * d)) { cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); }
+    const g = cv.getContext('2d');
+    if (!g) return;
+    g.fillStyle = BG;
+    g.fillRect(0, 0, cv.width, cv.height);
     const names = [...new Set([...spriteNames(), ...REQUIRED_SPRITES])].sort();
     const missing = names.filter((n) => !hasSprite(n)).length;
     g.font = `${Math.round(10 * d)}px monospace`;
@@ -469,8 +474,8 @@ export class MapView {
         y += 16 * d;
       }
       const { w, h } = spriteSize(n), cw = Math.max(w * sc, 96 * d);
-      if (x + cw > this.canvas.width) { x = 8; y += rowH + 8; rowH = 0; }
-      if (y > -200 && y < this.canvas.height) {
+      if (x + cw > cv.width) { x = 8; y += rowH + 8; rowH = 0; }
+      if (y > -200 && y < cv.height) {
         g.fillStyle = '#2c201b';
         g.fillRect(x, y, w * sc, h * sc);
         g.drawImage(sprite(n), x, y, w * sc, h * sc);
@@ -481,6 +486,19 @@ export class MapView {
       x += cw + 8;
     }
   }
+}
+
+/** The ?dev&sheet canvas: fixed over the whole page, scrolled by the wheel or a drag (dy in CSS px). */
+function sheetCanvas(scroll: (dy: number) => void): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  Object.assign(c.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh', zIndex: '10000', imageRendering: 'pixelated' });
+  document.body.appendChild(c);
+  let last: number | null = null;
+  c.addEventListener('wheel', (e) => { e.preventDefault(); scroll(e.deltaY); }, { passive: false });
+  c.addEventListener('pointerdown', (e) => { last = e.clientY; });
+  c.addEventListener('pointermove', (e) => { if (last !== null) { scroll(last - e.clientY); last = e.clientY; } });
+  c.addEventListener('pointerup', () => { last = null; });
+  return c;
 }
 
 /** The overlay a building auto-selects while placing (§12.5), or null to keep the current one. */
