@@ -4,9 +4,10 @@
 
 /* ───────── tablet and narrow desktop ───────── */
 @media (max-width: 1099px) {
-  /* the HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material below */
+  /* the HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below */
   :root { --hud-h: 108px; }
-  #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; }
+  #hud { flex-wrap: wrap; align-content: center; row-gap: 3px; }
+  .hud-strip { grid-template-rows: 32px; }
   .hud-speed, .hud-menu { order: 1; }
   .hud-speed { margin-left: auto; }
   .hud-break { display: block; flex: 0 0 100% !important; height: 0; order: 2; }
@@ -125,18 +126,21 @@
   .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
   .hud-coin .hud-sub { font-size: 7px; }
   .hud-stages { display: none; }
-  /* three rows: tablets, coin and souls · date, spirits, speed and menu · the materials, full width and scrolling */
+  /* Three rows: tablets, coin and souls · date, speed and menu · spirits and the materials (scrolling). No row can wrap:
+     in each one item takes what is left (flex-basis 0) and the others keep their natural width; if even that runs short
+     (a 360 px phone late in the game) only the souls figure or the date ellipsizes. #hud::after breaks rows 2 and 3. */
   :root { --hud-h: 136px; }
-  /* row 1 can never wrap: the tablets and the coin keep their natural width and the souls take what is left (basis 0);
-     if even that runs short (a 360 px phone late in the game) only the souls figure ellipsizes */
+  #hud { row-gap: 3px; }
+  #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
   .hud-vitals, .hud-chip.hud-coin { flex: 0 1 auto !important; }
   .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
   .hud-break { order: 1; }
-  .hud-date { order: 2; flex: 1 1 auto !important; }
-  .hud-chip.hud-morale { order: 3; flex: none !important; }
-  .hud-speed, .hud-menu { order: 4; }
+  .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
+  .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
+  .hud-speed, .hud-menu { order: 2; }
   .hud-menu { margin-left: 0; }
-  .hud-strip { order: 5; flex: 1 0 100% !important; }
+  .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
+  .hud-strip { order: 4; flex: 1 1 0 !important; }
   .hud-date-main { font-size: 9px; }
   .hud-date .hud-sub { display: none; }
   .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
@@ -145,6 +149,42 @@
   .title-row { flex-direction: column; }
   .modal-title { font-size: 21px; }
   .disp-body.letter, .disp-letter { font-size: 15px; }
+}
+
+/* ───────── touch: targets of at least 44 px (DESIGN §15.7) ───────── */
+@media (pointer: coarse) {
+  .btn, .btn.small, .btn.tab-seg-btn, .btn.bld-cat, .obj-cta, .side-tab, .modal-row, .tr-repeat, .tr-select, button.chip { min-height: 44px; }
+  .btn.adv-f { min-height: 64px; }
+  .btn.small, .btn.bld-cat { min-width: 44px; }
+  .btn.adv-f { min-width: 0; }
+  .counsel-link { min-height: 44px; padding: 0 8px; }
+  button.chip { padding: 0 10px; }
+  .ed-slider, .modal-range { height: 44px; }
+  .tr-repeat input { width: 22px; height: 22px; }
+  .modal-x, .tip-close { min-width: 44px; min-height: 44px; }
+  .modal-x { top: 14px; right: 8px; }
+  .counsel-pt { width: 44px; height: 44px; padding: 8px; }
+  .map-btn { width: 44px; height: 44px; }
+  .map-ov { height: 44px; }
+  .hud-sp, .hud-menu { height: 44px; }
+}
+@media (pointer: coarse) and (max-width: 1099px) {
+  .hud-sp { min-width: clamp(32px, calc((100vw - 700px) / 5), 44px); }
+  .hud-menu { min-width: 44px; }
+}
+@media (pointer: coarse) and (max-width: 899px) {
+  :root { --hud-h: 104px; }
+  .hud-sp { min-width: clamp(28px, calc((100vw - 460px) / 5), 44px); }
+  .map-ov { width: 44px; }
+  .counsel-toggle { top: 4px; right: 4px; width: 44px; height: 44px; }
+  .counsel-who { padding-right: 46px; }
+  #side-toggle { top: -44px; height: 44px; }
+  #left { bottom: calc(var(--sheet) + 158px); }   /* the 44 px overlay and zoom rows stand taller */
+}
+@media (pointer: coarse) and (max-width: 559px) {
+  :root { --hud-h: 140px; }
+  .hud-sp { min-width: clamp(28px, calc((100vw - 214px) / 5), 40px); }
+  .hud-menu { min-width: 40px; }
 }
 
 /* ───────── landscape phones: the sheet becomes a right-hand drawer ───────── */
