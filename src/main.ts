@@ -10,7 +10,7 @@ import { B } from './game/balance';
 import { newGame } from './game/state';
 import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { addFasti, exportText, hasSave, importText, loadGame, loadPrefs, saveGame, savePrefs } from './game/save';
-import { offlineRun } from './game/offline';
+import { offlineRun, simulateOffline } from './game/offline';
 import { drainActionFx } from './game/memo';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
@@ -45,7 +45,8 @@ class App implements Game {
   speed: Speed;
   paused = true;
   mode: Mode = 'title';
-  private readonly ui: UI;
+  /** The UI root (public for ?dev inspection). */
+  readonly ui: UI;
   private acc = 0;
   private last = 0;
   private saveTimer = 0;
@@ -415,10 +416,21 @@ class App implements Game {
   private onVictory(): void {
     const s = this.state;
     addFasti({
-      name: s.name, seed: s.seed, legacy: s.legacy, founded: s.stats.startedAt, dedicated: s.stats.victoryDay ?? s.day,
+      name: s.name, seed: s.seed, legacy: s.legacy, founded: B.time.START_DAY, dedicated: s.stats.victoryDay ?? s.day,
       peakPop: s.stats.peakPop, paths: Object.values(s.decisions.paths).filter((p): p is NonNullable<typeof p> => !!p), playMs: s.stats.playMs,
     });
     this.save();
+  }
+
+  /** ?dev: simulates an absence of `minutes` on the live colony (simulateOffline) and opens its Litterae Ordinis. */
+  awayFixture(minutes: number): void {
+    if (this.mode !== 'game') return;
+    const report = simulateOffline(this.state, Math.max(0, minutes) * 60_000);
+    drainActionFx();
+    try { this.rates = previewRates(this.state); } catch { this.rates = emptyRates(); }
+    this.paused = true;
+    if (report) this.ui.showDispatch('away', report);
+    this.changed();
   }
 
   /** ?dev: runs `days` online ticks synchronously (fx discarded). */
@@ -435,11 +447,12 @@ class App implements Game {
 }
 
 declare global {
-  interface Window { cv?: App; skip?: (days: number) => void }
+  interface Window { cv?: App; skip?: (days: number) => void; away?: (minutes: number) => void }
 }
 
 const app = new App();
 if (DEV) {
   window.cv = app;
   window.skip = (days: number) => app.skip(Math.max(0, Math.floor(days)));
+  window.away = (minutes: number) => app.awayFixture(minutes);
 }

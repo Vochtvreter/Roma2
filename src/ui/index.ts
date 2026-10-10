@@ -1,35 +1,34 @@
-// src/ui/index.ts — the UI root: builds every widget, the update loop, fx → toasts/sfx/banners (ARCHITECTURE §13.3, §13.7). Owner: WP-H.
-// Created by App (main.ts). Widgets throttle to UI_THROTTLE_MS; the side panel, inspector and event card are WP-I's classes.
-// SCAFFOLD: overlay bar and zoom buttons, place banner, veil and the §13.7 fx table work in a minimal form.
-import { OVERLAYS } from '../game/types';
-import type { AwayReport, FxEvent, OfflineRun, OverlayId, PlaceCheck } from '../game/types';
+// src/ui/index.ts — the UI root (ARCHITECTURE §13.3, §13.7): builds every widget in its DOM id, runs the throttled update
+// loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
+// mapbar.ts; the side panel, inspector and event card are WP-I's classes. Owner: WP-H.
+import type { AwayReport, FxEvent, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
-import { clear, costEl, h, img } from './dom';
+import { clear, fmt, h } from './dom';
+import { caps, installMeander } from './tipkit';
 import { Hud } from './hud';
-import { Objective } from './objective';
+import { Objective, milestoneToast } from './objective';
 import { Counsel } from './counsel';
 import { Ticker } from './ticker';
 import { TitleScreen } from './title';
 import { toast, toastBatch } from './toasts';
 import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
+import { MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
-import { idx } from '../game/map';
 import { getBuilding } from '../game/state';
-import { overlayRevealed } from '../game/reveal';
-import { aucYear, toRoman } from '../game/calendar';
+import { aucYear, formatRoman, toRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { TIER_DEFS } from '../game/data/housing';
 import { RANK_DEFS } from '../game/data/ranks';
-import { MILESTONES } from '../game/objectives';
+import { HUB_DEFS } from '../game/data/hubs';
+import { PATH_DEFS } from '../game/data/decisions';
+import { PATH_DECISIONS } from '../game/types';
 import { B } from '../game/balance';
-import { spriteURL } from '../render/sprites';
 
-const LIFE_SFX_MS = 10_000;                      // birth/death sounds at most every 10 s
-const OVERLAY_LABEL: Record<OverlayId, string> = { none: 'Off', aqua: 'Aqua', domus: 'Domus', officia: 'Officia', desir: 'Dignitas loci', terra: 'Terra' };
-const caps = (s: string): string => s.toUpperCase().replace(/U/g, 'V');
+const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
+const SPLASH: readonly string[] = ['castellum', 'lacus'];
 
 function el(id: string): HTMLElement {
   const e = document.getElementById(id);
@@ -50,15 +49,15 @@ export class UI {
   private last = -Infinity;
   private bellAt = -Infinity;
   private lifeAt = -Infinity;
-  private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement } | null = null;
-  private overlayKey = '';
+  private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement; date: HTMLElement } | null = null;
+  private tools!: MapTools;
 
   constructor(private readonly g: Game) {}
 
   /** Creates every widget in its DOM id; builds SidePanel, Inspector and ChoiceCard. */
   build(): void {
     const g = this.g;
-    document.documentElement.style.setProperty('--meander', `url(${spriteURL('f_meander', 2)})`);
+    installMeander();
     this.hud = new Hud(g, el('hud'));
     this.hud.build();
     this.objective = new Objective(g, el('objective'));
@@ -68,28 +67,25 @@ export class UI {
     this.side = new SidePanel(g, el('side'));
     this.inspector = new Inspector(g, el('inspector'));
     this.choice = new ChoiceCard(g, el('choice'));
-    const zoom = el('zoom-ctl');
-    clear(zoom);
-    zoom.append(
-      h('button', { class: 'btn small', 'aria-label': 'Zoom in', onclick: () => g.view.zoomBy(1) }, '+'),
-      h('button', { class: 'btn small', 'aria-label': 'Zoom out', onclick: () => g.view.zoomBy(-1) }, '−'),
-      h('button', { class: 'btn small', 'aria-label': 'Centre on the forum', onclick: () => g.view.centerOnForum() }, '⌂'),
-    );
+    this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
     this.showPlaceBanner(null, null);
   }
 
   /** Forces every widget to re-check its signature on the next frame (Game.changed). */
   changed(): void {
     this.last = -Infinity;
+    this.tools?.invalidate();
     this.side?.poke();
   }
 
-  /** Every animation frame: throttled widget updates, veil progress. */
+  /** Every animation frame: veil progress, WP-I widgets, then the throttled shell widgets. */
   frame(now: number): void {
     if (this.veil) {
-      const p = this.veil.run.progress();
-      this.veil.bar.style.width = `${Math.round(p * 100)}%`;
-      this.veil.label.textContent = `${Math.round(p * this.veil.run.days)} / ${this.veil.run.days} days`;
+      const v = this.veil;
+      const p = v.run.progress();
+      v.bar.style.width = `${(p * 100).toFixed(1)}%`;
+      v.label.textContent = `${fmt(Math.round(p * v.run.days))} / ${fmt(v.run.days)} days`;
+      v.date.textContent = formatRoman(this.g.state.day, { year: true });
     }
     if (this.g.mode === 'title') return;
     this.side.frame(now);
@@ -101,7 +97,7 @@ export class UI {
     this.objective.update();
     this.counsel.update();
     this.ticker.update(now);
-    this.updateOverlayBar();
+    this.tools.update();
   }
 
   /** FxEvents → toasts, sounds, banners and dispatches (§13.7). */
@@ -113,30 +109,28 @@ export class UI {
       switch (e.kind) {
         case 'built': {
           const b = getBuilding(s, e.id);
-          const name = b ? (b.house ? TIER_DEFS[b.house.tier].name : BUILDING_DEFS[b.type].name) : 'A work';
-          toastBatch('built', (n) => (n === 1 ? `${name} finished` : `${n} works finished`), 'good');
-          g.sfx('build');
+          const name = !b ? 'A work' : b.type === 'area' ? 'A house plot' : BUILDING_DEFS[b.type].name;
+          toastBatch('built', (n) => (n === 1 ? `${name} finished` : `${n} works finished`), 'good', 'i_star');
+          g.sfx(b && SPLASH.includes(b.type) ? 'splash' : 'build');
           break;
         }
         case 'evolved':
-          toastBatch('evolved', (n) => (n === 1 ? `A house became ${TIER_DEFS[e.tier].name}` : `${n} houses improved`), 'good');
+          toastBatch('evolved', (n) => (n === 1 ? `A home became a ${TIER_DEFS[e.tier].latin.toLowerCase()}` : `${n} homes improved`), 'good', 'i_beds');
           g.sfx('tink');
           break;
         case 'milestone': {
-          const m = MILESTONES.find((x) => x.id === e.id);
-          toast(`Res Gestae: ${m?.text ?? e.id}`, 'gold', 'i_laurel', 6000);
+          const m = milestoneToast(e.id);
+          toast(m.text, 'gold', 'i_laurel', 6000, m.unlock || undefined);
           g.sfx('lyre');
           break;
         }
-        case 'rank':
-          showBanner(`AUC ${toRoman(aucYear(s.day))}`, `${caps(s.name)} FIT ${caps(RANK_DEFS[e.rank].name)}`, RANK_DEFS[e.rank].title);
-          g.sfx('cornu');
-          break;
+        case 'rank': this.rankBanner(e.rank); g.sfx('cornu'); break;
         case 'stage':
-          showBanner('CAPITOLIVM', `Capitolium: stage ${e.stage} of 4`);
+          showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))} · CAPITOLIVM`, title: `Capitolium: ${STAGE_NAMES[e.stage] ?? `stage ${e.stage}`}`,
+            sub: e.stage >= 4 ? 'The pediment is crowned.' : `Stage ${toRoman(e.stage)} of IV raised · spirits lift for 30 days`, icon: 'i_star' });
           g.sfx('cornu');
           break;
-        case 'taxes': case 'caravanIn': g.sfx('coin'); break;
+        case 'taxes': case 'caravanIn': g.sfx('coin'); this.hud.flashCoin(); break;
         case 'arrive': g.sfx('gate'); break;
         case 'fire': g.sfx('crackle'); break;
         case 'event':
@@ -146,19 +140,30 @@ export class UI {
         case 'advisory':
           if (e.sev === 3) {
             if (now - this.bellAt >= B.advisors.BELL_S * 1000) { this.bellAt = now; g.sfx('tintinnabulum'); }
-            if (g.prefs.pauseOnCritical) g.setPaused(true);
+            if (g.prefs.pauseOnCritical && !g.paused) g.setPaused(true);
           }
           break;
         case 'victory':
+          showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))}`, title: `${caps(s.name)}: CAPITOLIVM DEDICATVM`, icon: 'i_laurel' });
           g.sfx('victory');
           this.showDispatch('victory');
           break;
         case 'birth': case 'death':
-          if (now - this.lifeAt >= LIFE_SFX_MS) { this.lifeAt = now; g.sfx(e.kind); }
+          if (now - this.lifeAt >= B.ui.LIFE_SFX_S * 1000) { this.lifeAt = now; g.sfx(e.kind); }
           break;
         default: break;
       }
     }
+  }
+
+  private rankBanner(rank: RankIndex): void {
+    const s = this.g.state;
+    const def = RANK_DEFS[rank];
+    const dec = PATH_DECISIONS.find((d) => PATH_DEFS[d].grants === rank);
+    const opt = dec ? PATH_DEFS[dec].options.find((o) => o.id === s.decisions.paths[dec]) : undefined;
+    const chips = [...def.unlocks.map((b) => BUILDING_DEFS[b].name), ...def.hubs.map((x) => HUB_DEFS[x].name), `Rome's roll ${fmt(def.ceiling)}`];
+    showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))}`, title: `${caps(s.name)} FIT ${caps(def.name)}`,
+      sub: `${opt ? `${opt.name} · ` : ''}you are now ${def.title}`, chips, icon: 'i_laurel' });
   }
 
   /** Shows the title screen (hides the game chrome). */
@@ -175,19 +180,22 @@ export class UI {
     this.changed();
   }
 
-  /** The catch-up veil: "Anni transeunt…" with progress and Skip. */
+  /** The catch-up veil: "Anni transeunt…" with progress, the racing date and Skip; the HUD and map race underneath. */
   showVeil(run: OfflineRun, onSkip: () => void): void {
     const v = el('veil');
     clear(v);
     const bar = h('i', { class: 'veil-fill' });
     const label = h('div', { class: 'veil-days num' });
-    v.appendChild(h('div', { class: 'veil-box' },
+    const date = h('div', { class: 'veil-date' });
+    const skip = h('button', { class: 'btn', onclick: () => { skip.disabled = true; skip.textContent = 'The scribes hurry…'; window.setTimeout(onSkip, 30); } }, 'Skip');
+    v.appendChild(h('div', { class: 'veil-box', role: 'status', 'aria-live': 'polite' },
+      h('div', { class: 'veil-kicker' }, 'DVM ABERAS · WHILE YOU WERE AWAY'),
       h('div', { class: 'veil-title' }, 'Anni transeunt…'),
       h('div', { class: 'veil-sub' }, 'the years pass'),
-      h('div', { class: 'meter veil-meter' }, bar), label,
-      h('button', { class: 'btn', onclick: () => onSkip() }, 'Skip')));
+      date, h('div', { class: 'veil-meter' }, bar), label, skip));
     v.hidden = false;
-    this.veil = { run, bar, label };
+    this.veil = { run, bar, label, date };
+    skip.focus();
   }
 
   /** Removes the veil. */
@@ -203,48 +211,8 @@ export class UI {
     openDispatch(this.g, kind, report);
   }
 
-  /** The placement banner: what is being placed, its cost, the verdict; a Place button on touch. */
+  /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. */
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void {
-    const root = el('place-banner');
-    clear(root);
-    root.hidden = !p;
-    if (!p) return;
-    const g = this.g;
-    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    const cancel = h('button', { class: 'btn small ghost', onclick: () => g.cancelPlacing() }, 'Cancel');
-    if (p.kind !== 'building') {
-      const text = p.kind === 'road' ? 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST' : p.kind === 'pave' ? 'DRAG OVER ROADS TO PAVE THEM'
-        : p.kind === 'reserve' ? 'CLICK A BLOCK TO RESERVE OR RELEASE IT' : 'CLICK A BUILDING TWICE TO DEMOLISH IT';
-      root.appendChild(h('div', { class: 'place-box' }, img(`i_tool_${p.kind}`, 2), h('span', { class: 'kicker' }, `${text} · ESC TO CANCEL`), cancel));
-      return;
-    }
-    const def = BUILDING_DEFS[p.type];
-    const verdict = check
-      ? check.ok
-        ? h('span', { class: 'place-ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}%` : 'Good ground', check.warn ? ` · ${check.warn}` : '')
-        : h('span', { class: 'place-bad' }, check.reason)
-      : null;
-    const place = coarse && check?.ok
-      ? h('button', { class: 'btn small primary', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place')
-      : null;
-    root.appendChild(h('div', { class: 'place-box' },
-      img(`b_${p.type}`, 1), h('span', { class: 'place-name' }, def.name), costEl(g.state, check?.ok ? check.cost : def.cost), verdict,
-      h('div', { class: 'kicker place-help' }, coarse ? 'TAP A GLOWING PLOT, THEN PLACE' : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL'),
-      place, cancel));
-  }
-
-  private updateOverlayBar(): void {
-    const g = this.g;
-    const list = OVERLAYS.filter((o) => o === 'none' || overlayRevealed(g.state, o));
-    const key = `${list.join(',')}|${g.view.overlay}`;
-    if (key === this.overlayKey) return;
-    this.overlayKey = key;
-    const bar = el('overlay-bar');
-    clear(bar);
-    for (const o of list)
-      bar.appendChild(h('button', {
-        class: o === g.view.overlay ? 'btn small on' : 'btn small', 'aria-pressed': String(o === g.view.overlay),
-        onclick: () => { g.sfx('click'); g.view.setOverlay(o); this.overlayKey = ''; },
-      }, o === 'none' ? null : img(`i_ov_${o}`, 1), OVERLAY_LABEL[o]));
+    renderPlaceBanner(this.g, el('place-banner'), p, check);
   }
 }

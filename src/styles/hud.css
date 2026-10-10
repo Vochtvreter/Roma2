@@ -1,51 +1,124 @@
-/* src/styles/hud.css — owner H (WP-H UI shell). The HUD bar (DESIGN §15.2) and the vital tablets (§11.11). */
-/* SCAFFOLD: a working single-row HUD; tablet art, stage bars, flashes and the two-row mobile HUD are WP-H's. */
+/* src/styles/hud.css — owner H (WP-H UI shell). The HUD bar (DESIGN §15.2) and the vital tablets (§11.11).
+   Left to right: brand · Grain and Aqua tablets · coin · souls · spirits · dignitas · materials (2-row grid) · date · speed · menu. */
 
 #hud {
   position: absolute; top: 0; left: 0; right: 0; height: var(--hud-h); z-index: var(--z-hud);
-  display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s2);
-  background: var(--panel); border-bottom: var(--border-w) solid var(--line); box-shadow: 0 2px 0 var(--ring);
-  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  background: linear-gradient(rgba(29, 21, 17, .97), rgba(36, 26, 21, .94));
+  border-bottom: 2px solid var(--line); box-shadow: 0 2px 0 var(--ring), 0 6px 18px rgba(0, 0, 0, .4);
 }
-#hud::-webkit-scrollbar { display: none; }
 #hud > * { flex: 0 0 auto; }
+.hud-break { display: none; }
+.hud-stack { display: flex; flex-direction: column; justify-content: center; line-height: 1.05; min-width: 0; }
 
-.hud-brand { display: flex; align-items: center; gap: var(--s2); flex: 0 1 auto !important; min-width: 120px; overflow: hidden; white-space: nowrap; }
-.hud-brand > div { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.hud-aquila { width: 32px; height: 32px; }
-.hud-name { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font-caps); font-size: 14px; color: var(--ember); }
-.hud-rank { font-size: 10px; }
+/* brand */
+.hud-brand { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 220px; overflow: hidden; }
+.hud-aquila { width: 40px; height: 40px; padding: 2px; border: 0; border-radius: 4px; background: radial-gradient(circle, rgba(242, 201, 76, .22), transparent 70%); flex: none; }
+.hud-aquila img { width: 32px; height: 32px; filter: drop-shadow(0 2px 0 var(--ring)); }
+.hud-brand-text { display: flex; flex-direction: column; min-width: 0; }
+.hud-name { background: none; border: 0; padding: 0; text-align: left; font-size: 17px; color: var(--gold); text-shadow: 0 2px 0 var(--ring);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.hud-name:hover { text-decoration: underline dotted; }
+.hud-rankline { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; }
+.hud-rank { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1px; color: #2a1606; background: linear-gradient(var(--gold), #c99a3b);
+  padding: 0 4px; border-radius: 2px; line-height: 13px; }
+.hud-title { font-size: 11px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; }
+.hud-stars { color: var(--gold); font-size: 10px; letter-spacing: -1px; }
 
-.hud-vitals { display: flex; gap: var(--s2); }
+/* the vital tablets: the signature widget */
+.hud-vitals { display: flex; gap: 6px; }
 .hud-vital {
-  display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 132px; height: 52px; padding: 2px 8px;
-  background: var(--well); border: var(--border-w) solid var(--well-line); border-radius: var(--r2);
+  position: relative; display: grid; grid-template-columns: 26px 1fr; grid-template-rows: 11px 19px 6px 9px; row-gap: 1px; column-gap: 4px;
+  width: 132px; height: 56px; padding: 3px 6px 2px; cursor: help;
+  background: linear-gradient(#22180f, #17100c); border: 2px solid #4d3a2b; border-radius: 5px;
+  box-shadow: 0 0 0 2px var(--ring), inset 0 1px 0 rgba(255, 236, 200, .07), inset 0 -2px 0 rgba(0, 0, 0, .35);
 }
-.hud-vital.low { border-color: var(--bad); }
-.vit-top { display: flex; align-items: baseline; gap: 6px; }
+.vit-grain { border-top-color: #8a6a2a; }
+.vit-water { border-top-color: #2f5f7d; }
+.vit-ico { grid-row: 1 / 3; grid-column: 1; width: 24px; height: 24px; align-self: center; filter: drop-shadow(0 1px 0 var(--ring)); }
+.vit-head { grid-column: 2; display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.vit-label { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1.5px; }
 .vit-grain .vit-label { color: var(--gold); }
 .vit-water .vit-label { color: var(--water); }
-.vit-days { font-size: 18px; }
-.vit-trend { font-size: 11px; color: var(--muted); }
-.vit-trend.bad { color: var(--bad); } .vit-trend.good { color: var(--good); }
-.vit-strip { display: flex; gap: 1px; }
-.vit-cell { display: block; width: 10px; height: 6px; border-radius: 1px; background: var(--dim); }
-.vit-sub { font-size: 10px; color: var(--bad); min-height: 0; }
-.vit-sub:empty { display: none; }
+.vit-trend { font-size: 8px; color: var(--muted); white-space: nowrap; }
+.vit-trend.bad { color: #ff8b80; } .vit-trend.good { color: var(--good); }
+.vit-main { grid-column: 2; display: flex; align-items: baseline; gap: 2px; white-space: nowrap; overflow: hidden; }
+.vit-days { font-size: 17px; color: var(--text); text-shadow: 0 2px 0 var(--ring); line-height: 19px; }
+.vit-unit { font-size: 9px; color: var(--muted); margin-right: 4px; }
+.vit-sub { grid-column: 1 / 3; grid-row: 4; display: none; font-family: var(--font-caps); font-size: 8px; line-height: 9px; color: #ff8b80;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.2px; }
+.hud-vital.falling .vit-sub { display: block; }
+.hud-vital.falling .vit-seasons { display: none; }
+.vit-strip { grid-column: 1 / 3; display: flex; gap: 1px; }
+.vit-cell { flex: 1; height: 6px; border-radius: 1px; background: var(--dim); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3); }
+.vit-cell.good { background: var(--good); } .vit-cell.gold { background: var(--gold); } .vit-cell.warn { background: var(--sev-2); }
+.vit-cell.bad { background: var(--bad); } .vit-cell.empty { background: #0a0710; box-shadow: inset 0 0 0 1px #3a2a22; }
+.vit-cell.now { box-shadow: 0 -2px 0 var(--text); }
+.vit-seasons { grid-column: 1 / 3; display: flex; gap: 1px; font-family: var(--font-caps); font-size: 8px; line-height: 9px; overflow: hidden; }
+.vit-season { flex-basis: 0; text-align: center; white-space: nowrap; overflow: hidden; border-top: 1px solid currentColor; opacity: .85; }
+.vit-season.s0 { color: #a9d77a; } .vit-season.s1 { color: #f2c94c; } .vit-season.s2 { color: #e3843a; } .vit-season.s3 { color: #a9bfd1; }
+.hud-vital.low { border-color: #8a3d2b; }
+.hud-vital.falling .vit-days { color: #ffd0c8; }
+.hud-vital.peril { animation: vitalPeril 1.1s ease-in-out infinite; }
+@keyframes vitalPeril { 50% { border-color: var(--bad); box-shadow: 0 0 0 2px var(--ring), 0 0 14px rgba(229, 85, 74, .65); } }
+.vit-chart { display: block; margin: 2px 0 4px; border-radius: 3px; background: rgba(0, 0, 0, .3); }
 
-.hud-chip { display: flex; align-items: center; gap: 4px; }
-.hud-chip img { width: 24px; height: 24px; }
-.hud-chip.warn .num { color: var(--gold); }
-.hud-sub { font-size: 11px; color: var(--muted); margin-left: 4px; }
-.hud-sub.bad { color: var(--bad); }
+/* coin, souls, spirits, dignitas */
+.hud-chip {
+  display: flex; align-items: center; gap: 5px; height: 42px; padding: 2px 8px 2px 4px; cursor: help;
+  background: rgba(0, 0, 0, .28); border: 2px solid #33251d; border-radius: 4px;
+}
+.hud-chip > img { width: 24px; height: 24px; flex: none; }
+.hud-n { font-size: 13px; color: var(--text); white-space: nowrap; }
+.hud-sub { font-family: var(--font-caps); font-size: 8px; color: var(--muted); white-space: nowrap; }
+.hud-sub.bad { color: #ff8b80; } .hud-sub.good { color: var(--good); }
+.hud-chip.warn .hud-n { color: var(--gold); }
+.hud-chip.bad .hud-n { color: #ff8b80; }
+.hud-chip.gold { border-color: rgba(242, 201, 76, .6); }
+.hud-chip.gold .hud-n { color: var(--gold); }
+.hud-stages { display: flex; height: 4px; width: 52px; margin-top: 3px; border-radius: 1px; overflow: hidden; background: rgba(255, 255, 255, .08); }
+.hud-stage { flex: 0 0 0; min-width: 0; }
+.hud-stage.st0 { background: #f6c5da; } .hud-stage.st1 { background: #9fd4f0; } .hud-stage.st2 { background: var(--ember); } .hud-stage.st3 { background: #d2c7b2; }
+.flash { animation: hudFlash .6s; }
+@keyframes hudFlash { 0% { background: rgba(242, 201, 76, .5); } 100% { background: rgba(0, 0, 0, .28); } }
 
-.hud-strip { display: flex; gap: var(--s2); flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
-.hud-res { display: flex; align-items: center; gap: 2px; font-size: 13px; }
-.hud-res img { width: 24px; height: 24px; }
-.hud-res.full .num { color: var(--gold); }
+/* materials: a 2-row grid that grows sideways and scrolls when crowded */
+.hud-strip {
+  display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 25px); gap: 2px 4px; align-content: center;
+  flex: 1 1 auto !important; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; justify-content: start;
+}
+.hud-strip.more { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+.hud-strip::-webkit-scrollbar { display: none; }
+.hud-res { display: flex; align-items: center; gap: 3px; padding: 0 5px 0 1px; min-width: 64px; cursor: help;
+  background: rgba(0, 0, 0, .22); border: 1px solid #2f231c; border-radius: 3px; }
+.hud-res img { width: 24px; height: 24px; flex: none; }
+.hud-res-n { font-size: 11px; color: var(--text); line-height: 11px; white-space: nowrap; }
+.hud-res-n b { font-weight: normal; }
+.hud-res-cap { font-size: 7px; color: var(--dim); }
+.hud-res-r { font-size: 7px; color: var(--muted); line-height: 9px; }
+.hud-res-r.good { color: var(--good); } .hud-res-r.bad { color: #ff8b80; }
+.hud-res.full .hud-res-n { color: var(--gold); }
+.hud-res.empty .hud-res-n { color: #ff8b80; }
 
-.hud-date { display: flex; flex-direction: column; text-align: right; }
-.hud-date-main { font-family: var(--font-caps); font-size: 13px; color: var(--text); }
+/* date */
+.hud-date { display: flex; align-items: center; gap: 6px; height: 42px; padding: 2px 10px 2px 4px; min-width: 132px; cursor: help;
+  background: rgba(0, 0, 0, .28); border: 2px solid #33251d; border-radius: 4px; }
+.hud-date > img { width: 24px; height: 24px; flex: none; }
+.hud-date-main { font-family: var(--font-caps); font-size: 11px; color: var(--text); white-space: nowrap; }
+.hud-seasonbar { height: 3px; margin-top: 3px; background: rgba(255, 255, 255, .1); border-radius: 2px; overflow: hidden; }
+.hud-seasonbar > i { display: block; height: 100%; width: 0; background: var(--ember); }
+.hud-seasonbar > i.s0 { background: #9ccc5a; } .hud-seasonbar > i.s1 { background: var(--gold); }
+.hud-seasonbar > i.s2 { background: var(--sev-2); } .hud-seasonbar > i.s3 { background: #a9bfd1; }
+
+/* speed and menu */
 .hud-speed { display: flex; gap: 2px; }
-.hud-speed-btn { min-width: 34px; }
-.hud-menu { min-width: 34px; }
+.hud-sp, .hud-menu {
+  min-width: 32px; height: 34px; padding: 0 3px; border: 2px solid var(--ring); border-radius: 4px;
+  background: linear-gradient(#46342a, #33261f); box-shadow: inset 0 2px 0 rgba(255, 236, 200, .1);
+  font-family: var(--font-caps); font-size: 10px; color: var(--text);
+}
+.hud-sp:hover, .hud-menu:hover { filter: brightness(1.25); }
+.hud-sp.on { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; }
+.hud-menu { font-family: var(--font-body); font-size: 18px; min-width: 38px; }
+
+@media (max-width: 1439px) { .hud-title { display: none; } .hud-brand { max-width: 170px; } }
