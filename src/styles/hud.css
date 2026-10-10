@@ -1,0 +1,51 @@
+/* src/styles/hud.css — owner H (WP-H UI shell). The HUD bar (DESIGN §15.2) and the vital tablets (§11.11). */
+/* SCAFFOLD: a working single-row HUD; tablet art, stage bars, flashes and the two-row mobile HUD are WP-H's. */
+
+#hud {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--hud-h); z-index: var(--z-hud);
+  display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s2);
+  background: var(--panel); border-bottom: var(--border-w) solid var(--line); box-shadow: 0 2px 0 var(--ring);
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+#hud::-webkit-scrollbar { display: none; }
+#hud > * { flex: 0 0 auto; }
+
+.hud-brand { display: flex; align-items: center; gap: var(--s2); flex: 0 1 auto !important; min-width: 120px; overflow: hidden; white-space: nowrap; }
+.hud-brand > div { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hud-aquila { width: 32px; height: 32px; }
+.hud-name { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font-caps); font-size: 14px; color: var(--ember); }
+.hud-rank { font-size: 10px; }
+
+.hud-vitals { display: flex; gap: var(--s2); }
+.hud-vital {
+  display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 132px; height: 52px; padding: 2px 8px;
+  background: var(--well); border: var(--border-w) solid var(--well-line); border-radius: var(--r2);
+}
+.hud-vital.low { border-color: var(--bad); }
+.vit-top { display: flex; align-items: baseline; gap: 6px; }
+.vit-grain .vit-label { color: var(--gold); }
+.vit-water .vit-label { color: var(--water); }
+.vit-days { font-size: 18px; }
+.vit-trend { font-size: 11px; color: var(--muted); }
+.vit-trend.bad { color: var(--bad); } .vit-trend.good { color: var(--good); }
+.vit-strip { display: flex; gap: 1px; }
+.vit-cell { display: block; width: 10px; height: 6px; border-radius: 1px; background: var(--dim); }
+.vit-sub { font-size: 10px; color: var(--bad); min-height: 0; }
+.vit-sub:empty { display: none; }
+
+.hud-chip { display: flex; align-items: center; gap: 4px; }
+.hud-chip img { width: 24px; height: 24px; }
+.hud-chip.warn .num { color: var(--gold); }
+.hud-sub { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.hud-sub.bad { color: var(--bad); }
+
+.hud-strip { display: flex; gap: var(--s2); flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
+.hud-res { display: flex; align-items: center; gap: 2px; font-size: 13px; }
+.hud-res img { width: 24px; height: 24px; }
+.hud-res.full .num { color: var(--gold); }
+
+.hud-date { display: flex; flex-direction: column; text-align: right; }
+.hud-date-main { font-family: var(--font-caps); font-size: 13px; color: var(--text); }
+.hud-speed { display: flex; gap: 2px; }
+.hud-speed-btn { min-width: 34px; }
+.hud-menu { min-width: 34px; }
