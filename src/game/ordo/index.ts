@@ -50,7 +50,8 @@ function ticker(s: GameState, v: SimView, plan: LabourPlan, agenda: CouncilRepor
   const out: Reason[] = [...decisionsToday(s)];
   const tag = (r: Reason, state: string): Reason => ({ code: r.code, params: { ...r.params, state } });
   const site = agenda.find((w) => w.siteId !== undefined);
-  if (site) out.push(tag(site.reason, site.state === 'staked' ? 'staked' : 'raising'));
+  const told = (r: Reason): boolean => out.some((x) => x.code === r.code && x.params.type === r.params.type);
+  if (site && !told(site.reason)) out.push(tag(site.reason, site.state === 'staked' ? 'staked' : 'raising'));
   const next = agenda.find((w) => w.siteId === undefined) ?? newWishes(s, v, 1)[0];
   if (next && next.state !== 'saving') out.push(tag(next.reason, build ? 'next' : 'would'));
   const saving = savingReason(s, v);

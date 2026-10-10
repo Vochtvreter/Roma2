@@ -56,13 +56,12 @@ function posts(s: GameState): Post[] {
 }
 
 /** Coverage layers some house's current tier depends on. */
-function requiredLayers(s: GameState, v: SimView): Set<CoverageLayerId> {
+function requiredLayers(v: SimView): Set<CoverageLayerId> {
   const out = new Set<CoverageLayerId>();
   for (const t of HOUSE_TIERS) {
     if ((v.c.byTier[t] ?? 0) <= 0) continue;
     for (const n of TIER_DEFS[t].needs) for (const l of NEED_LAYERS[n] ?? []) out.add(l);
   }
-  void s;
   return out;
 }
 
@@ -163,8 +162,8 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   let fBase: number = 1, fWhy = '', topup = false;
   if (hungry) [fBase, fWhy] = [B.ordo.FOOD_HUNGRY, 'hungry'];
   else if (season === 3 && f.grain.doh < B.ordo.FOOD_HIEMS_DOH) [fBase, fWhy] = [B.ordo.FOOD_HIEMS, 'hiems'];
-  else if (f.grain.doh < gr) [fBase, topup] = [B.ordo.FOOD_LOW, true];
   else if (s.res.grain >= B.ordo.STORE_FULL * c.caps.grain) [fBase, fWhy] = [B.ordo.FOOD_FULL, 'full'];
+  else if (f.grain.doh < gr) [fBase, topup] = [B.ordo.FOOD_LOW, true];
   const fGoal = gNeed * fBase;
   const fReason = topup
     ? reason('reserveTopup', { doh: Math.floor(f.grain.doh), keep: gr, need: r1(gNeed), goal: r1(fGoal) })
@@ -190,7 +189,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   }
 
   // 3 · required services: every service some house's current tier depends on gets a hand, then half its slots
-  const layers = requiredLayers(s, v);
+  const layers = requiredLayers(v);
   const req = all.filter((p) => p.layers.some((l) => layers.has(l)));
   const sReason = reason('requiredService', { n: req.length });
   for (const p of req) add(p, 1, sReason);

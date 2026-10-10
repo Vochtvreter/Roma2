@@ -35,8 +35,8 @@ const TEXT: Record<ReasonCode, string> = {
   hiemsStore: 'Hiems comes in {days} days and our stores hold only {hold} days of grain; we keep {keep}, so {a:type} is raised.',
   storageFull: 'Our {res} stores are {pct}% full[ and cannot hold what the {for} needs]: {a:type} gives room.',
   beds: 'Only {free} beds stand free and we keep {keep} for newcomers: {a:type} is laid out.',
-  waterAccess: '{n} homes fetch their water from the river: {a:type} will reach them.',
-  evolve: '{n} homes would grow but lack {want}: {a:type} will give it.',
+  waterAccess: '{n} homes fetch their water from the river: {a:type} will reach {reach} of them.',
+  evolve: '{n} homes would grow but lack {want}: {a:type} will give it to {reach} of them.',
   rank: 'Rome expects {a:type} of a {rank}: our next petition names it.',
   materials: 'We lack {qty} {res} for the {for}[, ≈ {eta} days at our pace]: {a:type} will bring it in.',
   luxury: 'The great houses want {res} and our groves press too little: {a:type} is planted.',
@@ -47,7 +47,7 @@ const TEXT: Record<ReasonCode, string> = {
   needFood: 'Hands in the fields for {goal} grain a day against a need of {need}[ — {why}][, and a winter stock ({stock} of {target})].',
   reserveTopup: 'Topping up the grain: {doh} days in store and we keep {keep}[, and a winter stock ({stock} of {target})].',
   requiredService: 'Manning the {n} works our homes cannot do without.',
-  builderShare: '{n} builders for the works in hand[ ({sites} sites)].',
+  builderShare: '{n} builders for the works in hand.',
   monument: '{n} builders, {crew} of them on the Capitolium.',
   pendingInput: '{n} hands on {res}: we need {qty} more for the {for}.',
   winterStock: 'Stockpiling for Hiems ({stock} of {target}).',
@@ -134,21 +134,21 @@ function resolve(key: string, v: number | string | undefined): string | undefine
 
 const capital = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
 
-/** Fills one template: optional parts drop out when incomplete; a missing required value renders as a dash. */
+/** Fills one template: optional parts drop out when incomplete; a missing required value renders as an ellipsis. */
 function fill(t: string, p: Record<string, number | string>): string {
   const one = (seg: string): string | null => {
     let ok = true;
     const out = seg.replace(/\{(?:([aA]):)?(\w+)\}/g, (_m, art: string | undefined, key: string) => {
       const lower = key.charAt(0).toLowerCase() + key.slice(1);
       let v = resolve(lower, p[lower]);
-      if (v === undefined) { ok = false; return '—'; }
+      if (v === undefined) { ok = false; return '…'; }
       if (art) v = `${/^[aeiou]/i.test(v) ? 'an' : 'a'} ${v}`;
       return art === 'A' || key !== lower ? capital(v) : v;
     });
     return ok ? out : null;
   };
   const body = t.replace(/\[([^\]]*)\]/g, (_m, inner: string) => one(inner) ?? '');
-  return one(body) ?? body.replace(/\{(?:[aA]:)?\w+\}/g, '—');
+  return one(body) ?? body.replace(/\{(?:[aA]:)?\w+\}/g, '…');
 }
 
 function template(r: Reason, short: boolean): string {

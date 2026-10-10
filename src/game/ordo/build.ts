@@ -16,7 +16,7 @@ import { bestSlot, siteScore } from '../site';
 import { canPlace, pave, placeBuilding, validSlots } from '../place';
 import { blockOfTile } from '../derived';
 import { nextTier, unmetNeeds } from '../housing';
-import { houseDesir } from '../coverage';
+import { houseDesir, previewCoverage } from '../coverage';
 import { buildingRate, maxPotential, seasonMult } from '../economy';
 import { fxAdd } from '../fx';
 import { idx, tx, ty } from '../map';
@@ -45,19 +45,19 @@ const PETITION_WORKS: BuildingId[][] = [[], ['horreum'], [], ['templum', 'macell
 export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean }
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
-/** What the houses want: first unmet needs by count, renovation materials of houses ready to rise, T3 houses short of a domus, T4 residents. */
-export interface HouseWants { want: Partial<Record<NeedId, number>>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
+/** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus, T4 residents. */
+export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Record<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
 
 /** The houses' wants (memo on day + epochs + the fed gate). */
 export function houseWants(s: GameState, v: SimView): HouseWants {
   return memo(s, 'ordo.houses', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.fed >= B.needs.FED_MIN}`, () => {
-    const out: HouseWants = { want: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
+    const out: HouseWants = { want: {}, first: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
     for (const id of v.d.houses) {
       const b = getBuilding(s, id);
       const next = b?.house ? nextTier(s, b) : null;
       if (!b?.house || !next) continue;
       const unmet = unmetNeeds(s, b, next);
-      if (unmet.length > 0) out.want[unmet[0]] = (out.want[unmet[0]] ?? 0) + 1;
+      if (unmet.length > 0) { out.want[unmet[0]] = (out.want[unmet[0]] ?? 0) + 1; out.first[id] = unmet[0]; }
       else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[next].renovation);
       if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, id) < B.housing.DESIR_DOMUS) out.t3Low++;
     }
@@ -122,7 +122,7 @@ const unfinished = (v: SimView, t: BuildingId): boolean => (v.d.all[t] ?? 0) > (
 function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Generator<Wish> {
   const { c, d, f } = v;
   const seen = new Set<BuildingId>();
-  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; again?: boolean; store?: boolean } = {}): Wish | null => {
+  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; again?: boolean; store?: boolean; serves?: NeedId } = {}): Wish | null => {
     const def = BUILDING_DEFS[type];
     if (seen.has(type) || def.rank > s.rank) return null;
     if (type === 'hortus' && s.decisions.focus !== 'urbs') return null;
@@ -133,8 +133,11 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     if (tile === null || !chk?.ok) return null;
     const over = RESOURCES.find((r) => (chk.cost[r] ?? 0) > c.caps[r]);
     if (over && !o.store) return store(over, type);
+    const reach = o.serves ? reaches(s, v, type, tile, o.serves) : 0;
+    if (o.serves && reach === 0) return null;
     seen.add(type);
-    return { type, tile, cost: chk.cost, reason: { code, params: { type, ...params } }, survival: !!o.survival, unblock: !!o.unblock };
+    const p = o.serves ? { type, ...params, reach } : { type, ...params };
+    return { type, tile, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock };
   };
   const store = (r: ResId, forWhat?: string): Wish | null => {
     const t: BuildingId = r === 'grain' ? 'horreum' : r === 'water' ? 'cisterna' : 'apotheca';
@@ -182,7 +185,7 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   // 5 · water within reach of the homes that lack it
   const hw = houseWants(s, v);
   const dry = hw.want.water ?? 0;
-  if (dry >= B.ordo.EVOLVE_MIN) yield* yieldOf(make(d.castellumActive && BUILDING_DEFS.lacus.rank <= s.rank ? 'lacus' : 'puteus', 'waterAccess', { n: dry }));
+  if (dry >= B.ordo.EVOLVE_MIN) yield* yieldOf(make(d.castellumActive && BUILDING_DEFS.lacus.rank <= s.rank ? 'lacus' : 'puteus', 'waterAccess', { n: dry }, { serves: 'water' }));
   // 6 · the service most homes wait for (baths beyond the first are left to the player)
   const wants = (Object.keys(SERVICE_FOR) as NeedId[]).filter((n) => (hw.want[n] ?? 0) > 0)
     .sort((a, b) => (hw.want[b] ?? 0) - (hw.want[a] ?? 0) || NEEDS.indexOf(a) - NEEDS.indexOf(b));
@@ -190,23 +193,30 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     const t = SERVICE_FOR[n] as BuildingId;
     const min = BUILDING_DEFS[t].place.includes('block') ? B.ordo.EVOLVE_MIN_BLOCK : B.ordo.EVOLVE_MIN;
     if ((hw.want[n] ?? 0) < min || (n === 'baths' && (d.all.balneum ?? 0) + (d.all.thermae ?? 0) > 0)) continue;
-    yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }));
+    yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n }));
   }
   // 7 · works the next petition names
   for (const t of PETITION_WORKS[s.rank + 1] ?? []) if (!d.all[t]) yield* yieldOf(make(t, 'rank', { rank: s.rank + 1 }));
-  // 8 · producers of what the saving target, the pending wish, renovations or the Capitolium lack (ETA > 30 days)
+  // 8 · producers of what the saving target, the pending wish, renovations or the Capitolium lack (ETA > 30 days),
+  //     then of whatever those producers themselves lack (a quarry short of timber calls for a lumber camp)
   const { lack, forOf } = needsFor(s, v, walk.pending);
   const full = outputRates(s, 'full');
-  for (const r of MATERIALS) {
-    const q = lack[r] ?? 0;
+  const queue: { r: ResId; q: number; for: string }[] = MATERIALS.filter((r) => (lack[r] ?? 0) > 0).map((r) => ({ r, q: lack[r] ?? 0, for: forOf[r] ?? 'wish' }));
+  const asked = new Set<ResId>();
+  for (let k = 0; k < queue.length; k++) {
+    const { r, q } = queue[k];
     const eta = (full[r] ?? 0) > 0 ? q / (full[r] as number) : Infinity;
-    if (q <= 0 || eta <= B.ordo.MATERIALS_ETA) continue;
+    if (asked.has(r) || eta <= B.ordo.MATERIALS_ETA) continue;
+    asked.add(r);
     const own = PRODUCER[r] as BuildingId;
     const feed = RESOURCES.find((r2) => (BUILDING_DEFS[own].inputs?.[r2] ?? 0) > 0 && !((full[r2] ?? 0) > 0) && PRODUCER[r2]);
-    const params: Reason['params'] = { res: r, qty: Math.ceil(q), for: forOf[r] ?? 'wish' };
+    const params: Reason['params'] = { res: r, qty: Math.ceil(q), for: queue[k].for };
     if (Number.isFinite(eta)) params.eta = Math.ceil(eta);
-    const code: ReasonCode = forOf[r] === 'capitolium' ? 'capitolium' : 'materials';
-    yield* yieldOf(make(feed ? PRODUCER[feed] as BuildingId : own, code, params, { unblock: !d.all[own] }));
+    const w = make(feed ? PRODUCER[feed] as BuildingId : own, queue[k].for === 'capitolium' ? 'capitolium' : 'materials', params, { unblock: !d.all[own] });
+    if (!w) continue;
+    yield w;
+    const short = missing(s, w.cost);
+    for (const r2 of MATERIALS) if ((short[r2] ?? 0) > 0) queue.push({ r: r2, q: short[r2] ?? 0, for: w.type });
   }
   // 9 · oil for the great houses
   if (BUILDING_DEFS.olivetum.rank <= s.rank && hw.t4Res * B.housing.GOODS.oil > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
@@ -214,6 +224,14 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
   const focus = s.decisions.focus;
   for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', { focus }));
   if (focus === 'urbs' && hw.t3Low > 0) yield* yieldOf(make('hortus', 'beauty', { n: hw.t3Low }));
+}
+
+/** Houses waiting for `need` that a work of `type` at `tile` would cover (A's coverage preview, fully staffed). */
+function reaches(s: GameState, v: SimView, type: BuildingId, tile: number, need: NeedId): number {
+  const first = houseWants(s, v).first;
+  const covered = new Set<number>();
+  for (const layer of previewCoverage(s, type, tx(tile), ty(tile))) for (const h of layer.houses) if (first[h] === need) covered.add(h);
+  return covered.size;
 }
 
 function perWorker(s: GameState, t: BuildingId, season: ReturnType<typeof seasonOf>): number {
