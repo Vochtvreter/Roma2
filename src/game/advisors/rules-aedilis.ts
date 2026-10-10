@@ -14,7 +14,7 @@ import { RANK_DEFS } from '../data/ranks';
 import { SETTING_DEFS } from '../data/decisions';
 import { TIER_DEFS } from '../data/housing';
 import {
-  CLEAR, HOUSE_CADENCE, R, STEP, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
+  CLEAR, R, STEP, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
 } from './util';
 import type { CadencedRule, HouseWant } from './util';
 
@@ -55,7 +55,7 @@ function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<nu
 // ───────────────────────────── 17 · aedilis.evolve ─────────────────────────────
 
 const evolve: CadencedRule = {
-  every: HOUSE_CADENCE,
+  every: B.housing.CHECK_EVERY,   // B, not util: rule objects are built at load time, inside an import cycle
   id: 'aedilis.evolve', advisor: 'aedilis',
   evaluate(s, v): AdvisoryEval | null {
     const by = oneShort(s, v);
@@ -100,7 +100,7 @@ const evolve: CadencedRule = {
 // ───────────────────────────── 18 · aedilis.declining ─────────────────────────────
 
 const declining: CadencedRule = {
-  every: HOUSE_CADENCE,
+  every: B.housing.CHECK_EVERY,   // B, not util: rule objects are built at load time, inside an import cycle
   id: 'aedilis.declining', advisor: 'aedilis',
   evaluate(s, v): AdvisoryEval | null {
     const all = houseWants(s, v);

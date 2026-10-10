@@ -10,7 +10,7 @@ import type {
 import { seasonOf } from '../calendar';
 import { seasonMult } from '../economy';
 import { distToRect, getMap, tx, ty } from '../map';
-import { censusEpoch, memo, structEpoch } from '../memo';
+import { memo, structEpoch } from '../memo';
 import { personName } from '../people';
 import { getBuilding, getPerson } from '../state';
 import { nextTier, unmetNeeds } from '../housing';
@@ -30,8 +30,6 @@ export const STEP = B.advisors.STEP;
 
 /** A rule the engine evaluates only every `every` days (day % every == 0); on other days it is left exactly as it stands. */
 export type CadencedRule = AdvisorRule & { every?: number };
-/** The house rules follow the sim's own house-check cadence (DESIGN §7.2): houses change state only on their check days. */
-export const HOUSE_CADENCE = B.housing.CHECK_EVERY;
 
 // ───────────────────────────── ladders and hysteresis ─────────────────────────────
 
@@ -133,19 +131,19 @@ export interface HouseWant { id: number; tile: number; tier: HouseTierId; next: 
 
 const PREFS = ['auto', 'insula', 'domus'] as const;
 
-/** Everything a house's needs read besides the structure: coverage, the fed index, rank, and per house its tier, decline, goods and preference. */
+/** Everything a house's needs read besides the structure: coverage, the fed index, rank, and per house its tier, decline,
+ *  goods and preference. Built on every call (one pass over the houses): tiers change on renovation and the goods EMAs
+ *  cross SUPPLIED without bumping an epoch, so a signature cached per day and epochs went stale within the day. */
 function houseSig(s: GameState, v: SimView): string {
-  return memo(s, 'adv.houseSig', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
-    const S = B.housing.SUPPLIED;
-    const codes: number[] = [];
-    for (const id of v.d.houses) {
-      const h = getBuilding(s, id)?.house;
-      if (!h) continue;
-      const bits = (h.declining ? 4 : 0) + (h.oil >= S ? 2 : 0) + (h.wine >= S ? 1 : 0);
-      codes.push(48 + (HOUSE_TIERS.indexOf(h.tier) * 8 + bits) * 3 + PREFS.indexOf(h.pref));
-    }
-    return `${structEpoch(s)}|${v.cov.key}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
-  });
+  const S = B.housing.SUPPLIED;
+  const codes: number[] = [];
+  for (const id of v.d.houses) {
+    const h = getBuilding(s, id)?.house;
+    if (!h) continue;
+    const bits = (h.declining ? 4 : 0) + (h.oil >= S ? 2 : 0) + (h.wine >= S ? 1 : 0);
+    codes.push(48 + (HOUSE_TIERS.indexOf(h.tier) * 8 + bits) * 3 + PREFS.indexOf(h.pref));
+  }
+  return `${structEpoch(s)}|${v.cov.key}|${s.fed >= B.needs.FED_MIN ? 1 : 0}|${s.rank}|${String.fromCharCode(...codes)}`;
 }
 
 /** Every finished house with its wants. Pure, and memoised on everything the needs read (houseSig), so it is recomputed only when the structure, coverage, fed index or a house changes — not every day. */

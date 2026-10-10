@@ -2,6 +2,7 @@
 // aquarum.aqueduct) (DESIGN §11.6). Owner: WP-E.
 // Load order: only engine.ts imports this file (it spreads the array at module evaluation); nothing here runs at
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
+import { B } from '../balance';
 import type { AdvisorRule, Building, GameState, Remedy, Severity, SimView } from '../types';
 import { formatRoman } from '../calendar';
 import { previewCoverage } from '../coverage';
@@ -13,7 +14,7 @@ import { bestSlot } from '../site';
 import { BUILDING_DEFS } from '../data/buildings';
 import { SETTING_DEFS } from '../data/decisions';
 import {
-  CLEAR, HOUSE_CADENCE, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
+  CLEAR, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
   placeName, runway, serviceFor, three,
 } from './util';
 import type { CadencedRule } from './util';
@@ -108,7 +109,7 @@ const aestas: AdvisorRule = {
 // ───────────────────────────── 9 · aquarum.access ─────────────────────────────
 
 const access: CadencedRule = {
-  every: HOUSE_CADENCE,
+  every: B.housing.CHECK_EVERY,   // B, not util: rule objects are built at load time, inside an import cycle
   id: 'aquarum.access', advisor: 'aquarum',
   evaluate(s, v) {
     const all = houseWants(s, v);
