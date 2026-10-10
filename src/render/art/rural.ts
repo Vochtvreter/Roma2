@@ -96,44 +96,50 @@ function logPile(): string[] {
   return p.rows();
 }
 
-/** Lapicidina: terraces cut into pale limestone, squared blocks, shear-legs crane and a tool hut. 48×40. */
+/** Lapicidina: stepped benches cut into a scrubby limestone ridge, squared blocks, a shear-legs crane, a tool hut. 48×40. */
 function lapicidina(): string[] {
   const p = new Pix(48, 40);
-  // the rock mass with three cut steps (back to front)
-  p.ellipse(24, 16, 22, 14, 'O');
-  p.rect(2, 16, 44, 16, 'O');
-  p.shade(0, 0, 48, 40, (x, y, k) => {
-    if (k !== 'O') return null;
-    const n = noise(x, y, 31);
-    const lit = x + y < 40 ? 'i' : x > 34 ? 'Q' : 'O';
-    return n < 0.08 ? 'X' : n < 0.18 ? 'Q' : n > 0.9 ? 'a' : lit;
-  });
-  // step faces: fresh-cut faces are pale with chisel marks; treads are lit
-  const step = (x: number, y: number, w: number, h: number): void => {
-    p.rect(x, y, w, 2, 'a');                                    // tread
-    p.rect(x, y + 2, w, h, 'i');                                // cut face
-    for (let i = x + 2; i < x + w; i += 4) p.vline(i, y + 3, y + h, 'O');
-    p.hline(x, x + w - 1, y + h + 1, 'Q');                      // shadow line at the foot
-    p.vline(x + w - 1, y + 2, y + h, 'Q');
+  // the ridge: an irregular crest sloping to both ends
+  for (let x = 1; x < 47; x++) {
+    const crest = Math.round(5 + Math.abs(x - 24) * 0.42 + noise(x, 0, 33) * 3 - (x > 30 && x < 38 ? 2 : 0));
+    for (let y = crest; y < 33; y++) {
+      const n = noise(x, y, 31);
+      let k = x + y < 34 ? 'i' : x > 36 ? 'Q' : 'O';
+      if (n < 0.1) k = 'Q';
+      else if (n > 0.93) k = 'a';
+      if (y - crest < 2) k = n < 0.5 ? 'L' : 'd';                                       // scrub on the crest
+      else if (y - crest < 3 && n < 0.4) k = 'V';
+      p.set(x, y, k);
+    }
+  }
+  // the cut: a notch with three benches of fresh pale stone
+  const x0 = 9, x1 = 36;
+  p.rect(x0, 8, x1 - x0 + 1, 26, 'a');
+  const bench = (y: number, inset: number): void => {
+    p.hline(x0 + inset, x1 - inset, y, 'w').hline(x0 + inset, x1 - inset, y + 1, 'a');   // lit tread
+    for (let X = x0 + inset; X <= x1 - inset; X++) {
+      for (let Y = y + 2; Y < y + 7; Y++) p.set(X, Y, (X - x0) % 5 === 2 ? 'O' : Y === y + 2 ? 'Q' : 'i');   // chiselled face
+      p.set(X, y + 7, 'Q');
+    }
   };
-  step(8, 8, 30, 5);
-  step(5, 16, 34, 5);
-  step(3, 24, 30, 5);
-  // the quarry floor and block stacks
-  p.rect(2, 31, 30, 6, 'E');
-  p.shade(2, 31, 30, 6, (x, y) => (noise(x, y, 8) < 0.2 ? 'O' : noise(x, y, 9) < 0.1 ? 'e' : null));
-  blockStack(p, 5, 32, 8);
-  blockStack(p, 14, 33, 6);
-  blockStack(p, 8, 28, 6);
-  // shear-legs crane lifting a block
-  p.line(36, 36, 41, 10, 'b').line(44, 36, 41, 10, 'b').line(37, 36, 41, 10, 'B');
-  p.vline(41, 11, 22, 'k');
-  p.box(39, 22, 5, 4, 'i', 'k');
-  p.hline(40, 42, 23, 'a');
+  bench(8, 4);
+  bench(15, 2);
+  bench(22, 0);
+  p.vline(x0, 8, 33, 'O').vline(x0 + 1, 15, 33, 'O').vline(x1, 8, 33, 'Q').vline(x1 - 1, 15, 33, 'Q');
+  // the quarry floor with dust and chips
+  p.rect(2, 30, 36, 7, 'E');
+  p.shade(2, 30, 36, 7, (x, y) => (noise(x, y, 8) < 0.2 ? 'O' : noise(x, y, 9) < 0.12 ? 'e' : null));
+  blockStack(p, 4, 31, 8);
+  blockStack(p, 13, 32, 6);
+  blockStack(p, 6, 27, 6);
+  // shear-legs crane lifting a block from the top bench
+  p.line(30, 36, 34, 3, 'b').line(38, 36, 34, 3, 'B').set(34, 2, 'n');
+  p.vline(34, 4, 14, 'k');
+  p.box(32, 14, 5, 4, 'w', 'k').hline(33, 35, 15, 'a');
   // tool hut with a tiled roof
-  tiledRoof(p, 33, 26, 13, 4, 2);
-  plasterWall(p, 34, 30, 11, 7, RAMP.ochre);
-  door(p, 38, 32, 3, 5);
+  tiledRoof(p, 34, 26, 13, 4, 2);
+  plasterWall(p, 35, 30, 11, 7, RAMP.ochre);
+  door(p, 39, 32, 3, 5);
   return p.rows();
 }
 
@@ -206,10 +212,9 @@ function fodina(): string[] {
   p.rect(1, 17, 26, 9, 'G');
   p.shade(0, 4, 30, 23, (x, y, k) => {
     if (k !== 'G') return null;
-    const n = noise(x, y, 41);
-    if (n < 0.1) return 'v';
-    if (n < 0.16) return 'R';
-    if (n > 0.9) return 'W';
+    const n = noise(x, y, 41), vein = noise(Math.floor(x / 3), Math.floor(y / 2), 46);
+    if (vein < 0.12 && n < 0.6) return n < 0.3 ? 'R' : 'v';                              // rust-red ore veins
+    if (n > 0.93) return 'W';
     return x + y < 20 ? 'g' : x > 20 ? 'j' : 'G';
   });
   p.shade(0, 4, 30, 6, (x, y, k) => (k === 'g' && noise(x, y, 42) < 0.4 ? 'L' : k === 'G' && noise(x, y, 43) < 0.3 ? 'd' : null));  // scrub on top

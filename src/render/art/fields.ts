@@ -83,9 +83,9 @@ function olive(p: Pix, x: number, y: number, season: Season, seed: number): void
   canopy(t, [{ x: 3.9, y: 4, rx: 3.6, ry: 3.3 }, { x: 8, y: 3.6, rx: 3.6, ry: 3.3 }, { x: 6, y: 5.6, rx: 4.6, ry: 2.6 }, { x: 6, y: 2.4, rx: 3, ry: 2.2 }], seed, 0.32, -0.24);
   t.shade(0, 0, 12, 11, (X, Y, k) => {
     const n = noise(X + x, Y + y, seed + 1);
-    if (k === 'l') return n < 0.2 ? 'z' : n < 0.6 ? 'g' : 'V';
-    if (k === 'L') return 'V';
-    if (k === 'd') return 'd';
+    if (k === 'l') return n < 0.3 ? 'g' : n < 0.65 ? 'l' : 'V';
+    if (k === 'L') return n < 0.2 ? 'L' : 'V';
+    if (k === 'd') return n < 0.3 ? 'Z' : 'd';
     return null;
   });
   t.rim('D');
