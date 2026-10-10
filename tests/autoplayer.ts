@@ -45,6 +45,7 @@ export const COIN_NET: readonly (readonly [number, number])[] = [[3, 3], [6, 10]
 
 const FOLLOW_EVERY = 10;      // advisor-follower: remedy 0 of the top advisory every 10 days (DESIGN §11.5)
 const BUILD_EVERY = 5;        // builder: places the Aedilis/Fabrum build remedies every 5 days (DESIGN §18.5)
+const GARDENS_PER_HOUSE = 1.5;   // builder: from Vicus on, three gardens for every two houses (beautification, DESIGN §10.3)
 const TIP_READ_DAYS = 3;      // a tip stays on the card this long before the bot clicks "Understood"
 const CHARTER_LATE = 60;      // proclaim the charter by this elapsed day even if its tip never showed
 const FULL_SUMMER = 0.9;      // Largae when the sheds are this full in Aestas
@@ -105,7 +106,7 @@ export function makeBot(kind: BotKind, seed: number): Bot {
       decide(s, picks, tip);
       const e = elapsed(s);
       if (kind === 'follower' && e % FOLLOW_EVERY === 0) follow(s);
-      if (kind === 'builder' && e % BUILD_EVERY === 0) buildRemedies(s);
+      if (kind === 'builder' && e % BUILD_EVERY === 0) { buildRemedies(s); beautify(s); }
     },
   };
 }
@@ -153,6 +154,26 @@ function buildRemedies(s: GameState): void {
       if (chk.ok && canAfford(s, chk.cost, reserved(s, v)) && act.place(s, t, tile, { owner: 'player' }).ok) done.add(t);
     }
   }
+}
+
+/** The builder also beautifies, which the Ordo leaves to the player (DESIGN §10.3): from Vicus on (the camp's plots are
+ *  for wells and homes), a hortus among the houses, one site at a time, up to GARDENS_PER_HOUSE for every house, at its
+ *  best slot from stock above the Ordo's reserve. Gardens add dignitas, and a town of renown draws Rome's colonists
+ *  faster (DESIGN §6.6), so this is the building that pays beyond what the Ordo raises anyway. */
+function beautify(s: GameState): void {
+  if (s.rank < 1) return;
+  const v = view(s);
+  let gardens = 0;
+  for (const b of s.buildings) {
+    if (b.type !== 'hortus') continue;
+    if (b.status !== 'done') return;
+    gardens++;
+  }
+  if (gardens >= Math.floor(v.c.houses * GARDENS_PER_HOUSE)) return;
+  const slot = bestSlot(s, 'hortus', { owner: 'player' });
+  if (!slot) return;
+  const chk = canPlace(s, 'hortus', slot.tile, { owner: 'player' });
+  if (chk.ok && canAfford(s, chk.cost, reserved(s, v))) act.place(s, 'hortus', slot.tile, { owner: 'player' });
 }
 
 /** Everything the balance tests and the trace read from one bot run. */
