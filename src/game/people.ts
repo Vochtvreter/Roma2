@@ -51,6 +51,13 @@ function skillOf(p: Person, skill: SkillId | null): number {
   return skill ? p.skills[skill] ?? 0 : 0;
 }
 
+/** A person's best level in any skill other than `skill`. */
+function otherSkill(p: Person, skill: SkillId | null): number {
+  let best = 0;
+  for (const k of SKILLS) if (k !== skill) best = Math.max(best, p.skills[k] ?? 0);
+  return best;
+}
+
 /** Applies a labour plan (sticky): releases surplus and ineligible workers (least skilled first), fills open slots
  *  High priority first, then id, each with the best-skilled idle worker; builders = plan.builders (fabri first). */
 export function assignJobs(s: GameState, plan: LabourPlan): void {
@@ -81,14 +88,15 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   const nb = Math.max(0, Math.floor(plan.builders));
   if (builders.length > nb) builders.sort(leastFirst('fabri')).slice(0, builders.length - nb).forEach(release);
 
-  // idle pool, sorted lazily per skill (best first, then lowest id); a pointer skips the taken
+  // idle pool, sorted lazily per skill: best in the skill, then least gifted elsewhere (specialists stay free for their
+  // own trade), then lowest id; a pointer skips the taken
   const pool = s.people.filter((p) => p.work === null && canWork(s, p));
   const sorted = new Map<string, { list: Person[]; at: number }>();
   const pick = (skill: SkillId | null): Person | null => {
     const key = skill ?? '';
     let e = sorted.get(key);
     if (!e) {
-      e = { list: skill ? pool.slice().sort((a, c) => skillOf(c, skill) - skillOf(a, skill) || a.id - c.id) : pool, at: 0 };
+      e = { list: pool.slice().sort((a, c) => skillOf(c, skill) - skillOf(a, skill) || otherSkill(a, skill) - otherSkill(c, skill) || a.id - c.id), at: 0 };
       sorted.set(key, e);
     }
     while (e.at < e.list.length && e.list[e.at].work !== null) e.at++;

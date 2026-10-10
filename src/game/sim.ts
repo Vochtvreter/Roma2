@@ -46,7 +46,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   // 5 · works and homes
   constructionDay(s, ctx);       // builders along worksQueue(); Capitolium crew cap and materials; completions;
                                  // Capitolium completion sets s.victory, stats.victoryDay, fx victory
-  housingDay(s, ctx);            // houses with id % CHECK_EVERY == day % CHECK_EVERY: needs, evolution, renovation, decline
+  housingDay(s, ctx);            // houses with (id + day) % CHECK_EVERY == 0 (DESIGN §7.2): needs, evolution, renovation, decline
   // 6 · people
   peopleDay(s, ctx, rng);        // aging logs, deaths, widowing, marriages, births, homeless, emigration
   immigrationDay(s, ctx, rng);   // Rome's roll, one Bernoulli roll
