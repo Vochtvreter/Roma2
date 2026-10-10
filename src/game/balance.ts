@@ -175,7 +175,10 @@ export const B = {
   },
 
   // ───────── forecast (DESIGN §11.11) ─────────
-  forecast: { GRAIN: 1.35, WATER: 1.1, CELLS: 12, BANDS: [30, 15, 7] },
+  forecast: {
+    GRAIN: 1.35, WATER: 1.1, CELLS: 12, BANDS: [30, 15, 7],
+    DOH_NONE: 9999,                                   // days on hand reported when nobody needs the essential (finite)
+  },
 
   // ───────── Lex de annona (DESIGN §8.12) ─────────
   emergency: {
@@ -224,8 +227,8 @@ export const B = {
       BEDS_FREE: 2, BEDS_WINDOW: 30,
       MORALE: [50, 35, 25], MORALE_FALL: 0.3, MORALE_FALL_DAYS: 10,
       CHOICE_SOON: 7, REMEDY_DAYS: 30, BUY_DAYS: 20,
-      SPARE_BEDS_STEP: 4, BUILDER_SHARE_STEP: 0.05, TRADE_RESERVE_STEP: -10, PLOTS: 2,   // remedies: Spare beds +4,
-                                                      // Builder share +5 points, Trade reserve −10, house plots ×2
+      // remedy steps: Spare beds +4 · Builder share +5 points · Trade reserve −10 · Ask/Place house plots ×2
+      SPARE_BEDS_STEP: 4, BUILDER_SHARE_STEP: 0.05, TRADE_RESERVE_STEP: -10, PLOTS: 2,
     },
   },
 
