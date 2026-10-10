@@ -1,7 +1,10 @@
 // src/game/survey.ts — the groma's plan: castrum, blocks, plots, rings, streets, wall, fossa, gates, via
-// (ARCHITECTURE §8.2, DESIGN §3.4–3.5). Pure geometry over the map; no state.
-// Castrum coordinates are relative to the interior origin (ix, iy): street lines every PITCH tiles,
-// blocks of 4×4 between them; interior blocks bx 0..5, by 0..3; rings 1–2 continue the grid outside the fossa.
+// (ARCHITECTURE §8.2, DESIGN §3.4–3.5). Owner: WP-A (written by the scaffold). Pure geometry over the map; no state.
+// Castrum coordinates are relative to the interior origin (ix, iy): street lines every PITCH tiles, blocks of 4×4
+// between them; interior blocks bx 0..5, by 0..3; rings 1–2 continue the grid outside the fossa.
+// Streets: every interior pitch line (not through the forum or the sacred way), the four gate causeways across the
+// fossa (built with the castrum streets), and the pitch lines around each UNMASKED ring block — land around masked
+// blocks (river loam, outcrops, the grove) carries no chalk lines and stays free rural land.
 import { B } from './balance';
 import { F, T } from './types';
 import type { Block, GateId, RankIndex, Rect, Survey, WorldMap } from './types';
@@ -83,10 +86,25 @@ function perimeter(r: Rect): { x: number; y: number }[] {
   return out;
 }
 
+/** True when a block's 4×4 tiles hold river, crag, rock, the grove or ruins, more than LOAM_MASK loam, or leave the map. */
+function isMasked(map: Omit<WorldMap, 'survey'>, x: number, y: number): boolean {
+  let loam = 0;
+  for (let ty = y; ty < y + BS; ty++) {
+    for (let tx = x; tx < x + BS; tx++) {
+      if (!inMap(tx, ty)) return true;
+      const i = ty * W + tx;
+      const t = map.terrain[i];
+      const f = map.feature[i];
+      if (t === T.river || t === T.crag || t === T.rock || f === F.lucus || f === F.ruins) return true;
+      if (t === T.loam) loam++;
+    }
+  }
+  return loam > B.map.LOAM_MASK;
+}
+
 /** Computes the full survey for an interior origin and via side (DESIGN §3.4–3.5). */
 export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: number, viaDir: 'E' | 'W'): Survey {
-  const N = map.W * map.H;
-  const terrainAt = (x: number, y: number): number => map.terrain[y * map.W + x];
+  const N = W * H;
   const interior: Rect = { x: ix, y: iy, w: IW, h: IH };
   const castrum: Rect = grow(interior, FOSSA_OUT);
   const forum = blockSpan(ix, iy, B.map.FORUM_BLOCKS.bx, B.map.FORUM_BLOCKS.by);
@@ -108,18 +126,7 @@ export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: num
     const x = ix + P * bx + 1;
     const y = iy + P * by + 1;
     const rect: Rect = { x, y, w: BS, h: BS };
-    let masked = false;
-    let loam = 0;
-    for (let ty = y; ty < y + BS; ty++) {
-      for (let tx = x; tx < x + BS; tx++) {
-        if (!inMap(tx, ty)) { masked = true; continue; }
-        const t = terrainAt(tx, ty);
-        const f = map.feature[ty * W + tx];
-        if (t === T.river || t === T.crag || t === T.rock || f === F.lucus || f === F.ruins) masked = true;
-        if (t === T.loam) loam++;
-      }
-    }
-    if (loam > B.map.LOAM_MASK) masked = true;
+    const masked = isMasked(map, x, y);
     const reserved: Block['reserved'] = ring === 0 && inRect(x, y, forum) ? 'forum'
       : ring === 0 && inRect(x, y, capitolium) ? 'capitolium' : null;
     // touches the forum: the block's street ring shares an edge (≥ 2 tiles) with the forum's street ring
@@ -134,7 +141,7 @@ export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: num
     for (let ty = y; ty < y + BS; ty++) for (let tx = x; tx < x + BS; tx++) if (inMap(tx, ty)) blockAt[ty * W + tx] = id;
   }
 
-  // ── streets: interior lines (ring 0) and the pitch lines bounding ring blocks (outside the castrum rect)
+  // ── streets: interior lines and causeways (ring 0), then the pitch lines around unmasked ring blocks
   const street = new Uint8Array(N);
   const streetRing = new Int8Array(N).fill(-1);
   const markStreet = (x: number, y: number, ring: number): void => {
@@ -152,8 +159,14 @@ export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: num
       markStreet(ix + x, iy + y, 0);
     }
   }
+  for (let k = FOSSA_IN; k <= FOSSA_OUT; k++) {
+    markStreet(ix - k, cy, 0);
+    markStreet(ix + IW - 1 + k, cy, 0);
+    markStreet(cx, iy - k, 0);
+    markStreet(cx, iy + IH - 1 + k, 0);
+  }
   for (const b of blocks) {
-    if (b.ring === 0) continue;
+    if (b.ring === 0 || b.masked) continue;
     for (const p of perimeter({ x: b.x - 1, y: b.y - 1, w: BS + 2, h: BS + 2 })) {
       if (inRect(p.x, p.y, castrum)) continue;
       markStreet(p.x, p.y, b.ring);
@@ -197,7 +210,6 @@ export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: num
   const dir = viaDir === 'W' ? -1 : 1;
   const start = viaDir === 'W' ? west.x : east.x;
   for (let x = start + dir; x >= 0 && x < W; x += dir) {
-    if (!inMap(x, cy)) break;
     const i = cy * W + x;
     via.push(i);
     if (map.terrain[i] === T.river) bridge.push(i);
@@ -236,4 +248,10 @@ export function activeRings(rank: RankIndex): number[] {
 export function isActiveBlock(sv: Survey, b: Block, rank: RankIndex): boolean {
   const blk = sv.blocks[b.id] ?? b;
   return !blk.masked && blk.reserved === null && activeRings(rank).includes(blk.ring);
+}
+
+/** True when the block is unmasked and unreserved but its ring is not yet in the pomerium (kept for the canabae). */
+export function isFutureBlock(sv: Survey, b: Block, rank: RankIndex): boolean {
+  const blk = sv.blocks[b.id] ?? b;
+  return !blk.masked && blk.reserved === null && !activeRings(rank).includes(blk.ring);
 }
