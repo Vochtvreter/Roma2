@@ -134,7 +134,7 @@ const FIX: Record<RuleId, Fix> = {
   'aquarum.aqueduct': { levels: [[1, (s) => { s.rank = 3; }], [2, (s) => { s.rank = 3; ctl.pet = { ...pet(false, 'Aqueduct flowing'), rank: 4 }; }]], clear: (s) => { s.rank = 0; } },
   'fabrum.labour': {
     levels: [[1, (s) => ({ c: { idle: s.people.slice(0, 5).map((p) => p.id), workforce: 20, catSlots: ZERO, catStaffed: ZERO } }), A.RULES.IDLE_DAYS],
-      [2, () => ({ c: { idle: [], catSlots: { ...ZERO, food: 10 }, catStaffed: ZERO }, water: { net3: -1 } })]],
+      [2, () => ({ c: { idle: [], catSlots: { ...ZERO, food: 10 }, catStaffed: ZERO }, grain: { stock: 10, net3: -1 } })]],
     clear: () => ({ c: { idle: [], catSlots: ZERO, catStaffed: ZERO } }),
   },
   'fabrum.stalled': { levels: [[1, (s) => site(s, 25)], [2, (s) => site(s, 45)]], clear: (s) => site(s, null) },
@@ -333,6 +333,35 @@ describe('engine', () => {
     const b = JSON.parse(JSON.stringify(a)) as GameState;
     run(a, 60); run(b, 60);
     expect(JSON.stringify(b.guidance)).toBe(JSON.stringify(a.guidance));
+  });
+});
+
+describe('fabrum.labour: "We lack N hands" (R10)', () => {
+  const L = 'fabrum.labour';
+  const lack = (p: Patch): Patch => ({ ...p, c: { idle: [], catSlots: { ...ZERO, food: 10, materials: 8 }, catStaffed: { ...ZERO, materials: 1 } } });
+  it('stays quiet while the stores hold months, however negative the 3-day net', () => {
+    const s = base();
+    for (let i = 0; i < 5; i++) day(s, lack({ grain: { stock: 6000, net3: -20 }, water: { stock: 3000, net3: -5 } }));
+    expect(s.guidance.advisories[L]?.active ?? false).toBe(false);
+  });
+  it('stays quiet when the short essential has no open post (it wants a work, not hands)', () => {
+    const s = base();
+    day(s, lack({ water: { stock: 10, net3: -2 } }));                // water short, but no open post at the wells
+    expect(s.guidance.advisories[L]?.active ?? false).toBe(false);
+  });
+  it('raises a Cave on a short runway and first offers the short work\'s hands, usable', () => {
+    const s = base();
+    const p = lack({ grain: { stock: 100, net3: -10 } });
+    day(s, p);
+    const m = s.guidance.advisories[L]!;
+    expect(m.active).toBe(true);
+    expect(m.sev).toBe(2);
+    const r = renderAdvisory(s, fake(s, p), { rule: L, advisor: 'fabrum', memo: m });
+    expect(r.text).toMatch(/grain lasts 10 days/);
+    expect(r.remedies[0].remedy).toEqual({ kind: 'priority', cat: 'food', days: B.ordo.PRIORITY_DAYS });
+    expect(r.remedies[0].check.ok).toBe(true);
+    s.ordo.on.labour = false;
+    expect(renderAdvisory(s, fake(s, p), { rule: L, advisor: 'fabrum', memo: m }).remedies[0].remedy).toEqual({ kind: 'open', tab: 'people', anchor: 'labour' });
   });
 });
 
