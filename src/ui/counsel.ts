@@ -153,7 +153,7 @@ export class Counsel {
       if (t.target) pulseTarget(t.target);
     } }, 'Show me') : null;
     return h('div', { class: `counsel-card tip${t.urgent ? ' urgent' : ''}`, role: 'note' },
-      h('div', { class: 'counsel-head' }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
+      h('div', { class: 'counsel-head', onclick: () => this.root.classList.toggle('open') }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
         h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, mentorKicker(s)), h('span', { class: 'counsel-title' }, t.title))),
       h('div', { class: 'counsel-body' }, text,
         h('div', { class: 'counsel-actions' },
@@ -180,10 +180,10 @@ export class Counsel {
       text.textContent = rr.text;
       if (metric) metric.textContent = dangerLabel(live);
     };
-    const kicker = `${caps(def.office)} · ${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])}`;
+    const kicker = `${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])} · ${caps(def.office)}`;
     return h('div', { class: `counsel-card adv sev-${sev}${opp ? ' opp' : ''}`, role: sev >= 2 ? 'alert' : 'note' },
-      h('div', { class: 'counsel-head' }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),
-        h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, kicker), title), metric),
+      h('div', { class: 'counsel-head', onclick: () => this.root.classList.toggle('open') }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),
+        h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, kicker), metric), title)),
       h('div', { class: 'counsel-body' }, text, this.remedies(r.remedies),
         h('div', { class: 'counsel-foot' },
           h('span', { class: 'counsel-name' }, def.name),
@@ -207,7 +207,8 @@ export class Counsel {
         const ask: Remedy = { kind: 'ask', building: rem.building };
         const btns = [s.ordo.on.build ? this.remedyBtn(ask, 'Ask the Ordo', checkRemedy(s, ask), true) : null, this.remedyBtn(place, 'Place it myself', checkRemedy(s, place), false)];
         const sprite = rem.building === 'area' ? 'h_tentoria_0' : `b_${rem.building}`;
-        rows.push(h('div', { class: 'counsel-rem build' }, h('span', { class: 'counsel-rem-name' }, img(sprite, 1, 'counsel-rem-ico'), BUILDING_DEFS[rem.building].name), btns));
+        rows.push(h('div', { class: 'counsel-rem build' }, img(sprite, 1, 'counsel-rem-ico'),
+          h('div', { class: 'counsel-rem-main' }, h('span', { class: 'counsel-rem-name' }, BUILDING_DEFS[rem.building].name), h('div', { class: 'counsel-rem-btns' }, btns))));
       } else {
         rows.push(h('div', { class: 'counsel-rem' }, this.remedyBtn(rem, x.label, x.check, rows.length === 0)));
       }

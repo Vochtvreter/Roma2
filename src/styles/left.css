@@ -70,24 +70,26 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 .counsel-face { width: 48px; height: 48px; flex: none; border: 2px solid var(--ring); border-radius: 4px; background: #2a1e18;
   box-shadow: 0 0 0 1px var(--line-2); }
 .counsel-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.counsel-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.2px; color: var(--ember); }
+.counsel-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.2px; color: var(--ember); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .counsel-card.adv.sev-1 .counsel-kicker { color: var(--sev-1); }
 .counsel-card.adv.sev-2 .counsel-kicker { color: var(--sev-2); }
 .counsel-card.adv.sev-3 .counsel-kicker { color: var(--sev-3); }
 .counsel-card.adv.opp .counsel-kicker { color: var(--gold); }
 .counsel-title { font-size: 16px; line-height: 1.2; color: var(--gold); }
 .counsel-card.adv .counsel-title { color: var(--text); }
-.counsel-metric { position: absolute; top: 8px; right: 10px; }
-.counsel-card .counsel-metric + .counsel-toggle { display: none; }
+.counsel-krow { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 16px; }
+.counsel-metric { flex: none; margin: 0; }
 .counsel-text { margin: 7px 0 8px; font-size: 13px; line-height: 1.4; color: #e6d9c2; }
 .counsel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .counsel-link { margin-left: auto; background: none; border: 0; padding: 2px 0; font-size: 12px; color: var(--dim); }
 .counsel-link:hover { color: var(--muted); text-decoration: underline; }
 .counsel-remedies { display: flex; flex-direction: column; gap: 5px; }
 .counsel-rem { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.counsel-rem.build { padding: 4px 5px; background: rgba(0, 0, 0, .2); border: 1px solid #33251d; border-radius: 4px; }
-.counsel-rem-name { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; margin-right: auto; }
-.counsel-rem-ico { max-width: 32px; max-height: 24px; }
+.counsel-rem.build { flex-wrap: nowrap; gap: 8px; padding: 5px 6px; background: rgba(0, 0, 0, .2); border: 1px solid #33251d; border-radius: 4px; }
+.counsel-rem-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.counsel-rem-name { font-size: 13px; color: var(--gold); }
+.counsel-rem-btns { display: flex; flex-wrap: wrap; gap: 5px; }
+.counsel-rem-ico { max-width: 32px; max-height: 32px; flex: none; align-self: center; }
 .counsel-btnwrap { display: inline-flex; flex-direction: column; gap: 1px; }
 .counsel-why { font-size: 10px; color: var(--dim); max-width: 200px; }
 .counsel-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 236, 200, .07); }

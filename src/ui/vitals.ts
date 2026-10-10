@@ -21,7 +21,9 @@ const DOMAIN: Record<Essential, RuleId[]> = {
 const SEASON_SHORT = ['VER', 'AEST', 'AVT', 'HIEM'] as const;
 const SEASON_TINT = ['rgba(156,204,90,.16)', 'rgba(242,201,76,.16)', 'rgba(227,132,58,.16)', 'rgba(143,163,181,.18)'] as const;
 const BAND_COLOR = { good: '#9ccc5a', gold: '#f2c94c', warn: '#e3843a', bad: '#e5554a', empty: '#0a0710' } as const;
-const DOH_NONE = 9999;   // the forecast's "nobody needs it" sentinel (CONTRACT_NOTES, game stubs 4)
+const DOH_NONE = 9999;
+/** The red "empty …" line shows once the advisor would speak (Monitum run-out thresholds). */
+const WARN_DAYS: Record<Essential, number> = { grain: B.advisors.RULES.GRAIN_RUNOUT[2], water: B.advisors.RULES.WATER_RUNOUT[2] };   // the forecast's "nobody needs it" sentinel (CONTRACT_NOTES, game stubs 4)
 
 /** The month cell's band: good ≥ 30, gold 15–30, warn 7–15, bad < 7, empty at 0 (B.forecast.BANDS). */
 export function bandOf(doh: number): keyof typeof BAND_COLOR {
@@ -41,15 +43,15 @@ function tablet(g: Game, res: Essential): Tablet {
   const days = h('span', { class: 'vit-days num' }, '—');
   const unit = h('span', { class: 'vit-unit num' }, 'd');
   const trend = h('span', { class: 'vit-trend num' });
-  const sub = h('span', { class: 'vit-sub num' });
+  const sub = h('span', { class: 'vit-sub' });
   const cells = Array.from({ length: B.forecast.CELLS }, () => h('i', { class: 'vit-cell' }));
   const seasons = h('div', { class: 'vit-seasons' });
   const el = h('div', { class: `hud-vital vit-${res}`, id: `vital-${res}`, role: 'group', 'aria-label': `${LATIN[res]}: days on hand` },
     img(resIcon(res), 2, 'vit-ico'),
     h('div', { class: 'vit-head' }, h('span', { class: 'vit-label' }, LABEL[res]), trend),
-    h('div', { class: 'vit-main' }, days, unit, sub),
+    h('div', { class: 'vit-main' }, days, unit),
     h('div', { class: 'vit-strip' }, cells),
-    seasons);
+    seasons, sub);
   tip(el, () => vitalTip(g, res), { wide: true });
   return { el, days, unit, trend, sub, cells, seasons, seasonKey: '' };
 }
@@ -61,7 +63,7 @@ function paint(g: Game, t: Tablet, res: Essential, f: EssentialForecast): void {
   const arrow = f.net > 0.05 ? '▲' : f.net < -0.05 ? '▼' : '■';
   t.trend.textContent = `${arrow} ${fmtRate(f.net).replace('/d', '')}`;
   t.trend.className = `vit-trend num${f.net < -0.05 ? ' bad' : f.net > 0.05 ? ' good' : ''}`;
-  const empty = f.net < -0.05 && f.runout !== null;
+  const empty = f.net < -0.05 && f.runout !== null && f.runout - g.state.day < WARN_DAYS[res];
   t.sub.textContent = empty && f.runout !== null ? `empty ${formatRoman(f.runout)}` : '';
   t.el.classList.toggle('low', f.doh < B.forecast.BANDS[2]);
   t.el.classList.toggle('falling', empty);

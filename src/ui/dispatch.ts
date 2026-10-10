@@ -56,7 +56,8 @@ function works(b: Snapshot, a: Snapshot): HTMLElement[] {
     const n = (a.builtBy[t] ?? 0) - (b.builtBy[t] ?? 0);
     if (n <= 0) continue;
     const name = t === 'area' ? (n === 1 ? 'a house plot' : 'house plots') : BUILDING_DEFS[t].name;
-    out.push(h('span', { class: 'disp-work' }, img(t === 'area' ? 'h_tentoria_0' : `b_${t}`, 1, 'disp-work-ico'), n > 1 ? `${n} ${name}` : name));
+    const label = t === 'area' ? (n > 1 ? `${n} ${name}` : name) : n > 1 ? `${name} ×${n}` : name;
+    out.push(h('span', { class: 'disp-work' }, img(t === 'area' ? 'h_tentoria_0' : `b_${t}`, 1, 'disp-work-ico'), label));
   }
   return out;
 }
@@ -98,8 +99,9 @@ function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null
 function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
   const b = r.before, a = r.after;
   const coin = a.res.denarii - b.res.denarii;
-  const city = h('span', null, 'Souls ', delta(b.pop, a.pop),
-    ` (+${a.births - b.births} births, +${a.immigrants - b.immigrants} arrivals, −${a.deaths - b.deaths} deaths, −${a.emigrants - b.emigrants} departed)`,
+  const moves = [[a.births - b.births, '+', 'births'], [a.immigrants - b.immigrants, '+', 'arrivals'], [a.deaths - b.deaths, '−', 'deaths'],
+    [a.emigrants - b.emigrants, '−', 'departed']].filter(([n]) => (n as number) > 0).map(([n, sg, w]) => `${sg}${n} ${w}`);
+  const city = h('span', null, 'Souls ', delta(b.pop, a.pop), moves.length ? ` (${moves.join(', ')})` : '',
     ` · Rank ${RANK_DEFS[a.rank].name} · Spirits `, delta(b.morale, a.morale, (n) => String(Math.round(n))));
   const stores = h('span', null, 'Grain ', delta(b.grainDoh, a.grainDoh, doh), ' · Water ', delta(b.waterDoh, a.waterDoh, doh),
     ' · Coin ', delta(b.res.denarii, a.res.denarii), ` (${coin >= 0 ? '+' : '−'}${fmt(Math.abs(coin))})`);
@@ -157,6 +159,7 @@ function victoryBody(g: Game, close: () => void): HTMLElement {
   const stat = (k: string, v: string): HTMLElement => h('div', { class: 'disp-stat' }, h('b', null, v), h('span', null, k));
   const hours = st.playMs / 3_600_000;
   return h('div', { class: 'disp-body letter' },
+    h('div', { class: 'disp-hero' }, img('f_aquila', 2)),
     h('p', { class: 'disp-letter' }, `On ${formatRoman(st.victoryDay ?? s.day, { year: true })} the Capitolium of ${s.name} was dedicated to Jupiter, Juno and Minerva. `
       + `${cap1(words(s.people.length))} souls stood in the forum. Rome will remember the colony in the Fasti.`),
     h('div', { class: 'disp-stats' },
@@ -167,8 +170,8 @@ function victoryBody(g: Game, close: () => void): HTMLElement {
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-sign' }, `Senatus Populusque Romanus · AUC ${toRoman(aucYear(s.day))}`),
       h('button', { class: 'btn', onclick: () => close() }, 'Keep governing'),
-      h('button', { class: 'btn primary', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
-        `Found a new colony (Legacy ${s.legacy + 1}: +10% output, +2 morale)`)));
+      h('button', { class: 'btn primary disp-two', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
+        h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`))));
 }
 
 /** Opens one of the three parchment letters; closing it resumes the game as the letter says. */

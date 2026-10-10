@@ -1,1 +1,113 @@
-/* src/styles/mobile.css — owner H (WP-H UI shell). Breakpoints: tablet 900–1099 px, mobile < 900 px (bottom sheet 46vh, two-row HUD), compact < 560 px. Imported last. */
+/* src/styles/mobile.css — owner H (WP-H UI shell). Breakpoints (ARCHITECTURE §13.9, DESIGN §15.7): tablet 900–1099 px
+   (minimap hidden, compact HUD), mobile < 900 px (two-row HUD, everything floats above the 46vh bottom sheet of WP-I),
+   compact < 560 px. Imported last. The bottom sheet itself (#side) is WP-I's; --sheet tracks its height here. */
+
+/* ───────── tablet and narrow desktop ───────── */
+@media (max-width: 1099px) {
+  #hud { gap: 5px; padding: 0 8px; }
+  .hud-brand-text { display: none; }
+  .hud-aquila { width: 36px; height: 36px; }
+  .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
+  .hud-stages { width: 40px; }
+  .hud-chip { padding-right: 6px; }
+  .hud-date { min-width: 0; padding-right: 8px; }
+  .hud-date > img { display: none; }
+  .hud-sp { min-width: 30px; }
+  .hud-menu { min-width: 34px; }
+  #minimap { display: none; }
+  #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
+  #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
+  #app:has(#side.collapsed) #ticker { right: 12px; }
+  #place-banner { bottom: 104px; }
+}
+
+/* ───────── mobile: two-row HUD, widgets above the bottom sheet ───────── */
+@media (max-width: 899px) {
+  :root { --hud-h: 96px; --side-w: 0px; --sheet: 46vh; }
+  #app:has(#side.collapsed) { --sheet: 56px; }
+  #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
+  .hud-brand { display: none; }
+  .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
+  .hud-vitals { flex: 2.2 1 0 !important; min-width: 0; gap: 4px; }
+  .hud-vital { flex: 1 1 0; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
+  .hud-chip { flex: 1 1 0 !important; min-width: 0; overflow: hidden; }
+  .hud-date, .hud-speed, .hud-menu { flex: none !important; }
+  .vit-strip, .vit-seasons { display: none; }
+  .vit-sub, .hud-vital.falling .vit-sub { display: none; }
+  .hud-chip { height: 42px; }
+  .hud-menu { margin-left: auto; height: 40px; }
+  .hud-date { height: 38px; }
+  .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; }
+  .hud-res { min-width: 0; }
+  .hud-sp { height: 36px; }
+
+  #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
+  #objective { padding: 6px 10px; }
+  .obj-hint, .obj-unlocks, .obj-meter, .obj-laurel { display: none; }
+  .obj-goal { font-size: 14px; margin: 2px 0 0; }
+  .obj-cta { margin-top: 5px; padding: 4px 8px; }
+  .counsel-strip { display: none; }
+  .counsel-card { padding: 6px 10px; cursor: pointer; }
+  .counsel-card .counsel-body { display: none; }
+  #counsel.open .counsel-card .counsel-body { display: block; }
+  .counsel-face { width: 32px; height: 32px; }
+  .counsel-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #counsel.open .counsel-title { white-space: normal; }
+  .counsel-toggle { display: inline-flex; position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); z-index: 1; }
+  #counsel.open .counsel-toggle { transform: rotate(180deg); }
+  .counsel-metric { display: none; }
+  .counsel-who { padding-right: 34px; }
+  .counsel-calm { font-size: 11px; }
+
+  #map-tools { right: 8px; bottom: calc(var(--sheet) + 52px); }
+  #app.placing #map-tools { display: none; }
+  .map-ov-row { flex-direction: row; }
+  .map-ov span, .map-legend { display: none; }
+  .map-ov { padding: 0; height: 40px; width: 40px; justify-content: center; }
+  .map-ov-row.sub { display: flex; flex-wrap: wrap; max-width: 220px; }
+  .map-ov-row.sub .map-ov { width: auto; padding: 0 6px; }
+  .map-ov-row.sub .map-ov span { display: inline; }
+  #overlay-bar { align-items: flex-end; }
+  .map-btn { width: 40px; height: 40px; }
+  #ticker { left: 8px; right: 60px; bottom: calc(var(--sheet) + 8px); justify-content: flex-start; }
+  #app:has(#side.collapsed) #ticker { right: 60px; }
+  .tick-box { height: 36px; width: 100%; }
+  #toasts { top: calc(var(--hud-h) + 8px); right: 50%; transform: translateX(50%); align-items: center; }
+  #app:has(#side.collapsed) #toasts { right: 50%; }
+  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100vw - 16px); width: calc(100vw - 16px); }
+  .place-box { flex-wrap: wrap; gap: 8px; }
+  .place-help { white-space: normal; }
+  .place-box .btn { min-height: 44px; }
+
+  .modal { padding: 14px 14px 16px; }
+  .modal-menu { grid-template-columns: 1fr; }
+  .modal-col .btn, .modal-actions .btn { min-height: 44px; }
+  .disp-line { grid-template-columns: 1fr; gap: 2px; }
+  .disp-stats { grid-template-columns: repeat(2, 1fr); }
+  .disp-seal { top: -58px; left: -8px; transform: rotate(-10deg) scale(.75); }
+  .modal.parchment .modal-title { font-size: 21px; margin: 2px 36px 8px; }
+  .modal.parchment .modal-kicker { margin: 4px 36px 0; }
+}
+
+/* ───────── compact phones ───────── */
+@media (max-width: 559px) {
+  .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
+  .hud-n { font-size: 12px; }
+  .vit-label { font-size: 7px; letter-spacing: .5px; }
+  .vit-trend { display: none; }
+  .vit-days { font-size: 15px; }
+  #hud { padding: 4px; gap: 3px; }
+  .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
+  .hud-coin .hud-sub { font-size: 7px; }
+  .hud-stages { display: none; }
+  .hud-dignitas { display: none; }
+  .hud-date-main { font-size: 9px; }
+  .hud-date .hud-sub { display: none; }
+  .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
+  .hud-speed { gap: 2px; }
+  .title-logo { letter-spacing: 1px; }
+  .title-row { flex-direction: column; }
+  .modal-title { font-size: 21px; }
+  .disp-body.letter, .disp-letter { font-size: 15px; }
+}

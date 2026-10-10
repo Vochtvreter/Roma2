@@ -1,1 +1,120 @@
-/* src/styles/map-ui.css — owner H (WP-H UI shell). Map widgets: #map, #ticker, #toasts, #banner, #place-banner, #map-tools (overlay bar, minimap, zoom). Prefixes map- tick- toast- banner- place-. */
+/* src/styles/map-ui.css — owner H (WP-H UI shell). Map widgets: #ticker, #toasts, #banner, #place-banner, #map-tools
+   (overlay bar, minimap frame, zoom). Everything right of the map clears the side panel (--side-w) and follows it when the
+   panel collapses (#side.collapsed, WP-I). Prefixes map- tick- toast- banner- place-. */
+
+/* ───────── map tools: overlay bar · minimap · zoom ───────── */
+#map-tools {
+  position: absolute; right: calc(var(--side-w) + 12px); bottom: 12px; z-index: var(--z-minimap);
+  display: grid; grid-template-columns: auto auto; grid-template-areas: "ov mini" "zoom zoom"; align-items: end; gap: 6px;
+  pointer-events: none; transition: right .2s;
+}
+#app:has(#side.collapsed) #map-tools, #app:has(#side.collapsed) #toasts { right: 12px; }
+#map-tools > * { pointer-events: auto; }
+#overlay-bar { grid-area: ov; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+#overlay-bar:empty { display: none; }
+#minimap {
+  grid-area: mini; width: 224px; height: 168px; display: block; border: 2px solid var(--line); border-radius: 6px;
+  background: #0a0710; cursor: crosshair; box-shadow: var(--ring-shadow), 0 4px 14px rgba(0, 0, 0, .45);
+}
+#app.placing #minimap { display: none; }
+#zoom-ctl { grid-area: zoom; justify-self: end; display: flex; gap: 4px; }
+.map-btn {
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--ring); border-radius: 4px; background: linear-gradient(#46342a, #33261f);
+  box-shadow: inset 0 2px 0 rgba(255, 236, 200, .1), 0 2px 6px rgba(0, 0, 0, .4); font-size: 18px; color: var(--text);
+}
+.map-btn:hover { filter: brightness(1.25); }
+.map-ov-row { display: flex; flex-direction: column; gap: 2px; padding: 3px;
+  background: rgba(29, 21, 17, .9); border: 2px solid var(--line); border-radius: 6px; box-shadow: var(--ring-shadow); }
+.map-ov-row.sub { padding: 2px 3px; display: grid; grid-template-columns: 1fr 1fr; }
+.map-ov {
+  display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px 0 3px; text-align: left;
+  border: 2px solid transparent; border-radius: 4px; background: rgba(0, 0, 0, .25); color: var(--muted); font-size: 13px;
+}
+.map-ov img { width: 24px; height: 24px; }
+.map-ov:hover { color: var(--text); background: rgba(255, 236, 200, .06); }
+.map-ov.on { color: #2a1606; background: linear-gradient(var(--ember), #e07a35); border-color: var(--ring); }
+.map-ov.small { height: 24px; padding: 0 7px; font-size: 12px; }
+.map-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; box-shadow: 0 0 0 1px var(--ring); vertical-align: -1px; }
+.map-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px; padding: 4px 8px; font-size: 11px; color: var(--muted); max-width: 190px;
+  background: rgba(29, 21, 17, .85); border-radius: 4px; }
+.map-legend > span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ───────── ticker (bottom centre) ───────── */
+#ticker {
+  position: absolute; bottom: 12px; left: 330px; right: calc(var(--side-w) + 150px); z-index: var(--z-ticker);
+  display: flex; justify-content: center; pointer-events: none; transition: right .2s;
+}
+#app:has(#side.collapsed) #ticker { right: 150px; }
+#ticker > * { pointer-events: auto; }
+.tick-box {
+  display: flex; align-items: center; gap: 8px; max-width: 100%; height: 34px; padding: 0 14px 0 6px; text-align: left;
+  background: rgba(29, 21, 17, .92); border: 2px solid var(--line); border-radius: 17px; color: var(--text);
+  box-shadow: var(--ring-shadow), 0 4px 14px rgba(0, 0, 0, .4);
+}
+.tick-box:hover { border-color: var(--line-2); }
+.tick-seal { width: 24px; height: 24px; flex: none; }
+.tick-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.5px; color: var(--ember); flex: none; }
+.tick-box[data-kind^="acta"] .tick-kicker { color: var(--gold); }
+.tick-box[data-kind="saving"] .tick-kicker { color: var(--water); }
+.tick-text { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tick-in { animation: tickIn .4s ease-out; }
+@keyframes tickIn { from { opacity: 0; transform: translateY(5px); } }
+
+/* ───────── toasts (top right of the map) ───────── */
+#toasts {
+  position: absolute; top: calc(var(--hud-h) + 12px); right: calc(var(--side-w) + 16px); z-index: var(--z-toasts);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; width: min(360px, calc(100vw - 24px)); pointer-events: none;
+  transition: right .2s;
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 6px 12px 6px 6px; cursor: pointer;
+  background: rgba(29, 21, 17, .96); border: 2px solid var(--line-2); border-radius: 5px; box-shadow: var(--ring-shadow), 0 6px 18px rgba(0, 0, 0, .45);
+  font-size: 14px; animation: toastIn .3s ease-out; transition: opacity .3s, transform .3s;
+}
+.toast-ico { width: 24px; height: 24px; flex: none; }
+.toast-body { display: flex; flex-direction: column; min-width: 0; }
+.toast-sub { font-size: 11px; color: var(--muted); }
+.toast-good { border-color: #6f9a3a; }
+.toast-bad { border-color: #b2463c; }
+.toast-gold { border-color: var(--gold); background: linear-gradient(rgba(242, 201, 76, .1), transparent), rgba(29, 21, 17, .96); }
+.toast-gold .toast-text { color: var(--gold); }
+.toast-out { opacity: 0; transform: translateX(16px); }
+.toast-bump { animation: toastBump .3s; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes toastBump { 40% { transform: scale(1.05); } }
+
+/* ───────── rank / stage banner ───────── */
+#banner { position: absolute; top: 31%; left: 50%; transform: translateX(-50%); z-index: var(--z-banner); display: none; width: min(560px, calc(100vw - 24px)); }
+#banner.show { display: block; animation: bannerIn .5s ease-out; }
+#banner.out { animation: bannerOut .45s forwards; }
+@keyframes bannerIn { from { opacity: 0; transform: translate(-50%, 14px) scale(.97); } }
+@keyframes bannerOut { to { opacity: 0; transform: translate(-50%, -10px); } }
+.banner-box { cursor: pointer; background: var(--panel-solid); box-shadow: var(--ring-shadow), 0 12px 40px rgba(0, 0, 0, .6); border-radius: 4px; }
+.banner-inner { padding: 12px 18px 14px; text-align: center; background: radial-gradient(ellipse at top, rgba(242, 201, 76, .12), transparent 70%); }
+.banner-ico { width: 24px; height: 24px; }
+.banner-kicker { font-family: var(--font-caps); font-size: 10px; letter-spacing: 2px; color: var(--ember); }
+.banner-title { font-family: var(--font-caps); font-size: clamp(18px, 3.2vw, 26px); color: var(--gold); letter-spacing: 1px; margin: 4px 0;
+  text-shadow: 0 3px 0 #8a3b13, 0 5px 0 var(--ring); line-height: 1.2; }
+.banner-sub { font-size: 14px; color: #e6d9c2; }
+.banner-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 10px; }
+
+/* ───────── placement banner (bottom centre) ───────── */
+#place-banner { position: absolute; bottom: 60px; left: calc((100% - var(--side-w) + 320px) / 2); transform: translateX(-50%); z-index: var(--z-place-banner);
+  width: max-content; max-width: calc(100% - var(--side-w) - 340px); }
+#app:has(#side.collapsed) #place-banner { left: calc((100% + 320px) / 2); max-width: calc(100% - 340px); }
+.place-box {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 10px;
+  background: rgba(29, 21, 17, .96); border: 2px solid var(--ember); border-radius: 6px;
+  box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .5); animation: toastIn .25s ease-out;
+}
+.place-box.bad { border-color: var(--bad); }
+.place-ico { max-width: 64px; max-height: 48px; flex: none; filter: drop-shadow(0 2px 0 var(--ring)); }
+.place-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.place-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 16px; color: var(--gold); }
+.place-latin { font-size: 12px; color: var(--muted); font-style: italic; }
+.place-verdict { font-size: 13px; color: var(--muted); }
+.place-verdict.ok { color: var(--good); }
+.place-verdict.bad { color: #ff8b80; }
+.place-warn { color: var(--gold); }
+.place-help { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1px; color: var(--dim); white-space: nowrap; }

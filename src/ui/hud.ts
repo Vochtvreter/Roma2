@@ -22,6 +22,7 @@ const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DE
 const FLASH_MS = 600;
 const FLASH_MIN = 10;          // a stock jump of max(10, 25%) flashes its chip
 const FLASH_SHARE = 0.25;
+const COIN_WARN = B.advisors.RULES.COIN_RUNOUT[2];   // "lasts N d" once the Quaestor would speak (Monitum)
 
 type Up = () => void;
 
@@ -50,6 +51,19 @@ export class Hud {
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.vitals = new Vitals(g);
+    const strip = this.strip;
+    strip.addEventListener('wheel', (e) => {
+      if (strip.scrollWidth <= strip.clientWidth) return;
+      strip.scrollLeft += e.deltaY || e.deltaX;
+      e.preventDefault();
+    }, { passive: false });
+    strip.addEventListener('scroll', () => this.markMore());
+  }
+
+  /** Fades the strip's right edge while more materials hide past it. */
+  private markMore(): void {
+    const s = this.strip;
+    s.classList.toggle('more', s.scrollWidth - s.scrollLeft - s.clientWidth > 2);
   }
 
   /** Builds the HUD once. */
@@ -109,7 +123,8 @@ export class Hud {
       const s = g.state;
       const f = forecast(s).coin;
       n.textContent = fmt(s.res.denarii);
-      const lasts = f.runout !== null ? Math.max(0, f.runout - s.day) : null;
+      const left = f.runout !== null ? Math.max(0, f.runout - s.day) : null;
+      const lasts = left !== null && left < COIN_WARN ? left : null;
       sub.textContent = lasts !== null ? `lasts ${lasts} d` : `${f.net30 > 0.05 ? '▲' : f.net30 < -0.05 ? '▼' : '■'} ${fmtRate(f.net30)}`;
       sub.classList.toggle('bad', lasts !== null);
       sub.classList.toggle('good', lasts === null && f.net30 > 0.05);
@@ -198,6 +213,7 @@ export class Hud {
       el.classList.toggle('full', v >= capsNow[r] - 0.5);
       el.classList.toggle('empty', v < 1 && net < 0);
     }
+    this.markMore();
   }
 
   private date(): HTMLElement {
