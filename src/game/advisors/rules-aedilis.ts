@@ -14,7 +14,8 @@ import { RANK_DEFS } from '../data/ranks';
 import { SETTING_DEFS } from '../data/decisions';
 import { TIER_DEFS } from '../data/housing';
 import {
-  CLEAR, R, STEP, aName, fractionWord, held, houseWants, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor, three, tierWord,
+  CLEAR, R, STEP, aName, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, serviceFor,
+  three, tierWord,
 } from './util';
 import type { CadencedRule, HouseWant } from './util';
 
@@ -42,14 +43,19 @@ function oneShort(s: GameState, v: SimView): Map<NeedId, HouseWant[]> {
   return by;
 }
 
-/** Remedy for a need: the answering building at the slot that serves most of `ids` (coverage needs), or needRemedy. */
-function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>): { remedy: Remedy; slot: number | null; k: number } {
+/** Remedy for a need: the answering building at the slot that serves most of `ids` (coverage needs), or needRemedy.
+ *  `remedy` is null when no free slot reaches any of the houses (another one would stand idle: the Domus overlay shows
+ *  them), and oil points to a caravan while a grove is still being raised or growing. */
+function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>): { remedy: Remedy | null; slot: number | null; k: number } {
   const type = serviceFor(s, need, v.d.castellumActive);
+  if (need === 'oil' && s.buildings.some((b) => b.type === 'olivetum' && (b.status !== 'done' || (b.youngUntil ?? 0) > s.day))) {
+    return { remedy: importRemedy(s, 'oil', B.ordo.CARGO), slot: null, k: 0 };
+  }
   if (!type || !COVERED.includes(need)) return { remedy: needRemedy(s, v, need), slot: null, k: 0 };
   const slot = bestSlot(s, type, { owner: 'player', purpose: 'evolve' });
-  if (!slot) return { remedy: { kind: 'place', building: type }, slot: null, k: 0 };
+  if (!slot) return { remedy: null, slot: null, k: 0 };
   const k = previewCoverage(s, type, slot.x, slot.y).reduce((n, c) => n + c.houses.filter((h) => ids.has(h)).length, 0);
-  return { remedy: { kind: 'place', building: type, tile: slot.tile }, slot: slot.tile, k };
+  return { remedy: k > 0 ? { kind: 'place', building: type, tile: slot.tile } : null, slot: slot.tile, k };
 }
 
 // ───────────────────────────── 17 · aedilis.evolve ─────────────────────────────
@@ -85,7 +91,9 @@ const evolve: CadencedRule = {
     if (need === 'rank') return `Only a charter from Rome lets them rise: petition for ${rankWord(Math.min(RANK_DEFS.length - 1, s.rank + 1))}.`;
     if (need === 'wine') return 'Wine comes only by caravan, from the markets that sell it.';
     if (need === 'desirability') return 'Gardens, temples and fountains raise a street; shops, workshops and insulae lower it.';
-    if (r.remedy.kind !== 'place') return 'The Domus overlay shows what each house still wants.';
+    const type = serviceFor(s, need, v.d.castellumActive);
+    if (!r.remedy && type && COVERED.includes(need)) return `No free plot within reach of their doors can take ${aName(type)}: clear one near them, or let them be.`;
+    if (r.remedy?.kind !== 'place') return 'The Domus overlay shows what each house still wants.';
     const what = cap1(aName(r.remedy.building));
     if (r.slot !== null && r.k > 0) return `${what} ${placeName(s, r.slot)} would let ${r.k} of them grow.`;
     return `${what} within reach of their doors would let them grow.`;

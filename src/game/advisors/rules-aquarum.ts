@@ -4,10 +4,10 @@
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B } from '../balance';
 import type { AdvisorRule, Building, GameState, Remedy, Severity, SimView } from '../types';
-import { formatRoman } from '../calendar';
+import { formatRoman, seasonLength } from '../calendar';
 import { previewCoverage } from '../coverage';
 import { petitionNeeds, settingValue } from '../decisions';
-import { seasonMult } from '../economy';
+import { maxPotential, seasonMult } from '../economy';
 import { distToRect, getMap, tx, ty } from '../map';
 import { routeAqueduct } from '../place';
 import { bestSlot } from '../site';
@@ -98,11 +98,17 @@ const aestas: AdvisorRule = {
     return `Cisterns catch ${fractionWord(seasonMult(s, 'cisterna', AESTAS))} of their rain in Aestas and wells draw `
       + `${fractionWord(seasonMult(s, 'puteus', AESTAS))}. We hold ${int(P(p.stock))} amphorae, with room for ${int(P(p.cap))}.`;
   },
-  remedies(s) {
+  remedies(s, v, a) {
     const def = SETTING_DEFS.waterReserve;
     const want = Math.min(def.max, settingValue(s, 'waterReserve') + STEP.WATER_RESERVE);
     const reserve: Remedy | null = s.ordo.on.build && want > settingValue(s, 'waterReserve') ? { kind: 'setting', setting: 'waterReserve', value: want } : null;
-    return three({ kind: 'place', building: 'cisterna' }, { kind: 'place', building: 'puteus' }, reserve);
+    // as the Ordo reckons it (ordo/build.ts, Aestas row): a cistern helps only if the summer deficit fits in its room;
+    // otherwise the wells must draw more, and another cistern would stand dry
+    const w = v.f.water;
+    const deficit = w.cons - maxPotential(s, 'water', AESTAS);
+    const helps = deficit <= 0 || deficit * seasonLength(s.day + P(a.params.D)) <= w.cap + (BUILDING_DEFS.cisterna.storage?.water ?? 0);
+    const cistern: Remedy = { kind: 'place', building: 'cisterna' }, well: Remedy = { kind: 'place', building: 'puteus' };
+    return three(helps ? cistern : well, helps ? well : cistern, reserve);
   },
 };
 

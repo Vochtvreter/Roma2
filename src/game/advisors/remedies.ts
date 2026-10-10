@@ -126,6 +126,8 @@ function checkAsk(s: GameState, type: BuildingId): ActionResult {
   if (!b.ok) return b;
   if (!s.ordo.on.build) return fail('manualOnly', 'Construction is in your hands: place it yourself.');
   if (s.ordo.requests.some((q) => q.type === type)) return fail('chosen', `The Ordo will raise ${aName(type)} within days.`);
+  // one at a time: a second ask while the first still rises would only stack up works the advice did not need
+  if (type !== 'area' && s.buildings.some((b) => b.type === type && b.status !== 'done')) return fail('chosen', `${aName(type).replace(/^./, (c) => c.toUpperCase())} is already being raised.`);
   if (s.ordo.requests.length >= B.ordo.REQUESTS_MAX) return fail('full', `The Ordo already holds ${B.ordo.REQUESTS_MAX} requests.`);
   return validSlots(s, type, 'ordo').size > 0 ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);   // a best slot exists iff any does
 }
