@@ -1,23 +1,25 @@
 // src/render/view.ts — MapView: frame, draw list, picking, placement routing, fx (ARCHITECTURE §12.2, §12.4). Owner: WP-F.
 // The only render object the UI touches. It never mutates game state: clicks, drags and placement verdicts go out
-// through ViewCallbacks and main.ts runs the actions.
-// SCAFFOLD (debug): terrain colour per tile, footprints coloured by category, roads, walls; the public API is final.
+// through ViewCallbacks and main.ts runs the actions. Frame order (§12.2): ground chunks (crossfaded) → ground layer
+// (fields, stakes, selection ring) → trees → overlay → placement under-layer → y-sorted objects → status and overlay
+// marks → particles → birds → placement ghost → flashes. All coordinates passed in and out are CSS px.
 import type { BuildingId, CoverageLayerId, FxEvent, GameState, OverlayId, PlaceCheck, Rect } from '../game/types';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { H, W, getMap, inBounds } from '../game/map';
 import { derived } from '../game/derived';
 import { getBuilding } from '../game/state';
-import type { Camera } from './camera';
-import { TILE, ZOOM_LEVELS, clampCamera, defaultLevel, makeCamera, nearestLevel, scaleFor, screenToWorld, visibleTiles, worldToScreen } from './camera';
+import type { Camera, Push, Xform } from './camera';
+import { Motion, TILE, ZOOM_LEVELS, clampCamera, defaultLevel, makeCamera, nearestLevel, scaleFor, screenToWorld, tilesIn, worldToScreen } from './camera';
 import { Input } from './input';
 import { TerrainPainter } from './terrain';
+import { ForestLayer, natureItems } from './forest';
 import { OVERLAY_ALPHA, OverlayPainter } from './overlays';
 import { Minimap } from './minimap';
-import { Placement, lPath } from './placement';
+import { Placement, label, lPath } from './placement';
 import { Particles } from './particles';
 import { Actors } from './actors';
-import { drawBuildings, footprintRect } from './buildings';
-import { drawRoads, drawWalls } from './linear';
+import { BuildingPainter, footprintRect } from './buildings';
+import { linearItems } from './linear';
 import { sprite, spriteNames, spriteSize } from './sprites';
 
 /** What the player is placing: a building (optionally replacing an Ordo stake or pre-positioned) or a map tool. */
@@ -37,25 +39,30 @@ export interface ViewCallbacks {
 const BG = '#15100d';
 const DEMOLISH_MS = 3000;
 const FLASH_MS = 1500;
-const DRIFT_R = { x: 160, y: 90 };                  // title drift radius, world px
-const DRIFT_RATE = { x: 0.05, y: 0.037 };           // rad per second
+const DRIFT = { r: 220, rate: 0.045 };              // title drift: world px around the forum, radians per second
 const DEV_SHEET = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search) && /[?&]sheet\b/.test(location.search);
+
+interface Item { y: number; x: number; draw: (g: CanvasRenderingContext2D) => void }
 
 /** The map view: owns the canvas, camera, input and every render layer. */
 export class MapView {
   private readonly g: CanvasRenderingContext2D;
   private readonly cam: Camera = makeCamera();
+  private readonly motion = new Motion();
   private dpr = 1;
   private ratio = 1;                                 // device px per CSS px of the canvas
   private cssW = 0;
   private cssH = 0;
   private readonly input: Input;
   private readonly terrain = new TerrainPainter();
+  private readonly forest = new ForestLayer();
   private readonly overlays = new OverlayPainter();
   private readonly mini: Minimap | null;
   private readonly place = new Placement();
   private readonly particles = new Particles();
   private readonly actors = new Actors();
+  private readonly painter = new BuildingPainter();
+  private readonly items: Item[] = [];
   private s: GameState | null = null;
   private _placing: PlacingState | null = null;
   private _overlay: OverlayId = 'none';
@@ -69,6 +76,7 @@ export class MapView {
   private doomed: { id: number; until: number } | null = null;
   private dragFrom: number | null = null;
   private titleT = 0;
+  private sheetY = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, private readonly cb: ViewCallbacks) {
     const g = canvas.getContext('2d', { alpha: false });
@@ -78,7 +86,8 @@ export class MapView {
     this.input = new Input(canvas, {
       hover: (x, y) => this.onHoverPx(x, y),
       leave: () => this.onLeave(),
-      pan: (dx, dy) => this.panBy(dx, dy),
+      pan: (dx, dy) => this.drag(dx, dy),
+      fling: (vx, vy) => (vx || vy ? this.motion.fling((-vx * this.ratio) / this.cam.scale, (-vy * this.ratio) / this.cam.scale) : this.motion.stop()),
       zoom: (steps, x, y) => this.zoomBy(steps, { sx: x, sy: y }),
       tap: (x, y, info) => this.onTap(x, y, info.button, info.shift, info.touch),
       toolDrag: (phase, x, y, shift) => this.onToolDrag(phase, x, y, shift),
@@ -102,19 +111,17 @@ export class MapView {
   attach(s: GameState): void {
     this.s = s;
     this.terrain.reset();
+    this.forest.reset();
     this.overlays.reset();
     this.particles.clear();
     this.actors.reset();
     this.place.cancel();
+    this.motion.stop();
     this._placing = null;
     this.prevOverlay = null;
     this._overlay = 'none';
-    this._selected = null;
-    this.hoverTile = null;
-    this.hoverId = null;
+    this._selected = this.hoverTile = this.hoverId = this.doomed = this.dragFrom = null;
     this.flashes = [];
-    this.doomed = null;
-    this.dragFrom = null;
     this.resize();
     this.setZoom(defaultLevel(this.cssW || window.innerWidth));
     this.centerOnForum();
@@ -144,21 +151,25 @@ export class MapView {
     if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
     if (this.doomed && this.time > this.doomed.until) this.doomed = null;
     if (this._placing) this.place.refresh(s);
+    this.motion.step(this.cam, dtMs);
+    const xf = this.motion.xform(this.cam);
+    const vis = tilesIn(xf, this.cam.vw, this.cam.vh, 4);
+    this.terrain.update(s, dtMs);
+    const { cur, prev, fade } = this.terrain.seasons;
     this.particles.update(dtMs);
-    this.actors.update(dtMs, s, paused ? 0 : speed);
+    this.actors.update(dtMs, s, paused ? 0 : speed, vis);
     const g = this.g;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = BG;
     g.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (DEV_SHEET) { this.drawSheet(); return; }
-
-    const k = this.cam.scale;
-    g.setTransform(k, 0, 0, k, Math.round(this.cam.vw / 2 - this.cam.x * k), Math.round(this.cam.vh / 2 - this.cam.y * k));
+    g.setTransform(xf.k, 0, 0, xf.k, xf.ox, xf.oy);
     g.imageSmoothingEnabled = false;
-    const ground = this.terrain.canvas(s);
-    g.drawImage(ground, 0, 0, W * TILE, H * TILE);
-    const vis = visibleTiles(this.cam, 4);
-    drawRoads(g, s, vis);
+    // 1–2 · ground, ground layer, trees
+    this.terrain.draw(g, s, vis);
+    this.painter.ground(g, s, vis, cur, this._selected, this._placing ? null : this.hoverId, this.time);
+    this.forest.draw(g, s, vis, cur, prev, fade);
+    // 3 · overlay
     const ov = this.overlays.canvas(s, this._overlay, this._layer);
     if (ov) {
       g.imageSmoothingEnabled = true;
@@ -167,19 +178,30 @@ export class MapView {
       g.globalAlpha = 1;
       g.imageSmoothingEnabled = false;
     }
-    drawWalls(g, s, vis);
-    drawBuildings(g, s, {
-      vis, selected: this._selected, hover: this._placing ? null : this.hoverId, doomed: this.doomed?.id ?? null, time: this.time,
-    });
-    this.actors.draw(g, vis);
-    this.particles.draw(g);
-    this.place.draw(g, s, vis, this.time);
-    this.drawMarks(g, s);
+    // 4 · placement under-layer
+    this.place.drawUnder(g, s, vis, this.time, this._overlay === 'desir');
+    // 5 · y-sorted objects
+    this.items.length = 0;
+    const push: Push = (y, x, draw) => { this.items.push({ y, x, draw }); };
+    this.painter.items(s, vis, cur, push);
+    linearItems(s, vis, push);
+    natureItems(s, vis, push);
+    this.actors.items(s, vis, push);
+    this.items.sort((a, b) => a.y - b.y || a.x - b.x);
+    for (const it of this.items) it.draw(g);
+    // 6–9 · marks, particles, birds, ghost, flashes
+    this.painter.marks(g, s, this.cam.level, this.time, this._selected);
+    this.overlays.marks(g, s, this._overlay, vis, this.time);
+    this.particles.ambient(dtMs, s, this.painter.drawn, cur, !paused);
+    this.particles.draw(g, { x: vis.x * TILE, y: vis.y * TILE, w: vis.w * TILE, h: vis.h * TILE });
+    this.actors.sky(g, vis);
+    this.place.drawOver(g, s, this.time, cur);
+    this.drawFlashes(g, s, xf);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    this.mini?.draw(s, this.cam, ground, ov, this._placing !== null, this.time);
+    this.mini?.draw(s, this.cam, this.terrain.miniCanvas(s), ov, this._placing !== null, this.time);
   }
 
-  /** Routes sim and action fx to particles, actors and flashes (§12.6). */
+  /** Routes sim and action fx to particles, actors and flashes (§12.6); `season` crossfades on its own. */
   handleFx(events: FxEvent[], s: GameState): void {
     this.particles.handleFx(events, s, (r) => this.flashes.push({ r, until: this.time + FLASH_MS, ms: FLASH_MS }));
     this.actors.handleFx(events, s);
@@ -187,11 +209,9 @@ export class MapView {
   }
 
   // ───────────────────────────── camera ─────────────────────────────
-  /** Moves the map content by (dx, dy) CSS px, like a drag (positive dx shows more of the west). */
+  /** Glides the map content by (dx, dy) CSS px, like a drag (positive dx shows more of the west); eased. */
   panBy(dxCss: number, dyCss: number): void {
-    this.cam.x -= (dxCss * this.ratio) / this.cam.scale;
-    this.cam.y -= (dyCss * this.ratio) / this.cam.scale;
-    clampCamera(this.cam);
+    this.motion.glide((-dxCss * this.ratio) / this.cam.scale, (-dyCss * this.ratio) / this.cam.scale);
   }
 
   /** Centres the view on a tile, optionally at a zoom level. */
@@ -207,11 +227,10 @@ export class MapView {
     this.centerWorld((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE);
   }
 
-  /** Steps the zoom level, keeping the world point under the anchor (CSS px) fixed. */
+  /** Steps the zoom level, keeping the world point under the anchor (CSS px) fixed; eased over 140 ms. */
   zoomBy(steps: number, anchor?: { sx: number; sy: number }): void {
     const cur = ZOOM_LEVELS.indexOf(nearestLevel(this.cam.level));
-    const next = ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, cur + Math.round(steps)))];
-    this.applyLevel(next, anchor);
+    this.applyLevel(ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, cur + Math.round(steps)))], anchor);
   }
 
   /** Sets the zoom level (snapped to ZOOM_LEVELS), keeping the centre. */
@@ -257,7 +276,7 @@ export class MapView {
     this.mini?.invalidate();
   }
 
-  /** Selects a building (outline) or clears the selection. */
+  /** Selects a building (ring and chevron) or clears the selection. */
   select(id: number | null): void {
     this._selected = id;
   }
@@ -275,11 +294,14 @@ export class MapView {
     return inBounds(x, y) ? y * W + x : null;
   }
 
-  /** The building under a CSS-px point (scaffold: by footprint via derived.buildingAt), or null. */
+  /** The building under a CSS-px point: y-sorted sprites front to back with their alpha masks, then the footprint map. */
   pickBuilding(sxCss: number, syCss: number): number | null {
+    if (!this.s) return null;
+    const { wx, wy } = screenToWorld(this.cam, sxCss * this.ratio, syCss * this.ratio);
+    const hit = this.painter.pick(wx, wy);
+    if (hit !== null) return hit;
     const t = this.tileAt(sxCss, syCss);
-    if (t === null || !this.s) return null;
-    const id = derived(this.s).buildingAt[t];
+    const id = t === null ? 0 : derived(this.s).buildingAt[t];
     return id > 0 ? id : null;
   }
 
@@ -290,43 +312,47 @@ export class MapView {
     return x < 0 || y < 0 || x > this.cssW || y > this.cssH ? null : { x, y };
   }
 
-  /** The slow drift behind the title screen. */
+  /** The slow drift behind the title screen: a wide, lazy ellipse around the forum. */
   titleDrift(dtMs: number, s: GameState): void {
     this.s = s;
     this.titleT += dtMs / 1000;
-    const f = getMap(s.seed).survey.forum;
-    this.centerWorld(
-      (f.x + f.w / 2) * TILE + Math.sin(this.titleT * DRIFT_RATE.x) * DRIFT_R.x,
-      (f.y + f.h / 2) * TILE + Math.sin(this.titleT * DRIFT_RATE.y) * DRIFT_R.y,
-    );
+    const f = getMap(s.seed).survey.forum, a = this.titleT * DRIFT.rate;
+    this.centerWorld((f.x + f.w / 2) * TILE + Math.sin(a) * DRIFT.r, (f.y + f.h / 2) * TILE + Math.sin(a * 0.7 + 1) * DRIFT.r * 0.5);
   }
 
   /** Enables or disables map input (off under the catch-up veil and modals). */
   setInputEnabled(on: boolean): void {
     this.input.enabled = on;
-    if (!on) {
-      this.hoverTile = null;
-      this.hoverId = null;
-    }
+    if (!on) this.hoverTile = this.hoverId = null;
   }
 
   // ───────────────────────────── internals ─────────────────────────────
   private centerWorld(wx: number, wy: number): void {
+    this.motion.stop();
     this.cam.x = wx;
     this.cam.y = wy;
     clampCamera(this.cam);
   }
 
+  private drag(dxCss: number, dyCss: number): void {
+    if (DEV_SHEET) { this.sheetY = Math.min(0, this.sheetY + dyCss * this.ratio); return; }
+    this.cam.x -= (dxCss * this.ratio) / this.cam.scale;
+    this.cam.y -= (dyCss * this.ratio) / this.cam.scale;
+    clampCamera(this.cam);
+  }
+
   private applyLevel(level: number, anchor?: { sx: number; sy: number }): void {
-    const before = anchor ? screenToWorld(this.cam, anchor.sx * this.ratio, anchor.sy * this.ratio) : null;
+    if (DEV_SHEET && anchor) { this.sheetY = Math.min(0, this.sheetY + (level > this.cam.level ? 120 : -120) * this.ratio); return; }
+    if (level === this.cam.level && this.cam.scale === scaleFor(level, this.dpr)) return;
+    const ax = anchor ? anchor.sx * this.ratio : this.cam.vw / 2, ay = anchor ? anchor.sy * this.ratio : this.cam.vh / 2;
+    const before = screenToWorld(this.cam, ax, ay), s0 = this.motion.xform(this.cam).k;
     this.cam.level = level;
     this.cam.scale = scaleFor(level, this.dpr);
-    if (before && anchor) {
-      const after = screenToWorld(this.cam, anchor.sx * this.ratio, anchor.sy * this.ratio);
-      this.cam.x += before.wx - after.wx;
-      this.cam.y += before.wy - after.wy;
-    }
+    const after = screenToWorld(this.cam, ax, ay);
+    this.cam.x += before.wx - after.wx;
+    this.cam.y += before.wy - after.wy;
     clampCamera(this.cam);
+    if (this.s) this.motion.easeZoom(s0, ax, ay);
   }
 
   private onHoverPx(x: number, y: number): void {
@@ -334,25 +360,23 @@ export class MapView {
     if (!s) return;
     const tile = this.tileAt(x, y);
     const id = tile === null ? null : this.pickBuilding(x, y);
-    if (tile !== this.hoverTile || id !== this.hoverId) {
-      const tileChanged = tile !== this.hoverTile;
-      this.hoverTile = tile;
-      this.hoverId = id;
-      this.cb.onHover(tile, id);
-      if (this._placing && tileChanged && this.dragFrom === null) {
-        const check = this.place.hover(tile, s);
-        if (this._placing.kind === 'building') this.cb.onPlacementPreview(check, tile);
-      }
+    if (tile === this.hoverTile && id === this.hoverId) return;
+    const tileChanged = tile !== this.hoverTile;
+    this.hoverTile = tile;
+    this.hoverId = id;
+    this.cb.onHover(tile, id);
+    if (this._placing && tileChanged && this.dragFrom === null) {
+      const check = this.place.hover(tile, s);
+      if (this._placing.kind === 'building') this.cb.onPlacementPreview(check, tile);
     }
   }
 
   private onLeave(): void {
-    this.hoverTile = null;
-    this.hoverId = null;
+    this.hoverTile = this.hoverId = null;
     this.cb.onHover(null, null);
-    if (this._placing?.kind === 'building' && this.s) {
+    if (this._placing && this.s && this.dragFrom === null) {
       this.place.hover(null, this.s);
-      this.cb.onPlacementPreview(null, null);
+      if (this._placing.kind === 'building') this.cb.onPlacementPreview(null, null);
     }
   }
 
@@ -362,10 +386,10 @@ export class MapView {
     if (!s || tile === null) return;
     const id = this.pickBuilding(x, y);
     const p = this._placing;
+    if (p && touch) this.place.hover(tile, s);
     if (p?.kind === 'building' && touch) {
-      // touch: a tap previews; the place banner's Place button confirms
-      const check = this.place.hover(tile, s);
-      this.cb.onPlacementPreview(check, tile);
+      // touch: a tap previews (ghost + verdict); the place banner's Place button confirms
+      this.cb.onPlacementPreview(this.place.check, tile);
       return;
     }
     if (p?.kind === 'demolish') {
@@ -403,46 +427,52 @@ export class MapView {
     return true;
   }
 
-  private drawMarks(g: CanvasRenderingContext2D, s: GameState): void {
+  private drawFlashes(g: CanvasRenderingContext2D, s: GameState, xf: Xform): void {
     this.flashes = this.flashes.filter((f) => f.until > this.time);
     for (const f of this.flashes) {
-      const a = Math.max(0, (f.until - this.time) / f.ms);
-      g.strokeStyle = `rgba(242,201,76,${a})`;
-      g.lineWidth = 2;
-      g.strokeRect(f.r.x * TILE + 1, f.r.y * TILE + 1, f.r.w * TILE - 2, f.r.h * TILE - 2);
+      const a = Math.max(0, (f.until - this.time) / f.ms), grow = Math.round((1 - a) * 4);
+      const X = f.r.x * TILE - grow, Y = f.r.y * TILE - grow, w = f.r.w * TILE + 2 * grow, h = f.r.h * TILE + 2 * grow;
+      g.fillStyle = `rgba(242,201,76,${a})`;
+      g.fillRect(X, Y, w, 2); g.fillRect(X, Y + h - 2, w, 2); g.fillRect(X, Y, 2, h); g.fillRect(X + w - 2, Y, 2, h);
     }
-    if (this.doomed) {
-      const b = getBuilding(s, this.doomed.id);
-      if (b) {
-        const r = footprintRect(s, b);
-        g.font = '8px monospace';
-        g.textAlign = 'center';
-        g.textBaseline = 'bottom';
-        g.fillStyle = '#e5554a';
-        g.fillText('Click again to demolish', (r.x + r.w / 2) * TILE, r.y * TILE - 2);
-        g.textAlign = 'start';
-      }
+    const b = this.doomed ? getBuilding(s, this.doomed.id) : undefined;
+    if (b) {
+      const r = footprintRect(s, b);
+      g.fillStyle = `rgba(229,85,74,${0.3 + 0.2 * Math.sin(this.time / 120)})`;
+      g.fillRect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE);
+      label(g, 'Click again to demolish', (r.x + r.w / 2) * TILE, r.y * TILE - 8 - 12 / xf.k, '#e5554a');
     }
   }
 
-  /** ?dev&sheet: every registered sprite in a labelled grid at 2× (device px). */
+  /** ?dev&sheet: every registered sprite in a labelled grid by group at 2× (device px); drag or wheel scrolls. */
   private drawSheet(): void {
-    const g = this.g;
-    const names = spriteNames();
+    const g = this.g, names = spriteNames(), d = this.dpr;
     g.fillStyle = '#f4ead6';
-    g.font = `${Math.round(10 * this.dpr)}px monospace`;
+    g.font = `${Math.round(10 * d)}px monospace`;
     g.textBaseline = 'top';
+    g.imageSmoothingEnabled = false;
     if (!names.length) { g.fillText('No sprites registered yet.', 16, 16); return; }
-    const sc = 2 * Math.max(1, Math.round(this.dpr));
-    let x = 8, y = 8, rowH = 0;
+    const sc = 2 * Math.max(1, Math.round(d));
+    let x = 8, y = 8 + this.sheetY, rowH = 0, group = '';
     for (const n of names) {
+      const grp = n.slice(0, n.indexOf('_') + 1);
+      if (grp !== group) {
+        group = grp;
+        if (x > 8) { x = 8; y += rowH + 8; rowH = 0; }
+        g.fillStyle = '#f0a04b';
+        g.fillText(`${grp}*`, 8, y);
+        y += 16 * d;
+        g.fillStyle = '#f4ead6';
+      }
       const { w, h } = spriteSize(n);
-      const cw = Math.max(w * sc, 96 * this.dpr);
+      const cw = Math.max(w * sc, 96 * d);
       if (x + cw > this.canvas.width) { x = 8; y += rowH + 8; rowH = 0; }
-      g.imageSmoothingEnabled = false;
+      g.fillStyle = '#2c201b';
+      g.fillRect(x, y, w * sc, h * sc);
       g.drawImage(sprite(n), x, y, w * sc, h * sc);
+      g.fillStyle = '#f4ead6';
       g.fillText(n, x, y + h * sc + 2);
-      rowH = Math.max(rowH, h * sc + 14 * this.dpr);
+      rowH = Math.max(rowH, h * sc + 14 * d);
       x += cw + 8;
     }
   }
