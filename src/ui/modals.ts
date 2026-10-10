@@ -35,15 +35,22 @@ function focusables(el: HTMLElement): HTMLElement[] {
   return Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((e) => !e.hasAttribute('disabled') && !e.hidden && e.offsetParent !== null);
 }
 
-// Focus that leaves the top modal (click on the backdrop of a lower one, programmatic focus) is pulled back.
-document.addEventListener('focusin', (e) => {
-  const top = stack[stack.length - 1];
-  if (top && e.target instanceof Node && !top.box.contains(e.target)) (focusables(top.box)[0] ?? top.box).focus();
-});
+let trapping = false;
+/** Focus that leaves the top modal (click on the backdrop of a lower one, programmatic focus) is pulled back. Installed
+ *  on the first modal, so importing this module does no DOM work (headless tests import the panels that import it). */
+function trapFocus(): void {
+  if (trapping) return;
+  trapping = true;
+  document.addEventListener('focusin', (e) => {
+    const top = stack[stack.length - 1];
+    if (top && e.target instanceof Node && !top.box.contains(e.target)) (focusables(top.box)[0] ?? top.box).focus();
+  });
+}
 
 /** Opens a modal over the stack; returns close(). Focus is trapped inside; Esc closes it when closable (default). */
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
   parchment?: boolean; onClose?: () => void }): () => void {
+  trapFocus();
   const root = document.getElementById('modal-root') ?? document.body;
   const closable = opts?.closable ?? true;
   const cls = ['modal', opts?.wide ? 'wide' : '', opts?.parchment ? 'parchment' : 'dark'].filter(Boolean).join(' ');
