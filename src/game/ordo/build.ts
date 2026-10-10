@@ -12,9 +12,8 @@ import { dateOf, seasonLength, seasonOf } from '../calendar';
 import { addCost, canAfford, getBuilding, log, missing } from '../state';
 import { memo, structEpoch, censusEpoch } from '../memo';
 import { settingValue } from '../decisions';
-import { bestSlot, siteScore } from '../site';
+import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, validSlots } from '../place';
-import { blockOfTile } from '../derived';
 import { houseDesir, previewCoverage } from '../coverage';
 import { buildingRate, maxPotential, seasonMult } from '../economy';
 import { fxAdd } from '../fx';
@@ -71,45 +70,20 @@ export function houseWants(s: GameState, v: SimView): HouseWants {
   });
 }
 
-/** Blocks the Ordo leaves alone: reserved by the player, or holding a plan or unfinished site of the player. */
-function closedBlocks(s: GameState): Set<number> {
-  const out = new Set<number>(s.ordo.reserved);
-  for (const b of s.buildings) {
-    const blk = b.owner === 'player' && b.status !== 'done' ? blockOfTile(s, idx(b.x, b.y)) : null;
-    if (blk) out.add(blk.id);
-  }
-  return out;
-}
-
-/** The Ordo's slot for a type: A's best slot, or the best one off closed blocks (ties by lowest tile); memo per day and epochs (as pure as A's scoring). */
+/** The Ordo's slot for a type: A's best slot (validSlots for owner 'ordo' already keeps off reserved blocks and blocks
+ *  holding a player plan or unfinished player site); memo per day and epochs (as pure as A's scoring). */
 export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): number | null {
-  return memo(s, `ordo.slot.${type}.${purpose}`, `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
-    const closed = closedBlocks(s);
-    const open = (tile: number): boolean => { const blk = blockOfTile(s, tile); return !blk || !closed.has(blk.id); };
-    const best = bestSlot(s, type, { owner: 'ordo', purpose });
-    if (!best || open(best.tile)) return best?.tile ?? null;
-    let pick: number | null = null, top = -Infinity;
-    for (const tile of validSlots(s, type, 'ordo').keys()) {
-      if (!open(tile)) continue;
-      const sc = siteScore(s, type, tx(tile), ty(tile), purpose).score;
-      if (sc > top || (sc === top && pick !== null && tile < pick)) { top = sc; pick = tile; }
-    }
-    return pick;
-  });
+  return memo(s, `ordo.slot.${type}.${purpose}`, `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () =>
+    bestSlot(s, type, { owner: 'ordo', purpose })?.tile ?? null);
 }
 
-/** The lowest open valid slot of a type (memo on structure and day, like A's validSlots). The walk asks only whether a
+/** The lowest valid Ordo slot of a type (memo on structure and day, like A's validSlots). The walk asks only whether a
  *  wish has a slot and what it costs (tile-independent except a castellum's route); the best slot — a full scoring
  *  pass of every valid slot — is searched only when the wish is placed or shown (lazyTile). */
 function anyOpenSlot(s: GameState, type: BuildingId): number | null {
   return memo(s, `ordo.any.${type}`, `${s.day}|${structEpoch(s)}`, () => {
-    const closed = closedBlocks(s);
     let pick: number | null = null;
-    for (const tile of validSlots(s, type, 'ordo').keys()) {
-      if (pick !== null && tile >= pick) continue;
-      const blk = blockOfTile(s, tile);
-      if (!blk || !closed.has(blk.id)) pick = tile;
-    }
+    for (const tile of validSlots(s, type, 'ordo').keys()) if (pick === null || tile < pick) pick = tile;
     return pick;
   });
 }
