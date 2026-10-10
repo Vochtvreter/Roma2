@@ -416,29 +416,13 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
   return memo(s, slot, dayEpoch(s), () => {
     const slots = validSlots(s, type, owner);
     if (slots.size === 0) return null;
-    const fast = FAST_TYPES.has(type);
-    const sig = fast ? fastSig(s, type, slots) : null;
-    if (sig) {
-      const last = fastBest.get(s)?.get(slot);
-      if (last && sameSig(last.sig, sig)) return last.best;
-    }
+    if (FAST_TYPES.has(type)) return fastBestSlot(s, type, slot, slots, purpose);
     const ctx = scoreCtx(s, type);
     let best: { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null = null;
-    for (const tile of [...slots.keys()].sort((a, b) => a - b)) {
+    for (const tile of sortedTiles(slots)) {
       const x = tile % GW, y = Math.floor(tile / GW);
-      if (fast) {
-        const sc = fastScore(s, ctx, type, x, y, purpose);
-        if (!best || sc > best.score + 1e-9) best = { tile, x, y, score: sc, notes: [] };
-        continue;
-      }
       const sc = score(s, ctx, type, x, y, purpose);
       if (!best || sc.score > best.score + 1e-9) best = { tile, x, y, score: sc.score, notes: sc.notes };
-    }
-    if (best && fast) best.notes = score(s, ctx, type, best.x, best.y, purpose).notes;   // the same sum, with its notes
-    if (sig) {
-      let m = fastBest.get(s);
-      if (!m) { m = new Map(); fastBest.set(s, m); }
-      m.set(slot, { sig, best });
     }
     return best;
   });
@@ -448,10 +432,54 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
  *  the desirability in force, the fed gate, the radius bonuses, each house's tier, renovation, preference, coverage mask
  *  and goods, and the timber standing on each candidate slot. While it holds, yesterday's best slot is today's. */
 interface FastSig { struct: number; desir: unknown; slots: unknown; fed: boolean; bonus: number[]; houses: number[]; fells: number[] }
-const fastBest = new WeakMap<GameState, Map<string, { sig: FastSig; best: ReturnType<typeof bestSlot> }>>();
+/** A fast type's last search: its signature, every slot's score (in ascending tile order) and the scoring context. When
+ *  only the timber on some slots moved (regrowth, felling), only those slots are scored again and the same ascending
+ *  pick runs over the kept scores — the scores and the pick of a full search. */
+interface FastBest { sig: FastSig; scores: Float64Array; ctx: ScoreCtx; best: ReturnType<typeof bestSlot> }
+const fastBest = new WeakMap<GameState, Map<string, FastBest>>();
+type Best = { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null;
+
+/** A slot map's tiles in ascending order (kept per map: validSlots keeps its map per layout). */
+function sortedTiles(slots: Map<number, number>): number[] {
+  let t = sortedOf.get(slots);
+  if (!t) { t = [...slots.keys()].sort((a, b) => a - b); sortedOf.set(slots, t); }
+  return t;
+}
+const sortedOf = new WeakMap<Map<number, number>, number[]>();
+
+function fastBestSlot(s: GameState, type: BuildingId, slot: string, slots: Map<number, number>, purpose: ReasonCode | undefined): Best {
+  const tiles = sortedTiles(slots);
+  const sig = fastSig(s, type, slots, tiles);
+  const last = fastBest.get(s)?.get(slot);
+  if (last && sameSig(last.sig, sig)) return last.best;
+  let scores: Float64Array, ctx: ScoreCtx;
+  if (last && sameBase(last.sig, sig)) {
+    // only the timber moved: score again the slots whose standing timber changed
+    scores = last.scores;
+    ctx = last.ctx;
+    for (let k = 0; k < tiles.length; k++) {
+      if (last.sig.fells[k] === sig.fells[k]) continue;
+      scores[k] = fastScore(s, ctx, type, tiles[k] % GW, Math.floor(tiles[k] / GW), purpose);
+    }
+  } else {
+    ctx = scoreCtx(s, type);
+    scores = new Float64Array(tiles.length);
+    for (let k = 0; k < tiles.length; k++) scores[k] = fastScore(s, ctx, type, tiles[k] % GW, Math.floor(tiles[k] / GW), purpose);
+  }
+  let best: Best = null;
+  for (let k = 0; k < tiles.length; k++) {
+    const sc = scores[k];
+    if (!best || sc > best.score + 1e-9) best = { tile: tiles[k], x: tiles[k] % GW, y: Math.floor(tiles[k] / GW), score: sc, notes: [] };
+  }
+  if (best) best.notes = score(s, ctx, type, best.x, best.y, purpose).notes;   // the same sum, with its notes
+  let m = fastBest.get(s);
+  if (!m) { m = new Map(); fastBest.set(s, m); }
+  m.set(slot, { sig, scores, ctx, best });
+  return best;
+}
 const PREF_BITS: Readonly<Record<string, number>> = { auto: 0, insula: 1, domus: 2 };
 
-function fastSig(s: GameState, type: BuildingId, slots: Map<number, number>): FastSig {
+function fastSig(s: GameState, type: BuildingId, slots: Map<number, number>, tiles: readonly number[]): FastSig {
   const SUP = B.housing.SUPPLIED;
   const masks = coverage(s).houseMask;   // the scores read coverage only through each house's mask
   const houses: number[] = [];
@@ -462,7 +490,7 @@ function fastSig(s: GameState, type: BuildingId, slots: Map<number, number>): Fa
       + 32 * TIER_LEVEL.indexOf(h.tier) + 256 * (masks.get(id) ?? 0));
   }
   const fells: number[] = [];
-  for (const tile of slots.keys()) fells.push(fellOn(s, fixedOf(s, type, tile % GW, Math.floor(tile / GW))));
+  for (const tile of tiles) fells.push(fellOn(s, fixedOf(s, type, tile % GW, Math.floor(tile / GW))));
   return {
     struct: structEpoch(s), desir: desirability(s), slots, fed: s.fed >= B.needs.FED_MIN,
     bonus: [fxAdd(s, 'shrineRadius'), fxAdd(s, 'marketRadius'), fxAdd(s, 'bathsRadius')], houses, fells,
@@ -470,11 +498,17 @@ function fastSig(s: GameState, type: BuildingId, slots: Map<number, number>): Fa
 }
 
 function sameSig(a: FastSig, b: FastSig): boolean {
+  if (!sameBase(a, b)) return false;
+  for (let k = 0; k < a.fells.length; k++) if (a.fells[k] !== b.fells[k]) return false;
+  return true;
+}
+
+/** Everything but the timber on the slots (the slot map, hence the slot list, included). */
+function sameBase(a: FastSig, b: FastSig): boolean {
   if (a.struct !== b.struct || a.desir !== b.desir || a.slots !== b.slots || a.fed !== b.fed) return false;
   for (let k = 0; k < 3; k++) if (a.bonus[k] !== b.bonus[k]) return false;
   if (a.houses.length !== b.houses.length || a.fells.length !== b.fells.length) return false;
   for (let k = 0; k < a.houses.length; k++) if (a.houses[k] !== b.houses[k]) return false;
-  for (let k = 0; k < a.fells.length; k++) if (a.fells[k] !== b.fells[k]) return false;
   return true;
 }
 
