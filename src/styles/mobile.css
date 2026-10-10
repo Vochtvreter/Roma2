@@ -18,6 +18,14 @@
   #place-banner { bottom: 104px; }
 }
 
+/* Below 1200 px the placement banner would be squeezed between the left column and the overlay column into a tall strip
+   over the very plots it points at: while placing, the left column steps aside and the banner centres on the free map. */
+@media (max-width: 1199px) {
+  #app.placing #left { display: none; }
+  #place-banner { left: calc((100% - var(--side-w) - 62px) / 2); max-width: calc(100% - var(--side-w) - 90px); }
+  #app:has(#side.collapsed) #place-banner { left: calc((100% - 62px) / 2); max-width: calc(100% - 90px); }
+}
+
 /* ───────── mobile: two-row HUD, widgets above the bottom sheet ───────── */
 @media (max-width: 899px) {
   :root { --hud-h: 96px; --side-w: 0px; --sheet: 46vh; }
