@@ -5,9 +5,9 @@
 import { B } from '../balance';
 import type { AdvisorRule, GameState, Person, Remedy, Severity, SimView } from '../types';
 import { formatRoman, seasonOf } from '../calendar';
-import { stageOf } from '../census';
+import { peopleIndex, stageOf } from '../census';
 import { edictOption, settingValue } from '../decisions';
-import { buildingRate, seasonMult } from '../economy';
+import { buildingRateOf, seasonMult } from '../economy';
 import { fx } from '../fx';
 import { getBuilding } from '../state';
 import { BUILDING_DEFS } from '../data/buildings';
@@ -224,11 +224,10 @@ interface Goods { res: 'oil' | 'wine'; R: number | null; supply: number; houses:
 /** Oil and wine for the T4 houses: daily demand, local production, mean supply, and whether a house declines for want of it. */
 function goods(s: GameState, v: SimView): Goods[] {
   if (v.c.byTier.insula + v.c.byTier.domus === 0) return [];
-  const per: Record<number, number> = {};
-  for (const p of s.people) if (p.home !== null) per[p.home] = (per[p.home] ?? 0) + 1;
+  const byHome = peopleIndex(s).byHome;   // residents per home (the census index), not a pass over the people
   const season = seasonOf(s.day);
   let oilProd = 0;
-  for (const b of s.buildings) if (b.type === 'olivetum') oilProd += buildingRate(s, b, season, 'current').oil ?? 0;
+  for (const b of s.buildings) if (b.type === 'olivetum') oilProd += buildingRateOf(s, b, season, 'current', 'oil');
   const out: Goods[] = [];
   for (const res of ['oil', 'wine'] as const) {
     let residents = 0, houses = 0, supply = 0, lapsed = false;
@@ -236,7 +235,7 @@ function goods(s: GameState, v: SimView): Goods[] {
       const h = getBuilding(s, id)?.house;
       if (!h || (h.tier !== 'domus' && (res === 'wine' || h.tier !== 'insula'))) continue;
       houses++;
-      residents += per[id] ?? 0;
+      residents += byHome.get(id)?.length ?? 0;
       supply += h[res];
       if (h.declining && h[res] < B.housing.SUPPLIED) lapsed = true;
     }

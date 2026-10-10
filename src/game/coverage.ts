@@ -7,7 +7,7 @@ import { B } from './balance';
 import { BUILDINGS, F, LAYERS, T } from './types';
 import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
 import { getMap } from './map';
-import { dayEpoch, layoutEpoch, memo } from './memo';
+import { dayEpoch, dayStruct, layoutEpoch, memo } from './memo';
 import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
 import { peopleIndex } from './census';
 import { fxAdd } from './fx';
@@ -330,23 +330,24 @@ function desirOf(s: GameState, b: Building): readonly [number, number] {
   return BUILDING_DEFS[b.type].desir;
 }
 
-/** Desirability key: the layout plus the houses whose tier gives them desirability (insulae, domus), read once a day. */
+/** Desirability key: the layout plus the houses whose tier gives them desirability (insulae, domus), read once a day
+ *  and again on a structure change (every tier change in the sim bumps the structure: invalidateTiers). */
 function desirKey(s: GameState): string {
   const epoch = layoutEpoch(s);
-  return memo(s, 'desirTiers', dayEpoch(s), () => {
+  return memo(s, 'desirTiers', dayStruct(s), () => {
     const parts: string[] = [];
     for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier}`);
     return `${epoch}|${parts.join(',')}`;
   });
 }
 
-// desirability(s) is a function of dayEpoch(s) (its key comes from desirKey, memoised on it): a one-entry fast path for
+// desirability(s) is a function of dayStruct(s) (its key comes from desirKey, memoised on it): a one-entry fast path for
 // the hot readers (houseDesir per house per need) skips the two memo lookups.
 const desirLast = new WeakMap<GameState, { k: number; f: Float32Array }>();
 
 /** Desirability per tile, clamped to DESIR_CLAMP (memo on the layout epoch and the tiers of the insulae and domus). */
 export function desirability(s: GameState): Float32Array {
-  const k = dayEpoch(s);
+  const k = dayStruct(s);
   const last = desirLast.get(s);
   if (last && last.k === k) return last.f;
   const f = desirabilityOf(s);
