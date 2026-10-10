@@ -89,7 +89,10 @@ const labour: AdvisorRule = {
   },
   text(s, v, a) {
     const p = a.params;
-    if (p.mode === 'lack') return 'Every able hand is at work. Houses for newcomers, or gates opened wider, would bring more.';
+    if (p.mode === 'lack') {
+      return v.c.pop >= v.c.roll ? 'Every able hand is at work, and Rome\'s roll is full: only a petition opens the gates to more.'
+        : 'Every able hand is at work. Houses for newcomers, or gates opened wider, would bring more.';
+    }
     const who = namesOf(idleBySkill(s, v, null));
     if (p.manual === 1) return `${who} wait for orders. Assign them, or give labour back to the Ordo.`;
     const sg = suggest(s, v);
@@ -97,7 +100,12 @@ const labour: AdvisorRule = {
   },
   remedies(s, v, a) {
     const p = a.params;
-    if (p.mode === 'lack') return three({ kind: 'place', building: 'area' }, { kind: 'edict', edict: 'hospites', option: 'patentes' });
+    // at Rome's roll newcomers cannot come; below it, house plots help only while beds are what keeps them out
+    if (p.mode === 'lack') {
+      if (v.c.pop >= v.c.roll) return three({ kind: 'open', tab: 'council', anchor: 'petition' });
+      const bedsShort = v.c.freeBeds < settingValue(s, 'spareBeds');
+      return three(bedsShort ? { kind: 'place', building: 'area' } : null, { kind: 'edict', edict: 'hospites', option: 'patentes' });
+    }
     const sg = suggest(s, v);
     const build: Remedy | null = sg ? { kind: 'place', building: sg.type } : null;
     if (p.manual !== 1) return three(build, { kind: 'open', tab: 'people', anchor: 'labour' });
