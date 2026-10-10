@@ -628,7 +628,7 @@ All paths, edicts, timed modifiers (events, festivals), emergency rations and le
 - **Stakes**: Ordo sites sit staked for 5 days (cancel 100% / move) before builders start. Player sites go first in the queue.
 - **Never**: demolishes, moves, converts or "renews" any building; changes a house preference; builds in reserved blocks or blocks holding a player plan or unfinished player site; places rural buildings on future-ring blocks; builds a *hortus* or paves streets (except under the *Urbs* focus or on request); chooses a path.
 - **Counts the player's work**: coverage, storage and slots from player buildings count fully before the Ordo plans its own.
-- **Leaves to the player**: beautification, the fork, extra culture and baths beyond what petitions require, and anything faster than the cadence. The **builder persona** test (§18.5) proves that placing by hand pays.
+- **Leaves to the player**: beautification, the fork, extra culture, and anything faster than the cadence (baths are city management: a balneum goes up wherever ≥ 3 homes wait for one, like any service of row 6). The **builder persona** test (§18.5) proves that placing by hand pays.
 
 ### 10.4 How the Ordo staffs (daily; each step records a Reason)
 Workforce = adults and elders under 65, excluding patricii and the sick. Within a step, buildings marked High fill first, then the best marginal output, then lowest id.
@@ -639,7 +639,7 @@ Workforce = adults and elders under 65, excluding patricii and the sick. Within 
 5. **Pending inputs** `pendingInput`: producers of whatever the saving target, the pending wish, waiting renovations or the next 30 days of Capitolium lack (*"Quarry 4: saving 60 stone for the Horreum"*).
 6. **Winter stockpile** `winterStock`: in Autumnus and the last 30 days of Aestas, while grain < need × *Grain reserve* and there is room: fill food to need × 1.35 (*"+3 fields: stockpiling for Hiems (612/900)"*).
 7. **Tools** `tools`: fabrica (and its inputs) while tool kits < 0.5 × tool-using buildings.
-8. **Luxury** `luxuryStaff`: olive groves to oil demand × 1.2.
+8. **Luxury** `luxuryStaff`: olive groves to oil demand × 1.2 over the year — the goal follows the season's yield, so the same hands press in every season and the Autumnus and Hiems presses fill the stores for Ver and Aestas.
 9. **Services** `serviceFull`: fill remaining service slots.
 10. **Focus split** `focusSplit`: the remaining workforce by the focus weights (§10.8).
 11. **Leftovers** `leftover`: any open slot (materials, industry, services, food, water order); the rest are idle — they forage 0.3 grain/day and add 0.3 work/day to sites.
@@ -653,13 +653,13 @@ The wish list is walked in order. Each wish names a type and a slot (`bestSlot`)
 | 0 | `request` / `pin` | player asked / pinned | that type | no (player site) |
 | 1 | `survivalFood` / `survivalWater` | max potential < need and DoH < 30 | best food producer for the coming season / well or cistern | no; ignores the saving target |
 | 2 | `aestasWater` | forecast: lowest water DoH in the coming Aestas < *Water reserve* | cistern (puteus if storage cannot help) | yes |
-| 3 | `hiemsStore` / `storageFull` | forecast: lowest grain DoH in the coming Hiems < 0, or the Hiems need exceeds total capacity; or grain ≥ 95% of cap / a material ≥ 95% of cap | horreum / apotheca | yes |
+| 3 | `hiemsStore` / `storageFull` | forecast: the Hiems need exceeds total capacity (a shortfall the stores could already hold is for the fields and hunters, not a granary); or grain ≥ 95% of cap / a material ≥ 95% of cap, while horrea/apothecae < 1 + rank — horrea beyond that while grain capacity < 2 × *Grain reserve* × need | horreum / apotheca | yes |
 | 4 | `beds` | free beds + planned beds < *Spare beds* and pop < roll | house plot (partly built blocks first) | yes |
 | 5 | `waterAccess` | ≥ 2 houses whose first unmet need is water | puteus (lacus once a castellum flows) covering most of them | yes |
-| 6 | `evolve` | a service type is the first unmet need of ≥ 2 houses (≥ 3 for block-sized services) | that service at the slot unblocking the most houses (greedy set cover) — *the Aedilis's top advisory, executed* | yes |
+| 6 | `evolve` | a service type is the first unmet need of ≥ 2 houses (≥ 3 for block-sized services, balnea included) | that service at the slot unblocking the most houses (greedy set cover) — *the Aedilis's top advisory, executed* | yes |
 | 7 | `rank` | a building named by the next petition is missing | it | yes |
 | 8 | `materials` | a resource lacking for the saving target, pending wish, renovations or Capitolium with ETA > 30 days | its producer | yes |
-| 9 | `luxury` | oil demand > production (olivetum unlocked) | olivetum | yes |
+| 9 | `luxury` | oil demand × 1.2 > the groves' yearly yield (olivetum unlocked); demand counts T4 residents and the residents of homes whose first want is oil or wine | olivetum | yes |
 | 10 | `focusPlan` | the focus's ordered `[type, count]` plan | next item | yes |
 | 11 | `beauty` | *Urbs* focus only | hortus lifting the most T3 houses toward desirability 10 | yes |
 

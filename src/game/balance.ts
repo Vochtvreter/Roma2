@@ -182,6 +182,7 @@ export const B = {
     STREET_TILES: 4,                                  // road tiles in one "busy street" paved under Urbs
     STORES_PER_RANK: 1,                               // horrea/apothecae for full stores ≤ 1 + rank × this
     FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
+    STORE_RESERVE: 2,                                 // …more horrea while grain capacity < 2 × the grain reserve × need
   },
 
   // ───────── Ordo site scoring (DESIGN §10.5) ─────────
