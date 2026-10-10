@@ -104,15 +104,18 @@ export function statue(p: Pix, x: number, y: number, mat: 'bronze' | 'gilt' | 'm
 }
 
 /** Squared flagstone paving (8×5 staggered slabs) in a ramp: lit slab corners, shaded joints, a few odd slabs. */
-export function flagstones(p: Pix, x: number, y: number, w: number, h: number, ramp: Ramp, seed: number, sw = 8, sh = 5): void {
+export function flagstones(p: Pix, x: number, y: number, w: number, h: number, ramp: Ramp, seed: number, sw = 12, sh = 7): void {
   const [hi, li, base, shade] = ramp;
   p.shade(x, y, w, h, (X, Y) => {
     const ry = Y - y, row = Math.floor(ry / sh), off = row % 2 ? sw / 2 : 0;
     const cx = (X - x + off) % sw, cy = ry % sh;
-    if (cx === 0 || cy === 0) return shade;
     const slab = noise(Math.floor((X - x + off) / sw), row, seed);
-    if (cx === 1 && cy === 1) return hi;
-    return slab < 0.18 ? li : slab > 0.9 ? hi : base;
+    if (cy === 0) return noise(X, Y, seed + 1) < 0.7 ? shade : base;      // worn bed joints
+    if (cx === 0) return noise(X, Y, seed + 2) < 0.55 ? shade : base;
+    const n = noise(X, Y, seed + 3);
+    if (n < 0.04) return shade;
+    if (n > 0.96) return hi;
+    return slab < 0.22 ? li : slab > 0.88 ? hi : base;
   });
 }
 
@@ -182,4 +185,89 @@ export function sideRange(p: Pix, x: number, y: number, w: number, h: number, in
   p.vline(x, ey, ey + fh - 1, hi).vline(x + w - 1, ey, ey + fh - 1, sh).hline(x, x + w - 1, ey, li);
   p.rect(mid - 1, ey + 2, 3, fh - 2, 'K');
   p.hline(x, x + w - 1, ey + fh - 1, sh);
+}
+
+/** A pediment (triangular gable with a cornice) centred on cx, top at y; tympanum shaded, raking cornices lit. */
+export function pediment(p: Pix, cx: number, y: number, half: number, h: number, ramp: Ramp = RAMP.white, relief: Key | null = null): void {
+  const [hi, li, base, sh, dk] = ramp;
+  for (let r = 0; r < h; r++) {
+    const span = Math.round((half * (r + 1)) / h);
+    for (let c = -span; c <= span; c++) {
+      let k: Key = r === h - 1 ? li : Math.abs(c) >= span - 1 ? (c < 0 ? hi : base) : sh;
+      if (relief && r > 1 && r < h - 2 && Math.abs(c) < span - 3 && (c + r) % 3 === 0) k = relief;
+      p.set(cx + c, y + r, k);
+    }
+  }
+  p.hline(cx - half - 1, cx + half + 1, y + h, dk === 'g' ? sh : li).hline(cx - half - 1, cx + half + 1, y + h + 1, sh);
+}
+
+/** A monumental archway (pier faces lit left, shaded right) leaving the passage open below the arch. */
+export function archway(p: Pix, x: number, y: number, w: number, h: number, ow: number, ramp: Ramp, inside: Key = 'K'): void {
+  const [hi, li, base, sh] = ramp;
+  p.rect(x, y, w, h, base);
+  p.vline(x, y, y + h - 1, hi).vline(x + w - 1, y, y + h - 1, sh).hline(x, x + w - 1, y, li);
+  const ox = x + Math.floor((w - ow) / 2), r = ow / 2, top = y + Math.max(4, Math.round(h * 0.3));
+  p.shade(ox, top, ow, y + h - top, (X, Y) => {
+    const dx = X + 0.5 - (ox + r), dy = Y + 0.5 - (top + r);
+    if (Y >= top + r || dx * dx + dy * dy <= r * r) {
+      if (Y < top + r + 2) return inside;                                   // the vault's shadow
+      return X === ox ? inside : (Y - top) % 3 === 0 ? 'O' : 'i';           // the paved passage beyond
+    }
+    return null;
+  });
+  // voussoirs: a lit ring around the opening
+  p.shade(ox - 1, top - 1, ow + 2, Math.ceil(r) + 2, (X, Y, k) => {
+    const dx = X + 0.5 - (ox + r), dy = Y + 0.5 - (top + r);
+    const d = Math.sqrt(dx * dx + dy * dy);
+    return k !== '.' && k !== inside && d > r && d <= r + 1.2 && Y < top + r ? li : null;
+  });
+}
+
+/** A gilded rider on a tall pedestal (equestrian statue), pedestal foot at (x, y + 19). */
+export function equestrian(p: Pix, x: number, y: number, pedestal: Ramp = RAMP.marble): void {
+  const [ph, pl, pb, ps] = pedestal;
+  p.rect(x - 6, y + 10, 13, 10, pb).hline(x - 7, x + 7, y + 10, ph).hline(x - 7, x + 7, y + 19, ps);
+  p.vline(x - 6, y + 11, y + 18, pl).vline(x + 6, y + 11, y + 18, ps).rect(x - 3, y + 13, 7, 3, 'N');
+  p.stamp([
+    '.....y......',
+    '....yN......',
+    '....NN.y....',
+    '...NNNNNy.N.',
+    '..yNNNNNNNN.',
+    '.yNNNNNNNYQ.',
+    '.N.yNNNNNQ..',
+    '.N.N.N..NQ..',
+    '...N.N..N...',
+  ], x - 6, y + 1);
+}
+
+/** A round fountain basin with a jet, centred on (cx, cy). */
+export function fountain(p: Pix, cx: number, cy: number, r = 5): void {
+  p.ellipse(cx, cy, r + 1, (r + 1) * 0.6, 'i').ellipse(cx, cy, r, r * 0.6, 'M').ellipse(cx - 1, cy - 0.5, r - 2, (r - 2) * 0.55, 'c');
+  p.vline(cx, cy - 4, cy, 'a').set(cx, cy - 5, 'w').set(cx - 1, cy - 4, 'c').set(cx + 1, cy - 4, 'c');
+  p.hline(cx - r, cx + r, Math.round(cy + r * 0.6), 'Q');
+}
+
+/** A hanging banner (purple with a gilt hem), 3 wide, 7 tall, top at (x, y). */
+export function banner(p: Pix, x: number, y: number, cloth: Key = 'I'): void {
+  p.hline(x - 1, x + 3, y, 'N');
+  p.rect(x, y + 1, 3, 6, cloth).vline(x, y + 1, y + 6, cloth === 'I' ? 'F' : 'r').set(x + 1, y + 3, 'N');
+  p.set(x, y + 7, 'N').set(x + 2, y + 7, 'N');
+}
+
+/** A cypress in a stone planter, foot at (x, y + 14). */
+export function plantedCypress(p: Pix, x: number, y: number): void {
+  p.stamp([
+    '..DD..',
+    '.DLdD.',
+    '.DLZD.',
+    'DLdZZD',
+    'DLZdZD',
+    'DLdZZD',
+    'DLZZZD',
+    'DdZdZD',
+    '.DZZD.',
+    '..DD..',
+  ], x - 3, y);
+  p.rect(x - 2, y + 10, 5, 4, 'O').hline(x - 2, x + 2, y + 10, 'a').vline(x + 2, y + 11, y + 13, 'Q');
 }
