@@ -7,6 +7,7 @@ import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState,
 import { memo, structEpoch } from './memo';
 import { census } from './census';
 import { buildingRate, maxPotential } from './economy';
+import { BUILDING_DEFS } from './data/buildings';
 import { dateOf, dayOf, daysInMonth, nextSeasonStart, seasonOf, seasonStartOf } from './calendar';
 
 const DOH_NONE = 9999;   // days on hand when nobody needs the essential (finite for metrics). TODO(balance): B.forecast.DOH_NONE
@@ -35,6 +36,8 @@ export function forecast(s: GameState): Forecast {
 function currentFlows(s: GameState, res: Essential, season: SeasonIndex): { prod: number; draw: number } {
   let prod = 0, draw = 0;
   for (const b of s.buildings) {
+    const def = BUILDING_DEFS[b.type];
+    if (b.status !== 'done' || (def.output?.res !== res && def.passive?.res !== res && !def.inputs?.[res] && !(res === 'water' && def.waterDraw))) continue;
     const v = buildingRate(s, b, season, 'current')[res] ?? 0;
     if (v > 0) prod += v;
     else draw -= v;
@@ -78,10 +81,10 @@ export function projectEssential(s: GameState, res: Essential): EssentialForecas
     const end = dayOf(y, m, 1) + daysInMonth(y, m);   // first day of the next month
     let minSt = st;
     let minDay = day;
+    const q = seasonOf(end - 1);                        // seasons change only on a Kalends
+    const p = prodBy[q];
     while (day + 1 < end) {
       day++;
-      const q = seasonOf(day);
-      const p = prodBy[q];
       st = Math.min(cap, Math.max(0, st + p - cons));
       if (res === 'grain') st -= Math.max(0, st - horrea) * E.SHED_ROT * E.ROT_SEASON[q];
       else st -= st * E.EVAPORATION * E.EVAP_SEASON[q];
@@ -92,7 +95,7 @@ export function projectEssential(s: GameState, res: Essential): EssentialForecas
         if (crunchEmpty === null && st <= 0) crunchEmpty = day;
       }
     }
-    const cell: MonthCell = { month: m, year: y, season: seasonOf(end - 1), minDoh: doh(minSt), endStock: st };
+    const cell: MonthCell = { month: m, year: y, season: q, minDoh: doh(minSt), endStock: st };
     months.push(cell);
     if (cell.minDoh < lowestDoh) { lowestDoh = cell.minDoh; lowestDay = minDay; }
     m++;

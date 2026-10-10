@@ -77,9 +77,14 @@ export function payPlans(s: GameState, ctx: TickContext): void {
   }
 }
 
-/** One builder's work per day: min(MULT_CAP, (1 + 0.04·fabri) × productivity × fx(builders) × fx(labour) × legacy), × elder. */
-export function builderWork(s: GameState, p: Person): number {
-  const m = (1 + B.people.SKILL_BONUS * (p.skills.fabri ?? 0)) * productivity(s) * fx(s, 'builders') * fx(s, 'labour') * legacyMult(s);
+/** The builders' shared factor: productivity × fx(builders) × fx(labour) × legacy. */
+export function builderFactor(s: GameState): number {
+  return productivity(s) * fx(s, 'builders') * fx(s, 'labour') * legacyMult(s);
+}
+
+/** One builder's work per day: min(MULT_CAP, (1 + 0.04·fabri) × builderFactor), × elder. */
+export function builderWork(s: GameState, p: Person, factor = builderFactor(s)): number {
+  const m = (1 + B.people.SKILL_BONUS * (p.skills.fabri ?? 0)) * factor;
   return Math.min(B.economy.MULT_CAP, m) * (stageOf(p, s.day) === 3 ? B.people.ELDER_OUT : 1);
 }
 
@@ -152,8 +157,9 @@ function capitoliumDay(s: GameState, ctx: TickContext, b: Building, crewWork: nu
  *  Capitolium takes the rest, capped at CAP_CREW builders and by its materials; completions; builders gain fabri. */
 export function constructionDay(s: GameState, ctx: TickContext): void {
   const builders = peopleIndex(s).builders;
+  const factor = builderFactor(s);
   let crew = 0;
-  for (const p of builders) crew += builderWork(s, p);
+  for (const p of builders) crew += builderWork(s, p, factor);
   const idleWork = census(s).idle.length * B.economy.IDLE_BUILD;
   let left = crew + idleWork;
   let worked = false;
@@ -193,8 +199,9 @@ export function capitoliumFlow(s: GameState): { stage: number; eta: number | nul
   const stage = capitoliumStage(b);
   const need = Math.max(0, (C.CAP_STAGES[Math.min(stage, C.CAP_STAGES.length - 1)] - b.progress) * b.work);
   const builders = peopleIndex(s).builders;
+  const factor = builderFactor(s);
   let crew = 0;
-  for (const p of builders) crew += builderWork(s, p);
+  for (const p of builders) crew += builderWork(s, p, factor);
   if (builders.length > C.CAP_CREW) crew *= C.CAP_CREW / builders.length;
   crew *= (b.toolUntil ?? 0) > s.day ? B.economy.TOOL_MULT : 1;
   let rate = crew;

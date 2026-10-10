@@ -3,12 +3,12 @@
 import { B } from './balance';
 import { RESOURCES } from './types';
 import type {
-  Building, BuildingId, Census, Essential, GameState, Person, Quad, Res, ResId, SeasonIndex, SkillId, TickContext,
+  Building, BuildingId, Census, Essential, GameState, MulKey, Person, Quad, Res, ResId, SeasonIndex, SkillId, TickContext,
 } from './types';
 import type { Rng } from './rng';
 import { census, peopleIndex, stageOf } from './census';
 import { seasonOf } from './calendar';
-import { fx, fxAdd } from './fx';
+import { fx, fxAdd, fxSources } from './fx';
 import { emptyRes, log } from './state';
 import { censusEpoch, memo, structEpoch } from './memo';
 import { siteMult } from './site';
@@ -70,14 +70,36 @@ export function activeFactor(s: GameState, b: Building): number {
   return f;
 }
 
+/** Per-call multipliers shared by every building: fx lookups hoisted out of the per-building loops. */
+interface Factors { base: number; mul(k: MulKey): number; concrete: number }
+// fx() re-validates its cache on every call; its source list is rebuilt (new identity) exactly when any effect changes,
+// so values looked up once per source list stay correct.
+const fxMemo = new WeakMap<GameState, { src: unknown; m: Map<MulKey, number> }>();
+
+function factors(s: GameState): Factors {
+  const src = fxSources(s);
+  let e = fxMemo.get(s);
+  if (!e || e.src !== src) {
+    e = { src, m: new Map() };
+    fxMemo.set(s, e);
+  }
+  const m = e.m;
+  const mul = (k: MulKey): number => {
+    let v = m.get(k);
+    if (v === undefined) { v = fx(s, k); m.set(k, v); }
+    return v;
+  };
+  return { base: productivity(s) * mul('labour') * legacyMult(s), mul, concrete: edictOption(s, 'aquae') === 'operibus' ? AQUAE_CONCRETE : 1 };
+}
+
 /** The building's part of the capped product: site × tool × productivity × fx(key) × fx(labour) × legacy × bonus. */
-function cappedBase(s: GameState, b: Building): number {
+function cappedBase(s: GameState, b: Building, f: Factors): number {
   const def = BUILDING_DEFS[b.type];
-  let m = siteMult(s, b) * productivity(s) * fx(s, 'labour') * legacyMult(s);
-  if (def.fxKey) m *= fx(s, def.fxKey);
+  let m = siteMult(s, b) * f.base;
+  if (def.fxKey) m *= f.mul(def.fxKey);
   if ((b.toolUntil ?? 0) > s.day) m *= E.TOOL_MULT;
   if (b.bonus !== undefined && (b.bonusUntil ?? 0) > s.day) m *= 1 + b.bonus;
-  if (b.type === 'caementarium' && edictOption(s, 'aquae') === 'operibus') m *= AQUAE_CONCRETE;
+  if (b.type === 'caementarium') m *= f.concrete;
   return m;
 }
 
@@ -91,7 +113,7 @@ function elderMult(s: GameState, p: Person | null): number {
 
 /** The capped per-worker multiplier: min(MULT_CAP, site × skill × tool × productivity × fx × legacy). */
 export function workerMult(s: GameState, b: Building, p: Person): number {
-  return Math.min(E.MULT_CAP, cappedBase(s, b) * skillMult(p, BUILDING_DEFS[b.type].skill));
+  return Math.min(E.MULT_CAP, cappedBase(s, b, factors(s)) * skillMult(p, BUILDING_DEFS[b.type].skill));
 }
 
 /** One worker's output per day at a building in a season (DESIGN §8.1): base × season × elder × unpaid × capped part. */
@@ -109,10 +131,10 @@ function outputWith(s: GameState, b: Building, p: Person | null, base: number, o
 }
 
 /** Passive output per day (cisterna rain, castellum flow): perDay × season × fx(key) × active factor. */
-function passiveRate(s: GameState, b: Building, season: SeasonIndex): number {
+function passiveRate(s: GameState, b: Building, season: SeasonIndex, f: Factors): number {
   const def = BUILDING_DEFS[b.type];
   if (!def.passive) return 0;
-  return def.passive.perDay * seasonMult(s, b.type, season) * (def.fxKey ? fx(s, def.fxKey) : 1) * activeFactor(s, b);
+  return def.passive.perDay * seasonMult(s, b.type, season) * (def.fxKey ? f.mul(def.fxKey) : 1) * activeFactor(s, b);
 }
 
 /** True when a staffed service (or a slotless one) is working today. */
@@ -130,12 +152,13 @@ function waterPaused(s: GameState, b: Building): boolean {
 /** Net resources per day of a building (inputs negative); 'full' = every slot at its current average worker. */
 export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): Partial<Res> {
   const out: Partial<Res> = {};
-  if (b.status !== 'done') return out;
   const def = BUILDING_DEFS[b.type];
+  if (b.status !== 'done' || (!def.output && !def.passive && !def.waterDraw)) return out;
   const add = (r: ResId, v: number): void => { if (v !== 0) out[r] = (out[r] ?? 0) + v; };
+  const f = factors(s);
   const outside = activeFactor(s, b) * seasonMult(s, b.type, season);
   if (def.output && b.open && !waterPaused(s, b)) {
-    const base = cappedBase(s, b);
+    const base = cappedBase(s, b, f);
     const workers = peopleIndex(s).byWork.get(b.id) ?? [];
     let total = 0;
     let n = workers.length;
@@ -148,35 +171,52 @@ export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mod
     add(def.output.res, total);
     if (def.inputs && outside > 0) for (const r of RESOURCES) add(r, -(def.inputs[r] ?? 0) * n);
   }
-  add(def.passive?.res ?? 'water', passiveRate(s, b, season));
+  add(def.passive?.res ?? 'water', passiveRate(s, b, season, f));
   if (def.waterDraw && !waterPaused(s, b) && (mode === 'full' || serviceActive(s, b))) add('water', -def.waterDraw);
   return out;
+}
+
+interface Producers { slots: { type: BuildingId; id: number; n: number; per: number }[]; passive: { type: BuildingId; per: number }[] }
+
+/** Producers of an essential with their season-free per-worker output (current average worker, else an unskilled one). */
+function producers(s: GameState, res: Essential): Producers {
+  return memo(s, `producers:${res}`, `${censusEpoch(s)}|${s.day}|${s.morale}`, () => {
+    const out: Producers = { slots: [], passive: [] };
+    const ix = peopleIndex(s);
+    const f = factors(s);
+    for (const b of s.buildings) {
+      if (b.status !== 'done') continue;
+      const def = BUILDING_DEFS[b.type];
+      const act = activeFactor(s, b);
+      if (def.passive?.res === res) out.passive.push({ type: b.type, per: def.passive.perDay * (def.fxKey ? f.mul(def.fxKey) : 1) * act });
+      if (def.output?.res !== res || !b.open || def.slots <= 0 || act <= 0 || waterPaused(s, b)) continue;
+      const base = cappedBase(s, b, f);
+      const workers = ix.byWork.get(b.id) ?? [];
+      let per = 0;
+      for (const p of workers) per += outputWith(s, b, p, base, act);
+      per = workers.length > 0 ? per / workers.length : outputWith(s, b, null, base, act);
+      if (per > 0) out.slots.push({ type: b.type, id: b.id, n: def.slots, per });
+    }
+    return out;
+  });
 }
 
 /** Best assignment of the workforce to existing producers of an essential (food cap applied) plus passive output. */
 export function maxPotential(s: GameState, res: Essential, season: SeasonIndex): number {
   const c = census(s);
-  return memo(s, `maxPotential:${res}:${season}`, `${censusEpoch(s)}|${s.day}|${s.morale}`, () => {
-    let workers = res === 'grain' ? Math.floor(c.workforce * B.ordo.FOOD_CAP) : c.workforce;
-    let total = 0;
-    const per: { v: number; n: number; id: number }[] = [];
-    for (const b of s.buildings) {
-      if (b.status !== 'done') continue;
-      const def = BUILDING_DEFS[b.type];
-      if (def.passive?.res === res) total += passiveRate(s, b, season);
-      if (def.output?.res !== res || !b.open || def.slots <= 0) continue;
-      const full = buildingRate(s, b, season, 'full')[res] ?? 0;
-      if (full > 0) per.push({ v: full / def.slots, n: def.slots, id: b.id });
-    }
-    per.sort((a, b) => b.v - a.v || a.id - b.id);
-    for (const p of per) {
-      if (workers <= 0) break;
-      const k = Math.min(workers, p.n);
-      total += k * p.v;
-      workers -= k;
-    }
-    return total;
-  });
+  const table = producers(s, res);
+  let workers = res === 'grain' ? Math.floor(c.workforce * B.ordo.FOOD_CAP) : c.workforce;
+  let total = 0;
+  for (const p of table.passive) total += p.per * seasonMult(s, p.type, season);
+  const per = table.slots.map((p) => ({ v: p.per * seasonMult(s, p.type, season), n: p.n, id: p.id }));
+  per.sort((a, b) => b.v - a.v || a.id - b.id);
+  for (const p of per) {
+    if (workers <= 0) break;
+    const k = Math.min(workers, p.n);
+    total += k * p.v;
+    workers -= k;
+  }
+  return total;
 }
 
 // ───────────────────────────── storage caps ─────────────────────────────
@@ -329,6 +369,7 @@ export function produce(s: GameState, ctx: TickContext, rng: Rng): void {
   const season = seasonOf(s.day);
   const c = census(s);
   const ix = peopleIndex(s);
+  const f = factors(s);
   const start: Res = { ...s.res };
   const gain = (r: ResId, src: BuildingId | 'idleForage', v: number): void => {
     if (v <= 0) return;
@@ -362,7 +403,7 @@ export function produce(s: GameState, ctx: TickContext, rng: Rng): void {
     const workers = b.open ? ix.byWork.get(b.id) ?? [] : [];
     const outside = activeFactor(s, b) * seasonMult(s, b.type, season);
     if (workers.length === 0 || outside <= 0 || waterPaused(s, b)) return 0;
-    const base = cappedBase(s, b);
+    const base = cappedBase(s, b, f);
     let total = 0;
     for (const p of workers) {
       const f = perWorkerFrac(p);
@@ -376,7 +417,7 @@ export function produce(s: GameState, ctx: TickContext, rng: Rng): void {
   for (const ph of ['water', 'food'] as const) {
     for (const b of phases[ph]) gain(BUILDING_DEFS[b.type].output!.res, b.type, runStaffed(b, () => 1));
   }
-  for (const b of passive) gain(BUILDING_DEFS[b.type].passive!.res, b.type, passiveRate(s, b, season));
+  for (const b of passive) gain(BUILDING_DEFS[b.type].passive!.res, b.type, passiveRate(s, b, season, f));
   for (const b of phases.extract) {
     const out = BUILDING_DEFS[b.type].output!;
     let v = runStaffed(b, () => 1);

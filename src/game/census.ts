@@ -98,13 +98,17 @@ export function isPatrician(s: GameState, p: Person): boolean {
 
 /** Beds of a house: tier beds + lowCap (T0–T2) / insulaCap and aquae (insula); halved while damaged. */
 export function houseBeds(s: GameState, b: Building): number {
+  return bedsOf(s, b, fxAdd(s, 'lowCap'), fxAdd(s, 'insulaCap'));
+}
+
+function bedsOf(s: GameState, b: Building, lowCap: number, insulaCap: number): number {
   const h = b.house;
   if (!h || b.status !== 'done') return 0;
   const t = TIER_DEFS[h.tier];
   let beds = t.beds;
-  if (t.level <= 2) beds += fxAdd(s, 'lowCap');
+  if (t.level <= 2) beds += lowCap;
   if (h.tier === 'insula') {
-    beds += fxAdd(s, 'insulaCap');
+    beds += insulaCap;
     if (depth <= 1 && isAquae(s, b)) beds += B.housing.AQUAE_BEDS;
   }
   if (b.damagedUntil !== undefined && b.damagedUntil > s.day) beds = Math.floor(beds / 2);
@@ -128,11 +132,16 @@ function computeCensus(s: GameState): Census {
   const byStage: Quad = [0, 0, 0, 0];
   const idle: number[] = [];
   const staffed: Record<number, number> = {};
+  const domus = new Set<number>();
+  for (const id of d.houses) if (getBuilding(s, id)?.house?.tier === 'domus') domus.add(id);
+  const P = B.people;
   let workforce = 0, patricii = 0;
   for (const p of s.people) {
-    byStage[stageOf(p, day)]++;
-    if (isPatrician(s, p)) patricii++;
-    if (canWork(s, p)) {
+    const age = Math.floor((day - p.born) / YEAR);
+    byStage[age < P.YOUTH ? 0 : age < P.ADULT ? 1 : age < P.ELDER ? 2 : 3]++;
+    const patrician = p.home !== null && domus.has(p.home);
+    if (patrician) patricii++;
+    if (age >= P.ADULT && age < P.RETIRE && !patrician && !(p.sickUntil !== undefined && p.sickUntil > day)) {
       workforce++;
       if (p.work === null) idle.push(p.id);
     }
@@ -145,10 +154,11 @@ function computeCensus(s: GameState): Census {
   let beds = 0, freeBeds = 0, declining = 0;
   const byTier = {} as Record<HouseTierId, number>;
   for (const t of HOUSE_TIERS) byTier[t] = 0;
+  const lowCap = fxAdd(s, 'lowCap'), insulaCap = fxAdd(s, 'insulaCap');
   for (const id of d.houses) {
     const b = getBuilding(s, id);
     if (!b?.house) continue;
-    const n = houseBeds(s, b);
+    const n = bedsOf(s, b, lowCap, insulaCap);
     beds += n;
     freeBeds += Math.max(0, n - (ix.byHome.get(id)?.length ?? 0));
     byTier[b.house.tier]++;
