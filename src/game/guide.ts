@@ -1,6 +1,8 @@
 // src/game/guide.ts — the mentor's tips (Decimus Cassius) (ARCHITECTURE §8.6, DESIGN §11.7). Owner: WP-E.
 // Ported from IdleSettlement's GuideStep engine: each tip shows once per colony; list order is priority; a tip is due
-// when its `after` tip has been seen, its `when` holds and its `until` does not; `until` also prunes unseen tips.
+// when its `after` tip has been seen, its `when` holds and its `until` does not; `until` also prunes unseen tips — but
+// never an urgent one, whose `until` only says "not now" (founding grain is above the starving tip's 20 days, and
+// pruning it on the first tick meant it could never warn of a famine later).
 // Text is generated from state and data (names, days, options), never from stale copy.
 import { B } from './balance';
 import { TIPS } from './types';
@@ -133,7 +135,9 @@ export const GUIDE: GuideStep[] = [
     id: 'build', title: 'Build with your own hands', after: 'speed', tab: 'build',
     text: () => 'Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo\'s choice. Your works are raised first.',
     when: (s) => tabRevealed(s, 'build'),
-    until: (s) => s.buildings.some((b) => b.owner === 'player'),
+    // a work the player placed: not a site the Ordo raised for an "Ask the Ordo" request or a pin (player-owned too),
+    // nor the Capitolium
+    until: (s) => s.buildings.some((b) => b.owner === 'player' && b.type !== 'capitolium' && b.reason?.code !== 'request' && b.reason?.code !== 'pin'),
   },
   {
     id: 'aestas', title: 'The thirsty season', after: 'welcome', target: '#vital-water',
@@ -173,7 +177,7 @@ export const GUIDE: GuideStep[] = [
     id: 'trade', title: 'Caravans and contracts', after: 'edicts', tab: 'trade',
     text: () => 'Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us.',
     when: (s) => tabRevealed(s, 'trade'),
-    until: (s) => s.trade.contracts.length > 0,
+    until: (s) => s.trade.contracts.some((c) => c.owner === 'player'),   // the Ordo's own contracts teach the player nothing
   },
   // ─────────── the town, when it comes about ───────────
   {
@@ -199,9 +203,9 @@ function seen(s: GameState, id: TipId): boolean {
   return s.guidance.tips.includes(id);
 }
 
-/** Marks unseen tips whose `until` already holds as seen, so they never show late. */
+/** Marks unseen tips whose `until` already holds as seen, so they never show late; urgent tips are kept for their moment. */
 export function pruneGuide(s: GameState): void {
-  for (const g of GUIDE) if (!seen(s, g.id) && g.until?.(s)) s.guidance.tips.push(g.id);
+  for (const g of GUIDE) if (!g.urgent && !seen(s, g.id) && g.until?.(s)) s.guidance.tips.push(g.id);
 }
 
 /** The highest-priority unseen tip whose `after` is seen, whose `when` holds and whose `until` does not; or null. */

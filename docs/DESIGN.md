@@ -821,7 +821,7 @@ R = *runs out in* = stock / −(3-day average net) when net < 0. DoH = stock / d
 **Named-remedy helpers** (render-time): idle adults sorted by best skill for the target job; understaffed buildings; unstaffed sites; `bestSlot` covering the most affected houses; the cheapest open hub for a good.
 
 ### 11.7 Mentor tips (*Decimus Cassius*) — list order is priority; each shown once
-GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; buttons **Got it**, **Show me** (switches tab, glows the target), **Hide tips** (pref). Text is filled from state.
+GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; buttons **Got it**, **Show me** (switches tab, glows the target), **Hide tips** (pref). Text is filled from state. An unseen tip whose *Until* already holds is dropped unread — except an urgent one, which only waits (its *Until* means "not now", not "never").
 
 | # | id | Title | When | After | Until | Target | Gist |
 |---|---|---|---|---|---|---|---|
@@ -835,13 +835,13 @@ GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; but
 | 8 | `charter` | Your first decision | elapsed ≥ 10 | ordo | charter chosen | `.path-card` (Edicta) | *"By what law is this colony founded? The charter is permanent."* |
 | 9 | `counsel` | Your advisors | an advisory ≥ Monitum | vitals | — | `#counsel` | *"Each advisor keeps one part of the ledger and speaks only when something needs you. Every warning comes with a remedy."* |
 | 10 | `speed` | Time | elapsed ≥ 20 | charter | — | `#speed` | *"One day passes each heartbeat. Speed it up, or pause to think: Space, 1–4."* |
-| 11 | `build` | Build with your own hands | Aedificia revealed | speed | player placed a building | Aedificia | *"Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo's choice. Your works are raised first."* |
+| 11 | `build` | Build with your own hands | Aedificia revealed | speed | player placed a building by hand (not a site the Ordo raised for a request or the pin, nor the Capitolium) | Aedificia | *"Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo's choice. Your works are raised first."* |
 | 12 | `aestas` | The thirsty season | Aestas, or the Aestas forecast ≥ Cave | welcome | — | `#vital-water` | *"Cisterns catch little rain in Aestas and wells draw less. Fill the cisterns in Ver."* |
 | 13 | `wants` | What a house wants | a house blocked ≥ 5 days | build | Domus overlay opened | `#overlay-bar` | *"Hover a house to see what it needs next, or open the Domus overlay. A shrine within five steps is often all it takes."* |
 | 14 | `autumn` | Hiems is coming | Autumnus, or the Hiems forecast ≥ Monitum | welcome | a horreum exists and the forecast is clear | `#vital-grain` | *"In Hiems our fields give a third. Open sheds hold weeks and rot; a Horreum keeps grain for months. If grain runs low the Ordo cuts rations before anyone starves."* |
 | 15 | `edicts` | Your first edict | M3 done | charter | — | `[data-guide=edicts]` | *"Edicts trade one good for another. Each may change once a season; the window opens on the season's Kalends."* |
 | 16 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"You may take labour, building or trade from the Ordo. Leaving it all to them works just as well."* |
-| 17 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract exists | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
+| 17 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract of the player's exists (the Ordo's do not count) | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
 | 18 | `fork` | Insula or domus? | rank ≥ III and a T3 house exists | wants | — | Dignitas loci overlay | *"A stone house rises two ways: near shops and noise it becomes an insula, many hands for work; near gardens, temples and fountains a domus, few hands but rich taxes and prestige. Each house has a preference in its inspector."* |
 | 19 | `aqueduct` | Water from the hills | rank ≥ IV | trade | castellum placed | Aedificia | *"Place a castellum in town; the arches find their own way from the spring."* |
 | 20 | `away` | The years passed | after the first away report | welcome | — | Annales | *"Time away passes at half speed, up to five years. The Ordo kept the city and wrote you this."* |

@@ -60,6 +60,31 @@ describe('tip engine', () => {
     expect(nextTip(s)?.id).toBe('event');
     expect(nextTip(s)?.text(s)).toMatch(/cautious path: Agree\. 30 days remain\./);
   });
+  it('keeps tips the player has not earned yet (R13): build, trade, and the urgent starving and thirst', () => {
+    const s = fresh(42);
+    run(s, 1);
+    expect(s.guidance.tips).not.toContain('starving');               // founding grain is above 20 days: "not now", not "never"
+    expect(s.guidance.tips).not.toContain('thirst');
+    // a site the Ordo raised for an "Ask the Ordo" request is the player's, but not the player's own hand
+    const site = { ...s.buildings.find((b) => b.type === 'puteus')!, id: s.nextId++, owner: 'player' as const, reason: { code: 'request' as const, params: { type: 'puteus' } } };
+    s.buildings.push(site);
+    s.rank = 1;
+    s.trade.contracts.push({ id: s.nextId++, hub: 'durii', mode: 'export', res: 'timber', qty: 40, repeat: true, owner: 'ordo', status: 'idle', trips: 0, created: s.day });
+    pruneGuide(s);
+    expect(s.guidance.tips).not.toContain('build');
+    expect(s.guidance.tips).not.toContain('trade');
+    s.buildings.push({ ...site, id: s.nextId++, reason: undefined });
+    s.trade.contracts.push({ ...s.trade.contracts[0], id: s.nextId++, owner: 'player' });
+    pruneGuide(s);
+    expect(s.guidance.tips).toContain('build');
+    expect(s.guidance.tips).toContain('trade');
+    // the starving tip still comes when the children go hungry and the grain runs low
+    dismissTip(s, 'welcome');
+    s.needs.hunger = [60, 10, 10, 10];
+    s.res.grain = 30;
+    s.day++;                                                          // the forecast is made once a day
+    expect(nextTip(s)?.id).toBe('starving');
+  });
   it('raises the away tip after offline ticks and changes the kicker when the mentor dies', () => {
     const s = fresh(42);
     const away = GUIDE.find((g) => g.id === 'away')!;
