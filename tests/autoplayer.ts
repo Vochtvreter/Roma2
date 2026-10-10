@@ -36,13 +36,10 @@ export const BANDS = {
 export const RANK_BANDS = [null, BANDS.vicus, BANDS.oppidum, BANDS.municipium, BANDS.colonia] as const;
 /** DESIGN §18.4 target curve: elapsed day, population, houses T0/T1/T2/T3/T4i/T4d. */
 export const TARGETS: readonly { day: number; pop: number; tiers: readonly number[] }[] = [
-  { day: 0, pop: 24, tiers: [6, 0, 0, 0, 0, 0] }, { day: 120, pop: 30, tiers: [4, 3, 0, 0, 0, 0] },
-  { day: 335, pop: 42, tiers: [2, 5, 0, 0, 0, 0] }, { day: 600, pop: 55, tiers: [1, 7, 0, 0, 0, 0] },
-  { day: 1500, pop: 120, tiers: [1, 8, 6, 0, 0, 0] }, { day: 2700, pop: 190, tiers: [1, 7, 13, 0, 0, 0] },
-  { day: 4500, pop: 300, tiers: [0, 4, 12, 8, 1, 1] }, { day: 6300, pop: 410, tiers: [0, 3, 10, 12, 4, 2] },
-  { day: 9000, pop: 580, tiers: [0, 2, 10, 15, 9, 5] }, { day: 11900, pop: 720, tiers: [0, 2, 10, 18, 13, 7] },
-  { day: 14300, pop: 1050, tiers: [0, 3, 10, 20, 22, 12] },
-];
+  [0, 24, 6, 0, 0, 0, 0, 0], [120, 30, 4, 3, 0, 0, 0, 0], [335, 42, 2, 5, 0, 0, 0, 0], [600, 55, 1, 7, 0, 0, 0, 0],
+  [1500, 120, 1, 8, 6, 0, 0, 0], [2700, 190, 1, 7, 13, 0, 0, 0], [4500, 300, 0, 4, 12, 8, 1, 1], [6300, 410, 0, 3, 10, 12, 4, 2],
+  [9000, 580, 0, 2, 10, 15, 9, 5], [11900, 720, 0, 2, 10, 18, 13, 7], [14300, 1050, 0, 3, 10, 20, 22, 12],
+].map(([day, pop, ...tiers]) => ({ day, pop, tiers }));
 /** DESIGN §18.4 treasury net per rank (den/day, [low, high]). */
 export const COIN_NET: readonly (readonly [number, number])[] = [[3, 3], [6, 10], [12, 25], [30, 50], [40, 80]];
 
@@ -157,18 +154,13 @@ function buildRemedies(s: GameState): void {
 
 /** Everything the balance tests and the trace read from one bot run. */
 export interface Run {
-  seed: number; kind: BotKind; s: GameState; picks: Record<PathDecisionId, PathOptionId>;
-  rankDay: number[];                  // elapsed day each rank was entered (index = rank; Castra 0)
-  stageDay: number[];                 // elapsed day Capitolium stages 1..4 completed (index 0 = stage 1)
-  victoryDay: number | null;
-  minPop: number; maxPop: number;     // after elapsed day 30
-  pops: number[]; starved: number[];  // per day: population and hunger + thirst deaths
-  minCoin: number; zeroStreak: number;
-  stall: { construction: number; renovation: number };   // longest stretch without progress while both had work
-  snapshots: { rank: RankIndex; json: string }[];         // serialised state on the day each rank was entered
-  nan: string[];
+  seed: number; kind: BotKind; s: GameState; picks: Record<PathDecisionId, PathOptionId>; nan: string[];
+  rankDay: number[]; stageDay: number[]; victoryDay: number | null;   // elapsed day each rank / Capitolium stage 1..4 was reached
+  minPop: number; maxPop: number; pops: number[]; starved: number[];  // min/max after day 30; per day: pop, hunger + thirst deaths
+  minCoin: number; zeroStreak: number; stall: { construction: number; renovation: number };   // stall: days without progress while both had work
+  snapshots: { rank: RankIndex; json: string }[];                     // serialised state on the day each rank was entered
   tabDay: Partial<Record<TabId, number>>; tipDay: Partial<Record<TipId, number>>;
-  remedyIssues: string[]; flaps: number;                  // guidance: rendering problems, most re-raises of a rule in 60 days
+  remedyIssues: string[]; flaps: number;                              // advisories that failed to render; most re-raises of a rule in 60 days
 }
 
 /** Options of one playthrough. */
@@ -252,11 +244,8 @@ function observe(s: GameState, r: Run, t: Tracker, opts: PlayOpts): void {
   if (e <= (opts.guidanceDays ?? 0)) {
     const v = view(s);
     for (const a of activeAdvisories(s)) {
-      try {
-        if (renderAdvisory(s, v, a).remedies.length < 1) r.remedyIssues.push(`day ${e} ${a.rule}: no remedy`);
-      } catch (err) {
-        r.remedyIssues.push(`day ${e} ${a.rule}: ${String(err)}`);
-      }
+      try { if (renderAdvisory(s, v, a).remedies.length < 1) r.remedyIssues.push(`day ${e} ${a.rule}: no remedy`); }
+      catch (err) { r.remedyIssues.push(`day ${e} ${a.rule}: ${String(err)}`); }
     }
   }
 }
