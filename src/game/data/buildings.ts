@@ -33,7 +33,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
     desc: 'The temple of the Capitoline Triad on the Area Capitolina. Its dedication is the victory of the colony.',
     benefit: 'Temple coverage r20; dignitas +40; morale +10 on dedication',
     hint: 'Begun by the Colonia path. At most 64 builders; its materials are drawn as the work proceeds.',
-    place: ['fixed'], size: [9, 4], cost: {}, work: 160_000, rank: 4,
+    place: ['fixed'], size: [9, 4], cost: {}, work: 320_000, rank: 4,
     slots: 0, labor: null, skill: null,
     service: [{ layer: 'temple', radius: 20 }, { layer: 'shrine', radius: 20 }],
     upkeep: 0, desir: [10, 8], dignitas: 40, rule: 'fixed', tool: false, maxCount: 1,
@@ -92,11 +92,11 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   apotheca: {
     id: 'apotheca', name: 'Warehouse', latin: 'Apotheca', cat: 'annona',
     desc: 'A warehouse for building materials, tool kits and amphorae.',
-    benefit: '+400 timber and stone; +150 tiles, concrete, ore and iron; +10 tools; +100 oil and wine',
+    benefit: '+400 timber and stone; +150 tiles, concrete, ore and iron; +10 tools; +300 oil and wine',
     hint: 'Half a block.',
     place: ['half'], size: [4, 2], cost: { denarii: 70, timber: 40, stone: 20 }, work: 50, rank: 1,
     slots: 0, labor: null, skill: null,
-    storage: { timber: 400, stone: 400, tiles: 150, concrete: 150, ore: 150, iron: 150, tools: 10, oil: 100, wine: 100 },
+    storage: { timber: 400, stone: 400, tiles: 150, concrete: 150, ore: 150, iron: 150, tools: 10, oil: 300, wine: 300 },
     upkeep: 0.2, desir: [-2, 2], dignitas: 1, rule: 'none', tool: false,
   },
   // ─────────────── aqua ───────────────
@@ -220,7 +220,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   taberna: {
     id: 'taberna', name: 'Shop row', latin: 'Tabernae', cat: 'mercatus',
     desc: 'A row of shops under striped awnings. A house needs a market to earn a tiled roof.',
-    benefit: 'Market coverage r6; market tax 0.005 den per covered resident a day',
+    benefit: 'Market coverage r6; market tax 0.008 den per covered resident a day',
     hint: 'On a plot among the houses.',
     place: ['plot'], size: [2, 2], cost: { denarii: 40, timber: 15, stone: 10 }, work: 20, rank: 1,
     slots: 2, labor: 'services', skill: 'officium',
@@ -230,12 +230,12 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   macellum: {
     id: 'macellum', name: 'Market hall', latin: 'Macellum', cat: 'mercatus',
     desc: 'A market hall around a domed tholos; it delivers oil and wine to the homes it reaches.',
-    benefit: 'Macellum and market coverage r10; market tax 0.01 den per covered resident; +100 oil and wine storage',
+    benefit: 'Macellum and market coverage r10; market tax 0.015 den per covered resident; +300 oil and wine storage',
     hint: 'A whole block. The Ordo prefers the Praetentura.',
     place: ['block'], size: [4, 4], cost: { denarii: 160, timber: 40, stone: 60, tiles: 30 }, work: 120, rank: 2,
     slots: 4, labor: 'services', skill: 'officium',
-    service: [{ layer: 'macellum', radius: 10 }, { layer: 'market', radius: 10 }], storage: { oil: 100, wine: 100 },
-    upkeep: 1.0, desir: [2, 3], dignitas: 4, rule: 'none', tool: false,
+    service: [{ layer: 'macellum', radius: 10 }, { layer: 'market', radius: 10 }], storage: { oil: 300, wine: 300 },
+    upkeep: 0.8, desir: [2, 3], dignitas: 4, rule: 'none', tool: false,
   },
   mansio: {
     id: 'mansio', name: 'Road station', latin: 'Mansio', cat: 'mercatus',
@@ -265,7 +265,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
     place: ['block'], size: [4, 4], cost: { denarii: 220, timber: 30, stone: 120, tiles: 30, concrete: 20 }, work: 200, rank: 2,
     slots: 3, labor: 'services', skill: 'officium',
     service: [{ layer: 'temple', radius: 12 }, { layer: 'shrine', radius: 12 }],
-    upkeep: 1.0, desir: [6, 5], dignitas: 8, rule: 'none', tool: false,
+    upkeep: 0.8, desir: [6, 5], dignitas: 8, rule: 'none', tool: false,
   },
   // ─────────────── salus & ludi ───────────────
   balneum: {
@@ -276,7 +276,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
     place: ['block'], size: [4, 4], cost: { denarii: 200, timber: 30, stone: 80, tiles: 30, concrete: 20 }, work: 160, rank: 2,
     slots: 4, labor: 'services', skill: 'officium',
     service: [{ layer: 'baths', radius: 8 }], waterDraw: 20,
-    upkeep: 1.5, desir: [3, 4], dignitas: 6, rule: 'none', tool: false,
+    upkeep: 1.0, desir: [3, 4], dignitas: 6, rule: 'none', tool: false,
   },
   thermae: {
     id: 'thermae', name: 'Great baths', latin: 'Thermae', cat: 'salus',
@@ -286,7 +286,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
     place: ['block'], size: [4, 4], cost: { denarii: 600, timber: 60, stone: 300, tiles: 80, concrete: 120, iron: 20 }, work: 600, rank: 3,
     slots: 8, labor: 'services', skill: 'officium',
     service: [{ layer: 'baths', radius: 14 }], waterDraw: 60,
-    upkeep: 4.0, desir: [5, 5], dignitas: 12, rule: 'nearCastellum', tool: false,
+    upkeep: 3.0, desir: [5, 5], dignitas: 12, rule: 'nearCastellum', tool: false,
   },
   theatrum: {
     id: 'theatrum', name: 'Theatre', latin: 'Theatrum', cat: 'salus',
@@ -296,7 +296,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
     place: ['block'], size: [4, 4], cost: { denarii: 500, timber: 40, stone: 250, tiles: 60, concrete: 80 }, work: 500, rank: 3,
     slots: 6, labor: 'services', skill: 'officium',
     service: [{ layer: 'culture', radius: 14 }],
-    upkeep: 3.0, desir: [4, 5], dignitas: 10, rule: 'none', tool: false,
+    upkeep: 2.0, desir: [4, 5], dignitas: 10, rule: 'none', tool: false,
   },
   // ─────────────── ornamenta ───────────────
   hortus: {

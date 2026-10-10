@@ -215,7 +215,7 @@ Wine has **no producer**: it comes only from trade (Oppidum Silvanum, Forum Narb
 |---|---|---|---|---|---|---|
 | `area` ★ | *Area domus* / house plot | plot | 0/4/0/0/0/0 | 4 | I | Becomes a T0 tentoria; evolves (§7). |
 | `principia` ★ | *Principia → Forum* | fixed 9×9 | pre-placed | — | I | Stage = rank (0–4). |
-| `capitolium` ★ | *Capitolium* | fixed 9×4 | started by the Colonia path (§9.5) | 160,000 | V | Area Capitolina only. |
+| `capitolium` ★ | *Capitolium* | fixed 9×4 | started by the Colonia path (§9.5) | 320,000 | V | Area Capitolina only. |
 | `ager` ★ | *Ager* / fields | rural 3×3 | 50/20/0/0/0/0 | 40 | I | ≥ 7 of 9 tiles fertile (grass, meadow, loam, scrub). Site = average fertility × (1 + min(0.20, 0.04·river-or-loam tiles in the ring)) × (1 + min(0.10, 0.05·adjacent fields)). |
 | `venatio` ★ | *Venatores* / hunting lodge | rural 2×2 | 40/15/0/0/0/0 | 20 | I | ≥ 10 wooded tiles within r5. Site = wood density in r5 (0.4–1.4). |
 | `pabulatio` | *Pabulatio* / forage camp | rural 2×2 | 30/12/0/0/0/0 | 12 | I | Site = 1 + 0.05·(meadow or forest ring tiles), max 1.3. |
@@ -255,7 +255,7 @@ Per-worker output is per day before season, site, skill, tools, morale, effects 
 | `pabulatio` | 2 food | 4 grain × site | 0.5 / 1.4 / **1.8** / 0.1 | — | — | 0 | −1/r1 | 0 |
 | `olivetum` | 4 food | 1.2 oil × site | 0.2 / 0.2 / 1.4 / **2.2** | — | — | 0 | +1/r2 | 0 |
 | `horreum` | 0 | — | — | — | grain +4,000 (safe) | 0.2 | −2/r2 | 2 |
-| `apotheca` | 0 | — | — | — | timber, stone +400; tiles, concrete, ore, iron +150; tools +10; oil, wine +100 | 0.2 | −2/r2 | 1 |
+| `apotheca` | 0 | — | — | — | timber, stone +400; tiles, concrete, ore, iron +150; tools +10; oil, wine +300 | 0.2 | −2/r2 | 1 |
 | `puteus` | 2 water | 11 water × site | 1.0 / **0.8** / 1.0 / 1.0 | water r4 | water +50 | 0 | +1/r1 | 0 |
 | `cisterna` | 0 | passive 8 water | 1.2 / **0.3** / 1.0 / 1.5 | water r2 | water +400 | 0 | 0 | 0 |
 | `castellum` | 1 water | passive 600 water when complete | 1.0 / 0.9 / 1.0 / 1.0 | fountain r3 | water +2,000 | 1.0 | +2/r2 | 4 |
@@ -267,14 +267,14 @@ Per-worker output is per day before season, site, skill, tools, morale, effects 
 | `fodina` | 3 materials | 1.5 ore × vein | — | — | — | 0.1 | −4/r3 | 0 |
 | `officina` | 2 industry | 2 ore + 1 timber → 1 iron | — | — | — | 0.2 | −5/r4 | 0 |
 | `fabrica` | 2 industry | 1 iron + 1 timber → 0.4 tools | — | — | — | 0.2 | −2/r2 | 0 |
-| `taberna` | 2 services | market tax 0.005 den per covered resident | — | market r6 | — | 0.3 | +1/r2 | 0.5 |
-| `macellum` | 4 services | market tax 0.01 den per covered resident; delivers oil & wine | — | macellum r10 (also market) | oil, wine +100 | 1.0 | +2/r3 | 4 |
+| `taberna` | 2 services | market tax 0.008 den per covered resident | — | market r6 | — | 0.3 | +1/r2 | 0.5 |
+| `macellum` | 4 services | market tax 0.015 den per covered resident; delivers oil & wine | — | macellum r10 (also market) | oil, wine +300 | 0.8 | +2/r3 | 4 |
 | `mansio` | 2 services | +1 caravan slot (max 2 mansiones count); merchants ×1.5; trips −1 day each way | — | — | — | 0.5 | −2/r2 | 2 |
 | `lararium` | 1 services | — | — | shrine r5 | — | 0.05 | +2/r2 | 1 |
-| `templum` | 3 services | — | — | temple r12 (also shrine) | — | 1.0 | +6/r5 | 8 |
-| `balneum` | 4 services | uses 20 water/day | — | baths r8 | — | 1.5 | +3/r4 | 6 |
-| `thermae` | 8 services | uses 60 water/day | — | baths r14 | — | 4.0 | +5/r5 | 12 |
-| `theatrum` | 6 services | — | — | culture r14 | — | 3.0 | +4/r5 | 10 |
+| `templum` | 3 services | — | — | temple r12 (also shrine) | — | 0.8 | +6/r5 | 8 |
+| `balneum` | 4 services | uses 20 water/day | — | baths r8 | — | 1.0 | +3/r4 | 6 |
+| `thermae` | 8 services | uses 60 water/day | — | baths r14 | — | 3.0 | +5/r5 | 12 |
+| `theatrum` | 6 services | — | — | culture r14 | — | 2.0 | +4/r5 | 10 |
 | `hortus` | 0 | — | — | — | — | 0 | +4/r3 | 0.5 |
 | `capitolium` | builders (crew cap 64) | on completion: victory, morale +10 | — | temple r20 | — | 0 | +10/r8 | 40 |
 | T4i house (insula) | — | — | — | — | — | — | −1/r2 | (§7) |
@@ -331,7 +331,7 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 
 ### 6.5 Marriage, births, deaths
 - **Marriage**: each day, unmarried men aged 18–50 (in id order) each have a 1/400 chance to seek a wife; the first unmarried woman aged 16–45 of a *different gens* passing the kinship check (no parent, child, sibling, or shared parent/grandparent) marries him. At most 2 marriages per day. Widowed people may remarry 180 days after the death. The search uses per-gens buckets (O(n)).
-- **Births**: each married woman aged 16–42 with a living husband: annual rate **0.20** × foodF × moraleF × bedsF × fx(`births`), applied daily as /365. foodF = 1 if grain DoH ≥ 20, 0.5 if ≥ 10, else 0.1; moraleF = clamp(morale/55, 0.3, 1.3); bedsF = 1 if free beds ≥ 2, 0.5 if 1, else 0. The child joins the father's family and home.
+- **Births**: each married woman aged 16–42 with a living husband: annual rate **0.09** × foodF × moraleF × bedsF × fx(`births`), applied daily as /365. foodF = 1 if grain DoH ≥ 20, 0.5 if ≥ 10, else 0.1; moraleF = clamp(morale/55, 0.3, 1.3); bedsF = 1 if free beds ≥ 2, 0.5 if 1, else 0. The child joins the father's family and home.
 - **Deaths** (daily probability): annual hazard `h = (age < 1 ? 0.04 : age < 12 ? 0.006 : 0.004) + 0.010·e^((age − 55)/7.5)`, × (1 − 0.35·care) (§8.10), /365. Plus **starvation**: 0.012/day for each person in a stage group whose hunger > 75; **thirst**: 0.015/day when thirst > 75 (both ×0.4 offline). Plus event deaths (clamped, §12). Causes are logged; old age is the largest-term default.
 
 ### 6.6 Immigration and Rome's roll
@@ -353,9 +353,9 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 | T0 | `tentoria` | *Tentoria* / tents | 5 | 0.02 | street access (always true once placed) | plot: 4 timber | I | 0 |
 | T1 | `casa` | *Casa* / wattle-and-thatch hut | 8 | 0.04 | **water** access + **fed** | 8 timber | I | 0.5 |
 | T2 | `tegulata` | *Casa tegulata* / tiled cottage | 10 | 0.06 | + **religion** (shrine or temple) + **market** (taberna or macellum); desirability ≥ −5 | 6 timber, 8 tiles | II | 1 |
-| T3 | `domusParva` | *Domus parva* / stone house | 13 | 0.08 | + **temple** coverage; desirability ≥ 0 | 12 stone, 8 tiles | III | 2 |
-| T4 | `insula` | *Insula* / 3-storey apartments (plebs) | 24 | 0.07 | + **baths** + **macellum** + **oil** supplied; branch rule below | 20 stone, 12 tiles, 8 concrete | III | 3 |
-| T4 | `domus` | *Domus* / atrium house (patricii) | 10 | 0.30 | + baths + macellum + oil + **wine** supplied; desirability ≥ 10 | 16 stone, 12 tiles, 6 concrete, 4 iron | III | 5 |
+| T3 | `domusParva` | *Domus parva* / stone house | 13 | 0.12 | + **temple** coverage; desirability ≥ 0 | 12 stone, 8 tiles | III | 2 |
+| T4 | `insula` | *Insula* / 3-storey apartments (plebs) | 24 | 0.11 | + **baths** + **macellum** + **oil** supplied; desirability ≥ −3 (tenements tolerate their own crowding); branch rule below | 20 stone, 12 tiles, 8 concrete | III | 3 |
+| T4 | `domus` | *Domus* / atrium house (patricii) | 10 | 0.40 | + baths + macellum + oil + **wine** supplied; desirability ≥ 10 | 16 stone, 12 tiles, 6 concrete, 4 iron | III | 5 |
 
 - *Coloni* path: T0–T2 +2 beds. *Ius Latii*: insula +4 beds.
 - **Fed** = the city fed index (30-day EMA of the population-weighted grain ration ratio, §8.4) ≥ 0.9.
@@ -379,7 +379,7 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 
 ### 7.5 Desirability (*Dignitas loci*)
 - Per tile: `Σ v · (1 − d/(r + 1))` over every source with `d ≤ r`, where d is the Chebyshev distance from the source's footprint. Sources: building values in §5.2, house values (insula −1/r2, domus +1/r2), `lucus` +3/r3, river tiles +1/r2, paved road tiles +1/r1. Clamped to −20..+30. A house uses the average over its 4 tiles.
-- Thresholds: T2 ≥ −5, T3 ≥ 0, domus ≥ 10.
+- Thresholds: T2 ≥ −5, T3 ≥ 0, insula ≥ −3, domus ≥ 10. (An insula is −1/r2 to its neighbours: at ≥ 0 a block of insulae dragged itself below its own need, declined, dropped, recovered and rose again without end.)
 
 ### 7.6 Goods
 - T4 residents consume **oil 0.05**/day; domus residents also **wine 0.05**/day, delivered daily from city stock to houses inside macellum coverage. On shortage, higher tiers first, then by house id. Each house keeps a supply EMA (rate 0.1/day) of delivered/needed; *supplied* means EMA ≥ 0.8.
@@ -457,7 +457,7 @@ Bands (rome): ≤ 25 *Sated/Hydrated*, ≤ 50 *Peckish/Thirsty*, ≤ 75 *Hungry/
 Forest tiles hold timber (60, dense 100). A lumber camp draws from its r4 catchment: first tiles at ≥ 50% of their maximum, nearest first, then the rest (visible clearings). Tiles under 25% show stumps. Regrowth per day: 0.3% of max for tiles inside a lumber catchment (replanting) — 0 under *Silvae: Caedua*, ×2 under *Lucus* — and 0.05% for other tiles next to standing wood; ×0.25 in Hiems. The forest layer repaints only changed tiles, so **woods visibly recede** around a growing city. Quarries and ore veins never deplete.
 
 ### 8.8 Denarii
-- **Taxes**: Σ residents × tier tax × (declining ×0.5) × (aquae domus ×1.3) × Tributum × fx(`tax`) × (forum stage ≥ 3: ×1.10), plus market tax (taberna 0.005, macellum 0.01 per covered resident, × fx(`marketTax`)). Accrued daily, **paid on each Kalends** (`fx taxes`).
+- **Taxes**: Σ residents × tier tax × (declining ×0.5) × (aquae domus ×1.3) × Tributum × fx(`tax`) × (forum stage ≥ 3: ×1.10), plus market tax (taberna 0.008, macellum 0.015 per covered resident, × fx(`marketTax`)). Accrued daily, **paid on each Kalends** (`fx taxes`).
 - **Stipendium legionis**: +3/day at Castra, +1.5/day at Vicus, then 0 (its own ledger line so the player sees it end).
 - Other income: exports (paid when the caravan returns), merchant sales, Lustrum census windfall (0.5 × pop every 5th Kal. Apr.), events.
 - **Costs**: construction (up front), Capitolium gradual denarii, upkeep (daily), imports (at dispatch), petition fees, festivals, events.
@@ -579,8 +579,8 @@ All paths, edicts, timed modifiers (events, festivals), emergency rations and le
 
 ### 9.5 The Capitolium (endgame set piece, ≈ 30–45 min at 1×)
 - **Start**: choosing the Colonia path pays the fee and turns the reserved *Area Capitolina* into the Capitolium site (no other up-front cost).
-- **Work** 160,000 × fx(`capWork`). **Crew cap**: at most **64 builders** work on it (*"Even Rome cannot put more than sixty-four fabri on one temple."*). One builder ≈ 1.1–1.5 work/day, so the crew-bound minimum is ≈ 1,700–2,200 days.
-- **Gradual materials** (× fx(`capMat`)), consumed pro rata to work: stone 24,000 · concrete 9,000 · tiles 4,000 · iron 1,800 · denarii 40,000. At 73 work/day this is ≈ 11 stone, 4.1 concrete, 1.8 tiles, 0.8 iron and 18 denarii per day — modest flows the city must *sustain* for half an hour. Progress per day = min(crew work, the work the available materials allow). Materials are drawn from stock above the Ordo's other reservations (denarii above the treasury floor).
+- **Work** 320,000 × fx(`capWork`). **Crew cap**: at most **64 builders** work on it (*"Even Rome cannot put more than sixty-four fabri on one temple."*). One builder ≈ 1.6–2.3 work/day (skill, tools, spirits, *Opera Magna*), so the crew-bound minimum is ≈ 2,200–3,100 days (*Iuppiter* or *Colonia veteranorum* builders ≈ 20% less).
+- **Gradual materials** (× fx(`capMat`)), consumed pro rata to work: stone 24,000 · concrete 9,000 · tiles 4,000 · iron 1,800 · denarii 120,000. At 140 work/day this is ≈ 10 stone, 3.9 concrete, 1.8 tiles, 0.8 iron and 52 denarii per day — the aerarium's great expense of the age — — modest flows the city must *sustain* for half an hour. Progress per day = min(crew work, the work the available materials allow). Materials are drawn from stock above the Ordo's other reservations (denarii above the treasury floor).
 - **Monument mode**: while the Capitolium is unfinished, the Ordo staffs its crew on top of the normal builder share (total builders ≤ 30% of the workforce), builds producers for the binding material (wish `materials`) and imports it when trade is on.
 - **Four stages** at 25/50/75/100% of work: I *Podium*, II *Cella*, III *Columnae* (colonnade), IV *Fastigium* (pediment and the path's crowning group). Each stage: banner, cornu, morale +5 for 30 days, log line.
 - `fabrum.capitolium` names the bottleneck: *"At this flow the Cella rises in 410 days; concrete is the bottleneck (3.2/day of 4.1)."*
@@ -692,7 +692,7 @@ The wish list is walked in order. Each wish names a type and a slot (`bestSlot`)
 1. `deficitImport`: grain when the Hiems forecast is short or grain DoH < *Grain reserve*/2 with max potential < need; cheapest open hub that sells grain; only if coin runway stays > 90 days.
 2. `luxuryImport`: oil or wine when supplied houses would run out in < 60 days and local production cannot cover (repeat while needed).
 3. `wishImport`: a pending wish or the Capitolium has waited > 40 days on a tradeable resource → import the shortfall (≤ 80).
-4. `surplusExport`: any tradeable above max(*Trade reserve* × daily use, 80% of cap — 60% under *Mercatura*) plus pending targets → export ≤ 80 to the hub with the best `price × qty / roundTripDays`.
+4. `surplusExport`: any tradeable above max(*Trade reserve* × daily use, 95% of cap — 60% under *Mercatura*) plus pending targets → export ≤ 80 to the hub with the best `price × qty / roundTripDays`.
 5. `merchantDeal`: on a merchant's last day, take offers that sell surplus at ≥ 1.1 × base or buy goods named by an active Cave/Periculum advisory, keeping coin runway > 60 days.
 The Ordo never cancels or edits a player contract.
 
@@ -951,8 +951,8 @@ Tradeable, base den/unit: grain 2, timber 3, stone 4, tiles 4, iron 10, oil 6, w
 | `durii` | *Pagus Durii* | 7 | 1.05 | 0.95 | lean harvests: grain buy ×1.6, sell ×1.3 | Vicus |
 | `silvanum` | *Oppidum Silvanum* | 10 | 1.00 | 1.00 | sells oil; wine buy ×1.2 | Vicus |
 | `narbo` | *Forum Narbonis* | 14 | 0.92 | 1.06 | timber buy ×1.6; **will not sell iron**; oil & wine ×0.9 | Oppidum |
-| `massilia` | *Portus Massiliae* | 12 | 0.88 | 1.10 | **will not sell grain**; iron buy ×1.6; timber sell ×1.3; oil & wine ×0.8 (cheapest wine) | Oppidum |
-| `augusta` | *Colonia Augusta* | 18 | 0.82 | 1.15 | stone buy ×1.6; iron sell ×1.3; tiles sell ×1.2 | Municipium |
+| `massilia` | *Portus Massiliae* | 12 | 0.88 | 1.10 | **will not sell grain**; iron buy ×1.6; timber ×1.3 both ways; oil & wine ×0.8 (cheapest wine) | Oppidum |
+| `augusta` | *Colonia Augusta* | 18 | 0.82 | 1.15 | stone buy ×1.6; iron sell ×1.3 and **will not sell iron** (no buy-low-sell-high on one road); tiles sell ×1.2 | Municipium |
 
 Trade (contracts) is usable from Vicus (from Castra with *Mercatores*, Metellianus only).
 
@@ -1186,7 +1186,7 @@ Other: cypress and umbrella pine `#24402c` / `#3d6b3a`; dirt road `#9b7a52` edge
 ### 18.3 Key constants (`balance.ts` names in ARCHITECTURE §7; every number in this file is mirrored there)
 Time: SPEEDS [1,2,5,10] · START_DAY 90 · OFFLINE_RATE 0.5 · OFFLINE_MAX_DAYS 1,825 · OFFLINE_MIN_MS 60,000 · AUTOSAVE_S 20 · STAKE_DAYS 5 · EVENT_START 300 · EVENT_CHANCE 1/40 · CHOICE_GAP 200 · HARMFUL_GAP 120 · CHOICE_DAYS 30.
 Map: W 112 · H 84 · TILE 16 · PITCH 5 · CASTRUM 31×21 · TERRITORY [20,26,34,44,999] · rings by rank [0],[0,1],[0,1,2]…
-People: NEED child .6 youth .85 adult 1 elder .75 · BIRTH 0.20/yr · MARRY 1/400 · IMM_RATE [0.012,0.03,0.045,0.06,0.07] · CEILING [100,260,560,900,1500] · POP_CAP 1500 · SKILL_XP 0.004 · SKILL_BONUS 0.04 · ELDER_OUT 0.7 · RETIRE 65.
+People: NEED child .6 youth .85 adult 1 elder .75 · BIRTH 0.09/yr · MARRY 1/400 · IMM_RATE [0.014,0.011,0.0075,0.0035,0.04] · CEILING [100,260,560,900,1500] · POP_CAP 1500 · SKILL_XP 0.004 · SKILL_BONUS 0.04 · ELDER_OUT 0.7 · RETIRE 65.
 Economy: MULT_CAP 2.5 · PRODUCTIVITY 0.85 + 0.30·m · TOOL 1.2 × 120 d · IDLE_FORAGE 0.3 · IDLE_BUILD 0.3 · SHED_ROT 0.003 (×2 Aestas) · EVAPORATION 0.002 · HORREUM 4,000.
 Housing: OK_DAYS 15 · RENOVATE_DAYS 8 · DECLINE_AFTER 20 · DROP_AFTER 60 · OFFLINE_DECLINE_STOP 55 · THROTTLE 1 + houses/8 per 10 d · DESIR_DOMUS 10.
 Ordo: BUILD_EVERY 2 · TRADE_DAY 10/5 · SITES 1 + workforce/40 (max 4) · FOOD_CAP .75/.90 · BUILDERS_MAX .30 · CAP_CREW 64.

@@ -26,18 +26,18 @@ export const TIER_DEFS: Record<HouseTierId, HouseTierDef> = {
   },
   domusParva: {
     id: 'domusParva', level: 3, name: 'Stone house', latin: 'Domus parva',
-    beds: 13, tax: 0.08, needs: ['street', 'water', 'fed', 'religion', 'market', 'temple', 'desirability', 'rank'], desirMin: 0,
+    beds: 13, tax: 0.12, needs: ['street', 'water', 'fed', 'religion', 'market', 'temple', 'desirability', 'rank'], desirMin: 0,
     renovation: { stone: 12, tiles: 8 }, rank: 2, dignitas: 2, patrician: false, desir: [0, 0],
   },
   insula: {
     id: 'insula', level: 4, name: 'Apartment block', latin: 'Insula',
-    beds: 24, tax: 0.07,
-    needs: ['street', 'water', 'fed', 'religion', 'market', 'temple', 'desirability', 'baths', 'macellum', 'oil', 'rank'], desirMin: 0,
+    beds: 24, tax: 0.11,
+    needs: ['street', 'water', 'fed', 'religion', 'market', 'temple', 'desirability', 'baths', 'macellum', 'oil', 'rank'], desirMin: -3,
     renovation: { stone: 20, tiles: 12, concrete: 8 }, rank: 2, dignitas: 3, patrician: false, desir: [-1, 2],
   },
   domus: {
     id: 'domus', level: 4, name: 'Atrium house', latin: 'Domus',
-    beds: 10, tax: 0.30,
+    beds: 10, tax: 0.40,
     needs: ['street', 'water', 'fed', 'religion', 'market', 'temple', 'desirability', 'baths', 'macellum', 'oil', 'wine', 'rank'], desirMin: 10,
     renovation: { stone: 16, tiles: 12, concrete: 6, iron: 4 }, rank: 2, dignitas: 5, patrician: true, desir: [1, 2],
   },

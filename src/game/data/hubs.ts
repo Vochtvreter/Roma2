@@ -31,13 +31,13 @@ export const HUB_DEFS: Record<HubId, HubDef> = {
   },
   massilia: {
     id: 'massilia', name: 'Portus Massiliae', days: 12, buy: 0.88, sell: 1.1, rank: 2,
-    desc: 'The Greek port: it will not sell grain, iron is dear (×1.6), it pays ×1.3 for timber, and its oil and wine are the cheapest (×0.8).',
-    quirks: { grain: { buy: 'refused' }, iron: { buy: 1.6 }, timber: { sell: 1.3 }, oil: { buy: 0.8, sell: 0.8 }, wine: { buy: 0.8, sell: 0.8 } },
+    desc: 'The Greek port: it will not sell grain, iron is dear (×1.6), it pays and charges ×1.3 for timber, and its oil and wine are the cheapest (×0.8).',
+    quirks: { grain: { buy: 'refused' }, iron: { buy: 1.6 }, timber: { buy: 1.3, sell: 1.3 }, oil: { buy: 0.8, sell: 0.8 }, wine: { buy: 0.8, sell: 0.8 } },
   },
   augusta: {
     id: 'augusta', name: 'Colonia Augusta', days: 18, buy: 0.82, sell: 1.15, rank: 3,
-    desc: 'The great colonia far up the via: stone is dear (×1.6); it pays ×1.3 for iron and ×1.2 for tiles.',
-    quirks: { stone: { buy: 1.6 }, iron: { sell: 1.3 }, tiles: { sell: 1.2 }, oil: { buy: 'refused' }, wine: { buy: 'refused' } },
+    desc: 'The great colonia far up the via: stone is dear (×1.6); it pays ×1.3 for iron and will not sell it, and pays ×1.2 for tiles.',
+    quirks: { stone: { buy: 1.6 }, iron: { buy: 'refused', sell: 1.3 }, tiles: { sell: 1.2 }, oil: { buy: 'refused' }, wine: { buy: 'refused' } },
   },
 };
 

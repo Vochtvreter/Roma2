@@ -66,13 +66,13 @@ export const B = {
 
   // ───────── people (DESIGN §6) ─────────
   people: {
-    NEED: [0.6, 0.85, 1, 0.75], YOUTH: 12, ADULT: 16, ELDER: 55, RETIRE: 65, BIRTH_RATE: 0.2, FERTILE: [16, 42],
+    NEED: [0.6, 0.85, 1, 0.75], YOUTH: 12, ADULT: 16, ELDER: 55, RETIRE: 65, BIRTH_RATE: 0.09, FERTILE: [16, 42],   // tuned 0.2 → 0.09: growth comes mainly from Rome's roll (DESIGN §2.2)
     MARRY_P: 1 / 400, MARRY_MAX: 2, MARRY_M: [18, 50], MARRY_F: [16, 45], REMARRY_DAYS: 180, POP_CAP: 1500,
     HOMELESS_LEAVE: 20, EMIGRATE_MORALE: 25, EMIGRATE_P: 0.02,
     HAZARD: { infant: 0.04, child: 0.006, adult: 0.004, a: 0.01, mid: 55, scale: 7.5, care: 0.35 },
     STARVE_P: 0.012, THIRST_P: 0.015, OFFLINE_STARVE: 0.4, SKILL_XP: 0.004, SKILL_BONUS: 0.04, SKILL_MAX: 10,
     SKILL_LIFETIME: 20, ELDER_OUT: 0.7, HOUSEHOLD_MIX: [0.7, 0.2, 0.1],
-    IMM_RATE: [0.012, 0.03, 0.045, 0.06, 0.07],       // mirror of RANK_DEFS[].immRate (households/day)
+    IMM_RATE: [0.014, 0.011, 0.0075, 0.0035, 0.04],  // mirror of RANK_DEFS[].immRate (households/day; tuned to the §18.4 curve)
     CEILING: [100, 260, 560, 900, 1500],              // mirror of RANK_DEFS[].ceiling (Rome's roll)
     DEATH_AT: 75,                                     // hunger/thirst above this kill (§6.5)
     FOOD_F: [[20, 1], [10, 0.5], [0, 0.1]],           // grain DoH ≥ x → factor (births, immigration)
@@ -106,7 +106,7 @@ export const B = {
     HORREUM: 4000,                                    // mirror of BUILDING_DEFS.horreum.storage.grain
     ROT_SEASON: [1, 2, 1, 1],                         // shed rot multiplier by season (×2 Aestas)
     EVAP_SEASON: [0, 1, 0, 0],                        // evaporation only in Aestas
-    MARKET_TAX: { taberna: 0.005, macellum: 0.01 },   // den per covered resident per day
+    MARKET_TAX: { taberna: 0.008, macellum: 0.015 },  // den per covered resident per day (tuned from 0.005 / 0.01)
     SERVICE_FULL: 0.5,                                // ≥ ceil(slots × 0.5) workers → full radius
     SERVICE_PARTIAL: 0.6,                             // otherwise floor(0.6 × r)
     SPILL_LOG_DAYS: 30,                               // overflow logged at most once per 30 days per resource
@@ -147,8 +147,8 @@ export const B = {
   // ───────── works (DESIGN §5.3, §9.5) ─────────
   construction: {
     STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25,
-    CAP_CREW: 64, CAP_WORK: 160_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],
-    CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 40_000 },
+    CAP_CREW: 64, CAP_WORK: 320_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],   // CAP_WORK tuned from 160,000 (§9.5)
+    CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 120_000 },   // denarii tuned from 40,000
     TRENCH: 0.1,                                      // 0–10% of work shows the foundation trench
     PENNANT_DAYS: 5,
   },
@@ -169,7 +169,8 @@ export const B = {
     BUILDERS_MIN: 2, BUILDERS_MAX: 0.3, WATER_BASE: 1.05, WATER_LOW: 1.2, WATER_THIRST: 1.5, WATER_PREFILL: 1.3,
     FOOD_BASE: 1, FOOD_LOW: 1.2, FOOD_HUNGRY: 2, FOOD_HIEMS: 1.4, FOOD_FULL: 0.85, WINTER_FILL: 1.35, REQUESTS_MAX: 3,
     REQUEST_DAYS: 180, TOOLS_PER: 0.5, LUXURY: 1.2, EVOLVE_MIN: 2, EVOLVE_MIN_BLOCK: 3,
-    EXPORT_CAP: 0.8, EXPORT_CAP_MERCATURA: 0.6, IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80,
+    EXPORT_CAP: 0.95, EXPORT_CAP_MERCATURA: 0.6,   // EXPORT_CAP tuned 0.8 → 0.95: no hands worked for export but under Mercatura
+    IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80,
     HUNGER_AT: 25, THIRST_AT: 25,                     // any group above → hungry/thirsty bases
     FOOD_HIEMS_DOH: 10, WINTER_LEAD: 30,              // Hiems base when DoH < 10; stockpile in the last 30 days of Aestas
     PRIORITY_DAYS: 30, ASK_DAYS: 2,
@@ -181,8 +182,8 @@ export const B = {
     COMING: 30,                                       // days ahead that "the coming season" means for survival food
     STREET_TILES: 4,                                  // road tiles in one "busy street" paved under Urbs
     STORES_PER_RANK: 1,                               // horrea/apothecae for full stores ≤ 1 + rank × this
-    FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
     STORE_RESERVE: 2,                                 // …more horrea while grain capacity < 2 × the grain reserve × need
+    FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
   },
 
   // ───────── Ordo site scoring (DESIGN §10.5) ─────────
