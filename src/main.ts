@@ -9,7 +9,8 @@ import type { ActionResult, ContractSpec, FxEvent, GameState, OfflineRun, Prefs,
 import { B } from './game/balance';
 import { newGame } from './game/state';
 import { newCtx, previewRates, tick, emptyRates } from './game/sim';
-import { addFasti, exportText, hasSave, importText, loadGame, loadPrefs, saveGame, savePrefs } from './game/save';
+import { nextColonyLegacy } from './game/decisions';
+import { addFasti, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, saveGame, savePrefs } from './game/save';
 import { offlineRun, simulateOffline } from './game/offline';
 import { drainActionFx } from './game/memo';
 import { hashStr } from './game/rng';
@@ -193,11 +194,9 @@ class App implements Game {
   }
 
   newGame(opts?: { afterVictory?: boolean }): void {
+    void opts;   // legacy follows the previous colony itself (WP-D): +1 after a dedication, unchanged when abandoned
     const prev = hasSave() ? loadGame() : null;
-    const won = !!opts?.afterVictory && !!prev?.victory;
-    const legacy = (prev?.legacy ?? 0) + (won ? 1 : 0);
-    const imperium = won && prev ? Object.values(prev.decisions.paths).includes('imperium') : false;
-    const legacyBonus = (prev?.legacyBonus ?? 0) + (imperium ? 0.05 : 0);
+    const { legacy, legacyBonus } = prev ? nextColonyLegacy(prev) : { legacy: 0, legacyBonus: 0 };
     const now = Date.now();
     const s = newGame({ seed: hashStr(String(now)), legacy, legacyBonus, now });
     this.enter(s);
@@ -415,10 +414,7 @@ class App implements Game {
 
   private onVictory(): void {
     const s = this.state;
-    addFasti({
-      name: s.name, seed: s.seed, legacy: s.legacy, founded: B.time.START_DAY, dedicated: s.stats.victoryDay ?? s.day,
-      peakPop: s.stats.peakPop, paths: Object.values(s.decisions.paths).filter((p): p is NonNullable<typeof p> => !!p), playMs: s.stats.playMs,
-    });
+    addFasti(fastiEntry(s));
     this.save();
   }
 

@@ -18,6 +18,7 @@ import { SidePanel } from './panels';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
 import { getBuilding } from '../game/state';
+import { dismissTip } from '../game/actions';
 import { aucYear, formatRoman, toRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { TIER_DEFS } from '../game/data/housing';
@@ -93,6 +94,8 @@ export class UI {
     this.choice.frame(now);
     if (now - this.last < B.time.UI_THROTTLE_MS) return;
     this.last = now;
+    // the 'wants' tip asks the player to open the Domus overlay; seeing it (by any route: bar, key, remedy) reads it
+    if (this.g.view.overlay === 'domus' && !this.g.state.guidance.tips.includes('wants')) this.g.act(dismissTip(this.g.state, 'wants'));
     this.hud.update();
     this.objective.update();
     this.counsel.update();
