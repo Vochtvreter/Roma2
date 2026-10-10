@@ -4,10 +4,11 @@
 import { B } from '../balance';
 import { F, T } from '../types';
 import type { BuildingId, GameState, PlaceFail, Rect, Survey } from '../types';
-import { getMap, isWooded, woodAt } from '../map';
+import { getMap } from '../map';
+import { memo, structEpoch } from '../memo';
 import { sizeOf } from '../derived';
 import { BUILDING_DEFS } from '../data/buildings';
-import { GH, GN, GW, PrefixSum, anySide, rectGap } from './grid';
+import { GN, GW, PrefixSum, anySide, rectGap } from './grid';
 import { countT, isFertileT, isHillsRockT, isHillsScrubT } from './rules';
 
 const S = B.site;
@@ -46,6 +47,27 @@ export function viaLine(sv: Survey): Uint8Array {
   return m;
 }
 
+/** Prefix sums of standing timber and of wooded tiles (≥ 25% of their stock), memo on structEpoch and the day. */
+export function woodSums(s: GameState): { standing: PrefixSum; wooded: PrefixSum } {
+  return memo(s, 'woodSums', `${structEpoch(s)}:${s.day}`, () => {
+    const max = getMap(s.seed).woodMax;
+    const standing = new Float64Array(GN);
+    const wooded = new Uint8Array(GN);
+    for (let i = 0; i < GN; i++) {
+      if (max[i] <= 0) continue;
+      const v = s.wood[i] ?? max[i];
+      standing[i] = v;
+      if (v >= max[i] * B.economy.WOOD.STUMP) wooded[i] = 1;
+    }
+    return { standing: new PrefixSum(standing), wooded: new PrefixSum(wooded) };
+  });
+}
+
+/** Sum of a prefix-summed layer over the rect grown by `r` around a w×h footprint, minus the footprint. */
+export function aroundSum(ps: PrefixSum, x: number, y: number, w: number, h: number, r: number): number {
+  return ps.sum(x - r, y - r, w + 2 * r, h + 2 * r) - ps.sum(x, y, w, h);
+}
+
 /** Footprint rects of the finished castella (whose fountains flow). */
 function activeCastella(s: GameState): Rect[] {
   const out: Rect[] = [];
@@ -57,18 +79,6 @@ function activeCastella(s: GameState): Rect[] {
   return out;
 }
 
-/** Sum of `f(i)` over the rect grown by `r` around a w×h footprint, minus the footprint itself. */
-function around(x: number, y: number, w: number, h: number, r: number, f: (i: number) => number): number {
-  let n = 0;
-  for (let ty = Math.max(0, y - r); ty < Math.min(GH, y + h + r); ty++) {
-    for (let tx = Math.max(0, x - r); tx < Math.min(GW, x + w + r); tx++) {
-      if (tx >= x && tx < x + w && ty >= y && ty < y + h) continue;
-      n += f(ty * GW + tx);
-    }
-  }
-  return n;
-}
-
 /** Check 11 for one site: the first failed DESIGN §5.1 rule of `type` with a w×h footprint at (x, y), or null. */
 export function ruleFail(s: GameState, type: BuildingId, x: number, y: number, w: number, h: number): RuleFail | null {
   const map = getMap(s.seed);
@@ -78,9 +88,9 @@ export function ruleFail(s: GameState, type: BuildingId, x: number, y: number, w
     case 'fertile':
       return countT(t, x, y, w, h, isFertileT) < S.AGER_FERTILE ? terrain('fertile') : null;
     case 'woods':
-      return around(x, y, w, h, WOODS_R, (i) => (isWooded(s, i) ? 1 : 0)) < S.VENATIO_WOODED ? terrain('woods') : null;
+      return aroundSum(woodSums(s).wooded, x, y, w, h, WOODS_R) < S.VENATIO_WOODED ? terrain('woods') : null;
     case 'wood':
-      return around(x, y, w, h, WOOD_R, (i) => woodAt(s, i)) < B.economy.WOOD.MIN ? terrain('wood') : null;
+      return aroundSum(woodSums(s).standing, x, y, w, h, WOOD_R) < B.economy.WOOD.MIN ? terrain('wood') : null;
     case 'rocky':
       return countT(t, x - 1, y - 1, w + 2, h + 2, isHillsRockT) < S.QUARRY_MIN ? terrain('rocky') : null;
     case 'clay': {
@@ -119,14 +129,12 @@ export function ruleTester(s: GameState, type: BuildingId, w: number, h: number)
       return (x, y) => p.sum(x, y, w, h) >= S.AGER_FERTILE;
     }
     case 'woods': {
-      const p = ps((i) => isWooded(s, i));
-      return (x, y) => p.sum(x - WOODS_R, y - WOODS_R, w + 2 * WOODS_R, h + 2 * WOODS_R) - p.sum(x, y, w, h) >= S.VENATIO_WOODED;
+      const p = woodSums(s).wooded;
+      return (x, y) => aroundSum(p, x, y, w, h, WOODS_R) >= S.VENATIO_WOODED;
     }
     case 'wood': {
-      const v = new Float64Array(GN);
-      for (let i = 0; i < GN; i++) v[i] = woodAt(s, i);
-      const p = new PrefixSum(v);
-      return (x, y) => p.sum(x - WOOD_R, y - WOOD_R, w + 2 * WOOD_R, h + 2 * WOOD_R) - p.sum(x, y, w, h) >= B.economy.WOOD.MIN;
+      const p = woodSums(s).standing;
+      return (x, y) => aroundSum(p, x, y, w, h, WOOD_R) >= B.economy.WOOD.MIN;
     }
     case 'rocky': {
       const p = ps((i) => isHillsRockT(t[i]));

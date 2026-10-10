@@ -5,7 +5,7 @@
 import { B } from './balance';
 import { LAYERS, T } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote } from './types';
-import { getMap, isWooded, woodAt } from './map';
+import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
 import { censusEpoch, memo, structEpoch } from './memo';
 import { coverage, desirability, previewCovered, previewDesir } from './coverage';
@@ -13,9 +13,9 @@ import { firstWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
 import { getBuilding } from './state';
 import { BUILDING_DEFS } from './data/buildings';
-import { GH, GW, rectGap, rectTiles, sideTiles } from './world/grid';
+import { GH, GW, PrefixSum, rectGap, rectTiles, sideTiles } from './world/grid';
 import { agerBase, countRingT, countT, isForestT, isHillsRockT, isHillsScrubT, quarryFactor } from './world/rules';
-import { woodDependent } from './world/siterules';
+import { aroundSum, woodDependent, woodSums } from './world/siterules';
 
 const S = B.site;
 const SC = B.score;
@@ -46,20 +46,44 @@ function rectOf(s: GameState, type: BuildingId, x: number, y: number): Rect {
   return { x, y, w, h };
 }
 
-/** Buildings of the given types within `gap` tiles of a rect (any status). */
-function near(s: GameState, r: Rect, types: readonly BuildingId[], gap: number, except = 0): Building[] {
-  return s.buildings.filter((b) => b.id !== except && types.includes(b.type) && rectGap(r, rectOf(s, b.type, b.x, b.y)) <= gap);
+/** Ids of the buildings passing `pred` within `gap` tiles (Chebyshev) of a rect, outside it; scans the tiles around it. */
+function nearIds(s: GameState, r: Rect, gap: number, pred: (b: Building) => boolean): number[] {
+  const at = derived(s).buildingAt;
+  const out: number[] = [];
+  for (let ty = Math.max(0, r.y - gap); ty < Math.min(GH, r.y + r.h + gap); ty++) {
+    for (let tx = Math.max(0, r.x - gap); tx < Math.min(GW, r.x + r.w + gap); tx++) {
+      if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) continue;
+      const id = at[ty * GW + tx];
+      if (id === 0 || out.includes(id)) continue;
+      const b = getBuilding(s, id);
+      if (b && pred(b)) out.push(id);
+    }
+  }
+  return out;
+}
+
+/** True when a building of the type stands (or is being raised) within `gap` tiles of the rect (prefix sums of the grown footprints, memo on structEpoch). */
+function near(s: GameState, r: Rect, type: BuildingId, gap: number): boolean {
+  const ps = memo(s, `near:${type}:${gap}`, structEpoch(s), () => {
+    const m = new Uint8Array(GW * GH);
+    for (const b of s.buildings) {
+      if (b.type !== type) continue;
+      const f = rectOf(s, b.type, b.x, b.y);
+      for (const i of rectTiles(f.x - gap, f.y - gap, f.w + 2 * gap, f.h + 2 * gap)) m[i] = 1;
+    }
+    return new PrefixSum(m);
+  });
+  return ps.sum(r.x, r.y, r.w, r.h) > 0;
 }
 
 /** Fields (ager) touching a w×h footprint at (x, y), corners included. */
 function adjacentFields(s: GameState, x: number, y: number, w: number, h: number): number {
-  const d = derived(s);
-  const ids = new Set<number>();
-  for (const i of rectTiles(x - 1, y - 1, w + 2, h + 2)) {
-    const id = d.buildingAt[i];
-    if (id !== 0 && getBuilding(s, id)?.type === 'ager' && !(i % GW >= x && i % GW < x + w && Math.floor(i / GW) >= y && Math.floor(i / GW) < y + h)) ids.add(id);
-  }
-  return ids.size;
+  return nearIds(s, { x, y, w, h }, 1, (b) => b.type === 'ager').length;
+}
+
+/** Houses within `gap` tiles of a rect. */
+function housesNear(s: GameState, r: Rect, gap: number): number {
+  return nearIds(s, r, gap, (b) => b.type === 'area' && b.house !== undefined && b.status === 'done').length;
 }
 
 /** Site multiplier and notes of a type at (x, y) (DESIGN §5.1 adjacency formulas). */
@@ -81,17 +105,10 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
       break;
     }
     case 'venatio': {
-      let wooded = 0, all = 0;
       const R = S.VENATIO_R;
-      for (let ty = Math.max(0, y - R); ty < Math.min(GH, y + h + R); ty++) {
-        for (let tx = Math.max(0, x - R); tx < Math.min(GW, x + w + R); tx++) {
-          if (tx >= x && tx < x + w && ty >= y && ty < y + h) continue;
-          all++;
-          if (isWooded(s, ty * GW + tx)) wooded++;
-        }
-      }
+      const all = (Math.min(GW, x + w + R) - Math.max(0, x - R)) * (Math.min(GH, y + h + R) - Math.max(0, y - R)) - w * h;
       const [lo, hi] = S.VENATIO_SITE;
-      mult = lo + (hi - lo) * (all > 0 ? wooded / all : 0);
+      mult = lo + (hi - lo) * (all > 0 ? aroundSum(woodSums(s).wooded, x, y, w, h, R) / all : 0);
       notes.push({ code: 'woods', value: pct(mult) });
       break;
     }
@@ -105,9 +122,7 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
       if (countT(t, x, y, w, h, isHillsScrubT) === w * h) { mult = S.OLIVE_ALL; notes.push({ code: 'rock', value: pct(mult) }); }
       break;
     case 'lignarius': {
-      const R = B.economy.WOOD.CATCHMENT;
-      let wood = 0;
-      for (const i of rectTiles(x - R, y - R, w + 2 * R, h + 2 * R)) if (!(i % GW >= x && i % GW < x + w && Math.floor(i / GW) >= y && Math.floor(i / GW) < y + h)) wood += woodAt(s, i);
+      const wood = aroundSum(woodSums(s).standing, x, y, w, h, B.economy.WOOD.CATCHMENT);
       const [lo, hi] = B.economy.WOOD.CATCH_FACTOR;
       mult = Math.min(hi, Math.max(lo, wood / CATCH_FULL));
       notes.push({ code: 'woods', value: pct(mult) });
@@ -122,10 +137,10 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
       if (sideTiles(x, y, w, h).some((i) => t[i] === T.river)) { mult = S.FIGLINA_RIVER; notes.push({ code: 'river', value: pct(mult) }); }
       break;
     case 'caementarium':
-      if (near(s, r, ['lapicidina'], S.CAEMENT_NEAR[0]).length > 0) { mult = S.CAEMENT_NEAR[1]; notes.push({ code: 'quarryNear', value: pct(mult) }); }
+      if (near(s, r, 'lapicidina', S.CAEMENT_NEAR[0])) { mult = S.CAEMENT_NEAR[1]; notes.push({ code: 'quarryNear', value: pct(mult) }); }
       break;
     case 'officina':
-      if (near(s, r, ['fodina'], S.OFFICINA_NEAR[0]).length > 0) { mult = S.OFFICINA_NEAR[1]; notes.push({ code: 'mineNear', value: pct(mult) }); }
+      if (near(s, r, 'fodina', S.OFFICINA_NEAR[0])) { mult = S.OFFICINA_NEAR[1]; notes.push({ code: 'mineNear', value: pct(mult) }); }
       break;
     case 'fodina': {
       let v = 0;
@@ -193,7 +208,7 @@ function score(s: GameState, ctx: ScoreCtx, type: BuildingId, x: number, y: numb
   let sc = SC.FELL * fellTimber * B.economy.WOOD.FELL_WORK;
   if (fellTimber > 0) notes.push({ code: 'felling', value: Math.round(fellTimber) });
   const toFossa = rectGap(r, sv.castrum);
-  const housesWithin = (gap: number): number => ctx.houses.filter((hh) => rectGap(r, hh.rect) <= gap).length;
+  const housesWithin = (gap: number): number => housesNear(s, r, gap);
   const cover = (): { unblock: number; newly: number; t4: number } => {
     let unblock = 0, newly = 0, t4 = 0;
     const covered = new Map<number, CoverageLayerId[]>();
