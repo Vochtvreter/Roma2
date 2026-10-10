@@ -35,29 +35,29 @@ function venatio(): string[] {
   return p.rows();
 }
 
-/** Pabulatio: an open thatched lean-to over baskets of berries, mushrooms and greens. 32×22. */
+/** Pabulatio: a low thatched lean-to over baskets of berries, mushrooms and greens, sacks by the posts. 32×22. */
 function pabulatio(): string[] {
   const p = new Pix(32, 22);
-  // wattle back wall and poles
-  p.rect(4, 10, 21, 8, 'B');
-  p.shade(4, 10, 21, 8, (x, y) => ((x + y) % 3 === 0 ? 'n' : (x - y) % 4 === 0 ? 'b' : null));
-  p.vline(3, 8, 20, 'b').vline(25, 8, 20, 'b').vline(14, 8, 18, 'b');
-  thatchRoof(p, 1, 4, 27, 6, 0, 5);
-  // baskets: berries, mushrooms, greens; sacks
+  // wattle back wall and poles under a shallow thatch
+  p.rect(5, 8, 19, 6, 'B');
+  p.shade(5, 8, 19, 6, (x, y) => ((x + y) % 3 === 0 ? 'n' : (x - y) % 4 === 0 ? 'b' : null));
+  p.vline(4, 6, 16, 'b').vline(24, 6, 16, 'b');
+  thatchRoof(p, 2, 3, 25, 5, 2, 5);
+  // baskets in front: berries, plums, greens, mushrooms
   const basket = (x: number, y: number, fill: string, hi: string): void => {
-    p.ellipse(x + 2.5, y + 1, 3, 1.4, fill);
-    p.set(x + 1, y, hi).set(x + 3, y + 1, hi);
-    p.rect(x, y + 2, 6, 3, 'n');
-    p.hline(x, x + 5, y + 3, 't').set(x + 5, y + 2, 'B').set(x + 5, y + 4, 'B');
-    p.hline(x + 1, x + 4, y + 5, 'B');
+    p.ellipse(x + 3, y + 1, 3.2, 1.6, fill);
+    p.set(x + 1, y, hi).set(x + 4, y + 1, hi).set(x + 2, y + 1, hi);
+    p.rect(x, y + 2, 7, 3, 'n');
+    p.hline(x, x + 6, y + 2, 't').hline(x + 1, x + 5, y + 3, 'T').set(x + 6, y + 3, 'B').set(x + 6, y + 4, 'B');
+    p.hline(x + 1, x + 5, y + 5, 'B');
   };
-  basket(5, 13, 'r', 'f');
-  basket(12, 14, 'P', 'p');
+  basket(3, 13, 'r', 'f');
+  basket(11, 14, 'P', 'p');
   basket(19, 13, 'L', 'l');
-  // a sack and a basket of mushrooms outside
-  p.ellipse(28, 17, 2.6, 3, 'E');
-  p.set(27, 15, 'e').set(27, 16, 'e').hline(27, 29, 14, 'B');
-  basket(24, 16, 'T', 'w');
+  basket(24, 9, 'T', 'w');
+  // a sack and a hand-cart wheel
+  p.ellipse(29, 16, 2.4, 3, 'E');
+  p.set(28, 14, 'e').set(28, 15, 'e').hline(28, 30, 13, 'B');
   return p.rows();
 }
 

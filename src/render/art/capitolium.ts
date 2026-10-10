@@ -115,33 +115,30 @@ export function capitolium(stage: 1 | 2 | 3 | 4): Grid {
   return p.rows();
 }
 
-const QUADRIGA: Grid = [
-  '..............y.................',
-  '.............yNy................',
-  '........y...yNNy...y............',
-  '.......yN...NNNN...Ny...........',
-  '......yNN.yNNNNNNy.NNy..........',
-  '.....yNNNyNNNNNNNNyNNNy.........',
-  '....yNNNNNNNyNNNNNNNNNNy........',
-  '...yNyNNNyNNNNNNNNNNNyNNy.......',
-  '..yN.yNNNNNNNNNNNNNNNNy.Ny......',
-  '..N..NNQNNNNNNNNNNNNQNN..N......',
-  '.....NNQNyNNNNNNNNyNQNN.........',
-  '.....NQ.NN.NNNNNN.NN.QN.........',
-  '....NQ..N..NyyyyN..N..QN........',
-  '....N...N..NNNNNN..N...N........',
-  '........N..NQQQQN..N............',
-  '...........N....N...............',
-  '..........NNN..NNN..............',
-  '................................',
-];
-
-/** p_crown_iuppiter: a gilded quadriga, four horses rearing before the god's chariot. */
+/** p_crown_iuppiter: a gilded quadriga — four horses abreast, rearing, the god behind them with the thunderbolt raised. */
 function crownIuppiter(): Grid {
   const p = new Pix(32, 24);
-  p.stamp(QUADRIGA, 4, 4);
-  p.rect(9, 21, 15, 2, 'a').hline(9, 23, 21, 'w');                                       // plinth
-  p.set(18, 2, 'y').set(19, 1, 'y').set(18, 3, 'N').vline(17, 3, 8, 'N');                // the god's raised thunderbolt
+  // the god in the chariot
+  p.stamp([
+    '.....y',
+    '....yN',
+    '..NyN.',
+    '.yNN..',
+    'yNNNNQ',
+    'NNNNNQ',
+  ], 12, 1);
+  p.rect(8, 7, 17, 2, 'N').hline(8, 24, 7, 'y').set(24, 8, 'Q');                         // chariot rim
+  // four horses abreast: ears, heads, chests, forelegs (the outer pair rearing)
+  for (let i = 0; i < 4; i++) {
+    const x = 6 + i * 5, rear = i === 0 || i === 3 ? -1 : 0;
+    p.set(x, 9 + rear, 'N').set(x + 2, 9 + rear, 'N');
+    p.hline(x, x + 2, 10 + rear, 'N').set(x + 1, 10 + rear, 'y');
+    p.hline(x, x + 2, 11 + rear, 'N').hline(x, x + 2, 12 + rear, 'N').set(x + 2, 12 + rear, 'Q');
+    p.rect(x - 1, 13, 5, 3, 'N').set(x - 1, 13, 'y').set(x, 13, 'y').vline(x + 3, 13, 15, 'Q');
+    if (rear) { p.line(x - 1, 16, x - 2, 14, 'N').vline(x + 2, 16, 20, 'N'); }
+    else { p.vline(x, 16, 20, 'N').vline(x + 2, 16, 20, 'N'); }
+  }
+  p.rect(5, 21, 23, 2, 'a').hline(5, 27, 21, 'w');                                       // plinth
   return p.rows();
 }
 
