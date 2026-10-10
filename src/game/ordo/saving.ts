@@ -4,7 +4,7 @@
 // export contracts read the same reservation, so saving never deadlocks building or renovation.
 import { B } from '../balance';
 import { RESOURCES } from '../types';
-import type { BuildingId, Cost, GameState, Reason, ResId, SimView } from '../types';
+import type { Building, BuildingId, Cost, GameState, Reason, ResId, SimView } from '../types';
 import { addCost, canAfford, missing, scaleCost } from '../state';
 import { petitionNeeds, settingValue } from '../decisions';
 import { capitoliumFlow } from '../construction';
@@ -92,13 +92,22 @@ export function canSpend(s: GameState, cost: Cost, v: SimView, opts?: { survival
   return canAfford(s, cost, reserved(s, v)) && floorOk(s, cost);
 }
 
+/** One building's net rate per day with every slot filled (memo on day and epochs): the labour posts and outputRates
+ *  read the same figure, so it is computed once per building and key. */
+export function fullRate(s: GameState, b: Building): Partial<Record<ResId, number>> {
+  const cache = memo(s, 'ordo.full', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => new Map<number, Partial<Record<ResId, number>>>());
+  let r = cache.get(b.id);
+  if (!r) { r = buildingRate(s, b, seasonOf(s.day), 'full'); cache.set(b.id, r); }
+  return r;
+}
+
 /** Net output per day of every good from finished buildings (inputs subtracted), at today's staffing or with every slot filled. */
 export function outputRates(s: GameState, mode: 'current' | 'full'): Partial<Record<ResId, number>> {
   return memo(s, `ordo.rates.${mode}`, `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
     const out: Partial<Record<ResId, number>> = {};
     const season = seasonOf(s.day);
     for (const b of s.buildings) {
-      const r = buildingRate(s, b, season, mode);
+      const r = mode === 'full' ? fullRate(s, b) : buildingRate(s, b, season, mode);
       for (const k of RESOURCES) if (r[k]) out[k] = (out[k] ?? 0) + (r[k] as number);
     }
     return out;

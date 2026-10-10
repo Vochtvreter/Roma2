@@ -89,7 +89,10 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
     const key = skill ?? '';
     let e = sorted.get(key);
     if (!e) {
-      e = { list: pool.slice().sort((a, c) => skillOf(c, skill) - skillOf(a, skill) || otherSkill(a, skill) - otherSkill(c, skill) || a.id - c.id), at: 0 };
+      // keys computed once per person, not per comparison (the same total order: ties end on the id)
+      const keyed = pool.map((p) => ({ p, k: skillOf(p, skill), o: otherSkill(p, skill) }));
+      keyed.sort((a, c) => c.k - a.k || a.o - c.o || a.p.id - c.p.id);
+      e = { list: keyed.map((x) => x.p), at: 0 };
       sorted.set(key, e);
     }
     while (e.at < e.list.length && e.list[e.at].work !== null) e.at++;

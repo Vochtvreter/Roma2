@@ -8,7 +8,7 @@ import { getMap } from '../map';
 import { memo, structEpoch } from '../memo';
 import { sizeOf } from '../derived';
 import { BUILDING_DEFS } from '../data/buildings';
-import { GN, GW, PrefixSum, anySide, rectGap } from './grid';
+import { GH, GN, GW, PrefixSum, anySide, rectGap } from './grid';
 import { countT, isFertileT, isHillsRockT, isHillsScrubT } from './rules';
 
 const S = B.site;
@@ -61,6 +61,25 @@ export function woodSums(s: GameState): { standing: PrefixSum; wooded: PrefixSum
     }
     return { standing: new PrefixSum(standing), wooded: new PrefixSum(wooded) };
   });
+}
+
+/** The wood layers around one w×h footprint (grown by `r`, footprint excluded), read tile by tile: a placed wood work's
+ *  site multiplier is re-read every day, and rebuilding the whole-map prefix sums (woodSums) for a handful of works
+ *  cost more than the rest of their day. Bulk slot scoring keeps the prefix sums. */
+export function woodAround(s: GameState, x: number, y: number, w: number, h: number, r: number): { standing: number; wooded: number } {
+  const max = getMap(s.seed).woodMax;
+  let standing = 0, wooded = 0;
+  for (let yy = Math.max(0, y - r); yy < Math.min(GH, y + h + r); yy++) {
+    for (let xx = Math.max(0, x - r); xx < Math.min(GW, x + w + r); xx++) {
+      if (xx >= x && xx < x + w && yy >= y && yy < y + h) continue;
+      const i = yy * GW + xx;
+      if (max[i] <= 0) continue;
+      const v = s.wood[i] ?? max[i];
+      standing += v;
+      if (v >= max[i] * B.economy.WOOD.STUMP) wooded++;
+    }
+  }
+  return { standing, wooded };
 }
 
 /** Sum of a prefix-summed layer over the rect grown by `r` around a w×h footprint, minus the footprint. */

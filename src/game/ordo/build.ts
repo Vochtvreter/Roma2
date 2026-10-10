@@ -15,7 +15,6 @@ import { settingValue } from '../decisions';
 import { bestSlot, siteScore } from '../site';
 import { canPlace, pave, placeBuilding, validSlots } from '../place';
 import { blockOfTile } from '../derived';
-import { nextTier, unmetNeeds } from '../housing';
 import { houseDesir, previewCoverage } from '../coverage';
 import { buildingRate, maxPotential, seasonMult } from '../economy';
 import { fxAdd } from '../fx';
@@ -25,6 +24,8 @@ import { TIER_DEFS } from '../data/housing';
 import { FOCUS_DEFS } from '../data/decisions';
 import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
+import { houseWants as eachHouseWant } from '../advisors/util';
+import { peopleIndex } from '../census';
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
 const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food
@@ -48,23 +49,23 @@ export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'propo
 /** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus, T4 residents. */
 export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Record<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
 
-/** The houses' wants (memo on day + epochs + the fed gate). */
+/** The houses' wants (memo on day + epochs + the fed gate). Each house's next tier and unmet needs come from the
+ *  advisors' list, which is memoised on everything those read (advisors/util houseWants), not recomputed daily. */
 export function houseWants(s: GameState, v: SimView): HouseWants {
   return memo(s, 'ordo.houses', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.fed >= B.needs.FED_MIN}`, () => {
     const out: HouseWants = { want: {}, first: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
-    for (const id of v.d.houses) {
-      const b = getBuilding(s, id);
-      const next = b?.house ? nextTier(s, b) : null;
-      if (!b?.house || !next) continue;
-      const unmet = unmetNeeds(s, b, next);
-      if (unmet.length > 0) { out.want[unmet[0]] = (out.want[unmet[0]] ?? 0) + 1; out.first[id] = unmet[0]; }
-      else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[next].renovation);
-      if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, id) < B.housing.DESIR_DOMUS) out.t3Low++;
+    for (const w of eachHouseWant(s, v)) {
+      const b = getBuilding(s, w.id);
+      if (!b?.house || !w.next) continue;
+      if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first[w.id] = w.unmet[0]; }
+      else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[w.next].renovation);
+      if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, w.id) < B.housing.DESIR_DOMUS) out.t3Low++;
     }
-    for (const p of s.people) {
-      const tier = p.home === null ? null : getBuilding(s, p.home)?.house?.tier;
-      if (tier === 'insula' || tier === 'domus') out.t4Res++;
-      if (tier === 'domus') out.domusRes++;
+    const byHome = peopleIndex(s).byHome;   // residents per home (census index) rather than a lookup per person
+    for (const [home, list] of byHome) {
+      const tier = getBuilding(s, home)?.house?.tier;
+      if (tier === 'insula' || tier === 'domus') out.t4Res += list.length;
+      if (tier === 'domus') out.domusRes += list.length;
     }
     return out;
   });

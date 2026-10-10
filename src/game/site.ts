@@ -15,7 +15,7 @@ import { getBuilding } from './state';
 import { BUILDING_DEFS } from './data/buildings';
 import { GH, GW, PrefixSum, rectGap, rectTiles, sideTiles } from './world/grid';
 import { countRingT, countT, fertilityOf, isForestT, isHillsRockT, isHillsScrubT, quarryFactor } from './world/rules';
-import { aroundSum, woodDependent, woodSums } from './world/siterules';
+import { aroundSum, woodAround, woodDependent, woodSums } from './world/siterules';
 
 const S = B.site;
 const SC = B.score;
@@ -109,6 +109,11 @@ function agerBaseOn(map: WorldMap, x: number, y: number): { mult: number; fert: 
 
 /** Site multiplier and notes of a type at (x, y) (DESIGN §5.1 adjacency formulas). */
 export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number): { mult: number; notes: SiteNote[] } {
+  return multAt(s, type, x, y, false);
+}
+
+/** siteMultAt; `one` reads the wood around a single site tile by tile instead of through the whole-map prefix sums. */
+function multAt(s: GameState, type: BuildingId, x: number, y: number, one: boolean): { mult: number; notes: SiteNote[] } {
   const map = getMap(s.seed);
   const t = map.terrain;
   const r = rectOf(s, type, x, y);
@@ -129,7 +134,8 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
       const R = S.VENATIO_R;
       const all = (Math.min(GW, x + w + R) - Math.max(0, x - R)) * (Math.min(GH, y + h + R) - Math.max(0, y - R)) - w * h;
       const [lo, hi] = S.VENATIO_SITE;
-      mult = lo + (hi - lo) * (all > 0 ? aroundSum(woodSums(s).wooded, x, y, w, h, R) / all : 0);
+      const wooded = one ? woodAround(s, x, y, w, h, R).wooded : aroundSum(woodSums(s).wooded, x, y, w, h, R);
+      mult = lo + (hi - lo) * (all > 0 ? wooded / all : 0);
       notes.push({ code: 'woods', value: pct(mult) });
       break;
     }
@@ -143,7 +149,7 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
       if (countT(t, x, y, w, h, isHillsScrubT) === w * h) { mult = S.OLIVE_ALL; notes.push({ code: 'rock', value: pct(mult) }); }
       break;
     case 'lignarius': {
-      const wood = aroundSum(woodSums(s).standing, x, y, w, h, B.economy.WOOD.CATCHMENT);
+      const wood = one ? woodAround(s, x, y, w, h, B.economy.WOOD.CATCHMENT).standing : aroundSum(woodSums(s).standing, x, y, w, h, B.economy.WOOD.CATCHMENT);
       const [lo, hi] = B.economy.WOOD.CATCH_FACTOR;
       mult = Math.min(hi, Math.max(lo, wood / CATCH_FULL));
       notes.push({ code: 'woods', value: pct(mult) });
@@ -178,10 +184,21 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
   return { mult, notes };
 }
 
+const multCache = new WeakMap<GameState, Map<number, { e: number; d: number; v: number }>>();
+
 /** Site multiplier of a placed building (memo per building on structEpoch; daily for sites that live on standing wood). */
 export function siteMult(s: GameState, b: Building): number {
-  const key = woodDependent(b.type) ? `${structEpoch(s)}:${s.day}` : String(structEpoch(s));
-  return memo(s, `siteMult:${b.id}`, key, () => siteMultAt(s, b.type, b.x, b.y).mult);
+  // a numeric per-state cache: buildingRate reads this for every building several times a day, and a string slot and
+  // key per call (memo) cost more than the lookup
+  const day = woodDependent(b.type) ? s.day : -1;
+  const e = structEpoch(s);
+  let m = multCache.get(s);
+  if (!m) { m = new Map(); multCache.set(s, m); }
+  const hit = m.get(b.id);
+  if (hit && hit.e === e && hit.d === day) return hit.v;
+  const v = multAt(s, b.type, b.x, b.y, true).mult;
+  m.set(b.id, { e, d: day, v });
+  return v;
 }
 
 /** Per-call scoring context: house wants and current coverage, gathered once for many candidate slots. */

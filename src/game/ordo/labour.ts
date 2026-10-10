@@ -7,7 +7,7 @@ import { B } from '../balance';
 import { HOUSE_TIERS, LABOR_CATS, RESOURCES } from '../types';
 import type { Building, BuildingDef, BuildingId, CoverageLayerId, GameState, LaborCat, LabourLine, LabourPlan, NeedId, Reason, ReasonCode, ResId, SimView } from '../types';
 import { nextSeasonStart, seasonLength, seasonOf } from '../calendar';
-import { buildingRate, maxPotential, seasonMult } from '../economy';
+import { maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
 import { getBuilding } from '../state';
 import { censusEpoch, memo, structEpoch } from '../memo';
@@ -16,6 +16,7 @@ import { BUILDING_DEFS } from '../data/buildings';
 import { TIER_DEFS } from '../data/housing';
 import { FOCUS_DEFS } from '../data/decisions';
 import { houseWants, materialNeeds } from './build';
+import { fullRate } from './saving';
 
 /** Works that stop drawing water while the Lex de annona pauses them (DESIGN §8.12 step 2): they get no hands. */
 export const WATER_PAUSED: readonly BuildingId[] = ['caementarium', 'balneum', 'thermae'];
@@ -40,7 +41,6 @@ function reason(code: ReasonCode, params: Record<string, number | string | undef
 /** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id. */
 function posts(s: GameState): Post[] {
   return memo(s, 'ordo.posts', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.ordo.emergency.waterPause}`, () => {
-    const season = seasonOf(s.day);
     const out: Post[] = [];
     for (const b of s.buildings) {
       const def = BUILDING_DEFS[b.type];
@@ -48,7 +48,7 @@ function posts(s: GameState): Post[] {
       if ((b.damagedUntil ?? 0) > s.day || (b.idleUntil ?? 0) > s.day) continue;
       if (s.ordo.emergency.waterPause && WATER_PAUSED.includes(b.type)) continue;
       const res = def.output?.res ?? null;
-      const rate = res ? (buildingRate(s, b, season, 'full')[res] ?? 0) / def.slots : 0;
+      const rate = res ? (fullRate(s, b)[res] ?? 0) / def.slots : 0;
       out.push({ b, def, cat: def.labor, res, rate, layers: (def.service ?? []).map((x) => x.layer) });
     }
     return out.sort((a, c) => c.b.prio - a.b.prio || c.rate - a.rate || a.b.id - c.b.id);
