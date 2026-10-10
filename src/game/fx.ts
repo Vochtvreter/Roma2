@@ -1,7 +1,8 @@
 // src/game/fx.ts — the typed effect bus (ARCHITECTURE §8.1, DESIGN §9.3).
 // Sources: chosen path options, the current option of every edict, active timed modifiers. Focus contributes
 // nothing; legacy and emergency portions are applied by economy.ts, not here.
-// Memoised per state on paths + edicts + active modifiers (compared field by field, no string building).
+// Memoised per state on paths + edicts + active modifiers (compared field by field, no string building); a new day keeps
+// the cache unless a modifier began or ran out in between.
 import { ADD_KEYS, EDICTS, MUL_KEYS, PATH_DECISIONS } from './types';
 import type { AddKey, EdictId, Effects, GameState, Modifier, MulKey, PathDecisionId } from './types';
 import { EDICT_DEFS, PATH_DEFS } from './data/decisions';
@@ -23,6 +24,7 @@ interface FxCache {
 
 const cache = new WeakMap<GameState, FxCache>();
 const MUL_SET: ReadonlySet<string> = new Set<string>(MUL_KEYS);
+const ADD_SET: ReadonlySet<string> = new Set<string>(ADD_KEYS);
 
 // valid() runs on every fx read (thousands a day), so the edicts and paths are compared field by field with literal names:
 // a loop over the id lists reads with a computed key, about ten times slower. Each list below must name every id (the
@@ -43,13 +45,17 @@ function samePaths(a: Partial<Record<PathDecisionId, string>>, b: Partial<Record
 }
 
 function valid(s: GameState, c: FxCache): boolean {
-  if (c.day !== s.day) return false;
   if (!sameEdicts(s.decisions.edicts, c.edicts) || !samePaths(s.decisions.paths, c.paths)) return false;
   const mods = s.modifiers;
   if (mods.length !== c.mods.length) return false;
   for (let i = 0; i < mods.length; i++) {
     const m = mods[i];
     if (m !== c.mods[i] || m.until !== c.untils[i] || m.fx !== c.fxs[i]) return false;
+  }
+  if (c.day !== s.day) {
+    // another day: the same sources unless a modifier began or ran out between the two days
+    for (const m of mods) if ((m.until > c.day) !== (m.until > s.day)) return false;
+    c.day = s.day;
   }
   return true;
 }
@@ -73,11 +79,12 @@ function build(s: GameState): FxCache {
   for (const k of MUL_KEYS) mul[k] = 1;
   const add = {} as Record<AddKey, number>;
   for (const k of ADD_KEYS) add[k] = 0;
+  // each source's own keys (a key's factors still multiply in source order); keys outside the lists are ignored
   for (const src of sources) {
-    const sm = src.fx.mul;
-    if (sm) for (const k of MUL_KEYS) { const v = sm[k]; if (v !== undefined) mul[k] *= v; }
-    const sa = src.fx.add;
-    if (sa) for (const k of ADD_KEYS) { const v = sa[k]; if (v !== undefined) add[k] += v; }
+    const sm = src.fx.mul as Record<string, number | undefined> | undefined;
+    if (sm) for (const k in sm) { const v = sm[k]; if (v !== undefined && MUL_SET.has(k)) mul[k as MulKey] *= v; }
+    const sa = src.fx.add as Record<string, number | undefined> | undefined;
+    if (sa) for (const k in sa) { const v = sa[k]; if (v !== undefined && ADD_SET.has(k)) add[k as AddKey] += v; }
   }
   return {
     day: s.day,
