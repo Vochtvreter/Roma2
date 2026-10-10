@@ -3,7 +3,7 @@
 import { B } from '../balance';
 import { F, T } from '../types';
 import type { Rect, Survey, WorldMap } from '../types';
-import { MAP_SEED_XOR, Rng } from '../rng';
+import { MAP_SEED_XOR, Rng, hash2 } from '../rng';
 import { computeSurvey } from '../survey';
 import { GH, GN, GW, PrefixSum, anySide, chebToRect, forN4, maskOf, rectDistances, rectGap } from './grid';
 import { stepField } from './search';
@@ -23,6 +23,7 @@ const SITE_TRIES = 6;                // distinct castrum sites tried per terrain
 const SITE_SPREAD = 4;               // tried sites differ by at least this many tiles (TODO(balance): move to B.map.GEN)
 const ORE_SPREAD = 8;                // the two veins start at least this far apart (TODO(balance): move to B.map.GEN)
 const FONS_SPREAD = 12;              // two springs at least this far apart (TODO(balance): move to B.map.GEN)
+const GLACIS = [0.85, 0.55, 0.25];   // chance a wood tile 1, 2, 3 tiles outside the fossa is cleared (TODO(balance): move to B.map.GEN)
 
 /** A candidate castrum site: interior origin and its DESIGN §3.3 score. */
 export interface SiteCand { ix: number; iy: number; score: number }
@@ -31,7 +32,7 @@ export interface SiteCand { ix: number; iy: number; score: number }
 export interface Attempt { map: WorldMap; fails: string[] }
 
 /** The castrum rectangle (interior + wall + fossa) of an interior origin. */
-export function castrumRectOf(ix: number, iy: number): Rect {
+function castrumRectOf(ix: number, iy: number): Rect {
   return { x: ix - FOSSA_OUT, y: iy - FOSSA_OUT, w: M.CASTRUM_W, h: M.CASTRUM_H };
 }
 
@@ -112,7 +113,7 @@ function surveyMask(sv: Survey): Uint8Array {
 }
 
 /** The static start network: castrum streets (with the causeways), gates and the via. */
-export function startNetwork(sv: Survey): number[] {
+function startNetwork(sv: Survey): number[] {
   const net = new Uint8Array(GN);
   for (let i = 0; i < GN; i++) if (sv.street[i] && sv.streetRing[i] === 0) net[i] = 1;
   for (const g of sv.gates) net[g.tile] = 1;
@@ -143,8 +144,14 @@ export function finishSite(bt: BaseTerrain, seed: number, c: SiteCand, attempt: 
   const rect = castrumRectOf(c.ix, c.iy);
   const viaDir = viaSide(bt, rect);
   const cy = c.iy + (M.INTERIOR_H - 1) / 2;
-  // the groma clears the camp and the via corridor
-  for (let y = rect.y; y < rect.y + rect.h; y++) for (let x = rect.x; x < rect.x + rect.w; x++) if (isForestT(terrain[y * GW + x])) terrain[y * GW + x] = T.grass;
+  // the groma clears the camp, a ragged glacis around it, and the via corridor
+  const m = GLACIS.length;
+  for (let y = Math.max(0, rect.y - m); y < Math.min(GH, rect.y + rect.h + m); y++) {
+    for (let x = Math.max(0, rect.x - m); x < Math.min(GW, rect.x + rect.w + m); x++) {
+      const d = chebToRect(x, y, rect.x, rect.y, rect.w, rect.h);
+      if (isForestT(terrain[y * GW + x]) && (d === 0 || hash2(x, y, bt.tseed) < GLACIS[d - 1])) terrain[y * GW + x] = d === 0 ? T.grass : T.meadow;
+    }
+  }
   const viaX0 = viaDir === 'W' ? 0 : rect.x + rect.w;
   const viaX1 = viaDir === 'W' ? rect.x - 1 : GW - 1;
   for (let x = viaX0; x <= viaX1; x++) {
@@ -316,12 +323,14 @@ function checkGuarantees(map: WorldMap, reach: Uint8Array, aqSteps: Uint16Array,
   // fields: count non-overlapping valid 3×3 sites; the best (Ordo score) becomes the start field
   const [fw, fh] = BUILDING_DEFS.ager.size;
   const taken = new Uint8Array(GN);
+  const axisX = sv.ix + (sv.interior.w - 1) / 2, axisY = sv.iy + (sv.interior.h - 1) / 2;
   let farms = 0, best = -Infinity, bestTile = -1;
   for (let y = 0; y + fh <= GH; y++) {
     for (let x = 0; x + fw <= GW; x++) {
       if (!sites.fits(flat, x, y, fw, fh) || fertile.sum(x, y, fw, fh) < B.site.AGER_FERTILE) continue;
       const score = B.score.AGER.SITE * agerBase(terrain, x, y).mult + B.score.AGER.DIST * rectGap({ x, y, w: fw, h: fh }, rect);
-      if (score > best) { best = score; bestTile = y * GW + x; }
+      const onAxis = (x <= axisX && axisX < x + fw) || (y <= axisY && axisY < y + fh);   // keep the gates' ways open
+      if (score > best && !onAxis) { best = score; bestTile = y * GW + x; }
       let free = true;
       for (let k = 0; k < fw * fh && free; k++) if (taken[(y + Math.floor(k / fw)) * GW + x + (k % fw)]) free = false;
       if (!free) continue;

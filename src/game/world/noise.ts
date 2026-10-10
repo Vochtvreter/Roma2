@@ -20,23 +20,8 @@ export function valueNoise(x: number, y: number, seed: number): number {
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
 
-/** Fractal (fBm) value noise: `octaves` layers, each at double frequency and half amplitude; normalised to [0, 1). */
-export function fbm(x: number, y: number, seed: number, octaves: number): number {
-  let amp = 1;
-  let freq = 1;
-  let sum = 0;
-  let norm = 0;
-  for (let o = 0; o < octaves; o++) {
-    sum += valueNoise(x * freq, y * freq, seed + o * 1013) * amp;
-    norm += amp;
-    amp *= 0.5;
-    freq *= 2;
-  }
-  return sum / norm;
-}
-
 /**
- * An fBm sampler equal to `fbm(x, y, seed, octaves)` for points with x in [x0, x1] and y in [y0, y1] (noise units):
+ * An fBm sampler (octaves of value noise at double frequency and half amplitude, normalised to [0, 1)) for points with x in [x0, x1] and y in [y0, y1] (noise units):
  * the lattice values of every octave are hashed once into a table.
  */
 export function fbmField(seed: number, octaves: number, x0: number, x1: number, y0: number, y1: number): (x: number, y: number) => number {

@@ -19,7 +19,7 @@ const AQ_WALL = 2;            // over the vallum or the fossa into the castrum
 const AQ_PLOT = 3;            // across an unbuilt surveyed plot (routes keep to the streets where they can)
 
 /** True on a lucus, ruins or spring tile: no road, no aqueduct pier, no building. */
-export function isSacredTile(feature: ArrayLike<number>, i: number): boolean {
+function isSacredTile(feature: ArrayLike<number>, i: number): boolean {
   const f = feature[i];
   return f === F.lucus || f === F.ruins || f === F.fons;
 }
@@ -83,11 +83,6 @@ export function roadField(s: GameState): Reach {
   });
 }
 
-/** True when a tile is on the network or can be joined to it by an auto-road. */
-export function roadReachable(s: GameState, i: number): boolean {
-  return roadField(s).bfs.steps[i] <= M.ROAD_MAX;
-}
-
 /** New road tiles joining a w×h rural footprint at (x, y) to the network from its best side tile; [] if it touches; null if cut off. */
 export function autoRoad(s: GameState, x: number, y: number, w: number, h: number): number[] | null {
   const f = roadField(s);
@@ -141,7 +136,7 @@ function aqueductSteps(s: GameState): Float64Array {
 }
 
 /** Aqueducts from any free spring (one castellum per spring) to every tile, ≤ AQUEDUCT_MAX tiles (memo on structEpoch). */
-export function aqueductField(s: GameState): Reach {
+function aqueductField(s: GameState): Reach {
   return memo(s, 'aqueductField', structEpoch(s), () => {
     const map = getMap(s.seed);
     const used = new Set<number>();
