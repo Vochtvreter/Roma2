@@ -12,9 +12,8 @@ import { edictOption, edictWindow, isUnlocked, settingValue, switchOn } from '..
 import { triggerRelief } from '../events';
 import { pushActionFx } from '../memo';
 import { MILESTONES } from '../objectives';
-import { canPlace } from '../place';
+import { canPlace, validSlots } from '../place';
 import { overlayRevealed, tabRevealed } from '../reveal';
-import { bestSlot } from '../site';
 import { newCtx, view } from '../sim';
 import { getBuilding } from '../state';
 import { checkDispatch, hubOpen, price } from '../trade';
@@ -128,7 +127,7 @@ function checkAsk(s: GameState, type: BuildingId): ActionResult {
   if (!s.ordo.on.build) return fail('manualOnly', 'Construction is in your hands: place it yourself.');
   if (s.ordo.requests.some((q) => q.type === type)) return fail('chosen', `The Ordo will raise ${aName(type)} within days.`);
   if (s.ordo.requests.length >= B.ordo.REQUESTS_MAX) return fail('full', `The Ordo already holds ${B.ordo.REQUESTS_MAX} requests.`);
-  return bestSlot(s, type, { owner: 'ordo' }) ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);
+  return validSlots(s, type, 'ordo').size > 0 ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);   // a best slot exists iff any does
 }
 
 function checkPlace(s: GameState, type: BuildingId, tile?: number): ActionResult {
@@ -138,7 +137,7 @@ function checkPlace(s: GameState, type: BuildingId, tile?: number): ActionResult
     const c = canPlace(s, type, tile, { owner: 'player' });
     if (c.ok) return OK;
   }
-  return bestSlot(s, type, { owner: 'player' }) ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);
+  return validSlots(s, type, 'player').size > 0 ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);
 }
 
 function checkPriority(s: GameState, cat: LaborCat, n: number): ActionResult {

@@ -9,7 +9,7 @@ import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
 import { censusEpoch, memo, structEpoch } from './memo';
 import { coverage, desirability, previewCovered, previewDesir } from './coverage';
-import { firstWant } from './housing';
+import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
 import { getBuilding } from './state';
 import { BUILDING_DEFS } from './data/buildings';
@@ -219,7 +219,7 @@ function scoreCtx(s: GameState): ScoreCtx {
     let sum = 0;
     const tiles = rectTiles(rect.x, rect.y, rect.w, rect.h);
     for (const i of tiles) sum += desir[i];
-    houses.push({ id, rect, want: firstWant(s, b), level: ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'].indexOf(b.house.tier), desir: tiles.length ? sum / tiles.length : 0, mask: masks.get(id) ?? 0 });
+    houses.push({ id, rect, want: needWant(s, b), level: ['tentoria', 'casa', 'tegulata', 'domusParva', 'insula', 'domus'].indexOf(b.house.tier), desir: tiles.length ? sum / tiles.length : 0, mask: masks.get(id) ?? 0 });
   }
   return { houses, byId: new Map(houses.map((hh) => [hh.id, hh])) };
 }

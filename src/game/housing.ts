@@ -99,6 +99,13 @@ export function firstWant(s: GameState, b: Building): NeedId | null {
   return covers(pool, TIER_DEFS[next].renovation) ? null : 'materials';
 }
 
+/** The first unmet need of the next tier, without firstWant's renovation-pool check ('materials' is no coverage need,
+ *  so site scoring reads this and never reaches into the Ordo's reservation); null when every need holds. */
+export function needWant(s: GameState, b: Building): NeedId | null {
+  const next = targetTier(s, b);
+  return next ? unmetNeeds(s, b, next)[0] ?? null : null;
+}
+
 /** Houses that a building of `type` at (x, y) would let evolve: their first want is a need it would satisfy. */
 export function housesUnlockedBy(s: GameState, type: BuildingId, x: number, y: number): number[] {
   const out = new Set<number>();

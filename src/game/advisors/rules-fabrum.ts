@@ -8,7 +8,7 @@ import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, LaborCat, Remedy
 import { toRoman } from '../calendar';
 import { capitoliumFlow } from '../construction';
 import { petitionNeeds, settingValue } from '../decisions';
-import { bestSlot } from '../site';
+import { validSlots } from '../place';
 import { getBuilding, missing } from '../state';
 import { BUILDING_DEFS, BUILD_ORDER } from '../data/buildings';
 import { SETTING_DEFS } from '../data/decisions';
@@ -46,7 +46,7 @@ function suggest(s: GameState, v: SimView): { type: BuildingId; k: number } | nu
   });
   const fill = (t: BuildingId): number => { const r = BUILDING_DEFS[t].output?.res ?? 'grain'; return s.res[r] / Math.max(1, v.c.caps[r]); };
   const sorted = ok.sort((a, b) => fill(a) - fill(b) || BUILD_ORDER.indexOf(a) - BUILD_ORDER.indexOf(b));
-  const pick = sorted.slice(0, 4).find((t) => bestSlot(s, t, { owner: 'player' }) !== null) ?? sorted[0];
+  const pick = sorted.slice(0, 4).find((t) => validSlots(s, t, 'player').size > 0) ?? sorted[0];
   return pick ? { type: pick, k: Math.min(Math.max(1, idle), BUILDING_DEFS[pick].slots) } : null;
 }
 
