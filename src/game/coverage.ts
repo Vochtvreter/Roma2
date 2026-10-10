@@ -63,7 +63,7 @@ function activeSources(s: GameState): { epoch: number; list: Source[] } {
     const list: Source[] = [];
     const byWork = peopleIndex(s).byWork;
     const bonus: Partial<Record<AddKey, number>> = {};   // each path bonus looked up once per pass
-    for (const b of s.buildings) {
+    for (const b of serviceWorks(s)) {
       const svc = BUILDING_DEFS[b.type].service;
       if (!svc || b.status !== 'done') continue;
       for (const sv of svc) {
@@ -75,6 +75,11 @@ function activeSources(s: GameState): { epoch: number; list: Source[] } {
     }
     return { epoch, list };
   });
+}
+
+/** Finished works with a service, in building order (memo on the layout epoch: completions and removals bump it). */
+function serviceWorks(s: GameState): Building[] {
+  return memo(s, 'covServiceWorks', layoutEpoch(s), () => s.buildings.filter((b) => BUILDING_DEFS[b.type].service && b.status === 'done'));
 }
 
 /** Coverage keys are built only when the sources change: the same structure epoch and the same (id, layer, radius) list
