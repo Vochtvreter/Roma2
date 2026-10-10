@@ -76,13 +76,28 @@ export class MapTools {
   }
 }
 
+let lastTouch = false;       // the last pointer was a finger or a pen, whatever the device's main pointer
+let watching = false;
+
+/** Tracks the last pointer type (capture phase, before the map sees the tap): a touch laptop, a Surface or a pen taps a
+ *  plot to preview it, as a phone does, so its banner needs the Place button too. */
+function watchPointer(): void {
+  if (watching || typeof window === 'undefined') return;
+  watching = true;
+  const note = (e: PointerEvent): void => { lastTouch = e.pointerType !== 'mouse'; };
+  window.addEventListener('pointerdown', note, true);
+  window.addEventListener('pointermove', note, true);
+}
+
 /** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. */
 export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | null, check: PlaceCheck | null): void {
+  watchPointer();
   clear(root);
   root.hidden = !p;
   document.getElementById('app')?.classList.toggle('placing', !!p);
   if (!p) return;
-  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  // the map treats any non-mouse tap as a preview (render/view.ts), so the Place button follows the last pointer used
+  const coarse = lastTouch || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
   const cancel = h('button', { class: 'btn small ghost', onclick: () => g.cancelPlacing() }, 'Cancel');
   if (p.kind !== 'building') {
     const what = { road: ['Road', 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST'], pave: ['Paving', 'DRAG OVER ROADS TO PAVE THEM IN BASALT'],
@@ -94,7 +109,8 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   const def = BUILDING_DEFS[p.type];
   const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
     : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
-      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
+      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
+      check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
     ? h('button', { class: 'btn small primary', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;

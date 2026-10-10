@@ -3,6 +3,7 @@
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, ResId } from '../game/types';
 import { RESOURCE_DEFS } from '../game/data/resources';
+import { B } from '../game/balance';
 import { spriteURL } from '../render/sprites';
 import { resIcon } from '../render/art/index';
 
@@ -12,6 +13,8 @@ export type Kid = Node | string | number | null | undefined | false | Kid[];
 export type Attrs = Record<string, unknown>;
 
 const MINUS = '−';
+const WEEK = 7;
+const MONTH = 30;   // B.ui.RUNWAY_MONTHS = 120 days reads as 4 months
 const TIP_DELAY_MS = 80;
 const LONG_PRESS_MS = 450;
 const TIP_MARGIN = 8;
@@ -97,6 +100,20 @@ export function fmtDays(n: number | null): string {
   return `${Math.max(0, Math.floor(n))} d`;
 }
 
+/** A capacity or room in time (DESIGN §8.6): '14 days' under three weeks, '6 weeks' under four months, '4.2 months'
+ *  above; '∞' (infinite or ≥ 10,000), '—' (null). Only for capacity and room: days on hand stay in days (fmtDays). */
+export function fmtRunway(n: number | null): string {
+  if (n === null || Number.isNaN(n)) return '—';
+  if (!Number.isFinite(n) || n >= 10_000) return '∞';
+  const d = Math.max(0, n);
+  if (d < B.ui.RUNWAY_WEEKS) {
+    const k = Math.floor(d);
+    return `${k} ${k === 1 ? 'day' : 'days'}`;
+  }
+  if (d < B.ui.RUNWAY_MONTHS) return `${Math.round(d / WEEK)} weeks`;
+  return `${fmt(d / MONTH)} months`;
+}
+
 /** A cost as text in resource order: '50 den · 20 timber'. */
 export function fmtCost(c: Cost): string {
   const parts: string[] = [];
@@ -120,6 +137,11 @@ export function costEl(s: GameState, c: Cost, reserved?: Cost): HTMLElement {
     el.appendChild(chip);
   }
   return el;
+}
+
+/** Ends a sentence with a full stop unless it already has one: a Roman date ends in its own ('Kal. Apr.'). */
+export function sentence(text: string): string {
+  return /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
 /** '1 house' / '3 houses' (the number formatted with fmt). */
@@ -150,6 +172,7 @@ let tipEl: HTMLElement | null = null;
 let current: Element | null = null;
 let showTimer = 0;
 let pinned = false;
+let swallowClick = false;   // a long press pinned a tooltip: the click its release fires must not also work the control
 
 /** Attaches a tooltip (text or a builder) to an element; returns the element. */
 export function tip(el: HTMLElement, content: string | (() => Node | string), opts?: { wide?: boolean }): HTMLElement {
@@ -210,6 +233,8 @@ export function initTooltips(): void {
       if (t) showTimer = window.setTimeout(() => { if (current === t && t.isConnected && render(t)) place(lx, ly); }, TIP_DELAY_MS);
     } else if (t && tipEl && !tipEl.hidden) place(lx, ly);
   });
+  // a new press (seen first, on the window's capture phase): whatever an earlier long press left behind no longer applies
+  window.addEventListener('pointerdown', () => { swallowClick = false; }, true);
   document.addEventListener('pointerdown', (e) => {
     if (pinned && tipEl && e.target instanceof Node && tipEl.contains(e.target)) return;
     if (e.pointerType === 'mouse') { hide(); return; }
@@ -220,6 +245,7 @@ export function initTooltips(): void {
     showTimer = window.setTimeout(() => {
       if (!t.isConnected || !render(t) || !tipEl) return;
       pinned = true;
+      swallowClick = true;
       current = t;
       tipEl.classList.add('pinned');
       const close = h('button', { class: 'tip-close', 'aria-label': 'Close', onclick: () => hide() }, '✕');
@@ -227,6 +253,14 @@ export function initTooltips(): void {
       place(x, y);
     }, LONG_PRESS_MS);
   });
+  // holding a control for its tooltip (How to play teaches it for touch) must not also press it: iOS fires the click
+  window.addEventListener('click', (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }, true);
+  document.addEventListener('keydown', () => { swallowClick = false; }, true);
   const cancelPress = (): void => { if (!pinned) window.clearTimeout(showTimer); };
   document.addEventListener('pointerup', cancelPress);
   document.addEventListener('pointercancel', cancelPress);

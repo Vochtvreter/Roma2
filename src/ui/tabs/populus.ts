@@ -154,7 +154,7 @@ function gentes(g: Game, up: Updater[]): HTMLElement {
       const head = s.people.find((p) => p.id === f.head);
       const home = f.home !== null ? getBuilding(s, f.home) : undefined;
       return h('div', { class: 'pop-gens' }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
-        h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${size[f.id]} souls · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
+        h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${plural(size[f.id] ?? 0, 'soul', 'souls')} · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
     };
     list.replaceChildren(...fams.slice(0, GENTES_SHOWN).map(row));
     if (fams.length > GENTES_SHOWN) {
@@ -197,11 +197,10 @@ export const panel: TabPanel = {
     census_.append(stats(g, up));
     body.append(census_);
     const w = watch(s);
-    if (w.length) {
-      const sec = section('Custodia', 'Watch', { anchor: 'watch' });
-      sec.append(h('ul', { class: 'pop-watch' }, w.map((x) => h('li', null, x))));
-      body.append(sec);
-    }
+    const sec = section('Custodia', 'Watch', { anchor: 'watch' });   // always drawn: advisors open it by its anchor
+    sec.append(w.length ? h('ul', { class: 'pop-watch' }, w.map((x) => h('li', null, x)))
+      : h('div', { class: 'tab-quiet' }, 'No group is hungry or parched, and no one is sick or without a roof.'));
+    body.append(sec);
     const labour = section('Operae', s.ordo.on.labour ? 'Labour: hands at work / wanted · posts' : 'Labour: your targets', { anchor: 'labour',
       note: s.ordo.on.labour ? 'The Ordo staffs every post daily, water first, then food, and says why.' : null });
     labour.append(labourEl(g, up));

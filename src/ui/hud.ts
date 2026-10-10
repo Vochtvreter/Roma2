@@ -1,6 +1,6 @@
 // src/ui/hud.ts — the HUD bar (DESIGN §15.2): brand, vital tablets, coin, souls, spirits, dignitas, resource strip, date,
 // speed and menu. Owner: WP-H. Built once; numbers are patched in place every UI tick; tooltips are lazy (hud-tips.ts).
-import type { ResId, Speed } from '../game/types';
+import type { ResId, Speed, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import { clear, fmt, fmtRate, h, img, tip } from './dom';
 import { Vitals } from './vitals';
@@ -11,6 +11,7 @@ import { census } from '../game/census';
 import { forecast } from '../game/forecast';
 import { dignitas } from '../game/civic';
 import { resourceRevealed } from '../game/reveal';
+import { isUnlocked } from '../game/decisions';
 import { aucYear, formatRoman, seasonOf, SEASON_NAMES, toRoman } from '../game/calendar';
 import { RANK_DEFS } from '../game/data/ranks';
 import { B } from '../game/balance';
@@ -24,6 +25,7 @@ const FLASH_MIN = 10;          // a stock jump of max(10, 25%) flashes its chip
 const FLASH_SHARE = 0.25;
 const CAP_SHOW = 0.9;           // the store's cap shows beside the amount once it is 90% full
 const COIN_WARN = B.advisors.RULES.COIN_RUNOUT[2];   // "lasts N d" once the Quaestor would speak (Monitum)
+const LAUREL_CREST: UnlockRef = { kind: 'cosmetic', id: 'laurelCrest', label: 'A laurel on the crest' };
 
 type Up = () => void;
 
@@ -95,8 +97,12 @@ export class Hud {
     const rank = h('span', { class: 'hud-rank' });
     const title = h('span', { class: 'hud-title' });
     const stars = h('span', { class: 'hud-stars' });
+    // the laurel crest (Res Gestae: 500 souls): a victor's wreath hung on the aquila's standard
+    const laurel = img('i_laurel', 2);
+    Object.assign(laurel.style, { position: 'absolute', left: '8px', top: '16px', width: '24px', height: '24px', pointerEvents: 'none' });
+    laurel.hidden = true;
     const el = h('div', { class: 'hud-brand' },
-      h('button', { class: 'hud-aquila', 'aria-label': 'Rename the colony', onclick: rename }, img('f_aquila', 1)),
+      h('button', { class: 'hud-aquila', 'aria-label': 'Rename the colony', onclick: rename, style: { position: 'relative' } }, img('f_aquila', 1), laurel),
       h('div', { class: 'hud-brand-text' }, name, h('div', { class: 'hud-rankline' }, rank, title, stars)));
     tip(el, () => {
       const s = g.state, r = RANK_DEFS[s.rank];
@@ -109,6 +115,8 @@ export class Hud {
       rank.textContent = caps(r.name);
       title.textContent = r.title;
       stars.textContent = s.legacy > 0 ? '★'.repeat(Math.min(5, s.legacy)) + (s.legacy > 5 ? String(s.legacy) : '') : '';
+      const crest = isUnlocked(s, LAUREL_CREST);
+      if (laurel.hidden === crest) laurel.hidden = !crest;
     });
     return el;
   }

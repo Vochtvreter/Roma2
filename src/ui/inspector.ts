@@ -1,9 +1,9 @@
 // src/ui/inspector.ts — the house / building / block / tile inspector (ARCHITECTURE §13.3, DESIGN §15.4, §11.10). Owner: WP-I.
 // Hover = transient, click = sticky; signature-diffed like the panels (rebuild on discrete change, else updaters).
 import { BUILDER, F, T } from '../game/types';
-import type { Building, GameState, SiteNote, Terrain } from '../game/types';
+import type { Building, GameState, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
-import { clear, fmt, h, img } from './dom';
+import { clear, fmt, fmtRunway, h, img, plural } from './dom';
 import * as A from '../game/actions';
 import { getBuilding } from '../game/state';
 import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
@@ -13,6 +13,7 @@ import { worksQueue } from '../game/construction';
 import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
+import { forecast } from '../game/forecast';
 import { personName } from '../game/people';
 import { outputChain } from '../game/hints';
 import { isAquae, nextTier, unmetNeeds } from '../game/housing';
@@ -29,6 +30,14 @@ import { confirm2 } from './modals';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
 
+/** '+4,000 grain (4.2 months at today's 32/day)': what a store adds, in time at today's need for grain and water (§8.6). */
+function storeText(s: GameState, r: ResId, n: number): string {
+  const base = `+${fmt(n)} ${RESOURCE_DEFS[r].name.toLowerCase()}`;
+  if (r !== 'grain' && r !== 'water') return base;
+  const need = forecast(s)[r].need;
+  return need > 0 ? `${base} (${fmtRunway(n / need)} at today's ${fmt(need)}/day)` : base;
+}
+
 const TERRAIN: Record<number, string> = {
   [T.grass]: 'Grassland', [T.meadow]: 'Meadow', [T.loam]: 'River loam', [T.scrub]: 'Scrub', [T.forest]: 'Forest',
   [T.dense]: 'Dense forest', [T.hills]: 'Hills', [T.rock]: 'Rock', [T.crag]: 'Crag', [T.river]: 'River',
@@ -40,8 +49,8 @@ const NOTE: Record<SiteNote['code'], (v?: number) => string> = {
   river: (v) => `beside the river${v ? ` (${pct(1 + v)})` : ''}`, loam: () => 'on river loam', fields: (v) => `next to ${v ?? 1} fields`,
   forum: (v) => `${v ?? '?'} steps from the forum`, woods: (v) => `woods ${v !== undefined ? `×${fmt(v)}` : 'nearby'}`, rock: () => 'on hills and rock',
   clay: () => 'touching a clay bank', vein: (v) => `on an iron vein${v ? ` (quality ×${fmt(v)})` : ''}`, quarryNear: () => 'a quarry within 6 tiles',
-  mineNear: () => 'a mine within 4 tiles', district: () => 'in its proper district', covers: (v) => `covers ${v ?? 0} houses`,
-  unblocks: (v) => `lets ${v ?? 0} houses evolve`, felling: (v) => `felling gave ${v ?? 0} timber`, water: () => 'on the water table', via: () => 'touching the via',
+  mineNear: () => 'a mine within 4 tiles', district: () => 'in its proper district', covers: (v) => `covers ${plural(v ?? 0, 'house', 'houses')}`,
+  unblocks: (v) => `lets ${plural(v ?? 0, 'house', 'houses')} evolve`, felling: (v) => `felling gave ${v ?? 0} timber`, water: () => 'on the water table', via: () => 'touching the via',
 };
 const PRIO = ['Low', 'Normal', 'High'] as const;
 const PRIO_IDS = ['0', '1', '2'] as const;
@@ -159,10 +168,10 @@ export class Inspector {
       const cur = getBuilding(s, b.id);
       if (!cur) return;
       if (cur.status === 'plan') { const lack = lacking(s, def.cost); line.textContent = `⌛ A plan: works begin when the stores hold ${lack ? lackLine(g, lack) : 'enough'}.`; pb.set(0, 'tab-bar plan'); return; }
-      if (cur.status === 'staked') { line.textContent = `Staked by the Ordo. Builders start in ${Math.max(0, cur.placed + B.construction.STAKE_DAYS - s.day)} days; until then you may cancel it in full or move it.`; pb.set(1, 'tab-bar staked'); return; }
+      if (cur.status === 'staked') { line.textContent = `Staked by the Ordo. Builders start in ${plural(Math.max(0, cur.placed + B.construction.STAKE_DAYS - s.day), 'day', 'days')}; until then you may cancel it in full or move it.`; pb.set(1, 'tab-bar staked'); return; }
       const builders = s.people.filter((p) => p.work === BUILDER).length;
       const stage = cur.type === 'capitolium' ? ` · ${STAGES[Math.min(3, Math.floor(cur.progress * 4))]}` : '';
-      line.textContent = `${Math.round(cur.progress * 100)}% of ${fmt(cur.work)} builder-days${stage} · ${builders} builders in the colony`;
+      line.textContent = `${Math.round(cur.progress * 100)}% of ${fmt(cur.work)} builder-days${stage} · ${plural(builders, 'builder', 'builders')} in the colony`;
       pb.set(cur.progress, cur.progress < B.construction.TRENCH ? 'tab-bar trench' : 'tab-bar gold');
     };
     refresh();
@@ -221,13 +230,20 @@ export class Inspector {
       const r = effectiveRadius(s, b, sv.layer);
       out.push(h('div', { class: `ins-line ${r ? '' : 'ins-bad'}` }, `${LAYER_META[sv.layer].label}: ${r ? `${r} road steps` : 'inactive'}${r && r < sv.radius ? ` (full ${sv.radius} at ${Math.ceil(def.slots * B.economy.SERVICE_FULL)} hands)` : ''}`));
     }
-    if (def.storage) out.push(h('div', { class: 'ins-line' }, 'Stores: ', Object.entries(def.storage).map(([r, n]) => `+${fmt(n ?? 0)} ${RESOURCE_DEFS[r as keyof typeof RESOURCE_DEFS].name.toLowerCase()}`).join(' · ')));
+    if (def.storage) {
+      const store = def.storage;
+      const line = h('div', { class: 'ins-line' });
+      const refreshStore = (): void => { line.textContent = `Stores: ${(Object.keys(store) as ResId[]).map((r) => storeText(g.state, r, store[r] ?? 0)).join(' · ')}`; };
+      refreshStore();
+      this.ups.push(refreshStore);
+      out.push(line);
+    }
     const mult = siteMult(s, b);
     const site = Math.abs(mult - 1) > 0.01 ? `Site ${pct(mult)}` : 'Site';
     if (site !== 'Site' || b.notes?.length) out.push(h('div', { class: 'ins-small' }, `${site}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`));
     const flags: string[] = [];
     if (def.upkeep) flags.push(b.open ? `Upkeep ${fmt(def.upkeep)} den a day${b.unpaid ? ' · UNPAID: works at half pace' : ''}` : 'Closed: no upkeep');
-    if ((b.toolUntil ?? 0) > s.day) flags.push(`Tool kit: +20%, ${(b.toolUntil ?? 0) - s.day} days left`);
+    if ((b.toolUntil ?? 0) > s.day) flags.push(`Tool kit: +20%, ${plural((b.toolUntil ?? 0) - s.day, 'day', 'days')} left`);
     if ((b.damagedUntil ?? 0) > s.day) flags.push(`Damaged by fire until ${formatRoman(b.damagedUntil ?? 0)}`);
     if ((b.idleUntil ?? 0) > s.day) flags.push(`Idle until ${formatRoman(b.idleUntil ?? 0)}`);
     if ((b.bonusUntil ?? 0) > s.day) flags.push(`${pct(1 + (b.bonus ?? 0))} until ${formatRoman(b.bonusUntil ?? 0)}`);

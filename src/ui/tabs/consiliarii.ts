@@ -13,7 +13,7 @@ import { view } from '../../game/sim';
 import { formatRoman } from '../../game/calendar';
 import { ADVISOR_DEFS } from '../../game/data/advisors';
 import { portrait } from '../../render/art/index';
-import { agendaEl, btn, caps, section } from './common';
+import { agendaEl, btn, caps, remedyKey, section } from './common';
 import type { TabPanel } from './common';
 
 const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
@@ -24,7 +24,7 @@ const APPOINTED_AT: Record<AdvisorId, string> = {
   aedilis: 'Appointed at Vicus, or when a house has waited five days.',
   augur: 'Appointed with the first dispatch, or on Kal. Sept.',
 };
-const METRIC_UNIT = { days: 'd', houses: 'houses', den: 'den', pct: '%', souls: 'souls' } as const;
+const METRIC_UNIT = { days: ['d', 'd'], houses: ['house', 'houses'], den: ['den', 'den'], pct: ['%', '%'], souls: ['soul', 'souls'] } as const;
 
 let filter: AdvisorId | null = null;
 
@@ -66,7 +66,10 @@ function card(g: Game, a: ActiveAdvisory, up: Updater[]): HTMLElement {
     const st = g.state;
     const m = st.guidance.advisories[a.rule];
     metric.hidden = !m?.metric;
-    if (m?.metric) metric.textContent = `${fmt(m.metric.value)} ${METRIC_UNIT[m.metric.unit]}`;
+    if (m?.metric) {
+      const n = fmt(m.metric.value);
+      metric.textContent = `${n} ${METRIC_UNIT[m.metric.unit][n === '1' ? 0 : 1]}`;
+    }
     if (st.day === day) return;
     day = st.day;
     const cur = activeAdvisories(st).find((x) => x.rule === a.rule);
@@ -115,9 +118,11 @@ export const panel: TabPanel = {
   signature(g: Game): string {
     const s = g.state;
     const rep = councilReport(s);
+    const v = view(s);
     return [
       s.guidance.appointed.join(','), filter ?? '',
-      activeAdvisories(s).map((a) => `${a.rule}:${a.memo.sev}:${+hushed(s, a)}`).join(','),
+      // a card's remedies by identity: a place remedy's tile moves once the Ordo builds on it, and the button must follow
+      activeAdvisories(s).map((a) => `${a.rule}:${a.memo.sev}:${+hushed(s, a)}:${renderAdvisory(s, v, a).remedies.map((x) => remedyKey(s, x)).join(';')}`).join(','),
       s.guidance.muted.join(','), +s.ordo.on.build, s.ordo.pin ?? '', s.ordo.requests.length,
       rep.agenda.map((w) => `${w.type}:${w.state}`).join(','), rep.would.build?.type ?? '', +!!rep.saving,
     ].join('|');

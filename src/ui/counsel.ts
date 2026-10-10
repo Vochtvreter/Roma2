@@ -49,6 +49,20 @@ export function pickCounsel(g: Game): CounselItem {
   return { kind: 'calm' };
 }
 
+/** The card's signature: the portrait strip, the shown item and, for an advisory, its remedies' labels and availability
+ *  — a place remedy with its tile, so once the Ordo builds on the best plot the button aims at the next one. */
+export function counselSig(g: Game, item: CounselItem): string {
+  const s = g.state;
+  const strip = ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',');
+  let key = 'c';
+  if (item.kind === 'tip') key = `t:${item.t.id}`;
+  if (item.kind === 'advisory') {
+    const r = renderAdvisory(s, view(s), item.a);
+    key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
+  }
+  return `${strip}|${key}|${g.prefs.tips ? 1 : 0}`;
+}
+
 /** Pulses a selector's element for 3 s (retries while a freshly opened tab builds). */
 export function pulseTarget(selector: string): void {
   let tries = 0;
@@ -79,14 +93,7 @@ export class Counsel {
     const g = this.g;
     const s = g.state;
     const item = pickCounsel(g);
-    const strip = ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',');
-    let key = 'c';
-    if (item.kind === 'tip') key = `t:${item.t.id}`;
-    if (item.kind === 'advisory') {
-      const r = renderAdvisory(s, view(s), item.a);
-      key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}`).join(',')}`;
-    }
-    const sig = `${strip}|${key}|${g.prefs.tips ? 1 : 0}`;
+    const sig = counselSig(g, item);
     if (sig !== this.sig && performance.now() - this.clickAt > B.ui.CLICK_GUARD_MS) {
       this.sig = sig;
       this.build(item);

@@ -4,7 +4,7 @@
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, PendingChoice } from '../game/types';
 import type { Game, Updater } from './types';
-import { clear, fmt, fmtCost, h, img, realTime, tip } from './dom';
+import { clear, fmt, fmtCost, h, img, plural, realTime, tip } from './dom';
 import * as A from '../game/actions';
 import { ageOf, census } from '../game/census';
 import { personName } from '../game/people';
@@ -13,6 +13,8 @@ import { B } from '../game/balance';
 import { feminine } from '../game/data/names';
 import { resIcon } from '../render/art/index';
 import { btn, caps } from './tabs/common';
+
+const PULSE_MS = 1600;
 
 function chips(c: Cost, sign: '−' | '+', s: GameState): HTMLElement {
   return h('span', { class: 'cost' }, RESOURCES.filter((r) => (c[r] ?? 0) > 0).map((r) => {
@@ -35,7 +37,7 @@ function gate(g: Game): HTMLElement | null {
     const head = people.find((p) => p.id === family.head) ?? people[0];
     const skills = Object.entries(head?.skills ?? {}).filter(([, v]) => (v ?? 0) >= 1);
     return h('div', { class: 'choice-fam' }, h('b', null, `gens ${feminine(family.gens)}`),
-      ` · ${head ? `${personName(head)}, ${ageOf(head, s.day)}` : ''} · ${people.length} souls `,
+      ` · ${head ? `${personName(head)}, ${ageOf(head, s.day)}` : ''} · ${plural(people.length, 'soul', 'souls')} `,
       skills.map(([k, v]) => h('span', { class: 'chip gold' }, `${k} ${Math.floor(v ?? 0)}`)));
   }), h('div', { class: 'choice-beds muted' }, `Free beds in the colony: ${census(s).freeBeds}`));
 }
@@ -54,6 +56,21 @@ export class ChoiceCard {
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', 'A dispatch awaits your answer');
     root.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
+  }
+
+  /** "Read the dispatch": unfolds the pending card at once and pulses it; false when no dispatch is pending. */
+  reveal(): boolean {
+    if (!this.g.state.choice) return false;
+    this.folded = false;
+    this.last = -Infinity;
+    this.lastClick = -Infinity;
+    this.frame(performance.now());
+    const card = this.root.querySelector<HTMLElement>('.choice-card');
+    if (card) {
+      card.classList.add('side-pulse');
+      window.setTimeout(() => card.classList.remove('side-pulse'), PULSE_MS);
+    }
+    return true;
   }
 
   /** Throttled: rebuilds when the pending choice, an option's affordability or the fold changes; else ticks the countdown. */

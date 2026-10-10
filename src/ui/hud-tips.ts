@@ -3,7 +3,7 @@
 import { EDICTS, RESOURCES } from '../game/types';
 import type { MulKey, RateSource, ResId } from '../game/types';
 import type { Game } from './types';
-import { fmt, fmtDays, fmtRate, h, realTime } from './dom';
+import { fmt, fmtDays, fmtRate, h, plural, realTime, sentence } from './dom';
 import { caps, tipCard, tipHead, tipKicker, tipNote, tipRow, tipSep } from './tipkit';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
@@ -100,48 +100,45 @@ export function outlookLine(g: Game, r: 'grain' | 'water'): string {
   const cr = f.crunch;
   if (!cr) return '';
   const name = SEASON_NAMES[cr.season];
-  const when = cr.startsIn > 0 ? `${name} in ${cr.startsIn} days` : `${name} now`;
-  if (cr.emptyDay !== null && cr.lowestDoh < 1) return `${when}: we would run out on ${formatRoman(cr.emptyDay)}.`;
+  const when = cr.startsIn > 0 ? `${name} in ${plural(cr.startsIn, 'day', 'days')}` : `${name} now`;
+  if (cr.emptyDay !== null && cr.lowestDoh < 1) return sentence(`${when}: we would run out on ${formatRoman(cr.emptyDay)}`);
   return `${when}: our lowest would be ${fmtDays(cr.lowestDoh)} on hand.`;
 }
 
-/** Resource tooltip: name, stock / cap (and days for essentials), the per-source ledger, effect tags, outlook, how to get more. */
+/** The "How to get more" block of a resource's tooltip (DESIGN §11.10): producers, markets, idle forage or the sources
+ *  of coin, and the live "You have N … Next:" line; empty when there is nothing to say. */
+export function moreSection(g: Game, r: ResId): Node[] {
+  const s = g.state;
+  const more = howToGetMore(s, r, view(s));
+  return more.length ? [tipSep(), tipKicker('HOW TO GET MORE'), h('ul', { class: 'tip-list' }, more.map((m) => h('li', null, m)))] : [];
+}
+
+/** Material tooltip (the HUD strip: every good but coin, grain and water): name, stock / cap, the per-source ledger,
+ *  effect tags, how to get more. Coin and the two essentials have their own cards (coinTip, vitals.ts). */
 export function resourceTip(g: Game, r: ResId): Node {
   const s = g.state;
   const def = RESOURCE_DEFS[r];
-  const c = census(s);
-  const cap = c.caps[r];
-  const kids: (Node | null)[] = [tipHead(def.name, def.latin)];
-  if (r === 'grain' || r === 'water') {
-    const f = forecast(s)[r];
-    kids.push(tipNote(`${fmt(f.stock)} of ${fmt(f.cap)} · ${fmtDays(f.doh)} on hand · room for ${fmtDays(f.need > 0 ? f.room / f.need : null)}`, 'tip-big'));
-  } else if (r === 'denarii') {
-    kids.push(tipNote(`${fmt(s.res.denarii)} in the aerarium · ${fmt(s.taxAccrued)} accrued for the Kalends`, 'tip-big'));
-  } else {
-    kids.push(tipNote(`${fmt(s.res[r])} of ${fmt(cap)} ${def.unit}`, 'tip-big'));
-  }
-  kids.push(tipNote(def.desc), tipSep(), ...ledger(g, r), fxTags(g, r));
-  if (r === 'grain' || r === 'water') {
-    const line = outlookLine(g, r);
-    if (line) kids.push(tipSep(), tipNote(line, 'tip-outlook'));
-  }
-  const more = howToGetMore(s, r, view(s));
-  if (more.length) kids.push(tipSep(), tipKicker('HOW TO GET MORE'), h('ul', { class: 'tip-list' }, more.map((m) => h('li', null, m))));
-  return tipCard(...kids);
+  return tipCard(
+    tipHead(def.name, def.latin),
+    tipNote(`${fmt(s.res[r])} of ${fmt(census(s).caps[r])} ${def.unit}`, 'tip-big'),
+    tipNote(def.desc), tipSep(), ...ledger(g, r), fxTags(g, r),
+    ...moreSection(g, r),
+  );
 }
 
-/** Coin tooltip: the aerarium, the ledger, the 30-day average and how long it lasts. */
+/** Coin tooltip: the aerarium, the ledger, the 30-day average, how long it lasts, and where coin comes from. */
 export function coinTip(g: Game): Node {
   const s = g.state;
   const f = forecast(s).coin;
   const next = nextKalends(s.day);
   return tipCard(
     tipHead('Coin', 'Aerarium'),
-    tipNote(`${fmt(s.res.denarii)} denarii · ${fmt(s.taxAccrued)} accrued, paid on ${formatRoman(next)} (in ${next - s.day} days)`, 'tip-big'),
+    tipNote(`${fmt(s.res.denarii)} denarii · ${fmt(s.taxAccrued)} accrued, paid on ${formatRoman(next)} (in ${plural(next - s.day, 'day', 'days')})`, 'tip-big'),
     tipSep(), ...ledger(g, 'denarii'),
     tipRow('30-day average', fmtRate(f.net30), f.net30 >= 0 ? 'pos' : 'neg'),
     f.runout !== null ? tipNote(`At this pace the aerarium empties on ${formatRoman(f.runout)} (${realTime(f.runout - s.day, g.speed)}).`, 'bad') : null,
     fxTags(g, 'denarii'),
+    ...moreSection(g, 'denarii'),
   );
 }
 
@@ -211,8 +208,8 @@ export function dateTip(g: Game): Node {
     tipNote(formatModern(d), 'tip-big'),
     tipSep(),
     tipRow(`${SEASON_NAMES[se]}`, `day ${seasonDay(d)} of ${seasonLength(d)}`),
-    tipRow('Aestas, the thirsty season', aestas === 0 ? 'now' : `in ${aestas} days`),
-    tipRow('Hiems, the hungry season', hiems === 0 ? 'now' : `in ${hiems} days`),
+    tipRow('Aestas, the thirsty season', aestas === 0 ? 'now' : `in ${plural(aestas, 'day', 'days')}`),
+    tipRow('Hiems, the hungry season', hiems === 0 ? 'now' : `in ${plural(hiems, 'day', 'days')}`),
     tipRow('Next edict window', `${formatRoman(win)} (${win - d} d)`),
     fest ? tipRow(`Next festival: ${fest.name}`, `${formatRoman(fest.day)}`) : null,
     tipNote(`One day passes each second at 1×. ${caps('Kalendae')}: taxes reach the aerarium.`),

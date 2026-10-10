@@ -2,19 +2,15 @@
 // current Ordo action, next wish, saving line, latest Annales line (a new line shows at once). Click → the Agenda. Owner: WP-H.
 import type { LogEntry, WishView } from '../game/types';
 import type { Game } from './types';
-import { clear, fmtCost, h, img, tip } from './dom';
+import { clear, h, img, tip } from './dom';
 import { councilReport } from '../game/ordo/index';
 import { reasonShort } from '../game/ordo/reasons';
 import { formatRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
+import { WISH_STATE, lacking, savingLine } from './tabs/common';
 
 interface Line { kicker: string; text: string; kind: string }
-
-const WISH_STATE: Record<WishView['state'], string> = {
-  staked: 'Staked', building: 'Raising', saving: 'Saving for', waiting: 'Waiting on', proposed: 'Next',
-};
-const SAVING_FOR: Record<string, string> = { petition: 'the petition', plan: 'your plan', pin: 'your pinned work', request: 'your request', wish: 'the next work' };
 
 function wishLine(w: WishView, day: number): Line {
   const eta = w.eta !== undefined && w.eta > day ? ` (≈ ${w.eta - day} d)` : '';
@@ -31,7 +27,10 @@ function lines(g: Game): Line[] {
   const rep = councilReport(s);
   const out: Line[] = rep.ticker.slice(0, 2).map((r) => ({ kicker: 'ORDO', text: reasonShort(r), kind: 'ordo' }));
   if (rep.agenda[0]) out.push(wishLine(rep.agenda[0], s.day));
-  if (rep.saving) out.push({ kicker: 'ORDO', text: `Saving ${fmtCost(rep.saving.cost)} for ${SAVING_FOR[rep.saving.for] ?? rep.saving.for}`, kind: 'saving' });
+  if (rep.saving) {
+    const ready = rep.saving.for === 'petition' && !lacking(s, rep.saving.cost);
+    out.push({ kicker: 'ORDO', text: ready ? 'Fee ready: petition Rome in Edicta' : savingLine(g, rep.saving), kind: 'saving' });
+  }
   const last = s.log[s.log.length - 1];
   if (last) out.push(actaLine(last));
   return out;

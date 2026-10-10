@@ -3,7 +3,7 @@
 import { EDICTS, FOCUSES, ORDO_AREAS, PATH_DECISIONS, SETTINGS, SWITCHES } from '../../game/types';
 import type { EdictId, GameState, LaborCat, OrdoArea, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
-import { costEl, fmt, fmtCost, h, img, tip } from '../dom';
+import { costEl, fmt, fmtCost, h, img, sentence, tip } from '../dom';
 import * as A from '../../game/actions';
 import { edictOption, edictWindow, isUnlocked, petitionNeeds, settingValue, switchOn } from '../../game/decisions';
 import { nextTeaser, sectionRevealed } from '../../game/reveal';
@@ -17,7 +17,7 @@ import { B } from '../../game/balance';
 import { EDICT_DEFS, FOCUS_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from '../../game/data/decisions';
 import { RANK_DEFS } from '../../game/data/ranks';
 import { BUILDING_DEFS } from '../../game/data/buildings';
-import { btn, caps, confirmRich, fresh, lackLine, lacking, newMark, section, seg, toggle } from './common';
+import { WISH_STATE, btn, caps, confirmRich, fresh, lackLine, lacking, newMark, savingLine, section, seg, toggle } from './common';
 import { CAT_LABEL } from './labour';
 
 /** How each permanent choice reads in "Your story" (DESIGN §9.2). */
@@ -46,7 +46,7 @@ function settingText(id: SettingId, v: number): string {
 function windowLine(s: GameState, id: EdictId): string {
   const w = edictWindow(s, id);
   const inDays = Math.max(0, w.next - s.day);
-  return w.open ? `Window open. A change holds until ${formatRoman(w.next)}.` : `Settled. Next window: ${formatRoman(w.next)} (in ${inDays} ${inDays === 1 ? 'day' : 'days'}).`;
+  return w.open ? sentence(`Window open. A change holds until ${formatRoman(w.next)}`) : `Settled. Next window: ${formatRoman(w.next)} (in ${inDays} ${inDays === 1 ? 'day' : 'days'}).`;
 }
 
 /** Measured impact of an edict option (DESIGN §10.9 tooltips), where it can be measured. */
@@ -148,13 +148,19 @@ function focusSec(g: Game, up: Updater[]): HTMLElement {
     cur, (f) => A.setFocus(g.state, f)));
   sec.append(h('div', { class: 'ed-desc' }, h('b', null, FOCUS_DEFS[cur].name), ': ', FOCUS_DEFS[cur].desc));
   const line = h('div', { class: 'ed-ordo-line' });
+  let shown = '';
   const refresh = (): void => {
     const rep = councilReport(g.state);
     const w = rep.agenda[0];
     const parts: string[] = [];
-    if (w) parts.push(`raising ${BUILDING_DEFS[w.type].name}: ${reasonText(w.reason)}`);
-    if (rep.saving) parts.push(`saving ${fmtCost(rep.saving.cost)} for the ${rep.saving.for}`);
-    line.textContent = parts.length ? `Ordo: ${parts.join(' · ')}` : 'Ordo: nothing in hand today.';
+    // the first wish by its state (staked, raising, saving for, …), as the ticker names it
+    if (w) parts.push(`Ordo · ${WISH_STATE[w.state]}: ${BUILDING_DEFS[w.type].name}. ${reasonText(w.reason)}`);
+    if (rep.saving) parts.push(savingLine(g, rep.saving));
+    if (!parts.length) parts.push('Ordo: nothing in hand today.');
+    const key = parts.join('\n');
+    if (key === shown) return;
+    shown = key;
+    line.replaceChildren(...parts.map((t) => h('div', null, t)));
   };
   refresh();
   up.push(refresh);

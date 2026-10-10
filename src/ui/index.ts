@@ -68,6 +68,7 @@ export class UI {
     this.side = new SidePanel(g, el('side'));
     this.inspector = new Inspector(g, el('inspector'));
     this.choice = new ChoiceCard(g, el('choice'));
+    this.side.onChoiceAnchor = () => this.choice.reveal();   // "Read the dispatch" unfolds the event card itself
     this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
     this.showPlaceBanner(null, null);
   }

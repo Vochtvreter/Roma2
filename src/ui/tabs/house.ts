@@ -3,7 +3,7 @@
 import { HOUSE_TIERS, HUBS, TRADE_RES } from '../../game/types';
 import type { Building, BuildingId, HousePref, HubId, NeedId, TradeRes } from '../../game/types';
 import type { Game, Updater } from '../types';
-import { costEl, fmt, h, img } from '../dom';
+import { costEl, fmt, h, img, plural } from '../dom';
 import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { houseBeds, residents } from '../../game/census';
@@ -98,7 +98,7 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
   out.push(h('div', { class: 'ins-sub' }, `${tier.name}${gens ? ` · ${gens}` : ''}`), beds, who);
   if (hs.renovating) {
     const r = h('div', { class: 'ins-good' });
-    const tick = (): void => { r.textContent = `Renovating into ${TIER_DEFS[hs.renovating?.to ?? hs.tier].latin}: ${Math.max(0, (hs.renovating?.until ?? 0) - g.state.day)} days left.`; };
+    const tick = (): void => { r.textContent = `Renovating into ${TIER_DEFS[hs.renovating?.to ?? hs.tier].latin}: ${plural(Math.max(0, (hs.renovating?.until ?? 0) - g.state.day), 'day', 'days')} left.`; };
     tick();
     up.push(tick);
     out.push(r);
@@ -107,7 +107,7 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
     const lower = HOUSE_TIERS[Math.max(B.housing.MIN_DROP_LEVEL, HOUSE_TIERS.indexOf(hs.tier) - 1)];
     const lapsed = unmetNeeds(s, b, hs.tier).map((n) => NEED_META[n].label.charAt(0).toLowerCase() + NEED_META[n].label.slice(1)).join(', ');
     const d = h('div', { class: 'ins-bad' });
-    const tick = (): void => { d.textContent = `Declining${lapsed ? `: ${lapsed} lapsed` : ''}. Falls back to ${TIER_DEFS[lower].latin} in ${Math.max(0, B.housing.DROP_AFTER - hs.declineDays)} days unless restored.`; };
+    const tick = (): void => { d.textContent = `Declining${lapsed ? `: ${lapsed} lapsed` : ''}. Falls back to ${TIER_DEFS[lower].latin} in ${plural(Math.max(0, B.housing.DROP_AFTER - hs.declineDays), 'day', 'days')} unless restored.`; };
     tick();
     up.push(tick);
     out.push(d);
