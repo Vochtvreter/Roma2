@@ -14,7 +14,7 @@ import { memo, structEpoch, dayEpoch, dayStruct } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
-import { houseDesir, previewCovered } from '../coverage';
+import { desirability, houseDesir, previewCovered } from '../coverage';
 import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { fxAdd } from '../fx';
 import { idx, tx, ty } from '../map';
@@ -52,22 +52,43 @@ export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Reco
  *  advisors' list, which is memoised on everything those read (advisors/util houseWants), not recomputed daily. */
 export function houseWants(s: GameState, v: SimView): HouseWants {
   return memo(s, 'ordo.houses', dayEpoch(s) * 2 + (s.fed >= B.needs.FED_MIN ? 1 : 0), () => {
+    // the same as the last reckoning while the advisors' list, the homes, the desirability and every listed house's
+    // renovation stand (the list itself is kept on everything else these read: tiers, preferences, coverage, fed, rank)
+    const list = eachHouseWant(s, v);
+    const byHome = peopleIndex(s).byHome;
+    const desir = desirability(s);
+    const last = houseWantsLast.get(s);
+    if (last && last.list === list && last.byHome === byHome && last.desir === desir && sameRenovating(s, list, last.renovating)) return last.value;
+    const value = reckonHouseWants(s, list, byHome);
+    houseWantsLast.set(s, { list, byHome, desir, renovating: list.map((w) => !!getBuilding(s, w.id)?.house?.renovating), value });
+    return value;
+  });
+}
+
+const houseWantsLast = new WeakMap<GameState, { list: unknown; byHome: unknown; desir: unknown; renovating: boolean[]; value: HouseWants }>();
+
+function sameRenovating(s: GameState, list: readonly { id: number }[], was: readonly boolean[]): boolean {
+  for (let k = 0; k < list.length; k++) if (!!getBuilding(s, list[k].id)?.house?.renovating !== was[k]) return false;
+  return true;
+}
+
+function reckonHouseWants(s: GameState, list: ReturnType<typeof eachHouseWant>, byHome: ReturnType<typeof peopleIndex>['byHome']): HouseWants {
+  {
     const out: HouseWants = { want: {}, first: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
-    for (const w of eachHouseWant(s, v)) {
+    for (const w of list) {
       const b = getBuilding(s, w.id);
       if (!b?.house || !w.next) continue;
       if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first[w.id] = w.unmet[0]; }
       else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[w.next].renovation);
       if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, w.id) < B.housing.DESIR_DOMUS) out.t3Low++;
     }
-    const byHome = peopleIndex(s).byHome;   // residents per home (census index) rather than a lookup per person
-    for (const [home, list] of byHome) {
+    for (const [home, residents] of byHome) {   // residents per home (census index) rather than a lookup per person
       const tier = getBuilding(s, home)?.house?.tier;
-      if (tier === 'insula' || tier === 'domus') out.t4Res += list.length;
-      if (tier === 'domus') out.domusRes += list.length;
+      if (tier === 'insula' || tier === 'domus') out.t4Res += residents.length;
+      if (tier === 'domus') out.domusRes += residents.length;
     }
     return out;
-  });
+  }
 }
 
 /** The Ordo's slot for a type: A's best slot (validSlots for owner 'ordo' already keeps off reserved blocks and blocks
@@ -82,12 +103,16 @@ export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): n
  *  wish has a slot and what it costs (tile-independent except a castellum's route); the best slot — a full scoring
  *  pass of every valid slot — is searched only when the wish is placed or shown (lazyTile). */
 function anyOpenSlot(s: GameState, type: BuildingId): number | null {
-  return memo(s, `ordo.any.${type}`, dayStruct(s), () => {
-    let pick: number | null = null;
-    for (const tile of validSlots(s, type, 'ordo').keys()) if (pick === null || tile < pick) pick = tile;
-    return pick;
-  });
+  const slots = validSlots(s, type, 'ordo');
+  let pick = lowestSlot.get(slots);   // the lowest key of a slot map, kept per map (validSlots keeps its map per layout)
+  if (pick === undefined) {
+    pick = null;
+    for (const tile of slots.keys()) if (pick === null || tile < pick) pick = tile;
+    lowestSlot.set(slots, pick);
+  }
+  return pick;
 }
+const lowestSlot = new WeakMap<Map<number, number>, number | null>();
 
 /** Defines `tile` on an object as a getter resolved (and kept) on first read. */
 function lazyTile<T extends object>(o: T, resolve: () => number): T & { tile: number } {
