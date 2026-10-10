@@ -12,7 +12,7 @@ import { touchPeople } from '../src/game/memo';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 
 /** False in Phase 1: tests that need another package's real behaviour use `describe.runIf(INTEGRATED)`. */
-export const INTEGRATED = false;
+export const INTEGRATED = true;
 
 /** A new game on `seed` (wall clock 0). */
 export function fresh(seed = 42): GameState {
