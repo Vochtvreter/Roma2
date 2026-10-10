@@ -169,8 +169,11 @@ export const panel: TabPanel = {
     body.append(works);
     const tools = TOOLS.filter((t) => toolRevealed(s, t.id));
     if (tools.length) {
-      body.append(h('div', { class: 'bld-tools' }, tools.map((t) =>
-        btn(g, [img(`i_tool_${t.id}`, 1), t.label], () => { g.startPlacing({ kind: t.id }); }, { cls: 'ghost', tip: t.tip }))));
+      body.append(h('div', { class: 'bld-tools' }, tools.map((t) => {
+        const b = btn(g, [img(`i_tool_${t.id}`, 1), t.label], () => { g.startPlacing({ kind: t.id }); }, { cls: 'ghost', tip: t.tip });
+        b.dataset.anchor = t.id;   // "Open Aedificia: roads" lands on the road tool
+        return b;
+      })));
     }
     const visible = BUILD_ORDER.filter((t) => buildingVisible(s, t));
     const cats = CATS.filter((c) => visible.some((t) => BUILDING_DEFS[t].cat === c));

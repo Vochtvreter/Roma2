@@ -53,6 +53,8 @@ export class SidePanel {
   private known: Set<TabId> | null = null;     // revealed tabs the player has already been shown
   private readonly fresh = new Set<TabId>();   // revealed since, not yet visited: NEW sticker
   private stateRef: GameState | null = null;
+  /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
+  onChoiceAnchor: (() => boolean) | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
@@ -92,6 +94,7 @@ export class SidePanel {
 
   /** Opens a tab (and the panel); an anchor focuses panel state and scrolls to `[data-anchor]`. */
   open(tab: TabId, anchor?: string): void {
+    if (anchor === 'choice' && this.onChoiceAnchor?.()) return;
     this.cur = tab;
     this.fresh.delete(tab);
     this.toggle(true);

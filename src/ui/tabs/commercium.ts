@@ -175,7 +175,7 @@ function contractRow(g: Game, c: Contract): HTMLElement {
   const status = c.status === 'paused' ? `paused: ${c.pause ? PAUSE[c.pause] : 'waiting'}` : c.status === 'travelling' ? 'on the road' : 'waiting for a mule team';
   const cancel = h('button', { class: 'btn small ghost', type: 'button' }, 'Cancel');
   confirm2(cancel, 'Cancel?', () => { g.act(A.cancelContract(g.state, c.id), { okSfx: 'click' }); });
-  return h('div', { class: `tr-row${c.status === 'paused' ? ' paused' : ''}` }, img(resIcon(c.res), 2),
+  return h('div', { class: `tr-row${c.status === 'paused' ? ' paused' : ''}`, 'data-anchor': `contract-${c.id}` }, img(resIcon(c.res), 2),
     h('div', { class: 'tr-row-main' },
       h('div', null, c.owner === 'ordo' ? img('i_seal', 1, 'tr-seal') : null,
         `${c.mode === 'export' ? 'Sell' : 'Buy'} ${c.qty} ${resName(c.res)} · ${HUB_DEFS[c.hub].name}`, c.repeat ? h('span', { class: 'chip' }, '↻ standing') : null),

@@ -14,6 +14,8 @@ import { feminine } from '../game/data/names';
 import { resIcon } from '../render/art/index';
 import { btn, caps } from './tabs/common';
 
+const PULSE_MS = 1600;
+
 function chips(c: Cost, sign: '−' | '+', s: GameState): HTMLElement {
   return h('span', { class: 'cost' }, RESOURCES.filter((r) => (c[r] ?? 0) > 0).map((r) => {
     const short = sign === '−' && s.res[r] < (c[r] ?? 0);
@@ -54,6 +56,21 @@ export class ChoiceCard {
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', 'A dispatch awaits your answer');
     root.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
+  }
+
+  /** "Read the dispatch": unfolds the pending card at once and pulses it; false when no dispatch is pending. */
+  reveal(): boolean {
+    if (!this.g.state.choice) return false;
+    this.folded = false;
+    this.last = -Infinity;
+    this.lastClick = -Infinity;
+    this.frame(performance.now());
+    const card = this.root.querySelector<HTMLElement>('.choice-card');
+    if (card) {
+      card.classList.add('side-pulse');
+      window.setTimeout(() => card.classList.remove('side-pulse'), PULSE_MS);
+    }
+    return true;
   }
 
   /** Throttled: rebuilds when the pending choice, an option's affordability or the fold changes; else ticks the countdown. */
