@@ -189,7 +189,7 @@ export function play(seed: number, kind: BotKind, opts: PlayOpts): Run {
     minCoin: Infinity, zeroStreak: 0, stall: { construction: 0, renovation: 0 }, snapshots: [], nan: [], tabDay: {}, tipDay: {},
     remedyIssues: [], flaps: 0,
   };
-  const t = { prog: 0, evolved: 0, renov: new Set<number>(), cStall: 0, rStall: 0, zero: 0, dead: 0, cleared: new Set<string>(), raises: new Map<string, number[]>(), active: new Set<string>() };
+  const t: Tracker = { prog: 0, evolved: 0, renov: new Set(), cStall: 0, rStall: 0, zero: 0, dead: 0, raises: new Map(), active: new Set() };
   for (let i = 0; i < opts.days && !s.victory && !opts.stop?.(s); i++) {
     bot.step(s);
     tick(s, newCtx());
@@ -200,7 +200,7 @@ export function play(seed: number, kind: BotKind, opts: PlayOpts): Run {
   return r;
 }
 
-type Tracker = { prog: number; evolved: number; renov: Set<number>; cStall: number; rStall: number; zero: number; dead: number; cleared: Set<string>; raises: Map<string, number[]>; active: Set<string> };
+type Tracker = { prog: number; evolved: number; renov: Set<number>; cStall: number; rStall: number; zero: number; dead: number; raises: Map<string, number[]>; active: Set<string> };
 
 function observe(s: GameState, r: Run, t: Tracker, opts: PlayOpts): void {
   const e = elapsed(s), pop = s.people.length;
@@ -240,15 +240,13 @@ function observe(s: GameState, r: Run, t: Tracker, opts: PlayOpts): void {
   for (const tab of TABS) if (r.tabDay[tab] === undefined && tabRevealed(s, tab)) r.tabDay[tab] = e;
   const tip = nextTip(s);
   if (tip && r.tipDay[tip.id] === undefined) r.tipDay[tip.id] = e;
-  for (const rule of RULES) {
+  for (const rule of RULES) {   // a flap = a rule raised again after it was cleared; count them per 60 days
     const on = s.guidance.advisories[rule]?.active === true;
-    if (on && !t.active.has(rule) && t.cleared.has(rule)) {
-      const days = (t.raises.get(rule) ?? []).filter((d) => d > e - 60);
-      days.push(e);
-      t.raises.set(rule, days);
-      r.flaps = Math.max(r.flaps, days.length);
+    if (on && !t.active.has(rule)) {
+      const days = t.raises.get(rule);
+      if (!days) t.raises.set(rule, []);
+      else { days.push(e); r.flaps = Math.max(r.flaps, days.filter((d) => d > e - 60).length); }
     }
-    if (!on && t.active.has(rule)) t.cleared.add(rule);
     if (on) t.active.add(rule); else t.active.delete(rule);
   }
   if (e <= (opts.guidanceDays ?? 0)) {
@@ -275,11 +273,10 @@ export function worstYear(r: Run): { share: number; day: number } {
   return worst;
 }
 
-/** Median of the finite values (Infinity when there are none). */
+/** Median (a value that was never reached counts as Infinity; Infinity when there are none). */
 export function median(xs: readonly number[]): number {
-  const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
-  if (v.length === 0) return Infinity;
-  return v.length % 2 ? v[v.length >> 1] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+  const v = xs.filter((x) => !Number.isNaN(x)).sort((a, b) => a - b);
+  return v.length === 0 ? Infinity : v.length % 2 ? v[v.length >> 1] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
 }
 
 /** One line per run: rank days against their bands, victory, population, deaths and the paths taken. */

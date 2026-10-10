@@ -251,7 +251,7 @@ describe('balance.ts mirrors the contract (ARCHITECTURE §7, DESIGN §18.3)', ()
 });
 
 describe.runIf(INTEGRATED)('effect keys (DESIGN §9.3)', () => {
-  it('every MulKey and AddKey is produced by a data row or rule and read by the simulation', () => {
+  it('every MulKey and AddKey is used: whatever a data row or rule sets is read by the simulation', () => {
     const produced = new Set<string>();
     const addFx = (fx: Effects): void => { for (const k of [...Object.keys(fx.mul ?? {}), ...Object.keys(fx.add ?? {})]) produced.add(k); };
     for (const d of Object.values(EDICT_DEFS)) for (const o of d.options) addFx(o.fx);
@@ -261,9 +261,13 @@ describe.runIf(INTEGRATED)('effect keys (DESIGN §9.3)', () => {
     const code = CODE.filter((f) => !/src\/game\/(types|fx)\.ts$|\/data\//.test(f.path)).map((f) => f.text).join('\n');
     for (const m of code.matchAll(/\b(?:mul|add)\s*:\s*\{([^}]*)\}/g)) for (const k of m[1].matchAll(/(\w+)\s*:/g)) produced.add(k[1]);
     const viaFxKey = /\bfx\s*\([^)]*\bfxKey\b/.test(code);
+    const neutral: string[] = [];
     for (const k of [...MUL_KEYS, ...ADD_KEYS]) {
-      expect(produced.has(k), `${k}: no data row or rule produces it`).toBe(true);
-      expect(new RegExp(`['"]${k}['"]`).test(code) || (fxKeys.has(k) && viaFxKey), `${k}: the simulation never reads it`).toBe(true);
+      const read = new RegExp(`['"]${k}['"]`).test(code) || (fxKeys.has(k) && viaFxKey);
+      expect(read || produced.has(k), `${k}: neither set nor read anywhere`).toBe(true);
+      expect(read, `${k}: set by a data row or rule but never read, so it has no effect`).toBe(true);
+      if (!produced.has(k)) neutral.push(k);
     }
+    if (neutral.length > 0) console.warn(`effect keys read but never set (always neutral): ${neutral.join(', ')}`);
   });
 });

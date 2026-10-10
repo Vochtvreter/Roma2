@@ -53,6 +53,14 @@ describe('bots (always: stubs or the real sim)', () => {
       expect(r.pops.length, kind).toBe(365);
     }
   });
+
+  it('the recorder: an unreached rank counts as Infinity; worstYear finds the worst 365-day window', () => {
+    expect(median([3, 1, 2])).toBe(2);
+    expect(median([1, Infinity, Infinity])).toBe(Infinity);
+    const r = { pops: Array<number>(730).fill(100), starved: Array<number>(730).fill(0) } as Run;
+    r.starved[500] = 6;
+    expect(worstYear(r)).toEqual({ share: 0.06, day: 501 });
+  });
 });
 
 describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
@@ -183,9 +191,9 @@ describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
       const at = `seed ${r.seed}`;
       expect(r.remedyIssues, at).toEqual([]);
       expect(r.flaps, `${at}: re-raises of one rule within 60 days`).toBeLessThanOrEqual(B.advisors.FLAP_MAX);
-      expect(r.tipDay.welcome, at).toBeLessThanOrEqual(1);
-      expect(r.tipDay.vitals, at).toBeLessThan(10);
-      for (const tab of TABS) expect(r.tabDay[tab], `${at}: tab ${tab}`).toBeLessThanOrEqual(OPENING);
+      expect(r.tipDay.welcome ?? Infinity, `${at}: welcome`).toBeLessThanOrEqual(1);
+      expect(r.tipDay.vitals ?? Infinity, `${at}: vitals`).toBeLessThan(10);
+      for (const tab of TABS) expect(r.tabDay[tab] ?? Infinity, `${at}: tab ${tab}`).toBeLessThanOrEqual(OPENING);
     }
   });
 });
