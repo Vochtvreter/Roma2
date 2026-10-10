@@ -13,7 +13,8 @@ import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
 import { manualPlan, planLabour } from '../src/game/ordo/labour';
-import { maxSites, ordoSites, ordoSlot, wishList } from '../src/game/ordo/build';
+import { maxSites, ordoSites, ordoSlot, walkWishes, wishList } from '../src/game/ordo/build';
+import { addCost } from '../src/game/state';
 import { canSpend, reserved, savingFor } from '../src/game/ordo/saving';
 import { emergencyDay } from '../src/game/ordo/emergency';
 import { ordoTrade, ordoTradeWould, tradeMoves } from '../src/game/ordo/trade';
@@ -134,10 +135,13 @@ describe('building', () => {
     const plan = placeBuilding(s, 'area', idx(free[2].x, free[2].y), { owner: 'player' });   // a player plan: its block stays closed
     s.res.timber = timber;
     expect(plan.ok).toBe(true);
-    const closed = [...s.ordo.reserved, free[2].id];
+    const planId = plan.ok ? plan.id : -1;
+    // DESIGN §10.3: reserved blocks, and the plan's block only while the player's work there is unfinished
+    const closedOn = (st: GameState): number[] => [...st.ordo.reserved, ...(st.buildings.find((b) => b.id === planId)?.status === 'done' ? [] : [free[2].id])];
     const before = s.buildings.map((b) => ({ id: b.id, type: b.type, x: b.x, y: b.y, pref: b.house?.pref }));
     run(s, 400, (st) => {
       const v = view(st);
+      const closed = closedOn(st);
       expect(ordoSites(st)).toBeLessThanOrEqual(maxSites(v) + 1);       // + one survival site at most
       for (const b of st.buildings) {
         if (b.owner !== 'ordo') continue;
@@ -179,7 +183,8 @@ describe('building', () => {
     expect(pinBuild(s, 'horreum').ok).toBe(true);
     const v = view(s);
     expect(savingFor(s, v)?.for).toBe('pin');
-    expect(reserved(s, v)).toMatchObject({ denarii: 80, timber: 40, stone: 20 });
+    // DESIGN §10.5: the saving target is the pin plus the Ordo's own pending wish (none in the phase-1 stub world)
+    expect(reserved(s, v)).toEqual(addCost({ denarii: 80, timber: 40, stone: 20 }, walkWishes(s, v).pending?.cost ?? {}));
     expect(canSpend(s, { timber: s.res.timber - 30 }, v)).toBe(false);
     expect(canSpend(s, { timber: 30 }, v)).toBe(true);
     let day = -1;

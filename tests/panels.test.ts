@@ -8,6 +8,8 @@ import { PANELS } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
 import { DEFAULT_PREFS } from '../src/game/save';
 import { activeAdvisories } from '../src/game/advisors/engine';
+import { councilReport } from '../src/game/ordo/index';
+import { B } from '../src/game/balance';
 import { fresh, run } from './util';
 
 function fakeGame(s: GameState): Game {
@@ -22,6 +24,10 @@ function discrete(s: GameState): string {
     s.ordo.emergency.rations, s.trade.contracts.map((c) => [c.id, c.status, c.pause]), s.trade.caravans.map((c) => c.id), s.trade.merchant,
     activeAdvisories(s).map((a) => [a.rule, a.memo.sev, a.memo.snoozeUntil]), s.guidance.appointed, s.guidance.muted, s.guidance.tips,
     Object.keys(s.guidance.milestoneDays), s.choice?.created, s.gate?.until,
+    // the council's agenda (made in runOrdo before startStaked, so it trails a stake's status change by one tick)
+    councilReport(s).agenda.map((w) => `${w.type}:${w.state}`),
+    // NEW stickers expire NEW_DAYS after the milestone or rank that revealed them
+    [...Object.values(s.guidance.milestoneDays), ...Object.values(s.decisions.pathDays)].map((d) => s.day - (d ?? 0) < B.ui.NEW_DAYS),
   ]);
 }
 

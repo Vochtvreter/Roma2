@@ -332,6 +332,7 @@ describe('offline catch-up', () => {
     const id = nextId(s);
     s.buildings.push({ id, type: 'capitolium', x: 47, y: 29, owner: 'player', status: 'building', placed: s.day, progress: 0.99, work: 10, paid: true, order: id, open: true, prio: 1, matUsed: {} });
     s.people.find((p) => p.work === null && s.day - p.born > 20 * 365)!.work = BUILDER;
+    for (const r of ['stone', 'concrete', 'tiles', 'iron', 'denarii'] as const) s.res[r] += 5000;   // the last 1% draws its materials pro rata
     invalidate(s);
     const r = offlineRun(s, 3_600_000)!;
     expect(r.step(r.days)).toBe(true);
