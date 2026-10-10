@@ -32,6 +32,7 @@ Rules of the contract:
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "perf": "PERF=1 vitest run --reporter=verbose",
     "balance": "BAL_FULL=1 vitest run tests/balance.test.ts --reporter=verbose",
     "trace": "vitest run tests/trace.test.ts --reporter=verbose"
   },
@@ -68,11 +69,20 @@ Rules of the contract:
 ```ts
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
+import { configDefaults } from 'vitest/config';
+// Wall-clock budgets (tests/perf.test.ts) are unreliable on shared CI runners: `npm test` leaves them out and
+// `npm run perf` (PERF=1) runs only them, budgets unchanged.
+const PERF = !!process.env.PERF;
+const PERF_TEST = 'tests/perf.test.ts';
 // Relative base so the build works from any GitHub Pages sub-path.
 export default defineConfig({
   base: './',
   build: { target: 'es2022', assetsInlineLimit: 0 },
-  test: { testTimeout: 60_000 },
+  test: {
+    testTimeout: 60_000,
+    include: PERF ? [PERF_TEST] : configDefaults.include,
+    exclude: PERF ? configDefaults.exclude : [...configDefaults.exclude, PERF_TEST],
+  },
 });
 ```
 
@@ -98,15 +108,12 @@ jobs:
 name: Deploy to GitHub Pages
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 permissions: { contents: read, pages: write, id-token: write }
-concurrency: { group: pages, cancel-in-progress: true }
+concurrency: { group: pages, cancel-in-progress: false }
 jobs:
   build:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.ref_name == 'main' ||
-      github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,12 +131,12 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
 ```
-README must state the one-time setup: **Settings → Pages → Source = GitHub Actions** (with "Deploy from a branch" the site serves raw `index.html` and `/src/main.ts` 404s).
+Only pushes to `main` (and manual runs) start the deploy, so a branch push never enters the `pages` concurrency group and cannot cancel a main deploy in flight; a newer deploy waits for the running one. README must state the one-time setup: **Settings → Pages → Source = GitHub Actions** (with "Deploy from a branch" the site serves raw `index.html` and `/src/main.ts` 404s).
 
 ### 2.5 Other files
 - `.gitignore`: `node_modules dist *.log .DS_Store coverage test-results`.
 - `public/favicon.svg`: a 16×16 pixel aquila in SVG `<rect>`s.
-- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`. Every access is wrapped in `try/catch`.
+- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4) and `castravaleria.exported.v1` (when a copy was last exported). Every access is wrapped in `try/catch`.
 - `?dev` query: exposes `window.cv = app`, `window.skip(days)`, key 5 = 20×, "DEV" in the title footer. Nothing else differs.
 
 ---
@@ -861,7 +868,7 @@ export const B = {
              OFFLINE_RATE: 0.5, OFFLINE_MAX_DAYS: 1825, OFFLINE_MIN_MS: 60_000, SLICE_MS: 30, SLICE_DAYS: 10, UI_THROTTLE_MS: 200 },
   map:     { W: 112, H: 84, TILE: 16, PITCH: 5, INTERIOR_W: 31, INTERIOR_H: 21, FOSSA: 3, ROAD_MAX: 40, AQUEDUCT_MAX: 70,
              CASTELLUM_REACH: 18, FARM_SITES_MIN: 25, LOAM_MASK: 4 },
-  people:  { NEED: [0.6, 0.85, 1, 0.75], YOUTH: 12, ADULT: 16, ELDER: 55, RETIRE: 65, BIRTH_RATE: 0.2, FERTILE: [16, 42],
+  people:  { NEED: [0.6, 0.85, 1, 0.75], YOUTH: 12, ADULT: 16, ELDER: 55, RETIRE: 65, BIRTH_RATE: 0.09, FERTILE: [16, 42],
              MARRY_P: 1 / 400, MARRY_MAX: 2, MARRY_M: [18, 50], MARRY_F: [16, 45], REMARRY_DAYS: 180, POP_CAP: 1500,
              HOMELESS_LEAVE: 20, EMIGRATE_MORALE: 25, EMIGRATE_P: 0.02,
              HAZARD: { infant: 0.04, child: 0.006, adult: 0.004, a: 0.01, mid: 55, scale: 7.5, care: 0.35 },
@@ -879,13 +886,13 @@ export const B = {
              RATION_TERMS: { largae: 6, plenae: 0, parcae: -6, arctae: -14 }, SHORT: 20, TIER: 2, RELIGION: 8, BATHS: 5,
              CULTURE: 6, HOMELESS: 20, DECLINING: 10, DEATHS: 2, DEATHS_CAP: 12, LEGACY: 2, LABELS: [75, 50, 30] },
   construction: { STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25,
-             CAP_CREW: 64, CAP_WORK: 160_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],
-             CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 40_000 } },
+             CAP_CREW: 64, CAP_WORK: 320_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],
+             CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 160_000 } },
   ordo:    { BUILD_EVERY: 2, TRADE_EVERY: 10, TRADE_OFFSET: 5, SITES_PER: 40, SITES_MAX: 4, FOOD_CAP: 0.75, FOOD_CAP_HUNGRY: 0.9,
              BUILDERS_MIN: 2, BUILDERS_MAX: 0.3, WATER_BASE: 1.05, WATER_LOW: 1.2, WATER_THIRST: 1.5, WATER_PREFILL: 1.3,
              FOOD_LOW: 1.2, FOOD_HUNGRY: 2, FOOD_HIEMS: 1.4, FOOD_FULL: 0.85, WINTER_FILL: 1.35, REQUESTS_MAX: 3,
              REQUEST_DAYS: 180, TOOLS_PER: 0.5, LUXURY: 1.2, EVOLVE_MIN: 2, EVOLVE_MIN_BLOCK: 3,
-             EXPORT_CAP: 0.8, EXPORT_CAP_MERCATURA: 0.6, IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80 },
+             EXPORT_CAP: 0.95, EXPORT_CAP_MERCATURA: 0.6, IMPORT_RUNWAY: 90, MERCHANT_RUNWAY: 60, WISH_WAIT: 40, CARGO: 80 },
   emergency: { PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
              IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
              RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365 },
@@ -897,6 +904,7 @@ export const B = {
   advisors:{ CLEAR: 1.25, DOWNGRADE_DAYS: 3, MIN_LIFE: 3, HUSH_DAYS: 30, FLAP_WINDOW: 60, FLAP_MAX: 2, BELL_S: 30 },
 } as const;
 ```
+The values above are the tuned ones (the balance pass changed `BIRTH_RATE` 0.2 → 0.09, `CAP_WORK` 160,000 → 320,000, `CAP_MAT.denarii` 40,000 → 160,000 and `EXPORT_CAP` 0.8 → 0.95); `balance.ts` holds many more keys inside these groups and is the reference.
 Rank-specific numbers (ceiling, territory, rings, immigration rate, subsidy, fees, dignitas thresholds, forum stage) live in `data/ranks.ts`; per-building numbers in `data/buildings.ts`; per-tier numbers in `data/housing.ts`; prices, hubs and seasonal targets in `data/hubs.ts`.
 
 ---
@@ -1408,7 +1416,9 @@ Unreadable save on Continue: the title shows the reason and an **Export raw save
 - Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves, and attaches the view. On failure: *"That text is not a Castra Valeria save."*
 
 ### 11.4 Autosave (main.ts)
-Every `AUTOSAVE_S` (20 s) of real time in game mode (not during catch-up, not on the title); on `visibilitychange → hidden` (also records `hiddenAt`); on `pagehide`; immediately after a path choice, victory, import and new game; on **Save** and **Save & quit** in the menu.
+Every `AUTOSAVE_S` (20 s) of real time in game mode (not during catch-up, not on the title); on `visibilitychange → hidden` (also records `hiddenAt`); on `pagehide`; immediately after a path choice, victory, import and new game; on **Save** and **Save & quit** in the menu. Automatic saves warn once when storage refuses; **Save** and **Save & quit** report every failure, and a Save & quit that cannot save offers the export text instead of dropping the colony.
+
+**One tab owns the save.** Each page draws a random id and writes it to `castravaleria.owner.v1` (`claimSave`) when it enters a game. Every save checks `ownsSave` first; a tab that lost the claim (a `storage` event, a return to the tab, a page restored from the back-forward cache, or its next autosave) switches to the title at once and never saves or catches up its stale copy; its Continue plays the stored colony there instead. After a throw in the loop the clock stops and nothing more is saved over the last good save.
 
 ### 11.5 Offline catch-up
 ```ts
@@ -1431,13 +1441,15 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
         const won = s.victory;
         tick(s, newCtx(true)); done++;
         track(lowest, s);                            // DoH = stock / census(s).need, per essential
-        collect(s, decided, highlights);             // today's log entries: 'decided' → decided (≤ 12), 'highlight' → highlights (≤ 40, newest kept)
+        collect(s, decided, highlights);             // today's log entries: 'decided' → decided (≤ 12 lines; repeats, digits aside, fold into one
+                                                     // line with a count; when full the oldest 'ordo'/'trade' line goes first), 'highlight' → highlights (≤ 40, newest kept)
         if (!won && s.victory) stopped = true;       // stop early on victory
       }
       return done >= days || stopped;
     },
     report: () => ({ awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided, highlights, lowest,
-                     awaiting: { petition: readyPetitionRank(s), advisories: activeAdvisories(s, { forCard: true }).slice(0, 3).map(a => a.rule) } }),
+                     awaiting: { petition: readyPetitionRank(s),   // a ready petition is not listed again as augur.petition
+                                 advisories: activeAdvisories(s, { forCard: true }).filter(a => petition === null || a.rule !== 'augur.petition').slice(0, 3).map(a => a.rule) } }),
   };
 }
 export function simulateOffline(s: GameState, awayMs: number): AwayReport | null;   // runs to completion synchronously
@@ -1445,7 +1457,8 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
 `main.ts` flow:
 1. **Continue**: `awayMs = max(0, now − s.lastSave)`; **tab return**: `awayMs = now − hiddenAt`. Absences < 60 s simulate nothing (the rAF accumulator clamp drops the gap).
 2. `run = offlineRun(s, awayMs)`; if non-null → mode `catchup`: the veil *"Anni transeunt… — the years pass"* with a progress bar and **[Skip]**; each frame runs `run.step(B.time.SLICE_DAYS)` repeatedly until `SLICE_MS` (30 ms) of the frame is used; the map, HUD and date redraw from the live state; input is blocked by the veil; fx are discarded; **Skip** calls `run.step(run.days)`.
-3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes at `prefs.speed`.
+3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes at `prefs.speed`. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
+   A colony still on `START_DAY` (the founding letter not yet answered) is never caught up: Continue shows the founding letter again.
 4. `previewRates(s)` refreshes the HUD ledger after a load (the last tick's rates are not saved).
 
 ---
