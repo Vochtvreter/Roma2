@@ -54,7 +54,7 @@ function face(p: Pix, mood: Mood, brow: string, mouthY = 14): void {
   else if (mood === 1) p.set(9, 8, brow).set(10, 7, brow).set(13, 7, brow).set(14, 8, brow);
   else p.hline(9, 10, 7, brow).hline(13, 14, 7, brow);
   if (mood === 0) p.hline(11, 12, mouthY, 'R').set(10, mouthY - 1, 'R').set(13, mouthY - 1, 'R');
-  else if (mood === 1) p.hline(10, 13, mouthY, 'R').set(10, mouthY + 1, 'H');
+  else if (mood === 1) p.hline(11, 12, mouthY, 'R').set(10, mouthY + 1, 'R').set(13, mouthY + 1, 'R').set(11, 8, 'H').set(12, 8, 'H');
   else p.rect(11, mouthY - 1, 2, 2, 'q').set(10, mouthY - 1, 'R').set(13, mouthY - 1, 'R').hline(11, 12, mouthY + 1, 'R');
   if (mood === 2) p.set(8, 12, 'f').set(15, 12, 'f').vline(18, 5, 6, 'c').set(18, 7, 'w');   // flush, sweat drop
 }
@@ -66,7 +66,7 @@ function beard(p: Pix, key: string, shade: string, mouthY = 14): void {
     for (let x = a; x <= b; x++) p.set(x, y, x >= b - 1 ? shade : key);
   }
   p.vline(7, 9, 11, key).vline(16, 9, 11, shade);
-  p.hline(10, 13, mouthY, 'h');
+  p.hline(10, 13, mouthY - 1, shade);                                     // moustache
 }
 
 /** Each advisor's bust with the DESIGN §11.3 portrait cues. */
@@ -148,7 +148,7 @@ function mentor(): Pix {
   p.hline(9, 14, 3, 'W');
   face(p, 0, 'W');
   p.hline(10, 13, 14, 'R').set(10, 13, 'h').set(13, 13, 'h');          // a firm, level mouth
-  p.line(15, 8, 14, 12, 'R');                                            // the scar
+  p.set(15, 11, 'T').set(14, 12, 'T').set(15, 12, 'H');                 // an old scar on the cheek
   p.rect(7, 18, 10, 6, 'X').vline(16, 18, 23, 'j');                      // tunic under the cloak
   for (const [x, y] of [[9, 19], [13, 19], [11, 21]]) p.rect(x, y, 2, 2, 'N').set(x, y, 'y');   // phalerae
   p.set(17, 17, 'N').set(18, 18, 'y');                                   // cloak brooch
@@ -166,7 +166,7 @@ const SEPIA: Record<string, string> = {
 function silhouette(): Pix {
   const p = bust({ cloth: 'K', clothShade: 'K', clothLit: 'K', skin: 'K', skinShade: 'K' });
   hair(p, 'K', 'K');
-  p.rect(10, 8, 3, 1, 'm').set(13, 9, 'm').set(12, 10, 'm').set(12, 12, 'm');   // a faint question mark
+  p.hline(10, 12, 7, 'B').set(13, 8, 'B').set(12, 9, 'B').set(11, 10, 'B').set(11, 12, 'B');   // a faint question mark
   return p;
 }
 
