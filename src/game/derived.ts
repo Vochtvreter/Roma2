@@ -1,6 +1,7 @@
 // src/game/derived.ts — structural derived data, memoised on the structure epoch (ARCHITECTURE §4 Derived, §8.2). Owner: WP-A.
-// SCAFFOLD: buildingAt, road, counts, all, houses, sites, plotOwner, territory and stepsToForum are real; the
-// pomerium and reserved-tile layers are first approximations (STUB(WP-A) markers below).
+// Pomerium = unmasked blocks of the active rings (the reserved forum and Area Capitolina blocks included), the active
+// streets and the forum. Reserved tiles = the Area Capitolina and every aqueduct route (while it is built and after:
+// the arches stand there for good).
 import { B } from './balance';
 import type { Block, Building, BuildingId, Derived, GameState, PlaceClass } from './types';
 import { getMap, H, W, idx, inBounds, tx, ty } from './map';
@@ -125,12 +126,9 @@ function computeDerived(s: GameState): Derived {
       counts[b.type] = (counts[b.type] ?? 0) + 1;
       if (b.type === 'area' && b.house) houses.push(b.id);
       if (b.type === 'castellum') castellumActive = true;
-    } else {
-      unfinished.push(b);
-      if (b.route) for (const i of b.route) reservedTile[i] = 1;
-    }
+    } else unfinished.push(b);
+    if (b.route) for (const i of b.route) reservedTile[i] = 1;
   }
-  // STUB(WP-A): the Area Capitolina stays reserved (DESIGN §3.4); refine once the Capitolium rules land.
   const cap = sv.capitolium;
   for (let y = cap.y; y < cap.y + cap.h; y++) for (let x = cap.x; x < cap.x + cap.w; x++) if (inBounds(x, y)) reservedTile[idx(x, y)] = 1;
 
@@ -138,7 +136,6 @@ function computeDerived(s: GameState): Derived {
   for (const i of s.paved) road[i] = 2;
 
   // pomerium: blocks of active rings that are not masked (reserved forum/capitolium blocks included), active streets
-  // STUB(WP-A): confirm whether reserved blocks count as pomerium.
   const rings = activeRings(s.rank);
   for (const blk of sv.blocks) {
     if (blk.masked || !rings.includes(blk.ring)) continue;

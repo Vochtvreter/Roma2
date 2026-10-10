@@ -1,15 +1,22 @@
 // src/game/coverage.ts — road-BFS service coverage and desirability (ARCHITECTURE §8.2, DESIGN §7.4–7.5). Owner: WP-A.
-// SCAFFOLD: every coverage layer is empty and desirability is 0 everywhere; effectiveRadius follows the activity rule.
+// Coverage: per layer, every active service floods the built road network (N4, dirt and paved, the via included) from
+// the road tiles beside its footprint; a road tile is covered within the service's effective radius in whole steps, and
+// a house is covered when a road tile beside it is. The flood reruns only when the structure or a radius changes.
+// Desirability: Σ v · (1 − d/(r + 1)) over every source within its range (Chebyshev d from the source's footprint).
 import { B } from './balance';
-import { LAYERS } from './types';
-import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState } from './types';
-import { H, W } from './map';
-import { memo, structEpoch } from './memo';
-import { derived, footprintOf } from './derived';
+import { F, LAYERS, T } from './types';
+import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
+import { getMap } from './map';
+import { censusEpoch, memo, structEpoch } from './memo';
+import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
 import { census } from './census';
 import { fxAdd } from './fx';
 import { getBuilding } from './state';
 import { BUILDING_DEFS } from './data/buildings';
+import { TIER_DEFS } from './data/housing';
+import { RANK_DEFS } from './data/ranks';
+import { GH, GN, GW, sideTiles } from './world/grid';
+import { autoRoad, blockStreetTiles } from './world/roads';
 
 /** Path radius bonus that applies to each layer (DESIGN §9.3). */
 const RADIUS_BONUS: Partial<Record<CoverageLayerId, AddKey>> = {
@@ -34,16 +41,83 @@ export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerI
   return Math.max(0, r);
 }
 
-/** Coverage layers over built roads and the per-house layer mask (memo on structEpoch). */
+interface Source { id: number; layer: number; r: number }
+
+/** The active services and their radii, recomputed once per day or when the structure or the staffing changes. */
+function activeSources(s: GameState): { key: string; list: Source[] } {
+  return memo(s, 'covSources', `${structEpoch(s)}:${censusEpoch(s)}:${s.day}`, () => {
+    const list: Source[] = [];
+    for (const b of s.buildings) {
+      const svc = BUILDING_DEFS[b.type].service;
+      if (!svc || b.status !== 'done') continue;
+      for (const sv of svc) {
+        const r = effectiveRadius(s, b, sv.layer);
+        if (r > 0) list.push({ id: b.id, layer: LAYERS.indexOf(sv.layer), r });
+      }
+    }
+    return { key: list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(','), list };
+  });
+}
+
+/** Road tiles beside a w×h footprint at (x, y), on a given road layer. */
+function roadSides(road: Uint8Array, x: number, y: number, w: number, h: number): number[] {
+  return sideTiles(x, y, w, h).filter((i) => road[i] > 0);
+}
+
+/** Floods the road network from each source's tiles up to its radius (max-remaining BFS); marks covered tiles in `out`. */
+function flood(road: Uint8Array, sources: { tiles: number[]; r: number }[], out: Uint8Array): void {
+  const rem = new Int16Array(GN).fill(-1);
+  let maxR = 0;
+  for (const src of sources) maxR = Math.max(maxR, src.r);
+  const buckets: number[][] = Array.from({ length: maxR + 1 }, () => []);
+  for (const src of sources) {
+    for (const t of src.tiles) if (rem[t] < src.r) { rem[t] = src.r; buckets[src.r].push(t); }
+  }
+  for (let r = maxR; r >= 1; r--) {
+    for (const t of buckets[r]) {
+      if (rem[t] !== r) continue;
+      const x = t % GW;
+      const visit = (j: number): void => { if (road[j] > 0 && rem[j] < r - 1) { rem[j] = r - 1; buckets[r - 1].push(j); } };
+      if (t >= GW) visit(t - GW);
+      if (x < GW - 1) visit(t + 1);
+      if (t < GN - GW) visit(t + GW);
+      if (x > 0) visit(t - 1);
+    }
+  }
+  for (let i = 0; i < GN; i++) if (rem[i] >= 0) out[i] = 1;
+}
+
+/** Coverage layers over built roads and the per-house layer mask (memo on structEpoch + the effective radii). */
 export function coverage(s: GameState): Coverage {
-  const epoch = structEpoch(s);
-  return memo(s, 'coverage', epoch, () => {
-    // STUB(WP-A): BFS per layer from the road tiles touching each active service (DESIGN §7.4).
+  const src = activeSources(s);
+  const key = `${structEpoch(s)}|${src.key}`;
+  return memo(s, 'coverage', key, () => {
+    const d = derived(s);
     const layers = {} as Record<CoverageLayerId, Uint8Array>;
-    for (const l of LAYERS) layers[l] = new Uint8Array(W * H);
+    LAYERS.forEach((l, k) => {
+      const out = new Uint8Array(GN);
+      const srcs: { tiles: number[]; r: number }[] = [];
+      for (const x of src.list) {
+        if (x.layer !== k) continue;
+        const b = getBuilding(s, x.id);
+        if (!b) continue;
+        const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+        srcs.push({ tiles: roadSides(d.road, b.x, b.y, w, h), r: x.r });
+      }
+      if (srcs.length > 0) flood(d.road, srcs, out);
+      layers[l] = out;
+    });
     const houseMask = new Map<number, number>();
-    for (const id of derived(s).houses) houseMask.set(id, 0);
-    return { layers, houseMask, key: String(epoch) };
+    for (const id of d.houses) {
+      const b = getBuilding(s, id);
+      if (!b) continue;
+      const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      const sides = sideTiles(b.x, b.y, w, h);
+      let mask = 0;
+      LAYERS.forEach((l, k) => { if (sides.some((i) => layers[l][i] === 1)) mask |= 1 << k; });
+      houseMask.set(id, mask);
+    }
+    return { layers, houseMask, key };
   });
 }
 
@@ -53,17 +127,114 @@ export function houseHas(s: GameState, houseId: number, layer: CoverageLayerId):
   return ((mask >> LAYERS.indexOf(layer)) & 1) === 1;
 }
 
-/** Coverage of a would-be building at (x, y), as if built and fully staffed: covered road tiles and houses per layer. */
+/**
+ * Coverage of a would-be building at (x, y) as if built and fully staffed (its streets or auto-road included):
+ * per service layer, the covered road tiles and every house a covered road tile touches (sorted ids).
+ */
 export function previewCoverage(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: Uint8Array; houses: number[] }[] {
-  // STUB(WP-A): empty previews, one per service layer of the type.
-  void s; void x; void y;
-  return (BUILDING_DEFS[type].service ?? []).map((svc) => ({ layer: svc.layer, tiles: new Uint8Array(W * H), houses: [] }));
+  const svc = BUILDING_DEFS[type].service ?? [];
+  if (svc.length === 0) return [];
+  const d = derived(s);
+  const cls = classAt(s, type, x, y);
+  const [w, h] = sizeOf(type, cls);
+  const road = d.road.slice();
+  const blk = cls === 'rural' ? null : blockOfTile(s, y * GW + x);
+  const lines = cls === 'rural' ? autoRoad(s, x, y, w, h) ?? [] : blk ? blockStreetTiles(s, blk.id) : [];
+  for (const i of lines) road[i] = 1;
+  const sides = roadSides(road, x, y, w, h);
+  const houseSides = housesBySide(s);
+  return svc.map((sv) => {
+    const bonus = RADIUS_BONUS[sv.layer];
+    const r = sv.radius + (bonus ? fxAdd(s, bonus) : 0);
+    const tiles = new Uint8Array(GN);
+    if (sides.length > 0) flood(road, [{ tiles: sides, r }], tiles);
+    const hs = new Set<number>();
+    for (let i = 0; i < GN; i++) if (tiles[i]) for (const id of houseSides.get(i) ?? []) hs.add(id);
+    return { layer: sv.layer, tiles, houses: [...hs].sort((a, c) => a - c) };
+  });
 }
 
-/** Desirability per tile, clamped to DESIR_CLAMP (memo on structEpoch). */
+/** Road-side tile → the houses it serves (memo on structEpoch). */
+export function housesBySide(s: GameState): Map<number, number[]> {
+  return memo(s, 'housesBySide', structEpoch(s), () => {
+    const out = new Map<number, number[]>();
+    for (const id of derived(s).houses) {
+      const b = getBuilding(s, id);
+      if (!b) continue;
+      const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      for (const i of sideTiles(b.x, b.y, w, h)) {
+        const l = out.get(i);
+        if (l) l.push(id); else out.set(i, [id]);
+      }
+    }
+    return out;
+  });
+}
+
+/** Adds a source's influence Σ v · (1 − d/(r + 1)) to every tile within r of its w×h footprint. */
+function addInfluence(field: Float32Array, x: number, y: number, w: number, h: number, v: number, r: number): void {
+  if (v === 0) return;
+  for (let ty = Math.max(0, y - r); ty <= Math.min(GH - 1, y + h - 1 + r); ty++) {
+    const dy = Math.max(y - ty, 0, ty - (y + h - 1));
+    for (let tx = Math.max(0, x - r); tx <= Math.min(GW - 1, x + w - 1 + r); tx++) {
+      const d = Math.max(dy, Math.max(x - tx, 0, tx - (x + w - 1)));
+      field[ty * GW + tx] += v * (1 - d / (r + 1));
+    }
+  }
+}
+
+const natureCache = new WeakMap<WorldMap, Float32Array>();
+
+/** The map's own desirability: the river (+1 r2 per river tile) and the sacred grove (+3 r3). */
+function natureDesir(map: WorldMap): Float32Array {
+  let f = natureCache.get(map);
+  if (!f) {
+    f = new Float32Array(GN);
+    const [rv, rr] = B.map.RIVER_DESIR;
+    const [lv, lr] = B.map.LUCUS_DESIR;
+    for (let i = 0; i < GN; i++) {
+      if (map.terrain[i] === T.river) addInfluence(f, i % GW, Math.floor(i / GW), 1, 1, rv, rr);
+      if (map.feature[i] === F.lucus) addInfluence(f, i % GW, Math.floor(i / GW), 1, 1, lv, lr);
+    }
+    natureCache.set(map, f);
+  }
+  return f;
+}
+
+/** A building's own desirability [value, range]: houses by tier, the principia by forum stage, others by type. */
+function desirOf(s: GameState, b: Building): readonly [number, number] {
+  if (b.type === 'area') return b.house ? TIER_DEFS[b.house.tier].desir : [0, 0];
+  if (b.type === 'principia') return RANK_DEFS[s.rank].forumStage >= B.forum.LATE_STAGE ? B.forum.DESIR_LATE : B.forum.DESIR;
+  return BUILDING_DEFS[b.type].desir;
+}
+
+/** Signature of the houses whose tier gives them desirability (insulae and domus), refreshed once per day. */
+function tierSignature(s: GameState): string {
+  return memo(s, 'desirTiers', `${structEpoch(s)}:${censusEpoch(s)}:${s.day}`, () => {
+    const parts: string[] = [];
+    for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier[0]}`);
+    return parts.join(',');
+  });
+}
+
+/** Desirability per tile, clamped to DESIR_CLAMP (memo on structEpoch and the tiers of the insulae and domus). */
 export function desirability(s: GameState): Float32Array {
-  // STUB(WP-A): Σ v · (1 − d/(r + 1)) over every source (DESIGN §7.5).
-  return memo(s, 'desirability', structEpoch(s), () => new Float32Array(W * H));
+  return memo(s, 'desirability', `${structEpoch(s)}|${tierSignature(s)}`, () => {
+    const map = getMap(s.seed);
+    const field = natureDesir(map).slice();
+    for (const b of s.buildings) {
+      if (b.status !== 'done') continue;
+      const [v, r] = desirOf(s, b);
+      if (v === 0) continue;
+      const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      addInfluence(field, b.x, b.y, w, h, v, r);
+    }
+    const [pv, pr] = B.map.PAVED_DESIR;
+    for (const i of s.paved) addInfluence(field, i % GW, Math.floor(i / GW), 1, 1, pv, pr);
+    const [lo, hi] = B.housing.DESIR_CLAMP;
+    for (let i = 0; i < GN; i++) field[i] = Math.min(hi, Math.max(lo, field[i]));
+    return field;
+  });
 }
 
 /** A house's desirability: the average over its footprint tiles. */
@@ -78,9 +249,14 @@ export function houseDesir(s: GameState, houseId: number): number {
   return sum / tiles.length;
 }
 
-/** Desirability change a would-be building at (x, y) would make, per affected tile. */
+/** Desirability a would-be building at (x, y) would add, per affected tile (unclamped influence of the finished work). */
 export function previewDesir(s: GameState, type: BuildingId, x: number, y: number): { tile: number; v: number }[] {
-  // STUB(WP-A): footprint influence of the type's desir [value, range].
-  void s; void type; void x; void y;
-  return [];
+  const [v, r] = type === 'area' ? TIER_DEFS.tentoria.desir : BUILDING_DEFS[type].desir;
+  if (v === 0) return [];
+  const [w, h] = sizeOf(type, classAt(s, type, x, y));
+  const field = new Float32Array(GN);
+  addInfluence(field, x, y, w, h, v, r);
+  const out: { tile: number; v: number }[] = [];
+  for (let i = 0; i < GN; i++) if (field[i] !== 0) out.push({ tile: i, v: field[i] });
+  return out;
 }
