@@ -43,9 +43,10 @@ export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerI
 
 interface Source { id: number; layer: number; r: number }
 
-/** The active services and their radii, recomputed once per day or when the structure or the staffing changes. */
+/** The active services and their radii, and the coverage key they make (re-read once per day or on a structure/staffing change). */
 function activeSources(s: GameState): { key: string; list: Source[] } {
-  return memo(s, 'covSources', `${structEpoch(s)}:${censusEpoch(s)}:${s.day}`, () => {
+  const epoch = structEpoch(s);
+  return memo(s, 'covSources', `${epoch}:${censusEpoch(s)}:${s.day}`, () => {
     const list: Source[] = [];
     for (const b of s.buildings) {
       const svc = BUILDING_DEFS[b.type].service;
@@ -55,7 +56,7 @@ function activeSources(s: GameState): { key: string; list: Source[] } {
         if (r > 0) list.push({ id: b.id, layer: LAYERS.indexOf(sv.layer), r });
       }
     }
-    return { key: list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(','), list };
+    return { key: `${epoch}|${list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(',')}`, list };
   });
 }
 
@@ -90,7 +91,7 @@ function flood(road: Uint8Array, sources: { tiles: number[]; r: number }[], out:
 /** Coverage layers over built roads and the per-house layer mask (memo on structEpoch + the effective radii). */
 export function coverage(s: GameState): Coverage {
   const src = activeSources(s);
-  const key = `${structEpoch(s)}|${src.key}`;
+  const key = src.key;
   return memo(s, 'coverage', key, () => {
     const d = derived(s);
     const layers = {} as Record<CoverageLayerId, Uint8Array>;
@@ -242,18 +243,19 @@ function desirOf(s: GameState, b: Building): readonly [number, number] {
   return BUILDING_DEFS[b.type].desir;
 }
 
-/** Signature of the houses whose tier gives them desirability (insulae and domus), refreshed once per day. */
-function tierSignature(s: GameState): string {
-  return memo(s, 'desirTiers', `${structEpoch(s)}:${censusEpoch(s)}:${s.day}`, () => {
+/** Desirability key: the structure plus the houses whose tier gives them desirability (insulae, domus), read once a day. */
+function desirKey(s: GameState): string {
+  const epoch = structEpoch(s);
+  return memo(s, 'desirTiers', `${epoch}:${censusEpoch(s)}:${s.day}`, () => {
     const parts: string[] = [];
     for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier[0]}`);
-    return parts.join(',');
+    return `${epoch}|${parts.join(',')}`;
   });
 }
 
 /** Desirability per tile, clamped to DESIR_CLAMP (memo on structEpoch and the tiers of the insulae and domus). */
 export function desirability(s: GameState): Float32Array {
-  return memo(s, 'desirability', `${structEpoch(s)}|${tierSignature(s)}`, () => {
+  return memo(s, 'desirability', desirKey(s), () => {
     const map = getMap(s.seed);
     const field = natureDesir(map).slice();
     for (const b of s.buildings) {

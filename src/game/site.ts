@@ -4,7 +4,7 @@
 // `felling` holds timber; `clay`, `district` and `via` hold nothing.
 import { B } from './balance';
 import { LAYERS, T } from './types';
-import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote } from './types';
+import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote, WorldMap } from './types';
 import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
 import { censusEpoch, memo, structEpoch } from './memo';
@@ -14,7 +14,7 @@ import { routeAqueduct, validSlots } from './place';
 import { getBuilding } from './state';
 import { BUILDING_DEFS } from './data/buildings';
 import { GH, GW, PrefixSum, rectGap, rectTiles, sideTiles } from './world/grid';
-import { agerBase, countRingT, countT, isForestT, isHillsRockT, isHillsScrubT, quarryFactor } from './world/rules';
+import { countRingT, countT, fertilityOf, isForestT, isHillsRockT, isHillsScrubT, quarryFactor } from './world/rules';
 import { aroundSum, woodDependent, woodSums } from './world/siterules';
 
 const S = B.site;
@@ -86,6 +86,27 @@ function housesNear(s: GameState, r: Rect, gap: number): number {
   return nearIds(s, r, gap, (b) => b.type === 'area' && b.house !== undefined && b.status === 'done').length;
 }
 
+const fieldSums = new WeakMap<WorldMap, { fert: PrefixSum; riverLoam: PrefixSum }>();
+
+/** `agerBase` on a finished map in O(1): prefix sums of fertility and river/loam tiles, cached per map. */
+function agerBaseOn(map: WorldMap, x: number, y: number): { mult: number; fert: number; riverBonus: number } {
+  let ps = fieldSums.get(map);
+  if (!ps) {
+    const f = new Float64Array(GW * GH), r = new Uint8Array(GW * GH);
+    for (let i = 0; i < GW * GH; i++) {
+      f[i] = fertilityOf(map.terrain[i]);
+      r[i] = map.terrain[i] === T.river || map.terrain[i] === T.loam ? 1 : 0;
+    }
+    ps = { fert: new PrefixSum(f), riverLoam: new PrefixSum(r) };
+    fieldSums.set(map, ps);
+  }
+  const [w, h] = BUILDING_DEFS.ager.size;
+  const fert = ps.fert.sum(x, y, w, h) / (w * h);
+  const ring = ps.riverLoam.sum(x - 1, y - 1, w + 2, h + 2) - ps.riverLoam.sum(x, y, w, h);
+  const riverBonus = Math.min(S.AGER_RIVER[1], S.AGER_RIVER[0] * ring);
+  return { mult: fert * (1 + riverBonus), fert, riverBonus };
+}
+
 /** Site multiplier and notes of a type at (x, y) (DESIGN §5.1 adjacency formulas). */
 export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number): { mult: number; notes: SiteNote[] } {
   const map = getMap(s.seed);
@@ -96,7 +117,7 @@ export function siteMultAt(s: GameState, type: BuildingId, x: number, y: number)
   let mult = 1;
   switch (type) {
     case 'ager': {
-      const base = agerBase(t, x, y);
+      const base = agerBaseOn(map, x, y);
       const fields = Math.min(S.AGER_FIELDS[1], S.AGER_FIELDS[0] * adjacentFields(s, x, y, w, h));
       mult = base.mult * (1 + fields);
       if (base.riverBonus > 0) notes.push({ code: 'river', value: Math.round(base.riverBonus * 100) });

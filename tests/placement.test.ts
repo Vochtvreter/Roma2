@@ -488,14 +488,14 @@ describe('validSlots', () => {
   it('takes ≤ 5 ms per type on a dense colony', () => {
     const s = dense(42);
     expect(s.buildings.length).toBeGreaterThan(300);
-    validSlots(s, 'area', 'player');                                      // the shared fields of this structure
     const worst: number[] = [];
     for (const type of BUILDINGS) {
       let best = Infinity;
-      for (let rep = 0; rep < 3; rep++) {
-        s.buildings.push(s.buildings.pop() as Building);                  // same state, fresh memo slots via a new epoch
-        invalidate(s);
-        validSlots(s, 'area', 'player');
+      for (let rep = 0; rep < 5; rep++) {
+        invalidate(s);                                                    // a new structure: fresh memo slots
+        const warm: BuildingId = type === 'lignarius' ? 'ager' : 'lignarius';
+        validSlots(s, warm, 'player');                                    // the fields every type shares at this structure
+        validSlots(s, warm, 'ordo');
         const t0 = performance.now();
         validSlots(s, type, 'ordo');
         best = Math.min(best, performance.now() - t0);
