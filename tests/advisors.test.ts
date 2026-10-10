@@ -40,6 +40,7 @@ interface Fix { levels: [Severity, Setup, number?][]; clear: Setup }
 const A = B.advisors;
 const ZERO = { water: 0, food: 0, materials: 0, industry: 0, services: 0, builders: 0 };
 const ALL_LAYERS = ['water', 'fountain', 'shrine', 'temple', 'market', 'macellum', 'baths', 'culture'];
+const DRY = ALL_LAYERS.filter((l) => l !== 'water' && l !== 'fountain');
 const NEUTRAL: Patch = { grain: { net3: 1, crunch: null }, water: { net3: 1, crunch: null }, coin: { net30: 1 } };
 
 /** A view over the real derived/census/coverage with forecast and census fields patched. */
@@ -125,8 +126,10 @@ const FIX: Record<RuleId, Fix> = {
     clear: (s) => ({ water: { crunch: crunch(1, 50, 20)(s) } }),
   },
   'aquarum.access': {
-    levels: [[1, (s) => setTier(s, 'tentoria')], [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'casa', declining: true }); }]],
-    clear: (s) => setTier(s, 'domus'),
+    // no well reaches these homes (on the real map the start well covers the start tents)
+    levels: [[1, (s) => { setTier(s, 'tentoria'); ctl.covered = DRY; invalidate(s); }],
+      [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'casa', declining: true }); ctl.covered = DRY; invalidate(s); }]],
+    clear: (s) => { setTier(s, 'domus'); ctl.covered = null; invalidate(s); },
   },
   'aquarum.aqueduct': { levels: [[1, (s) => { s.rank = 3; }], [2, (s) => { s.rank = 3; ctl.pet = { ...pet(false, 'Aqueduct flowing'), rank: 4 }; }]], clear: (s) => { s.rank = 0; } },
   'fabrum.labour': {

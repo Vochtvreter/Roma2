@@ -12,11 +12,12 @@ import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
 import { forecast } from '../src/game/forecast';
 import { newCtx, tick, view } from '../src/game/sim';
+import { bestSlot } from '../src/game/site';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
-import { INTEGRATED, ctx, fresh, noNaN, place, run } from './util';
+import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run } from './util';
 
 const pins = vi.hoisted(() => new Map<number, number>());
 vi.mock('../src/game/site', async (importOriginal) => {
@@ -90,7 +91,8 @@ describe('opening arithmetic (DESIGN §18.2)', () => {
 
   it('a cistern catches 9.6 water in Ver and 2.4 in Aestas', () => {
     const s = fresh();
-    expect(place(s, 'cisterna', 37, 29, { ignoreCost: true }).ok).toBe(true);
+    const at = freeSlots(s, 'area')[0];
+    expect(place(s, 'cisterna', at.x, at.y, { ignoreCost: true }).ok).toBe(true);
     const cis = first(s, 'cisterna');
     cis.status = 'done';
     near(buildingRate(s, cis, VER, 'full').water ?? 0, 9.6, 0.001);
@@ -101,7 +103,8 @@ describe('opening arithmetic (DESIGN §18.2)', () => {
     const finish = (kits: number): number => {
       const s = fresh();
       s.res.tools = kits;
-      expect(place(s, 'cisterna', 37, 29, { owner: 'ordo' }).ok).toBe(true);
+      const at = freeSlots(s, 'area', 1, 'ordo')[0];
+      expect(place(s, 'cisterna', at.x, at.y, { owner: 'ordo' }).ok).toBe(true);
       const cis = first(s, 'cisterna');
       expect(cis.status).toBe('staked');
       const well = first(s, 'puteus'), ager = first(s, 'ager');
@@ -343,24 +346,37 @@ describe('people (DESIGN §6)', () => {
 describe('woods (DESIGN §8.7)', () => {
   it('a lumber camp fells its mature catchment nearest first, and the clearing regrows', () => {
     const s = fresh();
-    expect(place(s, 'lignarius', 16, 14, { ignoreCost: true }).ok).toBe(true);
+    const at = bestSlot(s, 'lignarius', { owner: 'player' })!;   // A's lumber site on seed 42's real map
+    expect(place(s, 'lignarius', at.x, at.y, { ignoreCost: true }).ok).toBe(true);
     const camp = first(s, 'lignarius');
     camp.status = 'done';
     invalidate(s);
     assignJobs(s, plan({ [camp.id]: 3 }));
+    const map = getMap(s.seed);
+    const before0 = { ...s.wood };                                // placement already felled the footprint
     const timber = s.res.timber;
     const c = ctx();
     produce(s, c, new Rng(1));
     const cut = c.rates.prod.timber.lignarius ?? 0;
     expect(cut).toBeGreaterThan(10);
     expect(s.res.timber).toBeCloseTo(timber + cut, 9);
-    const map = getMap(s.seed);
-    const felled = Object.keys(s.wood).map(Number);
+    const felled = Object.keys(s.wood).map(Number).filter((i) => s.wood[i] !== before0[i]).sort((x, y) => x - y);
     expect(felled.length).toBeGreaterThan(0);
     let drawn = 0;
-    for (const i of felled) drawn += map.woodMax[i] - s.wood[i];
+    for (const i of felled) drawn += (before0[i] ?? map.woodMax[i]) - s.wood[i];
     expect(drawn).toBeCloseTo(cut, 6);
-    for (const i of felled) expect(Math.max(Math.abs((i % map.W) - 16.5), Math.abs(Math.floor(i / map.W) - 14.5))).toBeLessThanOrEqual(2);
+    // nearest first: no untouched mature tile of the catchment is nearer than the farthest one felled
+    const dist = (i: number): number => Math.max(at.x - (i % map.W), 0, (i % map.W) - (at.x + 1), at.y - Math.floor(i / map.W), 0, Math.floor(i / map.W) - (at.y + 1));
+    const far = Math.max(...felled.map(dist));
+    expect(far).toBeLessThanOrEqual(B.economy.WOOD.CATCHMENT);
+    const d = view(s).d;
+    for (let y = at.y - B.economy.WOOD.CATCHMENT; y <= at.y + 1 + B.economy.WOOD.CATCHMENT; y++) {
+      for (let x = at.x - B.economy.WOOD.CATCHMENT; x <= at.x + 1 + B.economy.WOOD.CATCHMENT; x++) {
+        const i = y * map.W + x;
+        if (x < 0 || y < 0 || x >= map.W || y >= map.H || felled.includes(i) || map.woodMax[i] <= 0 || d.buildingAt[i] !== 0 || d.road[i] > 0) continue;
+        if ((s.wood[i] ?? map.woodMax[i]) >= map.woodMax[i] * B.economy.WOOD.MATURE) expect(dist(i)).toBeGreaterThanOrEqual(far);
+      }
+    }
     const i = felled[0];
     const before = s.wood[i];
     storage(s, ctx());
@@ -423,7 +439,7 @@ describe('forecast (DESIGN §11.11)', () => {
     expect(f.water.crunch?.lowestDoh ?? 0).toBeGreaterThan(3);
   });
 
-  it('matches a brute-force 365-tick projection within 10% (fixed staffing, toy map)', () => {
+  it('matches a brute-force 365-tick projection within 10% (fixed staffing, seed 42)', () => {
     const s = fresh();
     // freeze the colony: manual labour, no building or trade, every bed taken (no arrivals, no births);
     // a horreum and a cistern keep both stocks off their floors and caps so the comparison means something
@@ -431,8 +447,12 @@ describe('forecast (DESIGN §11.11)', () => {
     s.ordo.manual.water = 2;
     s.ordo.manual.food = 5;
     fillBeds(s);
-    expect(place(s, 'cisterna', 37, 29, { ignoreCost: true }).ok).toBe(true);
-    expect(place(s, 'horreum', 42, 29, { ignoreCost: true }).ok).toBe(true);
+    // houses evolve on the real map (more beds), so arrivals and births are switched off rather than crowded out
+    s.modifiers.push({ id: 'test.freeze', label: 'frozen', until: 1e9, fx: { mul: { immigration: 0, births: 0 } }, benign: true, source: 'stage' });
+    const cAt = freeSlots(s, 'area')[0];
+    expect(place(s, 'cisterna', cAt.x, cAt.y, { ignoreCost: true }).ok).toBe(true);
+    const hAt = freeSlots(s, 'horreum')[0];
+    expect(place(s, 'horreum', hAt.x, hAt.y, { ignoreCost: true }).ok).toBe(true);
     for (const b of s.buildings) if (b.status !== 'done') { b.status = 'done'; b.progress = 1; }
     invalidate(s);
     s.res.grain = 1500;
@@ -440,16 +460,24 @@ describe('forecast (DESIGN §11.11)', () => {
     run(s, 1);
     const f = forecast(s);
     const ends = f.grain.months.map((m) => dayOf(m.month === 12 ? m.year + 1 : m.year, m.month === 12 ? 1 : m.month + 1, 1) - 1);
-    const actual: { grain: number; water: number }[] = [];
-    run(s, ends[11] - s.day, (st) => {
-      if (ends.includes(st.day)) actual.push({ grain: st.res.grain, water: st.res.water });
+    const actual: { grain: number; water: number; dg: number; dw: number }[] = [];
+    const morale = s.morale;   // the forecast projects today's productivity; evolving homes would lift morale on the real map
+    // and today's need: a death or a child growing up changes what is eaten and drunk, which the forecast cannot know,
+    // so that drift (forecast need − what was consumed, while nobody went short) widens the tolerance
+    let dg = 0, dw = 0;
+    run(s, ends[11] - s.day, (st, cx) => {
+      st.morale = morale;
+      const ate = cx.rates.cons.grain.eating ?? 0, drank = cx.rates.cons.water.drinking ?? 0;
+      if (st.res.grain > 0) dg += f.grain.need - ate;
+      if (st.res.water > 0) dw += f.water.need - drank;
+      if (ends.includes(st.day)) actual.push({ grain: st.res.grain, water: st.res.water, dg: Math.abs(dg), dw: Math.abs(dw) });
     });
     expect(actual.length).toBe(12);
     for (let i = 0; i < 12; i++) {
       const g = f.grain.months[i].endStock, w = f.water.months[i].endStock;
       expect(g).toBeGreaterThan(0.05 * f.grain.cap);
-      expect(Math.abs(g - actual[i].grain)).toBeLessThanOrEqual(0.1 * actual[i].grain);
-      expect(Math.abs(w - actual[i].water)).toBeLessThanOrEqual(0.1 * Math.max(actual[i].water, 0.1 * f.water.cap));
+      expect(Math.abs(g - actual[i].grain)).toBeLessThanOrEqual(0.1 * actual[i].grain + actual[i].dg);
+      expect(Math.abs(w - actual[i].water)).toBeLessThanOrEqual(0.1 * Math.max(actual[i].water, 0.1 * f.water.cap) + actual[i].dw);
     }
   });
 });

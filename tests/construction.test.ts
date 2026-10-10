@@ -14,10 +14,10 @@ import { demolish } from '../src/game/place';
 import { touchPeople } from '../src/game/memo';
 import { fx } from '../src/game/fx';
 import { B } from '../src/game/balance';
-import { ctx, fresh, place } from './util';
+import { ctx, freeSlots, fresh, place } from './util';
 
 const C = B.construction;
-const PLOTS: [number, number][] = [[37, 29], [39, 29], [37, 31], [39, 31], [42, 29], [44, 29]];   // free plots of interior blocks (0,0) and (1,0)
+const PLOTS: [number, number][] = freeSlots(fresh(), 'area', 6).map((p) => [p.x, p.y]);   // six free plots of seed 42's survey
 
 function site(s: GameState, k: number, owner: 'player' | 'ordo', type: Building['type'] = 'lararium'): Building {
   const r = place(s, type, PLOTS[k][0], PLOTS[k][1], { owner });

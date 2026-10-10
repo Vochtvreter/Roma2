@@ -38,8 +38,10 @@ afterEach(() => vi.clearAllMocks());
 function built(s: GameState, type: BuildingId): Building {
   const tile = ordoSlot(s, type, 'focusPlan');
   if (tile === null) throw new Error(`no slot for ${type}`);
+  const res = { ...s.res };
   const r = placeBuilding(s, type, tile, { owner: 'player', ignoreCost: true, noStake: true });
   if (!r.ok || r.id === undefined) throw new Error(`cannot place ${type}`);
+  s.res = res;   // the felled footprint's timber would fill the stores (WP-A felling), and a full store idles its producers
   const b = s.buildings.find((x) => x.id === r.id) as Building;
   Object.assign(b, { status: 'done', progress: 1 });
   invalidate(s);
@@ -149,7 +151,8 @@ describe('building', () => {
         expect(b.type).not.toBe('hortus');
         for (const i of footprintOf(b, st)) {
           const blk = blockOfTile(st, i);
-          if (blk) expect(closed.includes(blk.id) || !isActiveBlock(sv, blk, st.rank)).toBe(false);
+          // DESIGN §10.3: never on closed or reserved blocks, nor on an unmasked block of a ring not yet surveyed (masked land is rural ground)
+          if (blk) expect(closed.includes(blk.id) || blk.reserved !== null || (!blk.masked && !isActiveBlock(sv, blk, st.rank))).toBe(false);
         }
       }
     });

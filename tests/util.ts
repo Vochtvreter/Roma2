@@ -1,10 +1,10 @@
 // tests/util.ts — shared headless test helpers (ARCHITECTURE §15).
 import { BUILDER } from '../src/game/types';
-import type { ActionResult, BuildingId, EventId, GameState, PlaceOpts, TickContext } from '../src/game/types';
+import type { ActionResult, BuildingId, EventId, GameState, Owner, PlaceOpts, TickContext } from '../src/game/types';
 import { newGame } from '../src/game/state';
 import { newCtx, tick, view } from '../src/game/sim';
-import { idx } from '../src/game/map';
-import { placeBuilding } from '../src/game/place';
+import { W, idx } from '../src/game/map';
+import { placeBuilding, validSlots } from '../src/game/place';
 import { fireEvent } from '../src/game/events';
 import { withRng } from '../src/game/rng';
 import { canWork } from '../src/game/census';
@@ -65,6 +65,14 @@ export function setJobs(s: GameState, plan: { perBuilding: Record<number, number
 /** Places a building at tile (x, y) as the player (unless `opts.owner` says otherwise). */
 export function place(s: GameState, type: BuildingId, x: number, y: number, opts?: PlaceOpts): ActionResult {
   return placeBuilding(s, type, idx(x, y), { owner: 'player', ...opts });
+}
+
+/** The first `n` valid slots (top-left tiles, ascending) of a type on this state's real map, as (x, y): tests place
+ *  through these instead of hard-coded coordinates, which only held on the scaffold's toy map. */
+export function freeSlots(s: GameState, type: BuildingId, n = 1, owner: Owner = 'player'): { x: number; y: number }[] {
+  const tiles = [...validSlots(s, type, owner).keys()].sort((a, b) => a - b).slice(0, n);
+  if (tiles.length < n) throw new Error(`only ${tiles.length} free ${type} slots, ${n} wanted`);
+  return tiles.map((i) => ({ x: i % W, y: Math.floor(i / W) }));
 }
 
 /** Paths of every non-JSON-safe value in the state: NaN/±Infinity, undefined, functions, non-plain objects. */
