@@ -5,44 +5,26 @@
 // choice and are shown on the card.
 import { B } from './balance';
 import type {
-  Building, ChoiceOption, Cost, DeathCause, EventId, Family, FxEvent, GameState, Modifier, PendingChoice, Person, SimView, SkillId, TickContext,
+  Building, ChoiceOption, Cost, EventId, Family, GameState, Modifier, PendingChoice, Person, SimView, SkillId, TickContext,
 } from './types';
 import type { Rng } from './rng';
 import { aucYear, formatRoman, nextSeasonStart, seasonOf } from './calendar';
-import { fx, fxAdd } from './fx';
+import { fx } from './fx';
 import { touchPeople } from './memo';
 import { getPerson, log, nextId } from './state';
-import { houseBeds, residents } from './census';
 import { coverage, houseHas } from './coverage';
 import { footprintOf, roadNeighbors } from './derived';
 import { getMap } from './map';
 import { siteMult } from './site';
-import { makeFamily, personName, settleFamily } from './people';
+import { FEVER_VOW, evictOverflow, makeFamily, personName, settleFamily } from './people';
+import { careShare } from './civic';
 import { daysOnHand } from './objectives';
 import { BUILDING_DEFS } from './data/buildings';
 import { GENTES_IMMIGRANT, GENTES_VETERAN } from './data/names';
 import { TRADE_BASE } from './data/hubs';
 
 const E = B.events;
-/** Event tunables not yet in B (DESIGN §12.2). */
-const EV = {                                     // TODO(balance): move to B.events
-  DUR: 30,                                       // morale effects "for 30 days"
-  FIVE_YEARS: 1825,
-  VET: { FAMILIES: [2, 3], HEAD_AGE: [54, 62], WIFE_AGE: [50, 58], SKILL: [3, 4], SECOND_P: 0.5, SECOND: [1, 2], GRANT: 80,
-         MORALE_PER: 3, MORALE_MAX: 9, MORALE_DAYS: 60, FAMA: 2, FAMA_DAYS: 365, POP: 30, BEDS: 8, GRAIN_DOH: 30 },
-  LEGATUS: { RANK: 1, DEN: 150, WINE: 20, NO_WINE: 40, FAMA: 6, FEE: 0.85 },
-  PEST: { POP: 60, BASE: 0.5, AESTAS: 0.4, SICK: [0.03, 0.06], SICK_DAYS: 20, DIE: 0.12, CARE: 0.5, VOW: 100, VOW_DEATHS: 0.5, VOW_MORALE: 3, ISOLATE: 0.5, ISOLATE_MORALE: -4 },
-  ROBIGO: { FIELDS: 2, SACRIFICE: 40, AVERT: 0.7, IDLE: 30, BONUS: 1.1, BONUS_DAYS: 60, KEPT: 0.5 },
-  SICC: { DAYS: 40, RAIN: 0.3, WELLS: 0.85, STONE: 20, DEN: 30, DEN_MAX: 300, WATER: 0.85, MORALE: -6 },
-  ROMA: { RANK: 2, DOH: 120, BIG: { grain: 600, den: 1500, fama: 4 }, SMALL: { grain: 200, den: 450, fama: 1 } },
-  IGNIS: { INSULA: 0.2, WORKSHOP: 0.25, MAX: 1.5, DAYS: 30, WATER_DAYS: 15, WET: 0.5 },
-  FLOOD: { RIVER: 2, IDLE: 20, BONUS: 1.15, BONUS_DAYS: 365 },
-  FRIGUS: { FIELDS: 0.8, WELLS: 0.85 },
-  NUPTIAE: { POP: 50, MORALE: 4, BIRTHS: 1.2, BIRTH_DAYS: 365 },
-  AUGURIUM: { MORALE: 6 },
-  MESSIS: { FIELDS: 1.25 },
-  COLONI: { FAMILIES: 2 },
-} as const;
+const EV = B.events;                             // the catalogue's tunables (DESIGN §12.2)
 const VET_SKILLS: readonly SkillId[] = ['agri', 'fabri', 'silva', 'lapis'];
 const WORKSHOPS = ['figlina', 'officina', 'fabrica'] as const;
 const SEASON = { ver: 0, aestas: 1, autumnus: 2, hiems: 3 } as const;
@@ -75,35 +57,6 @@ function mod(s: GameState, id: string, label: string, days: number, effects: Mod
   addModifier(s, { id, label, until: s.day + days, fx: effects, benign, source });
 }
 
-/** Most a single event may take from a stock (DESIGN §12.1 clamp). */
-export function clampTake(s: GameState, res: keyof GameState['res'], want: number): number {
-  return Math.max(0, Math.min(want, s.res[res] * E.CLAMP_RES));
-}
-
-/** Most a single event may kill. */
-export function maxDeaths(s: GameState): number {
-  return Math.floor(s.people.length * E.CLAMP_POP);
-}
-
-/** Removes a living person (event deaths): widows the spouse, hands the family on, counts the death. */
-export function removePerson(s: GameState, p: Person, cause: DeathCause, emit: (e: FxEvent) => void): void {
-  s.people = s.people.filter((x) => x.id !== p.id);
-  if (p.spouse !== null) {
-    const sp = getPerson(s, p.spouse);
-    if (sp) { sp.spouse = null; sp.widowedDay = s.day; }
-  }
-  const fam = s.families.find((f) => f.id === p.family);
-  if (fam && fam.head === p.id) {
-    const heir = s.people.find((x) => x.family === fam.id);
-    if (heir) fam.head = heir.id;
-    else s.families = s.families.filter((f) => f.id !== fam.id);
-  }
-  s.stats.deaths++;
-  s.stats.deathsBy[cause]++;
-  emit({ kind: 'death', home: p.home });
-  touchPeople(s);
-}
-
 function insertById<T extends { id: number }>(arr: T[], item: T): void {
   let k = arr.length;
   while (k > 0 && arr[k - 1].id > item.id) k--;
@@ -128,22 +81,6 @@ export function admitFamily(s: GameState, tc: TickContext, fam: { family: Family
   return true;
 }
 
-/** Turns residents over a house's capacity out, whole households from the newest. */
-function evictOverflow(s: GameState, b: Building): number {
-  const beds = houseBeds(s, b);
-  let res = residents(s, b.id);
-  let out = 0;
-  while (res.length > beds) {
-    const famId = Math.max(...res.map((p) => p.family));
-    for (const p of res) if (p.family === famId) { p.home = null; p.homelessSince = s.day; out++; }
-    const fam = s.families.find((f) => f.id === famId);
-    if (fam && fam.home === b.id) fam.home = null;
-    res = residents(s, b.id);
-  }
-  if (out > 0) touchPeople(s);
-  return out;
-}
-
 function card(s: GameState, ev: EventId, kicker: string, title: string, text: string, options: ChoiceOption[], defaultIndex: number, days: number = E.CHOICE_DAYS, data?: Record<string, number | string>): void {
   const c: PendingChoice = { event: ev, kicker, title, text, options, defaultIndex, created: s.day, expires: s.day + days };
   if (data) c.data = data;
@@ -152,14 +89,6 @@ function card(s: GameState, ev: EventId, kicker: string, title: string, text: st
 
 const done = (s: GameState, type: Building['type']): Building[] => s.buildings.filter((b) => b.type === type && b.status === 'done');
 const season = (s: GameState): number => seasonOf(s.day);
-
-/** Share of residents in baths coverage + fxAdd(care), clamped 0..1 (DESIGN §8.10). */
-export function careLevel(s: GameState, v: SimView): number {
-  let covered = 0;
-  for (const id of v.d.houses) if (houseHas(s, id, 'baths')) covered += residents(s, id).length;
-  const pop = s.people.length;
-  return Math.min(1, Math.max(0, (pop > 0 ? covered / pop : 0) + fxAdd(s, 'care')));
-}
 
 function nearWater(s: GameState, b: Building): boolean {
   if (b.house) return houseHas(s, b.id, 'water') || houseHas(s, b.id, 'fountain');
@@ -183,27 +112,6 @@ function workshops(s: GameState): Building[] {
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 // ───────────────────────────── the veterans at the gate (the flagship event) ─────────────────────────────
-
-function bornAt(s: GameState, rng: Rng, range: readonly number[]): number {
-  return s.day - rng.int(range[0], range[1]) * B.time.YEAR_DAYS - rng.int(0, B.time.YEAR_DAYS - 1);
-}
-
-/** Shapes a household from makeFamily into DESIGN §12.2's veterans: head 54–62 with a trade at 3–4, wife 50–58. */
-function shapeVeterans(s: GameState, rng: Rng, fam: { family: Family; people: Person[] }): void {
-  const head = fam.people.find((p) => p.id === fam.family.head);
-  if (!head) return;
-  head.born = bornAt(s, rng, EV.VET.HEAD_AGE);
-  head.vet = true;
-  const primary = rng.pick(VET_SKILLS);
-  const bonus = s.decisions.paths.charter === 'veterani' ? 1 : 0;      // Colonia veteranorum: their heads +1 skill
-  head.skills = { [primary]: rng.int(EV.VET.SKILL[0], EV.VET.SKILL[1]) + bonus };
-  if (rng.chance(EV.VET.SECOND_P)) head.skills[rng.pick(VET_SKILLS.filter((k) => k !== primary))] = rng.int(EV.VET.SECOND[0], EV.VET.SECOND[1]);
-  const wife = head.spouse !== null ? fam.people.find((p) => p.id === head.spouse) : undefined;
-  if (wife) {
-    wife.born = bornAt(s, rng, EV.VET.WIFE_AGE);
-    if (wife.gens === head.gens) wife.gens = rng.pick(GENTES_IMMIGRANT);
-  }
-}
 
 function headOf(fam: { family: Family; people: Person[] }): Person | undefined {
   return fam.people.find((p) => p.id === fam.family.head);
@@ -234,8 +142,7 @@ const veterani: EventDef = {
     const n = ev.rng.int(EV.VET.FAMILIES[0], EV.VET.FAMILIES[1]);
     const families: { family: Family; people: Person[] }[] = [];
     for (let k = 0; k < n; k++) {
-      const fam = makeFamily(s, ev.rng, 'veteran', pool);
-      shapeVeterans(s, ev.rng, fam);
+      const fam = makeFamily(s, ev.rng, 'veteran', pool);      // head 54–62 with a trade, wife 50–58, 0–2 children (WP-B)
       pool = pool.filter((g) => g !== fam.family.gens);
       if (pool.length === 0) pool = GENTES_VETERAN.slice();
       families.push(fam);
@@ -346,7 +253,7 @@ const pestilentia: EventDef = {
     const ins = insulae(s).length / n;
     const wet = houses.filter((id) => houseHas(s, id, 'water') || houseHas(s, id, 'fountain')).length / n;
     const w = EV.PEST.BASE + ins + (1 - wet) + (season(s) === SEASON.aestas ? EV.PEST.AESTAS : 0);
-    return 0.6 * w * fx(s, 'disease') * (1 - EV.PEST.CARE * careLevel(s, v));
+    return 0.6 * w * fx(s, 'disease') * (1 - EV.PEST.CARE * careShare(s));
   },
   start: (s) => {
     card(s, 'pestilentia', 'NVNTIVS · PESTILENTIA', 'Fever in the town',
@@ -358,26 +265,20 @@ const pestilentia: EventDef = {
     return true;
   },
   resolve: (s, key, ev) => {
+    // Who falls sick is decided now; the sick die over the following DAYS through people.ts (one death path, halved
+    // while the FEVER_VOW modifier stands), so the morale term and the Annales see each death on its day.
     const vow = key === 'vow';
     const share = ev.rng.range(EV.PEST.SICK[0], EV.PEST.SICK[1]) * (vow ? 1 : EV.PEST.ISOLATE);
     const ids = ev.rng.shuffle(s.people.map((p) => p.id)).slice(0, Math.max(1, Math.round(s.people.length * share)));
     ids.sort((a, b) => a - b);
-    const care = careLevel(s, ev.v);
-    const pDie = EV.PEST.DIE * (1 - EV.PEST.CARE * care) * (vow ? EV.PEST.VOW_DEATHS : 1);
-    let deaths = 0;
-    const cap = maxDeaths(s);
     for (const id of ids) {
       const p = getPerson(s, id);
-      if (!p) continue;
-      if (deaths < cap && ev.rng.chance(pDie)) {
-        removePerson(s, p, 'fever', (e) => ev.tc.fx.push(e));
-        deaths++;
-      } else p.sickUntil = s.day + EV.PEST.SICK_DAYS;
+      if (p) p.sickUntil = s.day + EV.PEST.DAYS;
     }
     touchPeople(s);
-    mod(s, 'pestilentia', vow ? 'A vow to Apollo Medicus' : 'The sick outside the walls', EV.DUR,
+    mod(s, vow ? FEVER_VOW : 'pestilentia', vow ? 'A vow to Apollo Medicus: fever deaths halved' : 'The sick outside the walls', EV.DUR,
       { add: { morale: vow ? EV.PEST.VOW_MORALE : EV.PEST.ISOLATE_MORALE } }, 'pestilentia', vow);
-    return `Fever: ${vow ? 'a shrine vowed to Apollo Medicus' : 'the sick isolated outside the walls'}. ${ids.length} fell sick, ${deaths} died.`;
+    return `Fever: ${vow ? 'a shrine vowed to Apollo Medicus' : 'the sick isolated outside the walls'}. ${ids.length} fell sick.`;
   },
 };
 
@@ -405,7 +306,7 @@ const robigo: EventDef = {
   id: 'robigo', kind: 'choice', benign: false, harmful: true, cooldown: 365, roll: true,
   weight: (s) => {
     if (season(s) > SEASON.aestas || done(s, 'ager').length < EV.ROBIGO.FIELDS) return 0;
-    return 0.7 * fx(s, 'blight') * (s.counters.robigaliaYear === aucYear(s.day) ? EV.ROBIGO.KEPT : 1);
+    return 0.7 * fx(s, 'blight');                         // ×0.5 while the Robigalia's blessing stands (festivals)
   },
   start: (s) => {
     card(s, 'robigo', 'NVNTIVS · ROBIGO', 'Rust in the wheat',
@@ -483,7 +384,7 @@ const ignis: EventDef = {
     const wet = nearWater(s, b);
     b.damagedUntil = s.day + (wet ? EV.IGNIS.WATER_DAYS : EV.IGNIS.DAYS);
     s.counters.lastFireDay = s.day;
-    const out = b.house ? evictOverflow(s, b) : 0;
+    const out = b.house ? evictOverflow(s, b.id) : 0;     // half the beds while damaged (census)
     ev.tc.fx.push({ kind: 'fire', id: b.id });
     const name = b.house ? 'an insula' : `the ${BUILDING_DEFS[b.type].name.toLowerCase()}`;
     mod(s, `ignis.${b.id}`, `Ignis: ${name} damaged`, b.damagedUntil - s.day, {}, 'ignis', false);

@@ -65,6 +65,11 @@ export const B = {
     BIRTH_BEDS: [[2, 1], [1, 0.5], [0, 0]],           // free beds ≥ x → factor
     ATTRACT: { MORALE: 30, SPAN: 40, MAX: 1.25 },     // clamp((morale − 30) / 40, 0, 1.25)
     COUPLE_KIDS: [0, 3], KID_AGE: [0, 14], CRAFT_SKILL: [1, 3], WIDOW_KIDS: [1, 3],
+    // household shapes (§6.6) and the veterans at the gate (§12.2)
+    AGES: { coupleHead: [20, 40], coupleWife: [18, 36], craftsman: [18, 40], widow: [24, 45],
+            vetHead: [54, 62], vetWife: [50, 58], vetKids: [0, 2], vetKidAge: [4, 14] },
+    VET_SKILL: [3, 4], VET_SECOND: [1, 2], VET_SECOND_P: 0.5,
+    GIRL_P: 0.5, MOTHER_GAP: 16,                      // a child is at least MOTHER_GAP years younger than its mother
   },
 
   // ───────── hunger and thirst (DESIGN §8.4–8.5) ─────────
@@ -197,6 +202,24 @@ export const B = {
     MERCHANT_MANSIO: 1.5, MERCHANT_MANSIO_MAX: 2, MERCHANT_OFFERS: [2, 4], MERCHANT_POP: 20,
     LUSTRUM: { PER_POP: 0.5, EVERY: 5, FROM_AUC: 805 },
     REACT_MIN: 25,                                    // anything that asks the player to react lasts ≥ 25 days (§2.3)
+    // the catalogue (§12.2) and the festivals (§12.3)
+    DUR: 30,                                          // morale effects "for 30 days" (events and festivals)
+    FIVE_YEARS: 1825,
+    VET: { FAMILIES: [2, 3], GRANT: 80, MORALE_PER: 3, MORALE_MAX: 9, MORALE_DAYS: 60, FAMA: 2, FAMA_DAYS: 365, POP: 30, BEDS: 8, GRAIN_DOH: 30 },
+    LEGATUS: { RANK: 1, DEN: 150, WINE: 20, NO_WINE: 40, FAMA: 6, FEE: 0.85 },
+    // fever: 3–6% fall sick for DAYS; each sick person dies over the sickness with p = DEATH × (1 − CARE·care) × (VOW_DEATHS if vowed)
+    PEST: { POP: 60, BASE: 0.5, AESTAS: 0.4, SICK: [0.03, 0.06], DAYS: 20, DEATH: 0.12, CARE: 0.5, VOW: 100, VOW_DEATHS: 0.5, VOW_MORALE: 3, ISOLATE: 0.5, ISOLATE_MORALE: -4 },
+    ROBIGO: { FIELDS: 2, SACRIFICE: 40, AVERT: 0.7, IDLE: 30, BONUS: 0.1, BONUS_DAYS: 60, KEPT: 0.5 },   // BONUS: additive fraction (Building.bonus)
+    SICC: { DAYS: 40, RAIN: 0.3, WELLS: 0.85, STONE: 20, DEN: 30, DEN_MAX: 300, WATER: 0.85, MORALE: -6 },
+    ROMA: { RANK: 2, DOH: 120, BIG: { grain: 600, den: 1500, fama: 4 }, SMALL: { grain: 200, den: 450, fama: 1 } },
+    IGNIS: { INSULA: 0.2, WORKSHOP: 0.25, MAX: 1.5, DAYS: 30, WATER_DAYS: 15, WET: 0.5 },
+    FLOOD: { RIVER: 2, IDLE: 20, BONUS: 0.15, BONUS_DAYS: 365 },                                         // BONUS: additive fraction
+    FRIGUS: { FIELDS: 0.8, WELLS: 0.85 },
+    NUPTIAE: { POP: 50, MORALE: 4, BIRTHS: 1.2, BIRTH_DAYS: 365 },
+    AUGURIUM: { MORALE: 6 },
+    MESSIS: { FIELDS: 1.25 },
+    COLONI: { FAMILIES: 2 },
+    SATURNALIA_BIRTHS: { MUL: 1.2, DAYS: 90 }, LANTERN_DAYS: 7,
   },
 
   // ───────── trade (DESIGN §13) ─────────

@@ -18,16 +18,9 @@ import { DAUGHTER_COG, GENTES_IMMIGRANT, PRAENOMINA, feminine } from './data/nam
 
 const P = B.people;
 const YEAR = B.time.YEAR_DAYS;
-// Household shapes (DESIGN §6.6, §12.2 veterans). TODO(balance): move these ranges to B.people.
-const AGES = {
-  coupleHead: [20, 40], coupleWife: [18, 36], craftsman: [18, 40], widow: [24, 45],
-  vetHead: [54, 62], vetWife: [50, 58], vetKids: [0, 2], vetKidAge: [4, 14],
-} as const;
+const AGES = P.AGES;             // household shapes (DESIGN §6.6, §12.2 veterans)
 const VET_SKILLS: readonly SkillId[] = ['agri', 'fabri', 'silva', 'lapis'];
-const VET_SKILL = [3, 4] as const, VET_SECOND = [1, 2] as const, VET_SECOND_P = 0.5;   // TODO(balance): B.people
-const GIRL_P = 0.5;              // TODO(balance): B.people.GIRL_P
-const MOTHER_GAP = 16;           // a child is at least this much younger than its mother. TODO(balance): B.people
-const FEVER = { DEATH: 0.12, DAYS: 20, CARE: 0.5, VOW: 0.5 } as const;   // DESIGN §12.2 pestilentia. TODO(balance): B.events
+const FEVER = B.events.PEST;     // DESIGN §12.2 pestilentia: deaths spread over the sickness
 /** Modifier id that halves fever deaths (the Vow to Apollo Medicus; set by events.ts). */
 export const FEVER_VOW = 'pestilentia.vow';
 const FAR = 1 << 14;             // "unreachable" road steps when ranking houses
@@ -294,7 +287,7 @@ function deaths(s: GameState, ctx: TickContext, rng: Rng): void {
   const careF = 1 - hz.care * care;
   const off = ctx.offline ? P.OFFLINE_STARVE : 1;
   const vow = s.modifiers.some((m) => m.id === FEVER_VOW && m.until > day);
-  const fever = 1 - Math.pow(1 - FEVER.DEATH * (1 - FEVER.CARE * care) * (vow ? FEVER.VOW : 1), 1 / FEVER.DAYS);
+  const fever = 1 - Math.pow(1 - FEVER.DEATH * (1 - FEVER.CARE * care) * (vow ? FEVER.VOW_DEATHS : 1), 1 / FEVER.DAYS);
   const { hunger, thirst } = s.needs;
   const gone = new Set<number>();
   for (const p of s.people) {
@@ -423,7 +416,7 @@ function births(s: GameState, ctx: TickContext, rng: Rng): void {
     if (u >= base) continue;
     if (u >= base * bedsFactor(free)) { s.counters.lastBirthBlocked = s.day; continue; }
     const father = w.spouse !== null ? getPerson(s, w.spouse) ?? null : null;
-    const female = rng.chance(GIRL_P);
+    const female = rng.chance(P.GIRL_P);
     const name = nameChild(s, father, w, female, rng);
     const kid: Person = {
       id: nextId(s), prae: name.prae, gens: father?.gens ?? w.gens, female, born: s.day,
@@ -558,10 +551,10 @@ export function makeFamily(s: GameState, rng: Rng, kind: 'couple' | 'craftsman' 
     head.vet = true;
     const bonus = s.decisions.paths.charter === 'veterani' ? 1 : 0;
     const primary = rng.pick(VET_SKILLS);
-    head.skills[primary] = Math.min(P.SKILL_MAX, age(VET_SKILL) + bonus);
-    if (rng.chance(VET_SECOND_P)) {
+    head.skills[primary] = Math.min(P.SKILL_MAX, age(P.VET_SKILL) + bonus);
+    if (rng.chance(P.VET_SECOND_P)) {
       const second = rng.pick(VET_SKILLS.filter((k) => k !== primary));
-      head.skills[second] = age(VET_SECOND);
+      head.skills[second] = age(P.VET_SECOND);
     }
   }
   if (kind === 'couple' || kind === 'veteran') {
@@ -576,9 +569,9 @@ export function makeFamily(s: GameState, rng: Rng, kind: 'couple' | 'craftsman' 
   const motherAge = mother ? ageOf(mother, s.day) : 0;
   let daughters = 0;
   for (let k = 0; k < kids; k++) {
-    const maxAge = Math.min(kidAges[1], motherAge - MOTHER_GAP);
+    const maxAge = Math.min(kidAges[1], motherAge - P.MOTHER_GAP);
     if (maxAge < kidAges[0]) break;
-    const female = rng.chance(GIRL_P);
+    const female = rng.chance(P.GIRL_P);
     const kid = person(female, rng.int(kidAges[0], maxAge), gens);
     kid.mother = mother ? mother.id : null;
     kid.father = head.female ? null : head.id;
