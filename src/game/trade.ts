@@ -245,9 +245,15 @@ function deliver(s: GameState, ctx: TickContext, car: Caravan): void {
     s.res.denarii += coin;
     ctx.rates.prod.denarii.trade = (ctx.rates.prod.denarii.trade ?? 0) + coin;
   } else if (car.kind === 'relief') {
-    s.res[car.res] += car.qty;
-    ctx.rates.prod[car.res].relief = (ctx.rates.prod[car.res].relief ?? 0) + car.qty;
-    log(s, 'good', `The legion's grain arrives: ${Math.round(car.qty)} modii.`, ['highlight']);
+    // only what the stores can hold is taken; Rome forgives the debt on the rest (it is never charged for spilt grain)
+    const room = Math.max(0, census(s).caps[car.res] - s.res[car.res]);
+    const got = Math.min(car.qty, room);
+    const forgiven = car.qty > 0 ? Math.min(s.trade.debt, car.value * (car.qty - got) / car.qty) : 0;
+    s.res[car.res] += got;
+    s.trade.debt -= forgiven;
+    ctx.rates.prod[car.res].relief = (ctx.rates.prod[car.res].relief ?? 0) + got;
+    const rest = forgiven > 0 ? ` (the stores could hold no more; Rome forgives ${Math.round(forgiven)} denarii)` : got < car.qty ? ' (the stores could hold no more)' : '';
+    log(s, 'good', `The legion's grain arrives: ${Math.round(got)} modii${rest}.`, ['highlight']);
     return;
   } else {
     const room = Math.max(0, census(s).caps[car.res] - s.res[car.res]);
