@@ -46,6 +46,7 @@ export const COIN_NET: readonly (readonly [number, number])[] = [[3, 3], [6, 10]
 const FOLLOW_EVERY = 10;      // advisor-follower: remedy 0 of the top advisory every 10 days (DESIGN §11.5)
 const BUILD_EVERY = 5;        // builder: places the Aedilis/Fabrum build remedies every 5 days (DESIGN §18.5)
 const TIP_READ_DAYS = 3;      // a tip stays on the card this long before the bot clicks "Understood"
+const CHARTER_LATE = 60;      // proclaim the charter by this elapsed day even if its tip never showed
 const FULL_SUMMER = 0.9;      // Largae when the sheds are this full in Aestas
 const DIGNITAS_NEAR = 0.85;   // Feriae Frequentes when dignitas is this close to the next threshold
 const BOOM_SITES = 3, TIMBER_LOW = 0.3;   // Silvae Caedua: a building boom short of timber
@@ -113,7 +114,9 @@ export function makeBot(kind: BotKind, seed: number): Bot {
 function decide(s: GameState, picks: Record<PathDecisionId, PathOptionId>, tip: { id: TipId | null; since: number }): void {
   const v = view(s);
   const pn = petitionNeeds(s, v);
-  if (pn && pn.ready && pn.affordable && elapsed(s) >= B.guide.CHARTER) act.choosePath(s, pn.decision, picks[pn.decision]);
+  // the charter is proclaimed once its tip has been read (DESIGN §11.12: the tip comes after the Ordo's), or late if it never shows
+  const charterRead = s.guidance.tips.includes('charter') || elapsed(s) >= CHARTER_LATE;
+  if (pn && pn.ready && pn.affordable && elapsed(s) >= B.guide.CHARTER && (pn.decision !== 'charter' || charterRead)) act.choosePath(s, pn.decision, picks[pn.decision]);
   const want = edictAdvice(s, v, pn);
   for (const id of EDICTS) if (s.decisions.edicts[id] !== want[id]) act.setEdict(s, id, want[id]);
   const c = s.choice;   // the default, or (if unaffordable) the next affordable answer, as on expiry (DESIGN §12.1)
