@@ -192,16 +192,6 @@ export function recolor(rows: Grid, map: Readonly<Record<string, Key>>): string[
   return rows.map((r) => [...r].map((k) => map[k] ?? k).join(''));
 }
 
-/** Mirrors a grid horizontally. */
-export function flipRows(rows: Grid): string[] {
-  return rows.map((r) => [...r].reverse().join(''));
-}
-
-/** The width of a grid (its longest row). */
-export function gridW(rows: Grid): number {
-  return rows.reduce((m, r) => Math.max(m, r.length), 0);
-}
-
 const BUILDERS = new Map<string, { w: number; h: number; build: () => Grid }>();
 
 /**

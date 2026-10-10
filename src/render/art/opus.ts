@@ -86,21 +86,6 @@ export function plankRoof(p: Pix, x: number, y: number, w: number, h: number, hi
   }
 }
 
-/** A front-facing gable triangle (apex at cx, top y) filled with a ramp: lit left half, shaded right half. */
-export function gable(p: Pix, cx: number, y: number, half: number, h: number, ramp: Ramp, stripes = true): void {
-  const [hi, li, base, sh, dk] = ramp;
-  for (let r = 0; r < h; r++) {
-    const span = Math.round((half * (r + 1)) / h);
-    for (let c = -span; c <= span; c++) {
-      let k: Key = c < 0 ? li : base;
-      if (stripes && (r + Math.abs(c)) % 3 === 0) k = c < 0 ? hi : sh;
-      if (Math.abs(c) === span) k = c < 0 ? hi : sh;
-      if (r === h - 1) k = dk;
-      p.set(cx + c, y + r, k);
-    }
-  }
-}
-
 /** A plastered wall (lit at the left, shaded at the right edge and under the eave), with optional weathering. */
 export function plasterWall(p: Pix, x: number, y: number, w: number, h: number, ramp: Ramp = RAMP.ochre, seed = 3): void {
   const [hi, li, base, sh] = ramp;
@@ -121,20 +106,6 @@ export function logWall(p: Pix, x: number, y: number, w: number, h: number): voi
       let k: Key = row === 0 ? 'n' : row === 1 ? 'B' : 'b';
       if (c === 0 || c === w - 1) k = row === 2 ? 'b' : row === 0 ? 'T' : 't';   // log ends
       if (r === 0) k = 'b';
-      p.set(x + c, y + r, k);
-    }
-}
-
-/** Squared stone courses (opus quadratum): staggered blocks with mortar lines. */
-export function stoneWall(p: Pix, x: number, y: number, w: number, h: number, ramp: Ramp = RAMP.tufa, block = 4, course = 3): void {
-  const [hi, li, base, sh, dk] = ramp;
-  for (let r = 0; r < h; r++)
-    for (let c = 0; c < w; c++) {
-      const cr = Math.floor(r / course), off = cr % 2 ? Math.floor(block / 2) : 0;
-      const joint = (c + off) % block === 0 || r % course === course - 1;
-      let k: Key = joint ? sh : c < 2 ? li : c >= w - 2 ? sh : base;
-      if (!joint && (c + off) % block === 1 && r % course === 0) k = hi;
-      if (r === 0) k = dk;
       p.set(x + c, y + r, k);
     }
 }
@@ -165,19 +136,6 @@ export function arch(p: Pix, x: number, y: number, w: number, h: number, fill: K
 export function windowHole(p: Pix, x: number, y: number, w = 2, h = 2, sill: Key = 'T'): void {
   p.rect(x, y, w, h, 'q');
   p.hline(x, x + w - 1, y + h, sill);
-}
-
-/** A round column (shaft lit at the left) with capital and base, from y to y+h. */
-export function column(p: Pix, x: number, y: number, h: number, ramp: Ramp = RAMP.white, w = 3): void {
-  const [hi, li, base, sh] = ramp;
-  for (let r = 0; r < h; r++)
-    for (let c = 0; c < w; c++) p.set(x + c, y + r, c === 0 ? hi : c === w - 1 ? sh : r % 4 === 0 ? li : base);
-  p.hline(x - 1, x + w, y, li).hline(x - 1, x + w, y + h - 1, sh);
-}
-
-/** A soft drop shadow on the ground to the right of an object (shade keys over a region of transparent pixels only). */
-export function groundShadow(p: Pix, x: number, y: number, w: number, h: number, k: Key = 'K'): void {
-  p.shade(x, y, w, h, (_X, _Y, cur) => (cur === '.' ? k : null));
 }
 
 /** A little stack of stone blocks (2 courses) at (x, y), w px wide. */
