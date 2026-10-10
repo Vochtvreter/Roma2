@@ -6,7 +6,6 @@ import { H, W, getMap, idx, tx, ty } from '../src/game/map';
 import { activeRings, blockStreets, isActiveBlock } from '../src/game/survey';
 import { validSlots } from '../src/game/place';
 import { invalidate } from '../src/game/memo';
-import { genTerrain } from '../src/game/world/gen';
 import { B } from '../src/game/balance';
 import { RANK_DEFS } from '../src/game/data/ranks';
 import { fresh } from './util';
@@ -176,17 +175,8 @@ describe('terrain', () => {
     }
   });
 
-  it('generates a map in ≤ 40 ms (node)', () => {
-    genTerrain(9999);                                    // warm up the JIT
-    const times: number[] = [];
-    for (let seed = 3001; seed <= 3012; seed++) {
-      const t0 = performance.now();
-      getMap(seed);
-      times.push(performance.now() - t0);
-    }
-    times.sort((a, b) => a - b);
-    expect(times[Math.floor(times.length / 2)]).toBeLessThanOrEqual(40);
-  });
+  // The getMap ≤ 40 ms wall-clock budget lives in tests/perf.test.ts (`npm run perf`): timing checks flake on loaded
+  // or shared CI machines, so the default suite keeps only deterministic assertions.
 });
 
 describe('survey geometry (ARCHITECTURE §8.2)', () => {
