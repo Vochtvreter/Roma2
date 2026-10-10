@@ -7,7 +7,7 @@ import { LAYERS, T } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote, WorldMap } from './types';
 import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
-import { censusEpoch, memo, structEpoch } from './memo';
+import { dayEpoch, memo, structEpoch } from './memo';
 import { coverage, desirability, previewCovered, previewDesir } from './coverage';
 import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
@@ -337,7 +337,7 @@ export function siteScore(s: GameState, type: BuildingId, x: number, y: number, 
 export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner; purpose?: ReasonCode }): { tile: number; x: number; y: number; score: number; notes: SiteNote[] } | null {
   const owner = opts?.owner ?? 'ordo';
   const purpose = opts?.purpose;
-  return memo(s, `bestSlot:${type}:${owner}:${purpose ?? ''}`, `${structEpoch(s)}:${censusEpoch(s)}:${s.day}`, () => {
+  return memo(s, `bestSlot:${type}:${owner}:${purpose ?? ''}`, dayEpoch(s), () => {
     const slots = validSlots(s, type, owner);
     if (slots.size === 0) return null;
     const ctx = scoreCtx(s);

@@ -2,7 +2,7 @@
 import { B } from './balance';
 import { LABOR_CATS, MILESTONE_IDS } from './types';
 import type { GameState, SimView, TickContext } from './types';
-import { censusEpoch, invalidate, memo, structEpoch } from './memo';
+import { dayEpoch, invalidate, memo, structEpoch } from './memo';
 import { houseHas } from './coverage';
 import { blockOfTile, derived } from './derived';
 import { houseTax, isAquae } from './housing';
@@ -43,7 +43,7 @@ interface Shares { religion: number; baths: number; culture: number; avgTier: nu
 
 /** Shares of houses covered by religion / baths / culture, the mean house level, and residents in baths coverage. */
 function shares(s: GameState): Shares {
-  return memo(s, 'civicShares', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
+  return memo(s, 'civicShares', dayEpoch(s), () => {
     const ids = derived(s).houses;
     const ix = peopleIndex(s);
     let religion = 0, baths = 0, culture = 0, levels = 0, covered = 0;

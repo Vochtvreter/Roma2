@@ -7,7 +7,7 @@ import { B } from './balance';
 import { F, LAYERS, T } from './types';
 import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
 import { getMap } from './map';
-import { censusEpoch, memo, structEpoch } from './memo';
+import { dayEpoch, memo, structEpoch } from './memo';
 import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
 import { census } from './census';
 import { fxAdd } from './fx';
@@ -46,7 +46,7 @@ interface Source { id: number; layer: number; r: number }
 /** The active services and their radii, and the coverage key they make (re-read once per day or on a structure/staffing change). */
 function activeSources(s: GameState): { key: string; list: Source[] } {
   const epoch = structEpoch(s);
-  return memo(s, 'covSources', `${epoch}:${censusEpoch(s)}:${s.day}`, () => {
+  return memo(s, 'covSources', dayEpoch(s), () => {
     const list: Source[] = [];
     for (const b of s.buildings) {
       const svc = BUILDING_DEFS[b.type].service;
@@ -246,7 +246,7 @@ function desirOf(s: GameState, b: Building): readonly [number, number] {
 /** Desirability key: the structure plus the houses whose tier gives them desirability (insulae, domus), read once a day. */
 function desirKey(s: GameState): string {
   const epoch = structEpoch(s);
-  return memo(s, 'desirTiers', `${epoch}:${censusEpoch(s)}:${s.day}`, () => {
+  return memo(s, 'desirTiers', dayEpoch(s), () => {
     const parts: string[] = [];
     for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier[0]}`);
     return `${epoch}|${parts.join(',')}`;

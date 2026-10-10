@@ -10,7 +10,7 @@ import { nextSeasonStart, seasonLength, seasonOf } from '../calendar';
 import { maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
 import { getBuilding } from '../state';
-import { censusEpoch, memo, structEpoch } from '../memo';
+import { dayEpoch, memo } from '../memo';
 import { roadNeighbors } from '../derived';
 import { BUILDING_DEFS } from '../data/buildings';
 import { TIER_DEFS } from '../data/housing';
@@ -40,7 +40,7 @@ function reason(code: ReasonCode, params: Record<string, number | string | undef
 
 /** Staffable posts — finished, open, not damaged, idled or paused — High priority first, then output per hand, then id. */
 function posts(s: GameState): Post[] {
-  return memo(s, 'ordo.posts', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.ordo.emergency.waterPause}`, () => {
+  return memo(s, 'ordo.posts', dayEpoch(s) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
     const out: Post[] = [];
     for (const b of s.buildings) {
       const def = BUILDING_DEFS[b.type];

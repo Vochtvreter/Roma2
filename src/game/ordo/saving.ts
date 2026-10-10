@@ -8,7 +8,7 @@ import type { Building, BuildingId, Cost, GameState, Reason, ResId, SimView } fr
 import { addCost, canAfford, missing, scaleCost } from '../state';
 import { petitionNeeds, settingValue } from '../decisions';
 import { capitoliumFlow } from '../construction';
-import { censusEpoch, memo, structEpoch } from '../memo';
+import { censusEpoch, dayEpoch, memo, structEpoch } from '../memo';
 import { seasonOf } from '../calendar';
 import { buildingRate } from '../economy';
 import { fx } from '../fx';
@@ -95,7 +95,7 @@ export function canSpend(s: GameState, cost: Cost, v: SimView, opts?: { survival
 /** One building's net rate per day with every slot filled (memo on day and epochs): the labour posts and outputRates
  *  read the same figure, so it is computed once per building and key. */
 export function fullRate(s: GameState, b: Building): Partial<Record<ResId, number>> {
-  const cache = memo(s, 'ordo.full', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => new Map<number, Partial<Record<ResId, number>>>());
+  const cache = memo(s, 'ordo.full', dayEpoch(s), () => new Map<number, Partial<Record<ResId, number>>>());
   let r = cache.get(b.id);
   if (!r) { r = buildingRate(s, b, seasonOf(s.day), 'full'); cache.set(b.id, r); }
   return r;
@@ -103,7 +103,7 @@ export function fullRate(s: GameState, b: Building): Partial<Record<ResId, numbe
 
 /** Net output per day of every good from finished buildings (inputs subtracted), at today's staffing or with every slot filled. */
 export function outputRates(s: GameState, mode: 'current' | 'full'): Partial<Record<ResId, number>> {
-  return memo(s, `ordo.rates.${mode}`, `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () => {
+  return memo(s, `ordo.rates.${mode}`, dayEpoch(s), () => {
     const out: Partial<Record<ResId, number>> = {};
     const season = seasonOf(s.day);
     for (const b of s.buildings) {

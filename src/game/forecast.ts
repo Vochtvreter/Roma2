@@ -4,7 +4,7 @@
 // maxPotential; Ordo labour off: today's staffing), consumption = today's need + industry draws, caps, rot, evaporation.
 import { B } from './balance';
 import type { CrunchForecast, Essential, EssentialForecast, Forecast, GameState, MonthCell, SeasonIndex } from './types';
-import { censusEpoch, memo, structEpoch } from './memo';
+import { dayEpoch, dayStruct, memo } from './memo';
 import { census } from './census';
 import { buildingRate, maxPotential } from './economy';
 import { BUILDING_DEFS } from './data/buildings';
@@ -22,7 +22,7 @@ const NET_DAYS = 3;      // net3 averages today's staffing over this many days
  *  the projection is today's staffing, so the census epoch joins the key: the Ordo reads the forecast before
  *  assignJobs, and a forecast cached then would describe yesterday's jobs for the rest of the day. */
 export function forecast(s: GameState): Forecast {
-  return memo(s, 'forecast', `${s.day}|${structEpoch(s)}|${s.ordo.on.labour ? 'ordo' : censusEpoch(s)}`, () => {
+  return memo(s, 'forecast', s.ordo.on.labour ? -dayStruct(s) : dayEpoch(s), () => {
     const stock = s.res.denarii + s.taxAccrued;
     const net30 = s.counters.coinEma;   // 30-day EMA of net denarii per day (accrual basis)
     return {

@@ -42,6 +42,19 @@ export function censusEpoch(s: GameState): number {
   return epochsOf(s).census;
 }
 
+const DAY_SPAN = 1e6;   // > any game day; epoch × DAY_SPAN + day stays exact in float64
+
+/** One number for (day, structure, census): every structure change bumps the census epoch too (invalidate), and an
+ *  epoch value is handed out once, so the census epoch stands for both. A cheap numeric memo key for the hot memos. */
+export function dayEpoch(s: GameState): number {
+  return censusEpoch(s) * DAY_SPAN + s.day;
+}
+
+/** (day, structure) as one number, for memos that ignore people and jobs. */
+export function dayStruct(s: GameState): number {
+  return structEpoch(s) * DAY_SPAN + s.day;
+}
+
 /** One cached value per (state, slot): recomputed whenever `key` differs from the cached key. */
 export function memo<T>(s: GameState, slot: string, key: string | number, compute: () => T): T {
   let m = slots.get(s);

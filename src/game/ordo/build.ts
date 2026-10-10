@@ -10,7 +10,7 @@ import { NEEDS, RESOURCES } from '../types';
 import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, ResId, SimView, TickContext, WishView } from '../types';
 import { dateOf, seasonLength, seasonOf } from '../calendar';
 import { addCost, canAfford, getBuilding, log, missing } from '../state';
-import { memo, structEpoch, censusEpoch } from '../memo';
+import { memo, structEpoch, censusEpoch, dayEpoch, dayStruct } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
 import { canPlace, pave, placeBuilding, validSlots } from '../place';
@@ -51,7 +51,7 @@ export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Reco
 /** The houses' wants (memo on day + epochs + the fed gate). Each house's next tier and unmet needs come from the
  *  advisors' list, which is memoised on everything those read (advisors/util houseWants), not recomputed daily. */
 export function houseWants(s: GameState, v: SimView): HouseWants {
-  return memo(s, 'ordo.houses', `${s.day}|${structEpoch(s)}|${censusEpoch(s)}|${s.fed >= B.needs.FED_MIN}`, () => {
+  return memo(s, 'ordo.houses', dayEpoch(s) * 2 + (s.fed >= B.needs.FED_MIN ? 1 : 0), () => {
     const out: HouseWants = { want: {}, first: {}, renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
     for (const w of eachHouseWant(s, v)) {
       const b = getBuilding(s, w.id);
@@ -73,7 +73,7 @@ export function houseWants(s: GameState, v: SimView): HouseWants {
 /** The Ordo's slot for a type: A's best slot (validSlots for owner 'ordo' already keeps off reserved blocks and blocks
  *  holding a player plan or unfinished player site); memo per day and epochs (as pure as A's scoring). */
 export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): number | null {
-  return memo(s, `ordo.slot.${type}.${purpose}`, `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`, () =>
+  return memo(s, `ordo.slot.${type}.${purpose}`, dayEpoch(s), () =>
     bestSlot(s, type, { owner: 'ordo', purpose })?.tile ?? null);
 }
 
@@ -81,7 +81,7 @@ export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): n
  *  wish has a slot and what it costs (tile-independent except a castellum's route); the best slot — a full scoring
  *  pass of every valid slot — is searched only when the wish is placed or shown (lazyTile). */
 function anyOpenSlot(s: GameState, type: BuildingId): number | null {
-  return memo(s, `ordo.any.${type}`, `${s.day}|${structEpoch(s)}`, () => {
+  return memo(s, `ordo.any.${type}`, dayStruct(s), () => {
     let pick: number | null = null;
     for (const tile of validSlots(s, type, 'ordo').keys()) if (pick === null || tile < pick) pick = tile;
     return pick;
