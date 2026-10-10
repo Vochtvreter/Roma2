@@ -149,8 +149,10 @@ describe('terrain', () => {
       const clay = tiles(F.clay);
       expect(clay.length).toBeGreaterThan(0);
       for (const i of clay) expect(m.riverDist[i]).toBe(1);
+      const r = m.survey.interior;
       for (let i = 0; i < N; i++) {
-        expect(m.waterTable[i]).toBe(m.riverDist[i] <= B.map.WATER_TABLE_DIST || m.moist[i] > B.map.WATER_TABLE_MOIST ? 1 : 0);
+        const camp = i % m.W >= r.x && i % m.W < r.x + r.w && Math.floor(i / m.W) >= r.y && Math.floor(i / m.W) < r.y + r.h;   // wells inside the walls draw in full
+        expect(m.waterTable[i]).toBe(camp || m.riverDist[i] <= B.map.WATER_TABLE_DIST || m.moist[i] > B.map.WATER_TABLE_MOIST ? 1 : 0);
       }
     }
   });

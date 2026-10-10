@@ -257,11 +257,15 @@ export function finishSite(bt: BaseTerrain, seed: number, c: SiteCand, attempt: 
   banks.sort((a, b) => a.n - b.n || a.i - b.i);
   for (const b of banks.slice(0, Math.round(banks.length * G.CLAY_SHARE))) feature[b.i] = F.clay;
 
-  // per-tile layers
+  // per-tile layers. The groma sites the camp over ground water: wells inside the walls draw in full, as the opening
+  // arithmetic (DESIGN §18.2) assumes for the start well, whose plot is 13–22 tiles from a river kept 3–10 tiles off.
+  const inner = sv.interior;
   for (let i = 0; i < GN; i++) {
     const t = terrain[i];
     base.woodMax[i] = t === T.forest ? M.WOOD_FOREST : t === T.dense ? M.WOOD_DENSE : 0;
-    base.waterTable[i] = bt.riverDist[i] <= M.WATER_TABLE_DIST || bt.moist[i] > M.WATER_TABLE_MOIST ? 1 : 0;
+    const x = i % GW, y = Math.floor(i / GW);
+    const camp = x >= inner.x && x < inner.x + inner.w && y >= inner.y && y < inner.y + inner.h;
+    base.waterTable[i] = camp || bt.riverDist[i] <= M.WATER_TABLE_DIST || bt.moist[i] > M.WATER_TABLE_MOIST ? 1 : 0;
   }
   base.fontes = fontes;
   const map: WorldMap = { ...base, survey: sv };
