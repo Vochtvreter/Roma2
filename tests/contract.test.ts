@@ -206,6 +206,8 @@ describe('balance.ts mirrors the contract (ARCHITECTURE §7, DESIGN §18.3)', ()
       ['SITES 1 + workforce/40 (max 4)', [o.SITES_PER, o.SITES_MAX], [40, 4]], ['FOOD_CAP .75/.90', [o.FOOD_CAP, o.FOOD_CAP_HUNGRY], [0.75, 0.9]],
       ['BUILDERS_MAX .30', o.BUILDERS_MAX, 0.3], ['CAP_CREW 64', B.construction.CAP_CREW, 64], ['CLEAR ×1.25', a.CLEAR, 1.25],
       ['DOWNGRADE 3 d', a.DOWNGRADE_DAYS, 3], ['MIN_LIFE 3 d', a.MIN_LIFE, 3], ['HUSH 30 d', a.HUSH_DAYS, 30], ['BELL 30 s', a.BELL_S, 30],
+      ['LUXURY_RUNWAY 60', o.LUXURY_RUNWAY, 60], ['GOODS_FLOOR 15', o.GOODS_FLOOR, 15], ['GOODS_DAYS 30', a.RULES.GOODS_DAYS, 30],
+      ['GOODS_LEAD 90', a.RULES.GOODS_LEAD, 90],
     ];
     const items = section(doc('DESIGN.md'), '### 18.3', '### 18.4').split('\n').filter((l) => /^\w+: /.test(l))
       .flatMap((l) => l.replace(/^\w+: /, '').replace(/\.$/, '').split(' · ').map((x) => x.trim()));

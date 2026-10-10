@@ -34,6 +34,7 @@ import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
 import { bestFood } from '../src/game/advisors/util';
+import { residents } from '../src/game/census';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -124,7 +125,9 @@ const FIX: Record<RuleId, Fix> = {
     clear: () => ({ rot: 0, spill: 0, grain: { stock: 500, cap: 1000 } }),
   },
   'annonae.goods': {
-    levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
+    // the plan's projection: a Monitum when the stores run dry within GOODS_LEAD days, a Cave within GOODS_DAYS or when a house lapses
+    levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 60 * residents(s, houses(s)[0].id).length * B.housing.GOODS.oil; }],
+      [2, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
       [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'insula', oil: 0.4, declining: true }); s.res.oil = 3; }]],
     clear: (s) => { setTier(s, 'tentoria'); s.res.oil = 1000; },
   },

@@ -5,9 +5,10 @@
 import { B as B$ } from '../balance';
 import type { AdvisorRule, GameState, Person, Remedy, Severity, SimView } from '../types';
 import { formatRoman as formatRoman$, seasonOf as seasonOf$ } from '../calendar';
-import { peopleIndex, stageOf } from '../census';
+import { stageOf } from '../census';
 import { edictOption, settingValue } from '../decisions';
 import { buildingRateOf, seasonMult } from '../economy';
+import { goodsPlan } from '../ordo/goods';
 import { fx as fx$ } from '../fx';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
@@ -235,30 +236,40 @@ const storage: AdvisorRule = {
 
 // ───────────────────────────── 6 · annonae.goods ─────────────────────────────
 
-interface Goods { res: 'oil' | 'wine'; R: number | null; supply: number; houses: number; demand: number; prod: number; lapsed: boolean }
+interface Goods {
+  res: 'oil' | 'wine'; R: number | null; supply: number; houses: number; demand: number; prod: number; lapsed: boolean;
+  room: boolean; presses: boolean; reserve: number; cap: number;
+}
 
-/** Oil and wine for the T4 houses: daily demand, local production, mean supply, and whether a house declines for want of it. */
+/** Oil and wine for the great houses: the draw, today's pressing, the mean supply, whether a house declines for want of
+ *  it, and the Ordo's plan (ordo/goods.ts) — `R` is the day the projection with the presses' seasons, the caravans on
+ *  the road and the standing imports first leaves the stores empty; `room` is false when the stores cannot hold what
+ *  the lean season (Ver and Aestas, when the presses rest) takes, `presses` false when the groves cannot press the
+ *  year's draw. */
 function goods(s: GameState, v: SimView): Goods[] {
   if (v.c.byTier.insula + v.c.byTier.domus === 0) return [];
-  const byHome = peopleIndex(s).byHome;   // residents per home (the census index), not a pass over the people
   const season = seasonOf(s.day);
   let oilProd = 0;
   for (const b of s.buildings) if (b.type === 'olivetum') oilProd += buildingRateOf(s, b, season, 'current', 'oil');
   const out: Goods[] = [];
   for (const res of ['oil', 'wine'] as const) {
-    let residents = 0, houses = 0, supply = 0, lapsed = false;
+    let houses = 0, supply = 0, lapsed = false;
     for (const id of v.d.houses) {
       const h = getBuilding(s, id)?.house;
       if (!h || (h.tier !== 'domus' && (res === 'wine' || h.tier !== 'insula'))) continue;
       houses++;
-      residents += byHome.get(id)?.length ?? 0;
       supply += h[res];
       if (h.declining && h[res] < B.housing.SUPPLIED) lapsed = true;
     }
     if (houses === 0) continue;
-    const demand = residents * B.housing.GOODS[res];
-    const prod = res === 'oil' ? oilProd : 0;
-    out.push({ res, R: runway(s.res[res], prod - demand), supply: supply / houses, houses, demand, prod, lapsed });
+    const plan = goodsPlan(s, v, res);
+    const cap = v.c.caps[res];
+    const year = plan.potential.reduce((a, x) => a + x, 0) / 4;
+    out.push({
+      res, R: plan.emptyDay === null ? null : plan.emptyDay - s.day, supply: supply / houses, houses, demand: plan.demand,
+      prod: res === 'oil' ? oilProd : 0, lapsed, room: plan.reserve + plan.floor <= cap, presses: res === 'wine' || year >= plan.demand,
+      reserve: Math.ceil(plan.reserve + plan.floor), cap,
+    });
   }
   return out;
 }
@@ -266,14 +277,18 @@ function goods(s: GameState, v: SimView): Goods[] {
 const goodsRule: AdvisorRule = {
   id: 'annonae.goods', advisor: 'annonae',
   evaluate(s, v) {
-    const hold = held(s, 'annonae.goods');
-    const bad = goods(s, v).filter((g) => (g.R !== null && g.R < R.GOODS_DAYS * (hold ? CLEAR : 1)) || g.supply < R.GOODS_SUPPLY);
+    const hold = held(s, 'annonae.goods') ? CLEAR : 1;
+    const bad = goods(s, v).filter((g) => (g.R !== null && g.R <= R.GOODS_LEAD * hold) || g.supply < R.GOODS_SUPPLY);
     if (bad.length === 0) return null;
     const g = bad.sort((a, b) => (a.R ?? Infinity) - (b.R ?? Infinity) || a.supply - b.supply)[0];
+    const near = bad.some((x) => x.lapsed || (x.R !== null && x.R < R.GOODS_DAYS));
     return {
-      rule: 'annonae.goods', severity: bad.some((x) => x.lapsed) ? 2 : 1,
+      rule: 'annonae.goods', severity: near ? 2 : 1,
       metric: g.R !== null ? { label: g.res === 'oil' ? 'Oil' : 'Wine', value: Math.floor(g.R), unit: 'days' } : { label: 'Supplied', value: Math.round(100 * g.supply), unit: 'pct' },
-      params: { res: g.res, R: g.R === null ? -1 : Math.floor(g.R), pct: Math.round(100 * g.supply), houses: g.houses, demand: g.demand, prod: g.prod },
+      params: {
+        res: g.res, R: g.R === null ? -1 : Math.floor(g.R), pct: Math.round(100 * g.supply), houses: g.houses, demand: g.demand, prod: g.prod,
+        room: g.room ? 1 : 0, presses: g.presses ? 1 : 0, reserve: g.reserve, cap: g.cap,
+      },
     };
   },
   title(_s, a) {
@@ -283,12 +298,19 @@ const goodsRule: AdvisorRule = {
   },
   text(_s, _v, a) {
     const p = a.params;
-    const src = p.res === 'oil' ? `our groves press ${num(P(p.prod))}` : 'wine comes only by caravan';
-    return `${P(p.houses)} ${P(p.houses) === 1 ? 'house uses' : 'houses use'} ${num(P(p.demand))} amphorae a day; ${src}. A house without its ${p.res} falls back a tier.`;
+    const use = `${P(p.houses)} ${P(p.houses) === 1 ? 'house uses' : 'houses use'} ${num(P(p.demand))} amphorae a day`;
+    if (p.res === 'oil' && p.room === 0) {
+      return `${use}, and the presses rest through Ver and Aestas: the stores must hold ${int(P(p.reserve))} when Ver begins, and they hold ${int(P(p.cap))}. A house without its oil falls back a tier.`;
+    }
+    const src = p.res === 'oil' ? `our groves press ${num(P(p.prod))}${p.presses === 0 ? ', too little over the year' : ''}` : 'wine comes only by caravan';
+    return `${use}; ${src}. A house without its ${p.res} falls back a tier.`;
   },
   remedies(s, _v, a) {
     const res = a.params.res === 'wine' ? 'wine' : 'oil';
-    return three(res === 'oil' ? { kind: 'place', building: 'olivetum' } : null, importRemedy(s, res, B.ordo.CARGO), { kind: 'overlay', overlay: 'domus' });
+    const store: Remedy | null = a.params.room === 0 ? { kind: 'place', building: 'apotheca' } : null;
+    const grove: Remedy | null = res === 'oil' && a.params.presses === 0 ? { kind: 'place', building: 'olivetum' } : null;
+    const more: Remedy | null = res === 'oil' && !store && !grove ? { kind: 'place', building: 'olivetum' } : null;
+    return three(store, grove, importRemedy(s, res, B.ordo.CARGO), more, { kind: 'overlay', overlay: 'domus' });
   },
 };
 

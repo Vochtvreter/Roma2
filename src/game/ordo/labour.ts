@@ -15,7 +15,8 @@ import { roadNeighbors as roadNeighbors$ } from '../derived';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
-import { houseWants, materialNeeds } from './build';
+import { materialNeeds } from './build';
+import { goodsPlan } from './goods';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
@@ -295,7 +296,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   // 8 · olive groves to the great houses' oil × 1.2 over the year: the same hands in every season (the goal follows the
   //     season's yield), so the Autumnus and Hiems presses fill the stores for Ver and Aestas instead of matching each
   //     day's need with three hands at the peak and running dry in summer
-  const oil = houseWants(s, v).t4Res * B.housing.GOODS.oil;
+  const oil = goodsPlan(s, v, 'oil').demand;
   if (oil > 0) toward('oil', oil * B.ordo.LUXURY * seasonMult(s, 'olivetum', season), reason('luxuryStaff', { demand: r1(oil) }));
 
   // 9 · the remaining service slots

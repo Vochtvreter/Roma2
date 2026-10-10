@@ -27,7 +27,7 @@ import { canSpend, capitoliumAhead, etaDays, floorOk, ordersOf, outputRates, par
 import { chronicle } from './chronicle';
 import { aestasWork } from './water';
 import { houseWants as eachHouseWant } from '../advisors/util';
-import { peopleIndex } from '../census';
+import { goodsPlan } from './goods';
 import { classAt as classAt$, sizeOf as sizeOf$ } from '../derived';
 import { rectGap as rectGap$ } from '../world/grid';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
@@ -59,8 +59,8 @@ const PETITION_WORKS: BuildingId[][] = [[], ['horreum'], [], ['templum', 'macell
 export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean }
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
-/** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus, T4 residents. */
-export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Map<number, NeedId>; renov: Cost; t3Low: number; t4Res: number; domusRes: number }
+/** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus. */
+export interface HouseWants { want: Partial<Record<NeedId, number>>; first: Map<number, NeedId>; renov: Cost; t3Low: number }
 
 /** The houses' wants (memo on day + epochs + the fed gate). Each house's next tier and unmet needs come from the
  *  advisors' list, which is memoised on everything those read (advisors/util houseWants), not recomputed daily. */
@@ -69,39 +69,31 @@ export function houseWants(s: GameState, v: SimView): HouseWants {
     // the same as the last reckoning while the advisors' list, the homes, the desirability and every listed house's
     // renovation stand (the list itself is kept on everything else these read: tiers, preferences, coverage, fed, rank)
     const list = eachHouseWant(s, v);
-    const byHome = peopleIndex(s).byHome;
     const desir = desirability(s);
     const last = houseWantsLast.get(s);
-    if (last && last.list === list && last.byHome === byHome && last.desir === desir && sameRenovating(s, list, last.renovating)) return last.value;
-    const value = reckonHouseWants(s, list, byHome);
-    houseWantsLast.set(s, { list, byHome, desir, renovating: list.map((w) => !!getBuilding(s, w.id)?.house?.renovating), value });
+    if (last && last.list === list && last.desir === desir && sameRenovating(s, list, last.renovating)) return last.value;
+    const value = reckonHouseWants(s, list);
+    houseWantsLast.set(s, { list, desir, renovating: list.map((w) => !!getBuilding(s, w.id)?.house?.renovating), value });
     return value;
   });
 }
 
-const houseWantsLast = new WeakMap<GameState, { list: unknown; byHome: unknown; desir: unknown; renovating: boolean[]; value: HouseWants }>();
+const houseWantsLast = new WeakMap<GameState, { list: unknown; desir: unknown; renovating: boolean[]; value: HouseWants }>();
 
 function sameRenovating(s: GameState, list: readonly { id: number }[], was: readonly boolean[]): boolean {
   for (let k = 0; k < list.length; k++) if (!!getBuilding(s, list[k].id)?.house?.renovating !== was[k]) return false;
   return true;
 }
 
-function reckonHouseWants(s: GameState, list: ReturnType<typeof eachHouseWant>, byHome: ReturnType<typeof peopleIndex>['byHome']): HouseWants {
+function reckonHouseWants(s: GameState, list: ReturnType<typeof eachHouseWant>): HouseWants {
   {
-    const out: HouseWants = { want: {}, first: new Map(), renov: {}, t3Low: 0, t4Res: 0, domusRes: 0 };
+    const out: HouseWants = { want: {}, first: new Map(), renov: {}, t3Low: 0 };
     for (const w of list) {
       const b = getBuilding(s, w.id);
       if (!b?.house || !w.next) continue;
       if (w.unmet.length > 0) { out.want[w.unmet[0]] = (out.want[w.unmet[0]] ?? 0) + 1; out.first.set(w.id, w.unmet[0]); }
       else if (!b.house.renovating) out.renov = addCost(out.renov, TIER_DEFS[w.next].renovation);
       if (b.house.tier === 'domusParva' && b.house.pref !== 'insula' && houseDesir(s, w.id) < B.housing.DESIR_DOMUS) out.t3Low++;
-    }
-    for (const [home, residents] of byHome) {   // residents per home (census index) rather than a lookup per person
-      // the goods feed T4 homes and the homes that wait only for them (their first want): counting those too lets the
-      // Ordo press or import the first oil, without which no house could ever become an insula or a domus
-      const tier = getBuilding(s, home)?.house?.tier, first = out.first.get(home);
-      if (tier === 'insula' || tier === 'domus' || first === 'oil' || first === 'wine') out.t4Res += residents.length;
-      if (tier === 'domus' || first === 'wine') out.domusRes += residents.length;
     }
     return out;
   }
@@ -270,8 +262,16 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Genera
     const short = missing(s, w.cost);
     for (const r2 of MATERIALS) if ((short[r2] ?? 0) > 0) queue.push({ r: r2, q: short[r2] ?? 0, for: w.type });
   }
-  // 9 · oil for the great houses (groves for the demand × LUXURY: the margin the stores need to carry Ver and Aestas)
-  if (BUILDING_DEFS.olivetum.rank <= s.rank && hw.t4Res * B.housing.GOODS.oil * B.ordo.LUXURY > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
+  // 9 · oil and wine for the great houses, planned as the grain is for Hiems (ordo/goods.ts): groves for the year's draw
+  //     × LUXURY, then room to carry the lean season — an apotheca while what the draw takes from Kal. Mart. to Kal. Sept.
+  //     beyond the presses' yield (wine: LUXURY_RUNWAY days), and the floor, exceed what the stores hold
+  const oil = goodsPlan(s, v, 'oil');
+  if (BUILDING_DEFS.olivetum.rank <= s.rank && oil.demand * B.ordo.LUXURY > olivePotential(s)) yield* yieldOf(make('olivetum', 'luxury', { res: 'oil' }));
+  for (const g of [oil, goodsPlan(s, v, 'wine')]) {
+    if (g.demand <= 0 || g.reserve + g.floor <= c.caps[g.res]) continue;
+    const hold = Math.floor(c.caps[g.res] / g.demand), need = Math.ceil((g.reserve + g.floor) / g.demand);
+    yield* yieldOf(make('apotheca', 'luxury', { res: g.res, store: 1, hold, need }));
+  }
   // 10 · the council focus's build plan (named only once the player can see the focus); 11 · beauty under Urbs
   const focus = s.decisions.focus;
   const plan = focusParams(s);

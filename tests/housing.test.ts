@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Building, CoverageLayerId, GameState, HouseTierId } from '../src/game/types';
 import { census, houseBeds, residents } from '../src/game/census';
 import {
-  firstWant, goodsDay, houseTax, housesUnlockedBy, housingDay, nextTier, setHousePref, targetTier, unmetNeeds,
+  firstWant, goodsDay, goodsDemand, goodsTier, houseTax, housesUnlockedBy, housingDay, nextTier, setHousePref, targetTier, unmetNeeds,
 } from '../src/game/housing';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { log } from '../src/game/state';
@@ -327,6 +327,66 @@ describe('goods and taxes (DESIGN §7.6, §8.8)', () => {
     s.res.oil = residents(s, b.id).length * H.GOODS.oil;
     goodsDay(s, ctx());
     expect(b.house!.oil).toBeGreaterThan(a.house!.oil);
+  });
+
+  it('a stone house draws oil only once the goods are all its next tier still wants (DESIGN §7.6)', () => {
+    const { s, houses } = setup();
+    const [a, b] = houses;
+    s.rank = 2;                               // Rome grants stone houses and insulae to an Oppidum
+    setTier(s, a, 'domusParva');
+    setTier(s, b, 'insula');
+    const below: CoverageLayerId[] = ['water', 'shrine', 'temple', 'market', 'macellum'];
+    cover(a, below, 1);                       // no baths yet: an insula would still want them
+    cover(b, [...below, 'baths'], 1);
+    for (const o of houses.slice(2)) cover(o, []);
+    expect(unmetNeeds(s, a, 'insula')).toEqual(['baths', 'oil']);
+    expect(goodsTier(s, a)).toBeNull();
+    expect(goodsTier(s, b)).toBe('insula');
+    s.res.oil = 100;
+    for (let d = 0; d < 30; d++) { s.day++; goodsDay(s, ctx()); }
+    const insula = residents(s, b.id).length * H.GOODS.oil;
+    expect(s.res.oil).toBeCloseTo(100 - 30 * insula, 6);    // only the insula drew
+    expect(a.house!.oil).toBe(0);
+    expect(goodsDemand(s).oil).toBeCloseTo(insula, 9);
+    cover(a, [...below, 'baths'], 1);         // baths reach it: only the oil is wanting now, and it draws
+    expect(unmetNeeds(s, a, 'insula')).toEqual(['oil']);
+    expect(goodsTier(s, a)).toBe('insula');
+    for (let d = 0; d < 30; d++) { s.day++; goodsDay(s, ctx()); }
+    expect(a.house!.oil).toBeGreaterThan(H.SUPPLIED);
+    expect(unmetNeeds(s, a, 'insula')).toEqual([]);
+    expect(goodsTier(s, a)).toBe('insula');   // supplied, it keeps drawing until it rises (no flip-flop)
+    s.day++;
+    expect(goodsDemand(s).oil).toBeCloseTo(insula + residents(s, a.id).length * H.GOODS.oil, 9);
+  });
+
+  it('a month without oil costs an insula half its taxes, not its storey; a lean season without it, one tier (DESIGN §7.3)', () => {
+    const lapse = (dry: number): { s: GameState; h: Building; declined: boolean; lowest: HouseTierId } => {
+      const { s, houses } = setup();
+      const [h] = houses;
+      s.rank = 2;
+      setTier(s, h, 'insula');
+      cover(h, ['water', 'shrine', 'temple', 'market', 'macellum', 'baths'], 1);
+      for (const o of houses.slice(1)) cover(o, []);
+      h.house!.oil = 1;
+      let declined = false, lowest: HouseTierId = 'insula';
+      for (let d = 0; d < dry + 60; d++) {
+        s.day++;
+        s.res.oil = d < dry ? 0 : 100;
+        goodsDay(s, ctx());
+        housingDay(s, ctx());
+        declined ||= h.house!.declining;
+        if (h.house!.tier === 'domusParva') lowest = 'domusParva';
+      }
+      return { s, h, declined, lowest };
+    };
+    const short = lapse(30);
+    expect(short.declined).toBe(true);                   // it declined (half taxes, the Aedilis warns)…
+    expect(short.lowest).toBe('insula');                 // …but kept its storey,
+    expect(short.h.house!.declining).toBe(false);        // and recovered once the oil came back
+    expect(short.s.stats.devolved).toBe(0);
+    const long = lapse(100);
+    expect(long.lowest).toBe('domusParva');              // one tier, never more (it rises again once supplied)
+    expect(long.s.stats.devolved).toBe(1);
   });
 
   it('applies the aquae variant: insula beds +6, domus tax ×1.3', () => {

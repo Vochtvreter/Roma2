@@ -8,7 +8,7 @@ import type {
 import { houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
 import { derived as derived$, footprintOf as footprintOf$ } from './derived';
 import { fx as fx$ } from './fx';
-import { dayEpoch as dayEpoch$, invalidateTiers as invalidateTiers$, memo as memo$, touchPeople as touchPeople$ } from './memo';
+import { dayEpoch as dayEpoch$, dayStruct, invalidateTiers as invalidateTiers$, memo as memo$, touchPeople as touchPeople$ } from './memo';
 import { residents } from './census';
 import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
@@ -295,22 +295,64 @@ export function housingDay(s: GameState, ctx: TickContext): void {
   if (changed) invalidateTiers(s);   // tiers moved (beds, desirability, patricii), no work or road did
 }
 
-/** Delivers oil and wine to T3/T4 houses inside macellum coverage (domus first, then insulae, then by id) and updates
- *  their supply EMAs; T3 houses draw too, since they need a steady supply before they can become T4. */
+/** The tier whose goods a house draws, or null when it draws none: a T4 house draws for its own tier (or the branch it
+ *  converts to); a stone house only once the goods are all its next tier still wants (every other need holds) or it is
+ *  already renovating — its supply must hold before it may rise (DESIGN §7.6), and oil poured into a house that still
+ *  waits for its baths or its temple was oil the insulae went without. */
+export function goodsTier(s: GameState, b: Building): HouseTierId | null {
+  const h = b.house;
+  if (!h) return null;
+  if (level(h.tier) === TOP) return targetTier(s, b) ?? h.renovating?.to ?? h.tier;
+  if (h.tier !== 'domusParva') return null;
+  if (h.renovating) return h.renovating.to;
+  const t = targetTier(s, b);
+  if (!t) return null;
+  for (const n of unmetNeeds(s, b, t)) if (n !== 'oil' && n !== 'wine') return null;
+  return t;
+}
+
+/** Whether a house drawing for `t` draws wine too (a domus, or a house becoming one). */
+function drawsWine(b: Building, t: HouseTierId): boolean {
+  return TIER_DEFS[t].needs.includes('wine') || b.house?.tier === 'domus';
+}
+
+/** Oil and wine the houses draw a day at full supply (goodsDay's rule: goodsTier), and of it what the houses inside
+ *  macellum coverage — the only ones served — draw. What the Ordo plans its presses, stores and caravans for. */
+export function goodsDemand(s: GameState): { oil: number; wine: number; servedOil: number; servedWine: number } {
+  return memo(s, 'goodsDemand', dayStruct(s), () => {   // once a day per structure: the plan, not the day's delivery
+    const out = { oil: 0, wine: 0, servedOil: 0, servedWine: 0 };
+    for (const id of derived(s).houses) {
+      const b = getBuilding(s, id);
+      const t = b ? goodsTier(s, b) : null;
+      if (!b || !t) continue;
+      const n = residents(s, id).length;
+      const served = houseHas(s, id, 'macellum');
+      out.oil += n * H.GOODS.oil;
+      if (served) out.servedOil += n * H.GOODS.oil;
+      if (drawsWine(b, t)) {
+        out.wine += n * H.GOODS.wine;
+        if (served) out.servedWine += n * H.GOODS.wine;
+      }
+    }
+    return out;
+  });
+}
+
+/** Delivers oil and wine to the houses that draw them (goodsTier) inside macellum coverage — domus first, then insulae,
+ *  then the stone houses about to rise, then by id — and updates every house's supply EMA. */
 export function goodsDay(s: GameState, ctx: TickContext): void {
   const list: { b: Building; rank: number; oil: boolean; wine: boolean }[] = [];
   for (const id of derived(s).houses) {
     const b = getBuilding(s, id);
     const h = b?.house;
     if (!b || !h) continue;
-    const t = level(h.tier) === TOP || h.tier === 'domusParva' ? targetTier(s, b) ?? (h.renovating?.to ?? h.tier) : null;
+    const t = goodsTier(s, b);
     if (!t) {
       h.oil += H.SUPPLY_ALPHA * (0 - h.oil);
       h.wine += H.SUPPLY_ALPHA * (0 - h.wine);
       continue;
     }
-    const wine = TIER_DEFS[t].needs.includes('wine') || h.tier === 'domus';
-    list.push({ b, rank: h.tier === 'domus' ? 0 : h.tier === 'insula' ? 1 : 2, oil: true, wine });
+    list.push({ b, rank: h.tier === 'domus' ? 0 : h.tier === 'insula' ? 1 : 2, oil: true, wine: drawsWine(b, t) });
   }
   list.sort((a, c) => a.rank - c.rank || a.b.id - c.b.id);
   for (const { b, oil, wine } of list) {

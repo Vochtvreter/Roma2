@@ -14,8 +14,10 @@ import { missing } from '../state';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { TRADE_BASE as TRADE_BASE$ } from '../data/hubs';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
-import { canSpend, capitoliumAhead, etaDays, outputRates, reserved, savingParts } from './saving';
-import { houseWants, walkWishes } from './build';
+import { canSpend, capitoliumAhead, etaDays, reserved, savingParts } from './saving';
+import { walkWishes } from './build';
+import { goodsPlan, ordoLuxuryImport } from './goods';
+import type { Good } from './goods';
 import { chronicle } from './chronicle';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -44,20 +46,30 @@ function busy(s: GameState, mode: 'import' | 'export', res: TradeRes): boolean {
 /** Daily use of a good: eaten grain, oil and wine for the houses, processing inputs at today's staffing. */
 function dailyUse(s: GameState, v: SimView, res: TradeRes): number {
   if (res === 'grain') return v.c.need.grain;
-  const hw = houseWants(s, v);
-  if (res === 'oil') return hw.t4Res * B.housing.GOODS.oil;
-  if (res === 'wine') return hw.domusRes * B.housing.GOODS.wine;
+  if (res === 'oil' || res === 'wine') return goodsPlan(s, v, res).demand;
   let use = 0;
   const staffed = v.c.staffed;   // the census once, not a view read per building
   for (const b of s.buildings) if (b.status === 'done') use += (BUILDING_DEFS[b.type].inputs?.[res] ?? 0) * (staffed[b.id] ?? 0);
   return use;
 }
 
-/** Stock above max(trade reserve × daily use, 80% of the cap — 60% under Mercatura) and above what the Ordo holds back. */
+/** Stock above max(trade reserve × daily use, 95% of the cap — 60% under Mercatura) and above what the Ordo holds back;
+ *  oil and wine also above what the great houses draw to the next pressing (goodsPlan.keep: through Ver and Aestas the
+ *  stores must carry the insulae, so a full store in Hiems is no surplus while the lean season would empty it). */
 function surplus(s: GameState, v: SimView, res: TradeRes): number {
   const share = s.decisions.focus === 'mercatura' ? B.ordo.EXPORT_CAP_MERCATURA : B.ordo.EXPORT_CAP;
-  const keep = Math.max(settingValue(s, 'tradeReserve') * dailyUse(s, v, res), share * v.c.caps[res]) + (reserved(s, v)[res] ?? 0);
-  return s.res[res] - keep;
+  let keep = Math.max(settingValue(s, 'tradeReserve') * dailyUse(s, v, res), share * v.c.caps[res]);
+  if (res === 'oil' || res === 'wine') keep = Math.max(keep, goodsPlan(s, v, res).keep);
+  return s.res[res] - keep - (reserved(s, v)[res] ?? 0);
+}
+
+/** How many standing imports of an oil or wine the great houses need: what the projection without the Ordo's own
+ *  standing imports lacks within its horizon, in full caravans, each making as many trips as the horizon allows. */
+export function luxuryCaravans(s: GameState, v: SimView, res: Good): { need: number; short: number } {
+  const bare = goodsPlan(s, v, res, false);
+  if (!bare.hub || bare.short <= 0) return { need: 0, short: 0 };
+  const trips = Math.max(1, Math.floor(bare.horizon / bare.hub.roundTrip));
+  return { need: Math.ceil(bare.short / (B.ordo.CARGO * trips)), short: bare.short };
 }
 
 /** The contracts the Ordo would make now, in rule order, within the free caravan slots. Pure. */
@@ -81,11 +93,23 @@ export function tradeMoves(s: GameState, v: SimView): TradeMove[] {
   const hiems = g.crunch && g.crunch.startsIn <= B.advisors.RULES.HIEMS_LEAD && g.crunch.lowestDoh < 1;
   const low = s.decisions.focus === 'copia' ? g.doh < gr : g.doh < gr / 2 && g.structural;
   if (hiems || low) buy('grain', hiems && g.crunch ? g.crunch.needInStore - g.stock : g.need * gr - g.stock, 'deficitImport', { why: hiems ? 'winter' : 'famine' });
-  // 2 · oil and wine before the great houses run dry (Urbs keeps twice the runway), on a standing contract
+  // 2 · oil and wine before the great houses run dry: as many standing caravans as the projection lacks (the lean
+  //     season's draw beyond what the stores and the presses carry; every amphora of wine), cheapest hub first
   for (const res of ['oil', 'wine'] as const) {
-    const net = dailyUse(s, v, res) - (outputRates(s, 'current')[res] ?? 0);
-    const days = net > 0 ? s.res[res] / net : Infinity;
-    if (days < B.ordo.LUXURY_RUNWAY * (s.decisions.focus === 'urbs' ? 2 : 1)) buy(res, B.ordo.CARGO, 'luxuryImport', { days: Math.floor(days) }, true);
+    const plan = goodsPlan(s, v, res);
+    const { need } = luxuryCaravans(s, v, res);
+    let have = s.trade.contracts.filter((c) => ordoLuxuryImport(c, res) && c.status !== 'paused').length;
+    let room = v.c.caps[res] - s.res[res];
+    for (const c of s.trade.caravans) if (c.mode === 'import' && c.res === res) room -= c.qty;
+    while (have < need && free > 0 && plan.hub && room >= MIN_EXPORT) {   // a full caravan, or what the stores can take
+      const qty = Math.floor(Math.min(B.ordo.CARGO, room)), cost = plan.hub.unit * qty;
+      if (!canSpend(s, { denarii: cost }, v) || runway(v, cost) <= B.ordo.IMPORT_RUNWAY) break;
+      const days = plan.emptyDay !== null ? Math.max(0, plan.emptyDay - s.day) : null;
+      const params: Reason['params'] = { res, qty, hub: plan.hub.id };
+      if (days !== null) params.days = days; else params.short = Math.ceil(plan.short);
+      out.push({ spec: { hub: plan.hub.id, mode: 'import', res, qty, repeat: true }, reason: { code: 'luxuryImport', params } });
+      free--; have++; room -= qty;
+    }
   }
   // 3 · a work kept waiting more than 40 days on a tradeable good: the pending wish, a request, the Capitolium
   const pending = walkWishes(s, v).pending;
@@ -166,9 +190,14 @@ function merchantDeals(s: GameState, v: SimView, decided: boolean): void {
 export function ordoTrade(s: GameState, ctx: TickContext, v: SimView): void {
   const decided = ctx.offline && !s.ordo.on.trade;
   for (const c of s.trade.contracts.slice()) {
-    if (c.owner !== 'ordo' || c.status === 'travelling') continue;
-    const needless = c.repeat && (c.res === 'oil' || c.res === 'wine') && dailyUse(s, v, c.res) <= (outputRates(s, 'current')[c.res] ?? 0);
-    if (c.status === 'paused' || needless) cancelContract(s, c.id);
+    if (c.owner === 'ordo' && c.status === 'paused') cancelContract(s, c.id);
+  }
+  // the great houses' standing imports beyond what the projection needs: the idle ones go first, the newest first (a
+  // caravan on the road completes its trip)
+  for (const res of ['oil', 'wine'] as const) {
+    const mine = s.trade.contracts.filter((c) => ordoLuxuryImport(c, res)).sort((a, b) => (a.status === 'idle' ? 0 : 1) - (b.status === 'idle' ? 0 : 1) || b.id - a.id);
+    const { need } = luxuryCaravans(s, v, res);
+    for (const c of mine.slice(0, Math.max(0, mine.length - need))) cancelContract(s, c.id);
   }
   for (const m of tradeMoves(s, v)) {
     const r = createContract(s, m.spec, 'ordo', m.reason);

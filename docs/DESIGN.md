@@ -383,7 +383,7 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 - Thresholds: T2 ≥ −5, T3 ≥ 0, insula ≥ −3, domus ≥ 10. (An insula is −1/r2 to its neighbours: at ≥ 0 a block of insulae dragged itself below its own need, declined, dropped, recovered and rose again without end.)
 
 ### 7.6 Goods
-- T4 residents consume **oil 0.05**/day; domus residents also **wine 0.05**/day, delivered daily from city stock to houses inside macellum coverage. On shortage, higher tiers first, then by house id. Each house keeps a supply EMA (rate 0.1/day) of delivered/needed; *supplied* means EMA ≥ 0.8.
+- T4 residents consume **oil 0.05**/day; domus residents also **wine 0.05**/day, delivered daily from city stock to houses inside macellum coverage. A stone house draws them too once they are all its next tier still wants (every other need holds; or it is renovating), so its supply holds when it rises — oil poured into a house still waiting for its baths is oil the insulae go without. On shortage, higher tiers first (domus, insulae, then those stone houses), then by house id. Each house keeps a supply EMA (rate 0.1/day) of delivered/needed; *supplied* means EMA ≥ 0.8.
 
 ### 7.7 What the house wants
 Every house exposes its **first unmet need for the next tier** as an icon bubble (Domus overlay, inspector): water drop, wheat sheaf (fed), shrine, basket (market), temple, laurel (desirability), bath, market hall, oil amphora, wine amphora, crate (materials), scroll (rank: *"a Vicus charter"*). The placement ghost of a service shows ↑ over every house whose first unmet need it would satisfy and reads *"+k houses could evolve"*. This is the core city-builder hook.
@@ -641,7 +641,7 @@ Workforce = adults and elders under 65, excluding patricii and the sick. Within 
 5. **Pending inputs** `pendingInput`: producers of whatever the saving target, the pending wish, waiting renovations or the next 30 days of Capitolium lack (*"Quarry 4: saving 60 stone for the Horreum"*).
 6. **Winter stockpile** `winterStock`: in Autumnus and the last 30 days of Aestas, while grain < need × *Grain reserve* and there is room: fill food to need × 1.35 (*"+3 fields: stockpiling for Hiems (612/900)"*).
 7. **Tools** `tools`: fabrica (and its inputs) while tool kits < 0.5 × tool-using buildings.
-8. **Luxury** `luxuryStaff`: olive groves to oil demand × 1.2 over the year — the goal follows the season's yield, so the same hands press in every season and the Autumnus and Hiems presses fill the stores for Ver and Aestas.
+8. **Luxury** `luxuryStaff`: olive groves to oil demand × 1.2 over the year — the goal follows the season's yield, so the same hands press in every season and the Autumnus and Hiems presses fill the stores for Ver and Aestas. Demand is what the houses draw at full supply (§7.6).
 9. **Services** `serviceFull`: fill remaining service slots.
 10. **Focus split** `focusSplit`: the remaining workforce by the focus weights (§10.8).
 11. **Leftovers** `leftover`: any open slot (materials, industry, services, food, water order); the rest are idle — they forage 0.3 grain/day and add 0.3 work/day to sites.
@@ -661,7 +661,7 @@ The wish list is walked in order. Each wish names a type and a slot (`bestSlot`)
 | 6 | `evolve` | a service type is the first unmet need of ≥ 2 houses (≥ 3 for block-sized services, balnea included) | that service at the slot unblocking the most houses (greedy set cover) — *the Aedilis's top advisory, executed* | yes |
 | 7 | `rank` | a building named by the next petition is missing | it | yes |
 | 8 | `materials` | a resource lacking for the saving target, pending wish, renovations or Capitolium with ETA > 30 days | its producer | yes |
-| 9 | `luxury` | oil demand × 1.2 > the groves' yearly yield (olivetum unlocked); demand counts T4 residents and the residents of homes whose first want is oil or wine | olivetum | yes |
+| 9 | `luxury` | oil demand × 1.2 > the groves' yearly yield (olivetum unlocked); demand is the houses' draw at full supply (§7.6) — then, planned as the grain is for Hiems, the stores for the lean season: while the reserve (the draw the presses leave uncovered from Kal. Mart. to Kal. Sept.; wine: 60 days of the draw) plus a 15-day floor exceeds the oil (wine) capacity | olivetum, then apotheca | yes |
 | 10 | `focusPlan` | the focus's ordered `[type, count]` plan | next item | yes |
 | 11 | `beauty` | *Urbs* focus only | hortus lifting the most T3 houses toward desirability 10 | yes |
 
@@ -692,9 +692,9 @@ The wish list is walked in order. Each wish names a type and a slot (`bestSlot`)
 
 ### 10.7 Trade automation (every 10 days, `day % 10 == 5`; contracts tagged *Ordo*)
 1. `deficitImport`: grain when the Hiems forecast is short or grain DoH < *Grain reserve*/2 with max potential < need; cheapest open hub that sells grain; only if coin runway stays > 90 days.
-2. `luxuryImport`: oil or wine when supplied houses would run out in < 60 days and local production cannot cover (repeat while needed).
+2. `luxuryImport`: oil or wine by a projection (the stock, the presses' yield by season at the Ordo's staffing, the draw, the caravans on the road and the standing imports' next trips): when within its horizon (60 days + the cheapest round trip) the stock would fall below a floor of 15 days of the draw (30 under *Urbs*), as many standing contracts of 80 as that shortfall needs (each making the trips the horizon allows), cheapest hub first; the Ordo cancels its own beyond what the projection without them still lacks.
 3. `wishImport`: a pending wish or the Capitolium has waited > 40 days on a tradeable resource → import the shortfall (≤ 80).
-4. `surplusExport`: any tradeable above max(*Trade reserve* × daily use, 95% of cap — 60% under *Mercatura*) plus pending targets → export ≤ 80 to the hub with the best `price × qty / roundTripDays`.
+4. `surplusExport`: any tradeable above max(*Trade reserve* × daily use, 95% of cap — 60% under *Mercatura*) plus pending targets → export ≤ 80 to the hub with the best `price × qty / roundTripDays`. Oil and wine are kept besides to the next pressing: what the draw takes until Kal. Sept. (in Autumnus and Hiems the whole lean-season reserve) plus the 15-day floor — a full store in Hiems is no surplus while Ver and Aestas would empty it.
 5. `merchantDeal`: on a merchant's last day, take offers that sell surplus at ≥ 1.1 × base or buy goods named by an active Cave/Periculum advisory, keeping coin runway > 60 days.
 The Ordo never cancels or edits a player contract.
 
@@ -802,7 +802,7 @@ R = *runs out in* = stock / −(3-day average net) when net < 0. DoH = stock / d
 | 3 | `annonae.hiems.forecast` | annonae | 120 days before Kal. Dec. → Kal. Mart.; lowest projected grain DoH in Hiems | P: ≤ 0 and Hiems < 45 d away · C: ≤ 0 · M: < 15 (> 18.75) | **"Hiems in {D} days: grain would run out on {date}."** / *"…our lowest would be {P} days."* *"In Hiems our fields give a third. We need about {need} in store by Kal. Dec.; we hold {stock}, with room for {cap}."* (+ *"Even full, our stores are too small."*) | Ask/Place Horreum (if capacity short) · Grain reserve → {x} · Ask/Place Venatio · Contract: import grain |
 | 4 | `annonae.mess` | annonae | any group got r < 1 yesterday | P if children short, else C (3 full days) | **"Yesterday's mess: {groups} went short."** *"Watch: {names}."* | Open Populus: Watch · Buy grain now |
 | 5 | `annonae.storage` | annonae | grain ≥ 97% of cap with net > 0 for 5 days, or shed rot ≥ 3/day | N while only full or with the open sheds' ordinary rot (it stays on the tablets, off the counsel card); M if grain spills or rot ≥ 3/day; C if spill + rot > 10/day (clears < 90% and rot < 1) | **"The sheds overflow: {x} grain a day spills[ and {y} rots]."** / *"Grain rots in the open sheds: {y} a day."* / *"The sheds are full: {pct}% of our room is taken."* | Ask/Place Horreum · Contract: export grain (the export first while more than 2 × the *Grain reserve* in days is in store) |
-| 6 | `annonae.goods` | annonae | oil (or wine) for T4 houses runs out in < 30 days or supply < 90% | M; C if a house declines from it | **"Oil for the insulae runs out in {R} days."** | Ask/Place Olivetum · Contract: import {res} from {hub} |
+| 6 | `annonae.goods` | annonae | the Ordo's projection of oil (or wine) for the great houses (§10.7: the presses' seasons, the caravans on the road, the standing imports) runs dry within 90 days, or supply < 90% | M; C within 30 days or if a house declines from it | **"Oil for the insulae runs out in {R} days."** *"…the presses rest through Ver and Aestas: the stores must hold {reserve} when Ver begins, and they hold {cap}."* | Ask/Place Apotheca (when the stores cannot hold the lean season) · Ask/Place Olivetum (when the groves cannot press the year's draw) · Contract: import {res} from {hub} |
 | 7 | `aquarum.water.runout` | aquarum | net water < 0; R | P < 7 · C < 15 · M < 30 | **"Water runs out in {R} days."** (fixable/structural variants) | Wells first 30 d · Ask/Place Puteus · Pause caementarium (if it draws) |
 | 8 | `aquarum.aestas.forecast` | aquarum | 90 days before Kal. Iun. → Kal. Sept.; lowest projected water DoH in Aestas | P: ≤ 0 and < 30 d away · C: ≤ 0 · M: < 10 (> 12.5) | **"Aestas in {D} days: we would run dry on {date}."** / *"…our lowest would be {P} days of water. Cisterns catch a third of their rain in Aestas and wells draw four-fifths."* | Ask/Place Cisterna · Ask/Place Puteus (whichever the Ordo's Aestas wish would raise first; Wells first 30 d when neither would lift the low) · Water reserve → {x} |
 | 9 | `aquarum.access` | aquarum | ≥ 2 houses whose first unmet need is water | M; C if any declines for it | **"{n} homes fetch water from the river."** *"A well at {place} would reach {k} of them."* | Ask/Place Puteus (best) · Overlay Aqua |
@@ -981,7 +981,7 @@ So: buy grain in Autumnus, sell it in Hiems; buy wine after the vintage.
 `{hub, mode: export | import, res, qty, repeat, owner: player | ordo}`.
 - Export: goods leave at dispatch; coin arrives on return. Import: paid at dispatch; goods arrive on return (overflow refunded pro rata).
 - **Repeat** contracts re-dispatch whenever a slot is free; if a slot is not free they simply wait (*"waiting for a mule team"*).
-- **Auto-pause** with a typed code, one log line on pause and one on resume (no spam): `reserve` (an export would take grain below *Trade reserve* × need, or a material below the Ordo's reservations), `stock` (not enough to load), `denarii` (cannot pay an import), `storage` (no room for an import), `refused` (the hub will not trade it).
+- **Auto-pause** with a typed code, one log line on pause and one on resume (no spam): `reserve` (an export would take grain below *Trade reserve* × need, a material below the Ordo's reservations, or oil or wine below what the great houses draw to the next pressing, §10.7), `stock` (not enough to load), `denarii` (cannot pay an import), `storage` (no room for an import), `refused` (the hub will not trade it).
 - The form (hub → mode → good → qty → repeat) previews trip days and value live.
 
 ### 13.6 Visiting merchant
@@ -1191,8 +1191,8 @@ Map: W 112 · H 84 · TILE 16 · PITCH 5 · CASTRUM 31×21 · TERRITORY [20,26,3
 People: NEED child .6 youth .85 adult 1 elder .75 · BIRTH 0.09/yr · MARRY 1/400 · IMM_RATE [0.014,0.011,0.0075,0.003,0.04] · RENOWN Vicus 1 + 1.25 × (dignitas / 40 − 1), ≤ ×2 · CEILING [100,260,560,900,1500] · POP_CAP 1500 · SKILL_XP 0.004 · SKILL_BONUS 0.04 · ELDER_OUT 0.7 · RETIRE 65.
 Economy: MULT_CAP 2.5 · PRODUCTIVITY 0.85 + 0.30·m · TOOL 1.2 × 120 d · IDLE_FORAGE 0.3 · IDLE_BUILD 0.3 · SHED_ROT 0.003 (×2 Aestas) · EVAPORATION 0.002 · HORREUM 4,000.
 Housing: OK_DAYS 15 · RENOVATE_DAYS 8 · DECLINE_AFTER 20 · DROP_AFTER 60 · OFFLINE_DECLINE_STOP 55 · THROTTLE 1 + houses/8 per 10 d · DESIR_DOMUS 10.
-Ordo: BUILD_EVERY 2 · TRADE_DAY 10/5 · SITES 1 + workforce/40 (max 4) · FOOD_CAP .75/.90 · BUILDERS_MAX .30 · CAP_CREW 64.
-Advisors: CLEAR ×1.25 · DOWNGRADE 3 d · MIN_LIFE 3 d · HUSH 30 d · BELL 30 s.
+Ordo: BUILD_EVERY 2 · TRADE_DAY 10/5 · SITES 1 + workforce/40 (max 4) · FOOD_CAP .75/.90 · BUILDERS_MAX .30 · CAP_CREW 64 · LUXURY_RUNWAY 60 · GOODS_FLOOR 15.
+Advisors: CLEAR ×1.25 · DOWNGRADE 3 d · MIN_LIFE 3 d · HUSH 30 d · BELL 30 s · GOODS_DAYS 30 · GOODS_LEAD 90.
 
 ### 18.4 Target curves (decision-only bot, medians over seeds [1, 2, 3, 42, 1337])
 
