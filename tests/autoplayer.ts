@@ -1,0 +1,296 @@
+// tests/autoplayer.ts — the five balance bots (actions only) and the recorder that plays them (ARCHITECTURE §14.2 WP-J,
+// DESIGN §1.4, §18.4–18.5). Bots act between ticks exactly as a player would: through src/game/actions.ts and
+// advisors/remedies.applyRemedy. Policy thresholds below are the bots' own judgement, not game balance.
+import { B } from '../src/game/balance';
+import { EDICTS, ORDO_AREAS, PATH_DECISIONS, RULES, TABS } from '../src/game/types';
+import type { BuildingId, EdictId, GameState, PathDecisionId, PathOptionId, RankIndex, SimView, TabId, TipId } from '../src/game/types';
+import * as act from '../src/game/actions';
+import { petitionNeeds, settingValue } from '../src/game/decisions';
+import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
+import { applyRemedy } from '../src/game/advisors/remedies';
+import { reserved } from '../src/game/ordo/saving';
+import { nextTip } from '../src/game/guide';
+import { tabRevealed } from '../src/game/reveal';
+import { dignitas } from '../src/game/civic';
+import { capitoliumStage } from '../src/game/construction';
+import { canPlace } from '../src/game/place';
+import { bestSlot } from '../src/game/site';
+import { canAfford } from '../src/game/state';
+import { serialize } from '../src/game/save';
+import { newCtx, tick, view } from '../src/game/sim';
+import { elapsed, seasonOf } from '../src/game/calendar';
+import { PATH_DEFS } from '../src/game/data/decisions';
+import { RANK_DEFS } from '../src/game/data/ranks';
+import { fresh, noNaN } from './util';
+
+/** The five bots of DESIGN §18.5. */
+export type BotKind = 'decision' | 'undecided' | 'follower' | 'builder' | 'neglect';
+/** The balance seeds (DESIGN §18.4); BAL_SEEDS=1,2 overrides. */
+export const SEEDS: readonly number[] = process.env.BAL_SEEDS ? process.env.BAL_SEEDS.split(',').map(Number) : [1, 2, 3, 42, 1337];
+/** DESIGN §18.4 pacing bands (elapsed days; pop at victory). */
+export const BANDS = {
+  vicus: [420, 780], oppidum: [2100, 3400], municipium: [5000, 7600], colonia: [9800, 14000], victory: [12000, 17500],
+  capPhase: [1800, 3000], capStage: [350, 900], victoryPop: [900, 1400],
+} as const;
+/** The band of each rank by index (Castra has none). */
+export const RANK_BANDS = [null, BANDS.vicus, BANDS.oppidum, BANDS.municipium, BANDS.colonia] as const;
+/** DESIGN §18.4 target curve: elapsed day, population, houses T0/T1/T2/T3/T4i/T4d. */
+export const TARGETS: readonly { day: number; pop: number; tiers: readonly number[] }[] = [
+  { day: 0, pop: 24, tiers: [6, 0, 0, 0, 0, 0] }, { day: 120, pop: 30, tiers: [4, 3, 0, 0, 0, 0] },
+  { day: 335, pop: 42, tiers: [2, 5, 0, 0, 0, 0] }, { day: 600, pop: 55, tiers: [1, 7, 0, 0, 0, 0] },
+  { day: 1500, pop: 120, tiers: [1, 8, 6, 0, 0, 0] }, { day: 2700, pop: 190, tiers: [1, 7, 13, 0, 0, 0] },
+  { day: 4500, pop: 300, tiers: [0, 4, 12, 8, 1, 1] }, { day: 6300, pop: 410, tiers: [0, 3, 10, 12, 4, 2] },
+  { day: 9000, pop: 580, tiers: [0, 2, 10, 15, 9, 5] }, { day: 11900, pop: 720, tiers: [0, 2, 10, 18, 13, 7] },
+  { day: 14300, pop: 1050, tiers: [0, 3, 10, 20, 22, 12] },
+];
+/** DESIGN §18.4 treasury net per rank (den/day, [low, high]). */
+export const COIN_NET: readonly (readonly [number, number])[] = [[3, 3], [6, 10], [12, 25], [30, 50], [40, 80]];
+
+const FOLLOW_EVERY = 10;      // advisor-follower: remedy 0 of the top advisory every 10 days (DESIGN §11.5)
+const BUILD_EVERY = 5;        // builder: places the Aedilis/Fabrum build remedies every 5 days (DESIGN §18.5)
+const TIP_READ_DAYS = 3;      // a tip stays on the card this long before the bot clicks "Understood"
+const FULL_SUMMER = 0.9;      // Largae when the sheds are this full in Aestas
+const DIGNITAS_NEAR = 0.85;   // Feriae Frequentes when dignitas is this close to the next threshold
+const BOOM_SITES = 3, TIMBER_LOW = 0.3;   // Silvae Caedua: a building boom short of timber
+const FAMINE_RUNWAY = 30;     // Rationes Parcae in Hiems when grain runs out within this many days
+
+/** The fixed path table of a seed: option (slot + k) mod 3 for the k-th decision, so the five seeds use every option. */
+export function pathTable(seed: number): Record<PathDecisionId, PathOptionId> {
+  const at = [1, 2, 3, 42, 1337].indexOf(seed);
+  const slot = at >= 0 ? at : Math.abs(seed);
+  const t = {} as Record<PathDecisionId, PathOptionId>;
+  PATH_DECISIONS.forEach((d, k) => { t[d] = PATH_DEFS[d].options[(slot + k) % PATH_DEFS[d].options.length].id; });
+  return t;
+}
+
+/** The edict options the "Situational use" column of DESIGN §10.9 advises in the current state. */
+export function edictAdvice(s: GameState, v: SimView, pn = petitionNeeds(s, v)): Record<EdictId, string> {
+  const f = v.f, c = v.c, season = seasonOf(s.day);
+  const hiemsShort = f.grain.crunch !== null && f.grain.crunch.lowestDoh <= 0;
+  const famine = hiemsShort || (f.grain.runout !== null && f.grain.runout - s.day < FAMINE_RUNWAY);
+  const unrest = s.morale < B.morale.LABELS[1];
+  const unfinished = (t: BuildingId): boolean => s.buildings.some((b) => b.type === t && b.status !== 'done');
+  const capitolium = unfinished('capitolium');
+  const dig = pn?.rank != null ? dignitas(s).value / Math.max(1, RANK_DEFS[pn.rank].dignitas) : 0;
+  const sites = s.buildings.filter((b) => b.status !== 'done' && b.type !== 'capitolium').length;
+  const paths = s.decisions.paths;
+  return {
+    rationes: season === 3 && famine ? 'parcae' : season === 1 && s.res.grain >= FULL_SUMMER * f.grain.cap && !hiemsShort ? 'largae' : 'plenae',
+    tributum: unrest ? 'leve' : capitolium ? 'grave' : 'iustum',
+    opera: capitolium || unfinished('castellum') || (unfinished('horreum') && (season === 1 || season === 2)) ? 'magna' : 'solita',
+    hospites: season === 2 && hiemsShort ? 'clausi' : c.freeBeds >= settingValue(s, 'spareBeds') && c.pop < c.roll ? 'patentes' : 'cauti',
+    horae: unrest ? 'otium' : pn?.ready && !pn.affordable ? 'longae' : 'solitae',
+    nundinae: paths.charter === 'mercatores' || paths.path2 === 'viaMilitaris' ? 'frequentes' : 'solitae',
+    feriae: unrest || (dig >= DIGNITAS_NEAR && dig < 1) ? 'frequentes' : 'solemnes',
+    silvae: sites >= BOOM_SITES && s.res.timber < TIMBER_LOW * c.caps.timber ? 'caedua' : 'renovata',
+    aquae: v.d.castellumActive ? 'operibus' : 'populo',
+  };
+}
+
+/** A bot: `step` runs once per day before the tick and acts only through the action API. */
+export interface Bot { readonly kind: BotKind; readonly picks: Record<PathDecisionId, PathOptionId>; step(s: GameState): void }
+
+/** Builds a bot of one kind for one seed (the path table comes from the seed). */
+export function makeBot(kind: BotKind, seed: number): Bot {
+  const picks = pathTable(seed);
+  const tip = { id: null as TipId | null, since: 0 };
+  let toggled = false;
+  return {
+    kind, picks,
+    step(s) {
+      if (kind === 'undecided') return;
+      if (kind === 'neglect') {
+        if (!toggled) for (const a of ORDO_AREAS) act.setOrdo(s, a, false);
+        toggled = true;
+        return;
+      }
+      decide(s, picks, tip);
+      const e = elapsed(s);
+      if (kind === 'follower' && e % FOLLOW_EVERY === 0) follow(s);
+      if (kind === 'builder' && e % BUILD_EVERY === 0) buildRemedies(s);
+    },
+  };
+}
+
+/** The decision-only player: charter and paths from the table, petitions when ready, situational edicts, default answers, tips read. */
+function decide(s: GameState, picks: Record<PathDecisionId, PathOptionId>, tip: { id: TipId | null; since: number }): void {
+  const v = view(s);
+  const pn = petitionNeeds(s, v);
+  if (pn && pn.ready && pn.affordable && elapsed(s) >= B.guide.CHARTER) act.choosePath(s, pn.decision, picks[pn.decision]);
+  const want = edictAdvice(s, v);
+  for (const id of EDICTS) if (s.decisions.edicts[id] !== want[id]) act.setEdict(s, id, want[id]);
+  const c = s.choice;   // the default, or (if unaffordable) the next affordable answer, as on expiry (DESIGN §12.1)
+  for (let k = 0; c && s.choice === c && k < c.options.length; k++) act.chooseOption(s, (c.defaultIndex + k) % c.options.length);
+  const t = nextTip(s);
+  if (!t) tip.id = null;
+  else if (t.id !== tip.id) { tip.id = t.id; tip.since = s.day; }
+  else if (s.day - tip.since >= TIP_READ_DAYS) act.dismissTip(s, t.id);
+}
+
+/** Remedy 0 of the top advisory (a `place` remedy executes as `ask`; a contract is sent as the form would send it). */
+function follow(s: GameState): void {
+  const top = activeAdvisories(s, { forCard: true })[0];
+  const r = top ? renderAdvisory(s, view(s), top).remedies[0]?.remedy : undefined;
+  if (!r) return;
+  if (r.kind === 'place') applyRemedy(s, { kind: 'ask', building: r.building });
+  else if (r.kind === 'contract') act.createContract(s, r.spec, 'player');
+  else applyRemedy(s, r);
+}
+
+/** Every Aedilis/Fabrum build remedy, placed by hand at its best slot as a player site (affordable above the Ordo's reserve). */
+function buildRemedies(s: GameState): void {
+  const v = view(s);
+  const done = new Set<BuildingId>();
+  for (const a of activeAdvisories(s)) {
+    if (a.advisor !== 'aedilis' && a.advisor !== 'fabrum') continue;
+    for (const { remedy: r } of renderAdvisory(s, v, a).remedies) {
+      if (r.kind !== 'place' && r.kind !== 'ask') continue;
+      const t = r.building;
+      if (t !== 'area' && (done.has(t) || s.buildings.some((b) => b.type === t && b.owner === 'player' && b.status !== 'done'))) continue;
+      const tile = (r.kind === 'place' ? r.tile : undefined) ?? bestSlot(s, t, { owner: 'player' })?.tile;
+      if (tile === undefined) continue;
+      const chk = canPlace(s, t, tile, { owner: 'player' });
+      if (chk.ok && canAfford(s, chk.cost, reserved(s, v)) && act.place(s, t, tile, { owner: 'player' }).ok) done.add(t);
+    }
+  }
+}
+
+/** Everything the balance tests and the trace read from one bot run. */
+export interface Run {
+  seed: number; kind: BotKind; s: GameState; picks: Record<PathDecisionId, PathOptionId>;
+  rankDay: number[];                  // elapsed day each rank was entered (index = rank; Castra 0)
+  stageDay: number[];                 // elapsed day Capitolium stages 1..4 completed (index 0 = stage 1)
+  victoryDay: number | null;
+  minPop: number; maxPop: number;     // after elapsed day 30
+  pops: number[]; starved: number[];  // per day: population and hunger + thirst deaths
+  minCoin: number; zeroStreak: number;
+  stall: { construction: number; renovation: number };   // longest stretch without progress while both had work
+  snapshots: { rank: RankIndex; json: string }[];         // serialised state on the day each rank was entered
+  nan: string[];
+  tabDay: Partial<Record<TabId, number>>; tipDay: Partial<Record<TipId, number>>;
+  remedyIssues: string[]; flaps: number;                  // guidance: rendering problems, most re-raises of a rule in 60 days
+}
+
+/** Options of one playthrough. */
+export interface PlayOpts {
+  days: number;                        // elapsed days to play at most (stops early on victory)
+  stop?: (s: GameState) => boolean;
+  snapshots?: boolean;                 // serialise the state at each rank-up (offline safety)
+  guidanceDays?: number;               // render every active advisory daily for this many days
+  onDay?: (s: GameState, r: Run) => void;
+}
+
+/** Plays one bot on one seed and records the balance metrics of DESIGN §18.5. */
+export function play(seed: number, kind: BotKind, opts: PlayOpts): Run {
+  const s = fresh(seed);
+  const bot = makeBot(kind, seed);
+  const r: Run = {
+    seed, kind, s, picks: bot.picks, rankDay: [0], stageDay: [], victoryDay: null, minPop: Infinity, maxPop: 0, pops: [], starved: [],
+    minCoin: Infinity, zeroStreak: 0, stall: { construction: 0, renovation: 0 }, snapshots: [], nan: [], tabDay: {}, tipDay: {},
+    remedyIssues: [], flaps: 0,
+  };
+  const t = { prog: 0, evolved: 0, renov: new Set<number>(), cStall: 0, rStall: 0, zero: 0, dead: 0, cleared: new Set<string>(), raises: new Map<string, number[]>(), active: new Set<string>() };
+  for (let i = 0; i < opts.days && !s.victory && !opts.stop?.(s); i++) {
+    bot.step(s);
+    tick(s, newCtx());
+    observe(s, r, t, opts);
+    opts.onDay?.(s, r);
+  }
+  r.nan.push(...noNaN(s).slice(0, 5));
+  return r;
+}
+
+type Tracker = { prog: number; evolved: number; renov: Set<number>; cStall: number; rStall: number; zero: number; dead: number; cleared: Set<string>; raises: Map<string, number[]>; active: Set<string> };
+
+function observe(s: GameState, r: Run, t: Tracker, opts: PlayOpts): void {
+  const e = elapsed(s), pop = s.people.length;
+  while (r.rankDay.length <= s.rank) {
+    r.rankDay.push(e);
+    if (opts.snapshots) r.snapshots.push({ rank: (r.rankDay.length - 1) as RankIndex, json: serialize(s) });
+  }
+  const cap = s.buildings.find((b) => b.type === 'capitolium');
+  const stage = cap ? (cap.status === 'done' ? 4 : capitoliumStage(cap)) : 0;
+  while (r.stageDay.length < stage) r.stageDay.push(e);
+  if (s.victory && r.victoryDay === null) r.victoryDay = e;
+  if (e > 30) { r.minPop = Math.min(r.minPop, pop); r.maxPop = Math.max(r.maxPop, pop); }
+  const dead = s.stats.deathsBy.hunger + s.stats.deathsBy.thirst;
+  r.pops.push(pop); r.starved.push(dead - t.dead); t.dead = dead;
+  r.minCoin = Math.min(r.minCoin, s.res.denarii);
+  t.zero = s.res.denarii < 1 ? t.zero + 1 : 0;
+  r.zeroStreak = Math.max(r.zeroStreak, t.zero);
+  if (e % 365 === 0 && r.nan.length === 0) r.nan.push(...noNaN(s).slice(0, 5));
+
+  // no deadlock: construction and renovation each progress while both have work (DESIGN §18.5)
+  let prog = s.stats.built, cWork = false, rWork = false, rProg = s.stats.evolved > t.evolved;
+  const renov = new Set<number>();
+  for (const b of s.buildings) {
+    if (b.status === 'building' || b.status === 'staked') { cWork = true; prog += b.progress; }
+    const h = b.house;
+    if (!h || b.status !== 'done') continue;
+    if (h.renovating) { renov.add(b.id); rWork = true; if (!t.renov.has(b.id)) rProg = true; }
+    else if (h.okDays >= B.housing.OK_DAYS) rWork = true;
+  }
+  const cProg = prog > t.prog + 1e-9;
+  t.prog = prog; t.evolved = s.stats.evolved; t.renov = renov;
+  if (cWork && rWork) { t.cStall = cProg ? 0 : t.cStall + 1; t.rStall = rProg ? 0 : t.rStall + 1; } else { t.cStall = 0; t.rStall = 0; }
+  r.stall.construction = Math.max(r.stall.construction, t.cStall);
+  r.stall.renovation = Math.max(r.stall.renovation, t.rStall);
+
+  // guidance: reveal days, tips, flapping, remedies render (DESIGN §18.5 "guidance")
+  for (const tab of TABS) if (r.tabDay[tab] === undefined && tabRevealed(s, tab)) r.tabDay[tab] = e;
+  const tip = nextTip(s);
+  if (tip && r.tipDay[tip.id] === undefined) r.tipDay[tip.id] = e;
+  for (const rule of RULES) {
+    const on = s.guidance.advisories[rule]?.active === true;
+    if (on && !t.active.has(rule) && t.cleared.has(rule)) {
+      const days = (t.raises.get(rule) ?? []).filter((d) => d > e - 60);
+      days.push(e);
+      t.raises.set(rule, days);
+      r.flaps = Math.max(r.flaps, days.length);
+    }
+    if (!on && t.active.has(rule)) t.cleared.add(rule);
+    if (on) t.active.add(rule); else t.active.delete(rule);
+  }
+  if (e <= (opts.guidanceDays ?? 0)) {
+    const v = view(s);
+    for (const a of activeAdvisories(s)) {
+      try {
+        if (renderAdvisory(s, v, a).remedies.length < 1) r.remedyIssues.push(`day ${e} ${a.rule}: no remedy`);
+      } catch (err) {
+        r.remedyIssues.push(`day ${e} ${a.rule}: ${String(err)}`);
+      }
+    }
+  }
+}
+
+/** The worst 365-day window of hunger + thirst deaths as a share of that window's average population. */
+export function worstYear(r: Run): { share: number; day: number } {
+  const n = r.pops.length, w = Math.min(365, n);
+  let dead = 0, pop = 0, worst = { share: 0, day: 0 };
+  for (let i = 0; i < n; i++) {
+    dead += r.starved[i]; pop += r.pops[i];
+    if (i >= w) { dead -= r.starved[i - w]; pop -= r.pops[i - w]; }
+    if (i >= w - 1 && pop > 0 && dead / (pop / w) > worst.share) worst = { share: dead / (pop / w), day: i + 1 };
+  }
+  return worst;
+}
+
+/** Median of the finite values (Infinity when there are none). */
+export function median(xs: readonly number[]): number {
+  const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
+  if (v.length === 0) return Infinity;
+  return v.length % 2 ? v[v.length >> 1] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+}
+
+/** One line per run: rank days against their bands, victory, population, deaths and the paths taken. */
+export function summary(r: Run): string {
+  const ranks = RANK_DEFS.slice(1).map((d, k) => {
+    const day = r.rankDay[k + 1], band = RANK_BANDS[k + 1];
+    const mark = day === undefined ? '—' : band && (day < band[0] || day > band[1]) ? '✗' : '✓';
+    return `${d.name} ${day ?? '—'}${mark}`;
+  }).join(' · ');
+  const paths = PATH_DECISIONS.map((d) => r.s.decisions.paths[d] ?? '·').join('/');
+  return `${r.kind} seed ${r.seed}: day ${elapsed(r.s)} · ${ranks} · victory ${r.victoryDay ?? '—'} · pop ${r.s.people.length} ` +
+    `(min ${Number.isFinite(r.minPop) ? r.minPop : '—'}, peak ${r.s.stats.peakPop}) · starved ${r.s.stats.deathsBy.hunger + r.s.stats.deathsBy.thirst} · ` +
+    `devolved ${r.s.stats.devolved} · coin ${Math.round(r.s.res.denarii)} (min ${Math.round(r.minCoin)}) · paths ${paths}`;
+}
