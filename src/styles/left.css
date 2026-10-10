@@ -78,15 +78,16 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 .counsel-face { width: 48px; height: 48px; flex: none; border: 2px solid var(--ring); border-radius: 4px; background: #2a1e18;
   box-shadow: 0 0 0 1px var(--line-2); }
 .counsel-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.counsel-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.2px; color: var(--ember); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.counsel-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.2px; color: var(--ember); min-width: 0; }
 .counsel-card.adv.sev-1 .counsel-kicker { color: var(--sev-1); }
 .counsel-card.adv.sev-2 .counsel-kicker { color: var(--sev-2); }
 .counsel-card.adv.sev-3 .counsel-kicker { color: var(--sev-3); }
 .counsel-card.adv.opp .counsel-kicker { color: var(--gold); }
 .counsel-title { font-size: 16px; line-height: 1.2; color: var(--gold); }
 .counsel-card.adv .counsel-title { color: var(--text); }
-.counsel-krow { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 16px; }
-.counsel-metric { flex: none; margin: 0; }
+/* the office is never cut: the kicker wraps, and the metric chip drops below it when they do not fit side by side */
+.counsel-krow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 3px 6px; min-height: 16px; }
+.counsel-metric { flex: none; margin: 0 0 0 auto; }
 .counsel-text { margin: 7px 0 8px; font-size: 13px; line-height: 1.4; color: #e6d9c2; }
 .counsel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .counsel-link { margin-left: auto; background: none; border: 0; padding: 2px 0; font-size: 12px; color: var(--dim); }
