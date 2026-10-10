@@ -195,7 +195,7 @@ export class MapView {
     for (const it of this.items) it.draw(g);
     // 6–9 · marks, particles, birds, ghost, flashes
     const title = this.time < this.titleUntil;
-    if (!title) this.painter.marks(g, s, this.cam.level, this.time, this._selected);
+    if (!title) this.painter.marks(g, s, this.cam.level, this.time, this._selected, this._placing ? null : this.hoverId, this._overlay === 'domus');
     this.overlays.marks(g, s, this._overlay, vis, this.time);
     this.particles.ambient(dtMs, s, this.painter.drawn, cur, !paused);
     this.particles.draw(g, { x: vis.x * TILE, y: vis.y * TILE, w: vis.w * TILE, h: vis.h * TILE });

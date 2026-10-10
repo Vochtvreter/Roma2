@@ -202,8 +202,13 @@ export class BuildingPainter {
     this.drawn.push({ b, r, name, x, y, w, h, sx: x, sy, sw });
   }
 
-  /** Marks pass (step 6): progress bars, cracks, closed/unpaid/unstaffed pips, Ordo seals, plans, want bubbles (zoom ≥ 2). */
-  marks(g: CanvasRenderingContext2D, s: GameState, level: number, time: number, sel: number | null): void {
+  /**
+   * Marks pass (step 6): progress bars, cracks, closed/unpaid/unstaffed pips, Ordo seals, plans and, at zoom ≥ 2, the
+   * want cue of every house: a small pip on its own roof, and the full want bubble only over the selected or hovered
+   * house (a bubble over every house would cover the facade of the house to its north). `quiet` (the Domus overlay is
+   * on and shows the wants itself) drops the want cues.
+   */
+  marks(g: CanvasRenderingContext2D, s: GameState, level: number, time: number, sel: number | null, hover: number | null = null, quiet = false): void {
     const c = census(s);
     const key = `${structEpoch(s)}|${s.day}`;
     if (key !== this.wantKey) { this.wantKey = key; this.wants.clear(); }
@@ -232,12 +237,16 @@ export class BuildingPainter {
         for (const n of icons) { g.drawImage(sprite(n), x, y); x += 13; }
         y -= 15;
       }
-      if (b.house && b.status === 'done' && level >= 2) {
+      let bubbled = false;
+      if (b.house && b.status === 'done' && level >= 2 && !quiet) {
         const want = this.want(s, b);
-        if (want) bubble(g, wantIcon(want), Math.round(cx), y + 12 + Math.round(Math.sin(time / 400 + b.id) * 1.2));
+        if (want && (b.id === sel || b.id === hover)) {
+          bubble(g, wantIcon(want), Math.round(cx), y + 12 + Math.round(Math.sin(time / 400 + b.id) * 1.2));
+          bubbled = true;
+        } else if (want) pip(g, wantIcon(want), Math.round(d.sx + d.sw) - PIP - 1, Math.max(top, d.r.y * TILE) + 1);
       }
       if (b.id === sel) {
-        const bob = Math.round(Math.sin(time / 200) * 1.5), ay = top - 6 + bob - (icons.length ? 15 : 0);
+        const bob = Math.round(Math.sin(time / 200) * 1.5), ay = top - 6 + bob - (icons.length ? 15 : 0) - (bubbled ? 20 : 0);
         g.fillStyle = C.ink; g.fillRect(cx - 4, ay - 1, 9, 4); g.fillRect(cx - 2, ay + 3, 5, 2);
         g.fillStyle = C.ember; g.fillRect(cx - 3, ay, 7, 2); g.fillRect(cx - 1, ay + 2, 3, 2);
       }
@@ -308,6 +317,39 @@ function ring(g: CanvasRenderingContext2D, X: number, Y: number, w: number, h: n
     g.fillRect(x, dy > 0 ? y : y - L + 1, 1 + (time ? 1 : 0), L);
   }
   g.globalAlpha = 1;
+}
+
+const PIP = 7;
+const pipColors = new Map<string, string>();
+/** The main colour of an icon: its most frequent pixel that is neither transparent nor near-black (cached). */
+function iconColor(icon: string): string {
+  let c = pipColors.get(icon);
+  if (c) return c;
+  c = C.ember;
+  const cv = sprite(icon), d = cv.getContext('2d')?.getImageData(0, 0, cv.width, cv.height).data;
+  if (d) {
+    const count = new Map<number, number>();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128 || d[i] + d[i + 1] + d[i + 2] < 180) continue;
+      const v = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      count.set(v, (count.get(v) ?? 0) + 1);
+    }
+    let best = -1, n = 0;
+    for (const [v, k] of count) if (k > n) { n = k; best = v; }
+    if (best >= 0) c = `#${best.toString(16).padStart(6, '0')}`;
+  }
+  pipColors.set(icon, c);
+  return c;
+}
+
+/** A want pip (PIP px): a round dot in the main colour of the need's icon, outlined in ink, top-left at (x, y). */
+function pip(g: CanvasRenderingContext2D, icon: string, x: number, y: number): void {
+  g.fillStyle = C.ink;
+  g.fillRect(x + 1, y, PIP - 2, PIP); g.fillRect(x, y + 1, PIP, PIP - 2);
+  g.fillStyle = iconColor(icon);
+  g.fillRect(x + 2, y + 1, PIP - 4, PIP - 2); g.fillRect(x + 1, y + 2, PIP - 2, PIP - 4);
+  g.fillStyle = 'rgba(255,255,255,0.55)';
+  g.fillRect(x + 2, y + 2, 1, 1);
 }
 
 /** A want bubble: a parchment speech bubble with the need's icon, its tail at (cx, by). */
