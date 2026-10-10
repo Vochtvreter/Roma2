@@ -5,7 +5,7 @@ import type { Essential, EssentialForecast, MonthCell, RuleId } from '../game/ty
 import type { Game } from './types';
 import { fmt, fmtDays, fmtRate, h, img, tip } from './dom';
 import { tipCard, tipHead, tipNote, tipRow, tipSep } from './tipkit';
-import { fxTags, ledger, netRate, outlookLine } from './hud-tips';
+import { fxTags, ledger, moreSection, netRate, outlookLine } from './hud-tips';
 import { forecast } from '../game/forecast';
 import { activeAdvisories } from '../game/advisors/engine';
 import { MONTH_ABBR, formatRoman } from '../game/calendar';
@@ -101,7 +101,7 @@ function vitalTip(g: Game, res: Essential): Node {
   const low = f.lowestDoh < DOH_NONE ? `lowest ${fmtDays(f.lowestDoh)} on hand, ${formatRoman(f.lowestDay)}` : 'no need yet';
   return tipCard(
     tipHead(res === 'grain' ? 'Grain' : 'Water', `${LATIN[res]} · days on hand`),
-    tipNote(`${fmt(f.stock)} of ${fmt(f.cap)} · need ${fmt(f.need)} a day · ${fmtDays(f.doh)} on hand`, 'tip-big'),
+    tipNote(`${fmt(f.stock)} of ${fmt(f.cap)} · need ${fmt(f.need)} a day · ${fmtDays(f.doh)} on hand · room for ${fmtDays(f.need > 0 ? f.room / f.need : null)}`, 'tip-big'),
     tipSep(),
     ...ledger(g, res),
     tipRow('3-day average', fmtRate(f.net3), f.net3 >= 0 ? 'pos' : 'neg'),
@@ -111,6 +111,7 @@ function vitalTip(g: Game, res: Essential): Node {
     tipSep(),
     chart(f, res),
     tipNote(`The year ahead: ${low}. ${outlookLine(g, res)}`),
+    ...moreSection(g, res),
   );
 }
 
