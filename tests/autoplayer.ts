@@ -286,8 +286,8 @@ export function median(xs: readonly number[]): number {
 export function summary(r: Run): string {
   const ranks = RANK_DEFS.slice(1).map((d, k) => {
     const day = r.rankDay[k + 1], band = RANK_BANDS[k + 1];
-    const mark = day === undefined ? '—' : band && (day < band[0] || day > band[1]) ? '✗' : '✓';
-    return `${d.name} ${day ?? '—'}${mark}`;
+    if (day === undefined) return `${d.name} —`;
+    return `${d.name} ${day}${band && (day < band[0] || day > band[1]) ? '✗' : '✓'}`;
   }).join(' · ');
   const paths = PATH_DECISIONS.map((d) => r.s.decisions.paths[d] ?? '·').join('/');
   return `${r.kind} seed ${r.seed}: day ${elapsed(r.s)} · ${ranks} · victory ${r.victoryDay ?? '—'} · pop ${r.s.people.length} ` +
