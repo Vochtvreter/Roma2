@@ -9,6 +9,7 @@
   background: rgba(10, 7, 16, .66); pointer-events: auto; animation: modalFade .2s;
 }
 .modal-back + .modal-back { background: rgba(10, 7, 16, .4); }
+.modal-back:has(~ .modal-back:not(.modal-out)) > .modal { visibility: hidden; }
 .modal-back.modal-out { animation: modalFade .16s reverse forwards; }
 @keyframes modalFade { from { opacity: 0; } }
 .modal {

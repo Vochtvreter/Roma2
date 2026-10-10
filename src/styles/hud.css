@@ -92,7 +92,9 @@
 .hud-res { display: flex; align-items: center; gap: 3px; padding: 0 5px 0 1px; min-width: 64px; cursor: help;
   background: rgba(0, 0, 0, .22); border: 1px solid #2f231c; border-radius: 3px; }
 .hud-res img { width: 24px; height: 24px; flex: none; }
-.hud-res-n { font-size: 11px; color: var(--text); line-height: 11px; }
+.hud-res-n { font-size: 11px; color: var(--text); line-height: 11px; white-space: nowrap; }
+.hud-res-n b { font-weight: normal; }
+.hud-res-cap { font-size: 7px; color: var(--dim); }
 .hud-res-r { font-size: 7px; color: var(--muted); line-height: 9px; }
 .hud-res-r.good { color: var(--good); } .hud-res-r.bad { color: #ff8b80; }
 .hud-res.full .hud-res-n { color: var(--gold); }

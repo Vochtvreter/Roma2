@@ -129,7 +129,7 @@ export class Objective {
     const g = this.g;
     const label = pn.decision === 'charter' ? 'Charter: choose the founding law'
       : `Petition Rome: ${pn.rank !== null ? RANK_DEFS[pn.rank].name : 'the next path'}`;
-    const btn = h('button', { class: 'obj-cta', onclick: () => { g.sfx('click'); g.openTab('council', 'crossroads'); } },
+    const btn = h('button', { class: 'obj-cta', onclick: () => { g.sfx('click'); g.openTab('council', 'petition'); } },
       h('span', { class: 'obj-cta-k' }, caps(pn.decision === 'charter' ? 'Lex coloniae' : 'Petitio')), h('span', null, label));
     if (!pn.affordable) {
       const note = h('div', { class: 'obj-cta-note' }, `The Ordo is saving: ${fmtCost(pn.fee)}`);

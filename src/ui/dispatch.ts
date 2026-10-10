@@ -83,7 +83,7 @@ function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null
   const items: HTMLElement[] = [];
   if (r.awaiting.petition !== null) {
     items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), h('span', { class: 'disp-await-text' }, `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.`),
-      h('button', { class: 'btn small legate', onclick: () => { close(); g.openTab('council', 'crossroads'); } }, 'Petition Rome')));
+      h('button', { class: 'btn small legate', onclick: () => { close(); g.openTab('council', 'petition'); } }, 'Petition Rome')));
   }
   for (const rule of r.awaiting.advisories) {
     const a = activeAdvisories(s).find((x) => x.rule === rule);

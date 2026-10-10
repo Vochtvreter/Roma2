@@ -22,6 +22,7 @@ const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DE
 const FLASH_MS = 600;
 const FLASH_MIN = 10;          // a stock jump of max(10, 25%) flashes its chip
 const FLASH_SHARE = 0.25;
+const CAP_SHOW = 0.9;           // the store's cap shows beside the amount once it is 90% full
 const COIN_WARN = B.advisors.RULES.COIN_RUNOUT[2];   // "lasts N d" once the Quaestor would speak (Monitum)
 
 type Up = () => void;
@@ -189,7 +190,7 @@ export class Hud {
       clear(this.strip);
       for (const r of shown) {
         const el = h('div', { class: 'hud-res', role: 'listitem', dataset: { res: r } }, img(resIcon(r), 2),
-          h('div', { class: 'hud-stack' }, h('span', { class: 'hud-res-n num' }), h('span', { class: 'hud-res-r num' })));
+          h('div', { class: 'hud-stack' }, h('span', { class: 'hud-res-n num' }, h('b'), h('small', { class: 'hud-res-cap' })), h('span', { class: 'hud-res-r num' })));
         tip(el, () => resourceTip(g, r), { wide: true });
         this.strip.appendChild(el);
       }
@@ -203,9 +204,11 @@ export class Hud {
       if (prev !== undefined && Math.abs(v - prev) > Math.max(FLASH_MIN, prev * FLASH_SHARE)) flash(el);
       this.last[r] = v;
       const net = netRate(g, r);
-      const n = el.querySelector('.hud-res-n');
+      const n = el.querySelector('.hud-res-n b');
+      const cap = el.querySelector('.hud-res-cap');
       const rate = el.querySelector('.hud-res-r');
       if (n) n.textContent = fmt(v);
+      if (cap) cap.textContent = v >= capsNow[r] * CAP_SHOW ? `/${fmt(capsNow[r])}` : '';
       if (rate) {
         rate.textContent = fmtRate(net);
         rate.className = `hud-res-r num${net > 0.05 ? ' good' : net < -0.05 ? ' bad' : ''}`;

@@ -5,14 +5,13 @@
 /* ───────── tablet and narrow desktop ───────── */
 @media (max-width: 1099px) {
   #hud { gap: 5px; padding: 0 8px; }
-  .hud-brand-text { display: none; }
-  .hud-aquila { width: 36px; height: 36px; }
+  .hud-brand { display: none; }
   .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
   .hud-stages { width: 40px; }
   .hud-chip { padding-right: 6px; }
   .hud-date { min-width: 0; padding-right: 8px; }
   .hud-date > img { display: none; }
-  .hud-sp { min-width: 30px; }
+  .hud-sp { min-width: 28px; }
   .hud-menu { min-width: 34px; }
   #minimap { display: none; }
   #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
