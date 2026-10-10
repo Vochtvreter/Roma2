@@ -16,7 +16,7 @@ import { invalidate, touchPeople } from '../src/game/memo';
 import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
-import { ctx, fresh, noNaN, place, run } from './util';
+import { INTEGRATED, ctx, fresh, noNaN, place, run } from './util';
 
 const pins = vi.hoisted(() => new Map<number, number>());
 vi.mock('../src/game/site', async (importOriginal) => {
@@ -481,5 +481,33 @@ describe('the tick', () => {
     tick(s, c);
     expect(s.day).toBe(B.time.START_DAY + 1);
     expect((c.rates.cons.grain.eating ?? 0) + (c.rates.cons.water.drinking ?? 0)).toBeGreaterThan(0);
+  });
+});
+
+describe.runIf(INTEGRATED)('the opening with the real map, coverage and Ordo (integration seam)', () => {
+  it('weathers the first year: a cistern by day 45, houses evolve, a horreum before Kal. Dec., nobody starves', () => {
+    const s = fresh(42);
+    let cisternDay = 0;
+    run(s, 335, (st) => {
+      if (!cisternDay && st.buildings.some((b) => b.type === 'cisterna' && b.status === 'done')) cisternDay = st.day;
+    });
+    expect(noNaN(s)).toEqual([]);
+    expect(cisternDay).toBeGreaterThan(0);
+    expect(cisternDay - B.time.START_DAY).toBeLessThanOrEqual(45);
+    const horreum = s.buildings.find((b) => b.type === 'horreum' && b.status === 'done');
+    expect((horreum?.doneDay ?? Infinity) - B.time.START_DAY).toBeLessThan(244);
+    expect(s.stats.evolved).toBeGreaterThan(0);
+    expect(s.people.length).toBeGreaterThanOrEqual(20);
+    expect(s.stats.deathsBy.hunger + s.stats.deathsBy.thirst).toBe(0);
+  });
+
+  it('keeps the forecast close to the run with the Ordo staffing (Aestas water within 10 days on hand)', () => {
+    const s = fresh(42);
+    run(s, 2);
+    const f = forecast(s);
+    const aestasEnd = f.water.months.findIndex((m) => m.month === 8);
+    let low = Infinity;
+    run(s, 160, (st) => { low = Math.min(low, st.res.water / census(st).need.water); });
+    expect(Math.abs(Math.min(...f.water.months.slice(0, aestasEnd + 1).map((m) => m.minDoh)) - low)).toBeLessThanOrEqual(10);
   });
 });

@@ -307,8 +307,8 @@ function regrowWoods(s: GameState, season: SeasonIndex): void {
   const seasonF = season === HIEMS ? E.WOOD.HIEMS : 1;
   const replant = E.WOOD.REPLANT * fx(s, 'regrow');
   const standing = (i: number): boolean => map.woodMax[i] > 0 && woodOf(s, i, map.woodMax[i]) >= map.woodMax[i] * E.WOOD.STUMP;
-  for (const key of Object.keys(s.wood)) {            // integer keys enumerate in ascending order
-    const i = Number(key);
+  const tiles = Object.keys(s.wood).map(Number).sort((a, c) => a - c);   // sparse diff: read as numbers, iterate sorted
+  for (const i of tiles) {
     const max = map.woodMax[i];
     if (max <= 0) { delete s.wood[i]; continue; }
     if (d.buildingAt[i] !== 0 || d.road[i] > 0) continue;   // felled for a building or a road: no regrowth
