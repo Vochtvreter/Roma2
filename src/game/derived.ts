@@ -6,7 +6,7 @@ import { B } from './balance';
 import type { Block, Building, BuildingId, Derived, GameState, PlaceClass } from './types';
 import { getMap, H, W, idx, inBounds, tx, ty } from './map';
 import { activeRings, isActiveBlock } from './survey';
-import { memo, structEpoch } from './memo';
+import { layoutEpoch, memo } from './memo';
 import { BUILDING_DEFS } from './data/buildings';
 import { RANK_DEFS } from './data/ranks';
 
@@ -14,9 +14,9 @@ const PLOT = B.map.PLOT;
 const BLOCK = B.map.BLOCK;
 const URBAN: readonly PlaceClass[] = ['plot', 'half', 'block'];
 
-/** Structural derived data of a state (memo on structEpoch). */
+/** Structural derived data of a state (memo on the layout epoch: house tiers do not enter). */
 export function derived(s: GameState): Derived {
-  return memo(s, 'derived', structEpoch(s), () => computeDerived(s));
+  return memo(s, 'derived', layoutEpoch(s), () => computeDerived(s));
 }
 
 /** Footprint size of a type in a placement class: plot 2×2, half 4×2, block 4×4, rural/fixed from the def. */

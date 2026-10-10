@@ -5,7 +5,7 @@ import { B } from '../balance';
 import { F, T } from '../types';
 import type { BuildingId, GameState, PlaceFail, Rect, Survey } from '../types';
 import { getMap } from '../map';
-import { dayStruct, memo } from '../memo';
+import { dayLayout, memo } from '../memo';
 import { sizeOf } from '../derived';
 import { BUILDING_DEFS } from '../data/buildings';
 import { GH, GN, GW, PrefixSum, anySide, rectGap } from './grid';
@@ -47,9 +47,9 @@ export function viaLine(sv: Survey): Uint8Array {
   return m;
 }
 
-/** Prefix sums of standing timber and of wooded tiles (≥ 25% of their stock), memo on structEpoch and the day. */
+/** Prefix sums of standing timber and of wooded tiles (≥ 25% of their stock), memo on the layout epoch and the day. */
 export function woodSums(s: GameState): { standing: PrefixSum; wooded: PrefixSum } {
-  return memo(s, 'woodSums', dayStruct(s), () => {
+  return memo(s, 'woodSums', dayLayout(s), () => {
     const max = getMap(s.seed).woodMax;
     const standing = new Float64Array(GN);
     const wooded = new Uint8Array(GN);

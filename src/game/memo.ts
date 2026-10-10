@@ -5,8 +5,10 @@
 import type { FxEvent, GameState } from './types';
 
 /** struct: the structure; census: people, homes or jobs (every structure change too); people: the census epoch as of the
- *  last change other than jobs alone (touchJobs leaves it), so the people-only parts of the census outlive a reassignment. */
-interface Epochs { struct: number; census: number; people: number }
+ *  last change other than jobs alone (touchJobs leaves it), so the people-only parts of the census outlive a reassignment;
+ *  layout: the struct epoch as of the last change other than house tiers alone (invalidateTiers leaves it), so what
+ *  only the map's works, roads and rank decide (derived, roads, coverage floods, slots) outlives a renovation. */
+interface Epochs { struct: number; census: number; people: number; layout: number }
 
 let counter = 0;
 const epochs = new WeakMap<GameState, Epochs>();
@@ -17,7 +19,7 @@ function epochsOf(s: GameState): Epochs {
   let e = epochs.get(s);
   if (!e) {
     const struct = ++counter, census = ++counter;
-    e = { struct, census, people: census };
+    e = { struct, census, people: census, layout: struct };
     epochs.set(s, e);
   }
   return e;
@@ -29,6 +31,26 @@ export function invalidate(s: GameState): void {
   e.struct = ++counter;
   e.census = ++counter;
   e.people = e.census;
+  e.layout = e.struct;
+}
+
+/** Only house tiers changed (a renovation finished, a house fell back): bumps struct and census epochs like invalidate,
+ *  but the layout epoch stays (no work, road, footprint or rank moved). */
+export function invalidateTiers(s: GameState): void {
+  const e = epochsOf(s);
+  e.struct = ++counter;
+  e.census = ++counter;
+  e.people = e.census;
+}
+
+/** The structure epoch as of the last change to anything but house tiers (see invalidateTiers). */
+export function layoutEpoch(s: GameState): number {
+  return epochsOf(s).layout;
+}
+
+/** (day, layout) as one number, for layout memos that also follow the standing timber. */
+export function dayLayout(s: GameState): number {
+  return layoutEpoch(s) * DAY_SPAN + s.day;
 }
 
 /** People, homes or jobs changed: bumps the census epoch. */

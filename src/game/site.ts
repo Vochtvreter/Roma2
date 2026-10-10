@@ -7,7 +7,7 @@ import { BUILDINGS, LAYERS, T } from './types';
 import type { Block, Building, BuildingId, CoverageLayerId, GameState, NeedId, Owner, ReasonCode, Rect, SiteNote, WorldMap } from './types';
 import { getMap, woodAt } from './map';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
-import { dayEpoch, memo, structEpoch } from './memo';
+import { dayEpoch, layoutEpoch, memo } from './memo';
 import { coverage, desirability, previewCovered, previewDesir, type PreviewLayer } from './coverage';
 import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
@@ -62,9 +62,9 @@ function nearIds(s: GameState, r: Rect, gap: number, pred: (b: Building) => bool
   return out;
 }
 
-/** True when a building of the type stands (or is being raised) within `gap` tiles of the rect (prefix sums of the grown footprints, memo on structEpoch). */
+/** True when a building of the type stands (or is being raised) within `gap` tiles of the rect (prefix sums of the grown footprints, memo on the layout epoch). */
 function near(s: GameState, r: Rect, type: BuildingId, gap: number): boolean {
-  const ps = memo(s, `near:${type}:${gap}`, structEpoch(s), () => {
+  const ps = memo(s, `near:${type}:${gap}`, layoutEpoch(s), () => {
     const m = new Uint8Array(GW * GH);
     for (const b of s.buildings) {
       if (b.type !== type) continue;
@@ -186,12 +186,12 @@ function multAt(s: GameState, type: BuildingId, x: number, y: number, one: boole
 
 const multCache = new WeakMap<GameState, Map<number, { e: number; d: number; v: number }>>();
 
-/** Site multiplier of a placed building (memo per building on structEpoch; daily for sites that live on standing wood). */
+/** Site multiplier of a placed building (memo per building on the layout epoch; daily for sites that live on standing wood). */
 export function siteMult(s: GameState, b: Building): number {
   // a numeric per-state cache: buildingRate reads this for every building several times a day, and a string slot and
   // key per call (memo) cost more than the lookup
   const day = woodDependent(b.type) ? s.day : -1;
-  const e = structEpoch(s);
+  const e = layoutEpoch(s);
   let m = multCache.get(s);
   if (!m) { m = new Map(); multCache.set(s, m); }
   const hit = m.get(b.id);
@@ -270,9 +270,9 @@ function coverList(s: GameState, type: BuildingId, x: number, y: number): CoverL
 }
 
 /** What a house plot's score reads of the other works: the blocks holding a house plot (built or not) and the footprints
- *  of the workshops and material works (memo on structEpoch: one pass over the buildings, not one per candidate slot). */
+ *  of the workshops and material works (memo on the layout epoch: one pass over the buildings, not one per candidate slot). */
 function plotLayout(s: GameState): { houseBlocks: Set<number>; industry: Rect[] } {
-  return memo(s, 'site.plotLayout', structEpoch(s), () => {
+  return memo(s, 'site.plotLayout', layoutEpoch(s), () => {
     const houseBlocks = new Set<number>();
     const industry: Rect[] = [];
     for (const b of s.buildings) {
@@ -427,14 +427,14 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
  *  reach today and the timber on the plot. */
 const FAST_TYPES: ReadonlySet<BuildingId> = new Set<BuildingId>([...SERVICE_TYPES, ...WATER_TYPES, 'lacus']);
 
-/** What `score` reads of a fast type's slot that only the structure moves (memo per structure epoch and rank): the
+/** What `score` reads of a fast type's slot that only the layout moves (memo per layout epoch and rank): the
  *  footprint, the steps to the forum, the district and forum terms (services) and the site multiplier (wells). */
 interface SlotFixed { x: number; y: number; w: number; h: number; steps: number; fit: number; forum: number; mult: number }
 const slotFixed = new WeakMap<GameState, { e: number; rank: number; m: Map<number, SlotFixed> }>();
 const TYPE_KEY = new Map<BuildingId, number>(BUILDINGS.map((t, k) => [t, k]));
 
 function fixedOf(s: GameState, type: BuildingId, x: number, y: number): SlotFixed {
-  const e = structEpoch(s);
+  const e = layoutEpoch(s);
   let c = slotFixed.get(s);
   if (!c || c.e !== e || c.rank !== s.rank) {
     c = { e, rank: s.rank, m: new Map() };

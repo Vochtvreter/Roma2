@@ -8,7 +8,7 @@ import { ageOf, canWork, census, houseBeds, peopleIndex } from './census';
 import { derived, roadNeighbors } from './derived';
 import { toRoman } from './calendar';
 import { fx } from './fx';
-import { memo, structEpoch, touchJobs, touchPeople } from './memo';
+import { layoutEpoch, memo, touchJobs, touchPeople } from './memo';
 import { careShare } from './civic';
 import { getBuilding, getPerson, log, nextId } from './state';
 import { BUILDING_DEFS } from './data/buildings';
@@ -114,9 +114,9 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
 
 // ───────────────────────────── housing people ─────────────────────────────
 
-/** Road steps from a house to the forum (min over its road neighbours; FAR when unreachable), memo on structEpoch. */
+/** Road steps from a house to the forum (min over its road neighbours; FAR when unreachable), memo on the layout epoch. */
 export function forumSteps(s: GameState, b: Building): number {
-  const m = memo(s, 'forumSteps', structEpoch(s), () => new Map<number, number>());
+  const m = memo(s, 'forumSteps', layoutEpoch(s), () => new Map<number, number>());
   let v = m.get(b.id);
   if (v === undefined) {
     const steps = derived(s).stepsToForum;

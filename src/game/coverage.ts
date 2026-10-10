@@ -7,7 +7,7 @@ import { B } from './balance';
 import { BUILDINGS, F, LAYERS, T } from './types';
 import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
 import { getMap } from './map';
-import { dayEpoch, memo, structEpoch } from './memo';
+import { dayEpoch, layoutEpoch, memo } from './memo';
 import { blockOfTile, classAt, derived, footprintOf, sizeOf } from './derived';
 import { peopleIndex } from './census';
 import { fxAdd } from './fx';
@@ -48,9 +48,9 @@ function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<num
 
 interface Source { id: number; layer: number; r: number }
 
-/** The active services and their radii under a structure epoch (re-read once per day or on a structure/staffing change). */
+/** The active services and their radii under a layout epoch (re-read once per day or on a structure/staffing change). */
 function activeSources(s: GameState): { epoch: number; list: Source[] } {
-  const epoch = structEpoch(s);
+  const epoch = layoutEpoch(s);
   return memo(s, 'covSources', dayEpoch(s), () => {
     const list: Source[] = [];
     const byWork = peopleIndex(s).byWork;
@@ -123,7 +123,7 @@ function flood(road: Uint8Array, sources: { tiles: number[]; r: number }[], out:
 // for the hot readers (houseHas per house per need) skips the two memo lookups.
 const covLast = new WeakMap<GameState, { k: number; c: Coverage }>();
 
-/** Coverage layers over built roads and the per-house layer mask (memo on structEpoch + the effective radii). */
+/** Coverage layers over built roads and the per-house layer mask (memo on the layout epoch + the effective radii). */
 export function coverage(s: GameState): Coverage {
   const k = dayEpoch(s);
   const last = covLast.get(s);
@@ -221,12 +221,12 @@ const previews = new WeakMap<GameState, PreviewCache>();
 const TYPE_INDEX = new Map<BuildingId, number>(BUILDINGS.map((t, k) => [t, k]));
 
 /** Sparse preview: per service layer of a would-be building at (x, y), the covered road tiles and the houses they serve.
- *  Memoised per structure epoch, rank and radius bonuses: the arrays are shared, callers only read them. */
+ *  Memoised per layout epoch, rank and radius bonuses: the arrays are shared, callers only read them. */
 export function previewCovered(s: GameState, type: BuildingId, x: number, y: number): readonly PreviewLayer[] {
   const svc = BUILDING_DEFS[type].service ?? [];
   if (svc.length === 0) return [];
   if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= GW || y >= GH) return computePreview(s, type, x, y);
-  const e = structEpoch(s);
+  const e = layoutEpoch(s);
   const shrine = fxAdd(s, 'shrineRadius'), market = fxAdd(s, 'marketRadius'), baths = fxAdd(s, 'bathsRadius');
   let c = previews.get(s);
   if (!c || c.e !== e || c.rank !== s.rank || c.shrine !== shrine || c.market !== market || c.baths !== baths) {
@@ -276,9 +276,9 @@ export function previewCoverage(s: GameState, type: BuildingId, x: number, y: nu
   });
 }
 
-/** Road-side tile → the houses it serves (memo on structEpoch). */
+/** Road-side tile → the houses it serves (memo on the layout epoch). */
 export function housesBySide(s: GameState): Map<number, number[]> {
-  return memo(s, 'housesBySide', structEpoch(s), () => {
+  return memo(s, 'housesBySide', layoutEpoch(s), () => {
     const out = new Map<number, number[]>();
     for (const id of derived(s).houses) {
       const b = getBuilding(s, id);
@@ -330,12 +330,12 @@ function desirOf(s: GameState, b: Building): readonly [number, number] {
   return BUILDING_DEFS[b.type].desir;
 }
 
-/** Desirability key: the structure plus the houses whose tier gives them desirability (insulae, domus), read once a day. */
+/** Desirability key: the layout plus the houses whose tier gives them desirability (insulae, domus), read once a day. */
 function desirKey(s: GameState): string {
-  const epoch = structEpoch(s);
+  const epoch = layoutEpoch(s);
   return memo(s, 'desirTiers', dayEpoch(s), () => {
     const parts: string[] = [];
-    for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier[0]}`);
+    for (const b of s.buildings) if (b.status === 'done' && b.house && TIER_DEFS[b.house.tier].desir[0] !== 0) parts.push(`${b.id}${b.house.tier}`);
     return `${epoch}|${parts.join(',')}`;
   });
 }
@@ -344,7 +344,7 @@ function desirKey(s: GameState): string {
 // the hot readers (houseDesir per house per need) skips the two memo lookups.
 const desirLast = new WeakMap<GameState, { k: number; f: Float32Array }>();
 
-/** Desirability per tile, clamped to DESIR_CLAMP (memo on structEpoch and the tiers of the insulae and domus). */
+/** Desirability per tile, clamped to DESIR_CLAMP (memo on the layout epoch and the tiers of the insulae and domus). */
 export function desirability(s: GameState): Float32Array {
   const k = dayEpoch(s);
   const last = desirLast.get(s);

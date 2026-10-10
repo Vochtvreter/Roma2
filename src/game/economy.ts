@@ -10,7 +10,7 @@ import { census, peopleIndex, stageOf } from './census';
 import { seasonOf } from './calendar';
 import { fx, fxAdd, fxSources } from './fx';
 import { emptyRes, log } from './state';
-import { censusEpoch, memo, structEpoch } from './memo';
+import { censusEpoch, layoutEpoch, memo } from './memo';
 import { siteMult } from './site';
 import { gainSkill } from './people';
 import { worksQueue } from './construction';
@@ -226,7 +226,7 @@ export function maxPotential(s: GameState, res: Essential, season: SeasonIndex):
 
 /** Storage caps: base sheds plus the storage of every finished building (horrea × fx(horreaCap)). */
 export function caps(s: GameState): Res {
-  return memo(s, 'caps', `${structEpoch(s)}|${fx(s, 'horreaCap')}`, () => {
+  return memo(s, 'caps', `${layoutEpoch(s)}|${fx(s, 'horreaCap')}`, () => {
     const out = emptyRes();
     for (const r of RESOURCES) out[r] = RESOURCE_DEFS[r].baseCap;
     for (const b of s.buildings) {
@@ -250,9 +250,9 @@ export function horreaCap(s: GameState): number {
 
 interface Woods { catchment: Map<number, number[]>; union: Uint8Array }
 
-/** Forest catchments of finished lumber camps: tiles within CATCHMENT of the footprint, nearest first (memo on structEpoch). */
+/** Forest catchments of finished lumber camps: tiles within CATCHMENT of the footprint, nearest first (memo on the layout epoch). */
 function woods(s: GameState): Woods {
-  return memo(s, 'woods', structEpoch(s), () => {
+  return memo(s, 'woods', layoutEpoch(s), () => {
     const map = getMap(s.seed);
     const der = derived(s);
     const catchment = new Map<number, number[]>();

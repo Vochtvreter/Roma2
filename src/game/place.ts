@@ -8,7 +8,7 @@ import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner,
 import { getMap, idx, inBounds, tx, ty } from './map';
 import { activeRings, halfOrigin, isActiveBlock, isFutureBlock, plotOrigin } from './survey';
 import { blockOfTile, classAt, derived, sizeOf } from './derived';
-import { dayStruct, invalidate, memo, structEpoch, touchPeople } from './memo';
+import { dayLayout, invalidate, layoutEpoch, memo, touchPeople } from './memo';
 import { addCost, canAfford, getBuilding, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { cancelSite } from './construction';
 import { buildingRate } from './economy';
@@ -225,9 +225,9 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
   return out;
 }
 
-/** Every valid origin tile of a type for an owner → site multiplier (memo on type + owner + structEpoch, + day for wood rules). */
+/** Every valid origin tile of a type for an owner → site multiplier (memo on type + owner + layout epoch, + day for wood rules). */
 export function validSlots(s: GameState, type: BuildingId, owner: Owner): Map<number, number> {
-  const key = woodDependent(type) ? dayStruct(s) : structEpoch(s);
+  const key = woodDependent(type) ? dayLayout(s) : layoutEpoch(s);
   return memo(s, `validSlots:${type}:${owner}`, key, () => computeSlots(s, type, owner));
 }
 
@@ -275,9 +275,9 @@ function computeSlots(s: GameState, type: BuildingId, owner: Owner): Map<number,
   return out;
 }
 
-/** Tiles no rural work of `owner` may cover on the current structure (checks 7, 8 and 10), memo on structEpoch. */
+/** Tiles no rural work of `owner` may cover on the current structure (checks 7, 8 and 10), memo on the layout epoch. */
 function ruralBase(s: GameState, owner: Owner): Uint8Array {
-  return memo(s, `ruralBase:${owner}`, structEpoch(s), () => {
+  return memo(s, `ruralBase:${owner}`, layoutEpoch(s), () => {
     const sv = getMap(s.seed).survey;
     const d = derived(s);
     const c = sv.castrum;

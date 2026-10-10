@@ -8,7 +8,7 @@ import type {
 import { coverage, houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
 import { derived, footprintOf } from './derived';
 import { fx } from './fx';
-import { dayEpoch, invalidate, memo, touchPeople } from './memo';
+import { dayEpoch, invalidateTiers, memo, touchPeople } from './memo';
 import { residents } from './census';
 import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
@@ -281,7 +281,7 @@ export function housingDay(s: GameState, ctx: TickContext): void {
     h.renovating = { until: day + Math.max(1, Math.ceil(days)), to: next };
     win.count++;
   }
-  if (changed) invalidate(s);
+  if (changed) invalidateTiers(s);   // tiers moved (beds, desirability, patricii), no work or road did
 }
 
 /** Delivers oil and wine to T3/T4 houses inside macellum coverage (domus first, then insulae, then by id) and updates
