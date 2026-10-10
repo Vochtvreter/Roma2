@@ -4,7 +4,8 @@
 // (hash dither ±8% on 20% of pixels, two octaves of soft value noise, dithered terrain borders, river ripples, shore
 // sand and foam, clay banks, ore speckles, springs, the fossa, hashed grass tufts / flowers / stones), and a COMPOSITE
 // = base + ground decals (roads, chalk survey lines, forum ground, bridge; linear.ts) rebuilt only when the chunk's
-// decal signature changes. Season changes crossfade over 2 s. Trees are not baked (forest.ts).
+// decal signature changes. Season changes crossfade over 2 s. Trees are not baked (forest.ts). A Hiems dura (the
+// 'frigus' modifier) paints the winter map under snow: a fifth palette that consumers outside this file never see.
 import { F, T } from '../game/types';
 import type { GameState, Rect, SeasonIndex, Terrain, WorldMap } from '../game/types';
 import { H, W, getMap, idx, woodAt } from '../game/map';
@@ -15,20 +16,29 @@ import { makeCanvas } from './sprites';
 import { TILE } from './camera';
 import { decalSig, paintDecals } from './linear';
 
-type Quad4 = readonly [string, string, string, string];
+type Pal5 = readonly [string, string, string, string, string];
 type RGB = [number, number, number];
+/** A ground palette: the four seasons, and 4 = Hiems dura (snow on the map, DESIGN #10 and §16.2). */
+type Pal = SeasonIndex | 4;
+const SNOW = 4 as const;
 
-/** Ground colours by season [Ver, Aestas, Autumnus, Hiems] (DESIGN §16.2). */
-export const GROUND: Readonly<Record<'grass' | 'meadow' | 'scrub' | 'hills' | 'rock' | 'river' | 'oak', Quad4>> = {
-  grass: ['#6fae4a', '#b5ab5a', '#93924a', '#6f8a62'],
-  meadow: ['#5f9e3e', '#8fae48', '#8a8a44', '#62805a'],
-  scrub: ['#9aa35a', '#c4b06a', '#a8975a', '#8a8a66'],
-  hills: ['#8a9a5a', '#a99a62', '#94865a', '#7d8068'],
-  rock: ['#9a968a', '#a8a296', '#9a948a', '#8a8a86'],
-  river: ['#3f86b8', '#4a90bf', '#3f80ad', '#3a7095'],
-  oak: ['#4f9a3a', '#5b8f35', '#c0702e', '#55684f'],
+/** Ground colours by palette [Ver, Aestas, Autumnus, Hiems, Hiems dura] (DESIGN §16.2). */
+export const GROUND: Readonly<Record<'grass' | 'meadow' | 'scrub' | 'hills' | 'rock' | 'river' | 'oak', Pal5>> = {
+  grass: ['#6fae4a', '#b5ab5a', '#93924a', '#6f8a62', '#e6eaec'],
+  meadow: ['#5f9e3e', '#8fae48', '#8a8a44', '#62805a', '#e1e6e8'],
+  scrub: ['#9aa35a', '#c4b06a', '#a8975a', '#8a8a66', '#dcdfdc'],
+  hills: ['#8a9a5a', '#a99a62', '#94865a', '#7d8068', '#d6dadb'],
+  rock: ['#9a968a', '#a8a296', '#9a948a', '#8a8a86', '#c9ccd0'],
+  river: ['#3f86b8', '#4a90bf', '#3f80ad', '#3a7095', '#35678a'],
+  oak: ['#4f9a3a', '#5b8f35', '#c0702e', '#55684f', '#6d7a70'],
 };
-const SHORE: Quad4 = ['#b9a77a', '#c9b384', '#ad9b70', '#9d9580'];
+const SHORE: Pal5 = ['#b9a77a', '#c9b384', '#ad9b70', '#9d9580', '#c8c6bc'];
+
+/** The ground palette of a day: its season, or snow while a Hiems dura holds. */
+export function paletteOf(s: GameState): Pal {
+  const season = seasonOf(s.day);
+  return season === 3 && s.modifiers.some((m) => m.id === 'frigus' && m.until > s.day) ? SNOW : season;
+}
 const MUD: RGB = [58, 74, 72];
 
 /** Other fixed map colours (DESIGN §16.2). */
@@ -66,8 +76,8 @@ function lerp(x: RGB, y: RGB, t: number): RGB {
   return [x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t];
 }
 
-/** The base ground colour of a terrain in a season. */
-export function groundColor(t: Terrain, season: SeasonIndex): string {
+/** The base ground colour of a terrain in a season (or the snow palette). */
+export function groundColor(t: Terrain, season: Pal): string {
   switch (t) {
     case T.meadow: case T.loam: return GROUND.meadow[season];
     case T.scrub: return GROUND.scrub[season];
@@ -79,7 +89,7 @@ export function groundColor(t: Terrain, season: SeasonIndex): string {
 }
 
 /** A tile's painted ground colour: the season's terrain colour with loam, woods floor, crag and lucus variants. */
-function tileRgb(map: WorldMap, i: number, season: SeasonIndex): RGB {
+function tileRgb(map: WorldMap, i: number, season: Pal): RGB {
   const t = map.terrain[i] as Terrain;
   const c = rgbOf(groundColor(t, season));
   if (map.feature[i] === F.lucus) return lerp(c, rgbOf(MAP_COLORS.cypress), 0.3);
@@ -91,7 +101,7 @@ function tileRgb(map: WorldMap, i: number, season: SeasonIndex): RGB {
 }
 
 /** Paints one chunk's ground for a season (no decals, no trees). */
-function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): HTMLCanvasElement {
+function paintBase(map: WorldMap, season: Pal, cx: number, cy: number): HTMLCanvasElement {
   const cv = makeCanvas(CPX, CPX);
   const g = cv.getContext('2d');
   if (!g) return cv;
@@ -209,7 +219,7 @@ function edgeTo(px: number, py: number, tx: number, ty: number, other: (x: numbe
 }
 
 /** Hashed ground decoration: grass tufts, spring flowers, summer straw, scrub bushes, stones, a spring pool. */
-function decorate(map: WorldMap, i: number, tx: number, ty: number, season: SeasonIndex, base: RGB,
+function decorate(map: WorldMap, i: number, tx: number, ty: number, season: Pal, base: RGB,
   put: (gx: number, gy: number, c: RGB, f?: number) => void): void {
   const t = map.terrain[i];
   const h = (k: number): number => hash2(tx, ty, k);
@@ -280,15 +290,21 @@ export class TerrainPainter {
     this.fade = 1;
   }
 
-  /** The season being shown, the one fading out (or −1) and the fade-in progress 0..1. */
+  /** The season being shown, the one fading out (or −1) and the fade-in progress 0..1 (real seasons: snow is Hiems). */
   get seasons(): { cur: SeasonIndex; prev: SeasonIndex | -1; fade: number } {
-    return { cur: Math.max(0, this.season) as SeasonIndex, prev: this.fade < 1 ? (this.prev as SeasonIndex) : -1, fade: this.fade };
+    const { cur, prev, fade } = this.palettes;
+    return { cur: seasonOfPal(cur), prev: prev < 0 ? -1 : seasonOfPal(prev as Pal), fade };
+  }
+
+  /** The palette being shown, the one fading out (or −1) and the fade-in progress 0..1. */
+  private get palettes(): { cur: Pal; prev: Pal | -1; fade: number } {
+    return { cur: Math.max(0, this.season) as Pal, prev: this.fade < 1 ? (this.prev as Pal) : -1, fade: this.fade };
   }
 
   /** Advances the crossfade; call once per frame before drawing. */
   update(s: GameState, dtMs: number): void {
     if (s.seed !== this.seed) { this.reset(); this.seed = s.seed; }
-    const season = seasonOf(s.day);
+    const season = paletteOf(s);
     if (season !== this.season) {
       if (this.season >= 0) { this.prev = this.season; this.fade = 0; }
       this.season = season;
@@ -310,7 +326,7 @@ export class TerrainPainter {
     const budget = { n: BAKES_PER_FRAME };
     const cx0 = Math.floor(vis.x / CH), cx1 = Math.floor((vis.x + vis.w - 1) / CH);
     const cy0 = Math.floor(vis.y / CH), cy1 = Math.floor((vis.y + vis.h - 1) / CH);
-    const pass = (season: SeasonIndex, bake: boolean): void => {
+    const pass = (season: Pal, bake: boolean): void => {
       for (let cy = Math.max(0, cy0); cy <= Math.min(NCY - 1, cy1); cy++)
         for (let cx = Math.max(0, cx0); cx <= Math.min(NCX - 1, cx1); cx++) {
           const c = this.chunk(s, season, cy * NCX + cx, bake ? budget : null);
@@ -318,9 +334,9 @@ export class TerrainPainter {
           else if (bake) g.drawImage(this.miniCanvas(s), cx * CH, cy * CH, CH, CH, cx * CPX, cy * CPX, CPX, CPX);
         }
     };
-    const { cur, prev, fade } = this.seasons;
+    const { cur, prev, fade } = this.palettes;
     if (prev >= 0) {
-      pass(prev as SeasonIndex, false);
+      pass(prev as Pal, false);
       g.globalAlpha = fade;
     }
     pass(cur, true);
@@ -331,7 +347,7 @@ export class TerrainPainter {
 
   /** The 1 px/tile ground colour canvas (woods by standing timber), for the minimap and chunk placeholders. */
   miniCanvas(s: GameState): HTMLCanvasElement {
-    const season = seasonOf(s.day);
+    const season = paletteOf(s);
     const key = `${s.seed}|${season}|${Math.floor(s.day / 10)}|${structEpoch(s)}`;
     if (this.mini && key === this.miniKey) return this.mini;
     this.miniKey = key;
@@ -358,7 +374,7 @@ export class TerrainPainter {
   }
 
   /** The composite chunk (base + decals); null when its base is not painted and there is no budget left. */
-  private chunk(s: GameState, season: SeasonIndex, c: number, budget: { n: number } | null): HTMLCanvasElement | null {
+  private chunk(s: GameState, season: Pal, c: number, budget: { n: number } | null): HTMLCanvasElement | null {
     const key = `${season}:${c}`;
     const sig = this.sigs[c] ?? 0;
     const have = this.chunks.get(key);
@@ -378,11 +394,16 @@ export class TerrainPainter {
     g.drawImage(base, 0, 0);
     g.translate(-r.x * TILE, -r.y * TILE);
     g.imageSmoothingEnabled = false;
-    paintDecals(g, s, r, season);
+    paintDecals(g, s, r, seasonOfPal(season));
     g.setTransform(1, 0, 0, 1, 0, 0);
     this.chunks.set(key, { cv, sig });
     return cv;
   }
+}
+
+/** The real season of a palette (snow is Hiems). */
+function seasonOfPal(p: Pal): SeasonIndex {
+  return p === SNOW ? 3 : p;
 }
 
 /** Chunk geometry shared with the forest layer. */
