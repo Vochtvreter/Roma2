@@ -117,7 +117,7 @@ function decide(s: GameState, picks: Record<PathDecisionId, PathOptionId>, tip: 
   const v = view(s);
   const pn = petitionNeeds(s, v);
   if (pn && pn.ready && pn.affordable && elapsed(s) >= B.guide.CHARTER) act.choosePath(s, pn.decision, picks[pn.decision]);
-  const want = edictAdvice(s, v);
+  const want = edictAdvice(s, v, pn);
   for (const id of EDICTS) if (s.decisions.edicts[id] !== want[id]) act.setEdict(s, id, want[id]);
   const c = s.choice;   // the default, or (if unaffordable) the next affordable answer, as on expiry (DESIGN §12.1)
   for (let k = 0; c && s.choice === c && k < c.options.length; k++) act.chooseOption(s, (c.defaultIndex + k) % c.options.length);
