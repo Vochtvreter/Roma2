@@ -4,6 +4,8 @@
 import { registerGrid } from './brush';
 import { ager, olivetum } from './fields';
 import { FORUM_H, FORUM_W, forumStages } from './forum';
+import { capitoliumSprites } from './capitolium';
+import { linearSprites } from './walls';
 
 const SEASONS = [0, 1, 2, 3] as const;
 
@@ -17,4 +19,6 @@ export function registerProcedural(): void {
     registerGrid(`b_olivetum@${s}`, 48, 48, () => olivetum(s), { outline: false });
   }
   for (const [name, build] of Object.entries(forumStages())) registerGrid(name, FORUM_W, FORUM_H, build, { outline: false });
+  for (const c of capitoliumSprites()) registerGrid(c.name, c.w, c.h, c.build, { outline: c.name.startsWith('p_crown') });
+  for (const l of linearSprites()) registerGrid(l.name, l.w, l.h, l.build);
 }
