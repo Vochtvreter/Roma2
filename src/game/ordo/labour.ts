@@ -7,7 +7,7 @@ import { B } from '../balance';
 import { HOUSE_TIERS, LABOR_CATS, RESOURCES } from '../types';
 import type { Building, BuildingDef, BuildingId, CoverageLayerId, GameState, LaborCat, LabourLine, LabourPlan, NeedId, Reason, ReasonCode, ResId, SimView } from '../types';
 import { nextSeasonStart, seasonLength, seasonOf } from '../calendar';
-import { maxPotential, seasonMult } from '../economy';
+import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
 import { getBuilding } from '../state';
 import { dayEpoch, memo } from '../memo';
@@ -16,7 +16,6 @@ import { BUILDING_DEFS } from '../data/buildings';
 import { TIER_DEFS } from '../data/housing';
 import { FOCUS_DEFS } from '../data/decisions';
 import { houseWants, materialNeeds } from './build';
-import { fullRate } from './saving';
 
 /** Works that stop drawing water while the Lex de annona pauses them (DESIGN §8.12 step 2): they get no hands. */
 export const WATER_PAUSED: readonly BuildingId[] = ['caementarium', 'balneum', 'thermae'];
@@ -42,13 +41,14 @@ function reason(code: ReasonCode, params: Record<string, number | string | undef
 function posts(s: GameState): Post[] {
   return memo(s, 'ordo.posts', dayEpoch(s) * 2 + (s.ordo.emergency.waterPause ? 1 : 0), () => {
     const out: Post[] = [];
+    const season = seasonOf(s.day);
     for (const b of s.buildings) {
       const def = BUILDING_DEFS[b.type];
       if (b.status !== 'done' || !b.open || def.slots <= 0 || !def.labor) continue;
       if ((b.damagedUntil ?? 0) > s.day || (b.idleUntil ?? 0) > s.day) continue;
       if (s.ordo.emergency.waterPause && WATER_PAUSED.includes(b.type)) continue;
       const res = def.output?.res ?? null;
-      const rate = res ? (fullRate(s, b)[res] ?? 0) / def.slots : 0;
+      const rate = res ? buildingRateOf(s, b, season, 'full', res) / def.slots : 0;   // = fullRate(s, b)[res] / slots
       out.push({ b, def, cat: def.labor, res, rate, layers: (def.service ?? []).map((x) => x.layer) });
     }
     return out.sort((a, c) => c.b.prio - a.b.prio || c.rate - a.rate || a.b.id - c.b.id);
@@ -106,13 +106,28 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
     note(p.cat, k, why);
     return k;
   };
-  /** One hand at a time to the best producer of `res` until its output reaches `goal`; returns hands added. */
+  /** One hand at a time to the best producer of `res` until its output reaches `goal`; returns hands added. Each post
+   *  takes hands while `add(p, 1)` would (its slots, the free hands, the food cap), the output summed hand by hand;
+   *  the post's hands are noted once (the same line, reason and count as hand by hand). */
   const toward = (res: ResId, goal: number, why: Reason): number => {
     let n = 0;
+    const grain = res === 'grain';
     for (const p of all) {
       if ((made[res] ?? 0) >= goal) break;
       if (p.res !== res || p.rate <= 0) continue;
-      while ((made[res] ?? 0) < goal && add(p, 1, why) === 1) n++;
+      const id = p.b.id, slots = p.def.slots, rate = p.rate;
+      let have = per[id] ?? 0, m = made[res] ?? 0, k = 0;
+      while (m < goal && have < slots && free > 0 && (!grain || food < foodCap)) {
+        have++; free--; k++;
+        if (grain) food++;
+        m += rate * 1;
+      }
+      if (k > 0) {
+        per[id] = have;
+        made[res] = m;
+        note(p.cat, k, why);
+        n += k;
+      }
     }
     return n;
   };

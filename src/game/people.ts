@@ -81,22 +81,25 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   const nb = Math.max(0, Math.floor(plan.builders));
   if (builders.length > nb) builders.sort(leastFirst('fabri')).slice(0, builders.length - nb).forEach(release);
 
-  // idle pool, sorted lazily per skill: best in the skill, then least gifted elsewhere (specialists stay free for their
-  // own trade), then lowest id; a pointer skips the taken
+  // idle pool: each pick takes the best untaken worker in the skill, then the least gifted elsewhere (specialists stay
+  // free for their own trade), then the lowest id. A day moves a handful of hands, so each pick scans the pool for the
+  // first in that order instead of sorting the whole pool per skill (keys computed once per skill and person).
   const pool = s.people.filter((p) => p.work === null && canWork(s, p));
-  const sorted = new Map<string, { list: Person[]; at: number }>();
+  const keyed = new Map<string, { k: number[]; o: number[] }>();
   const pick = (skill: SkillId | null): Person | null => {
     const key = skill ?? '';
-    let e = sorted.get(key);
+    let e = keyed.get(key);
     if (!e) {
-      // keys computed once per person, not per comparison (the same total order: ties end on the id)
-      const keyed = pool.map((p) => ({ p, k: skillOf(p, skill), o: otherSkill(p, skill) }));
-      keyed.sort((a, c) => c.k - a.k || a.o - c.o || a.p.id - c.p.id);
-      e = { list: keyed.map((x) => x.p), at: 0 };
-      sorted.set(key, e);
+      e = { k: pool.map((p) => skillOf(p, skill)), o: pool.map((p) => otherSkill(p, skill)) };
+      keyed.set(key, e);
     }
-    while (e.at < e.list.length && e.list[e.at].work !== null) e.at++;
-    return e.at < e.list.length ? e.list[e.at++] : null;
+    const { k, o } = e;
+    let best = -1;
+    for (let i = 0; i < pool.length; i++) {
+      if (pool[i].work !== null) continue;
+      if (best < 0 || k[i] > k[best] || (k[i] === k[best] && (o[i] < o[best] || (o[i] === o[best] && pool[i].id < pool[best].id)))) best = i;
+    }
+    return best < 0 ? null : pool[best];
   };
   const fill = (n: number, skill: SkillId | null, work: number): void => {
     for (; n > 0; n--) {
