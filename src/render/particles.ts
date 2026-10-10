@@ -136,7 +136,7 @@ export class Particles {
         if (b.progress > st.p) { st.p = b.progress; st.t = this.now; }
         if (this.now - st.t < SITE_PUFF_MS * 1.5 && this.now - st.puff > SITE_PUFF_MS) {
           st.puff = this.now;
-          this.burst('dust', d.sx + d.sw / 2, d.sy + d.h + (d.y - d.sy) - 2, 6, d.sw * 0.8, 12, 800);
+          this.burst('dust', d.sx + d.sw / 2, d.y + d.h - 2, 6, d.sw * 0.8, 12, 800);
         }
         this.sites.set(b.id, st);
         continue;

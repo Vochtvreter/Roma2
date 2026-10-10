@@ -29,6 +29,7 @@ export const GROUND: Readonly<Record<'grass' | 'meadow' | 'scrub' | 'hills' | 'r
   oak: ['#4f9a3a', '#5b8f35', '#c0702e', '#55684f'],
 };
 const SHORE: Quad4 = ['#b9a77a', '#c9b384', '#ad9b70', '#9d9580'];
+const MUD: RGB = [58, 74, 72];
 
 /** Other fixed map colours (DESIGN §16.2). */
 export const MAP_COLORS = {
@@ -41,7 +42,8 @@ const CH = 28;                                   // chunk size in tiles
 const NCX = Math.ceil(W / CH), NCY = Math.ceil(H / CH);
 const CPX = CH * TILE;                           // chunk size in world px
 const FADE_MS = 2000;                            // season crossfade
-const BAKES_PER_FRAME = 2;                       // new chunk bases painted per frame (the rest wait a frame)
+const BAKES_PER_FRAME = 1;                       // new chunk bases painted per frame (≈ 10 ms each; the rest wait)
+const IDLE_BAKE_EVERY = 3;                       // frames between background bakes of off-screen chunks
 const FLOWERS: readonly RGB[] = [[246, 242, 234], [247, 213, 92], [196, 61, 47], [154, 120, 224]];
 
 const rgbCache = new Map<string, RGB>();
@@ -122,7 +124,7 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
       const base = tileRgb(map, i, season);
       const isW = t === T.river, isF = sv.fossa[i] === 1;
       // neighbours whose land colour differs: their colour bleeds 0–2 px into this tile, dithered
-      const nb = [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([dx, dy]) => {
+      const nb: (RGB | null)[] = [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([dx, dy]) => {
         const nx = tx + dx, ny = ty + dy;
         if (isW || isF || nx < 0 || ny < 0 || nx >= W || ny >= H) return null;
         const j = idx(nx, ny);
@@ -133,19 +135,21 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
       const fN = isF && fos(tx, ty - 1), fS = isF && fos(tx, ty + 1), fE = isF && fos(tx + 1, ty), fWd = isF && fos(tx - 1, ty);
       const it = sv.interior, odx = Math.max(it.x - tx, 0, tx - (it.x + it.w - 1)), ody = Math.max(it.y - ty, 0, ty - (it.y + it.h - 1));
       const midH = isF && ody === 3 && odx <= 3, midV = isF && odx === 3 && ody <= 3;          // the ditch's middle line
+      let near = false;                                     // any 8-neighbour of the other kind (water ↔ land): edge pixels to check
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && water(tx + dx, ty + dy) !== isW && tx + dx >= 0 && ty + dy >= 0 && tx + dx < W && ty + dy < H) near = true;
+      const bleed = nb.some(Boolean), k = (ty - y0) * G + (tx - x0);
       for (let py = 0; py < TILE; py++)
         for (let px = 0; px < TILE; px++) {
           const gx = tx * TILE + px, gy = ty * TILE + py;
           const n = hash2(gx, gy, 7);
-          const u = px / TILE, v = py / TILE, k = (ty - y0) * G + (tx - x0);
-          const soft = ng[k] * (1 - u) * (1 - v) + ng[k + 1] * u * (1 - v) + ng[k + G] * (1 - u) * v + ng[k + G + 1] * u * v;
-          const hue = hg[k] * (1 - u) * (1 - v) + hg[k + 1] * u * (1 - v) + hg[k + G] * (1 - u) * v + hg[k + G + 1] * u * v;
-          let c: RGB = isW || isF ? base : [base[0] * (1 + 0.16 * hue), base[1] * (1 + 0.04 * hue), base[2] * (1 - 0.2 * hue)];
-          let f = 1 + soft + (n > 0.9 ? 0.08 : n < 0.1 ? -0.08 : 0);
+          const u = px / TILE, v = py / TILE, w00 = (1 - u) * (1 - v), w10 = u * (1 - v), w01 = (1 - u) * v, w11 = u * v;
+          let c: RGB = base;
+          let f = 1 + ng[k] * w00 + ng[k + 1] * w10 + ng[k + G] * w01 + ng[k + G + 1] * w11 + (n > 0.9 ? 0.08 : n < 0.1 ? -0.08 : 0);
+          let hue = 0;
           if (isW) {
             const wave = Math.sin((gx + gy * 0.6) * 0.45) + Math.sin(gx * 0.17 - gy * 0.31);
             f = (deep ? 0.94 : 1) + wave * 0.025 + (n > 0.985 ? 0.14 : 0);
-            const e = edgeTo(px, py, tx, ty, (x, y) => !water(x, y));
+            const e = near ? edgeTo(px, py, tx, ty, (x, y) => !water(x, y)) : 9;
             if (e === 0) { c = foam; f = n > 0.5 ? 1 : 0.95; } else if (e === 1) f *= 1.12; else if (e === 2) f *= 1.05;
           } else if (isF) {
             c = fossaC;
@@ -153,23 +157,29 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
             if ((!fN && py < 3) || (!fWd && px < 3)) f = 1.42 - (Math.min(px, py) * 0.04);       // lit bank
             else if ((!fS && py > 12) || (!fE && px > 12)) f = 0.78;                               // shaded bank
             else if ((midH && py >= 6 && py <= 9) || (midV && px >= 6 && px <= 9)) {                // muddy water at the bottom
-              c = [58, 74, 72];
+              c = MUD;
               f = 1 + Math.sin(gx * 0.5 + gy * 0.3) * 0.05;
             }
+          } else if (near && edgeTo(px, py, tx, ty, water) <= 1) {
+            c = shore; f = n > 0.5 ? 1 : 0.94;
           } else {
-            const e = edgeTo(px, py, tx, ty, water);
-            if (e <= 1) { c = shore; f = n > 0.5 ? 1 : 0.94; }
-            else {
-              const dist = [py, 15 - px, 15 - py, px];
-              for (let s = 0; s < 4; s++) if (nb[s] && dist[s] < 3 && hash2(gx, gy, 23) < (3 - dist[s]) * 0.2) c = nb[s] as RGB;
-              if (feat === F.clay && hash2(gx >> 2, gy >> 2, 5) > 0.4) c = lerp(c, rgbOf(MAP_COLORS.clay), 0.35 + 0.15 * hash2(gx >> 1, gy >> 1, 6));
-              else if (feat === F.ore && n > 0.72) { c = rgbOf(n > 0.93 ? '#5e2a1a' : MAP_COLORS.ore); f = 1; }
-              else if (feat === F.ruins && n > 0.88) { c = rgbOf(MAP_COLORS.ruins); f = n > 0.95 ? 1.15 : 0.9; }
-              else if (t === T.rock || t === T.crag) f *= 0.94 + 0.12 * hash2(gx >> 2, gy >> 2, 3) - (hash2(gx >> 1, gy, 9) > 0.93 ? 0.18 : 0);
-              else if (t === T.hills) f *= 0.97 + 0.06 * hash2(gx >> 3, gy >> 3, 4);
+            hue = hg[k] * w00 + hg[k + 1] * w10 + hg[k + G] * w01 + hg[k + G + 1] * w11;
+            if (bleed) {
+              const h2 = hash2(gx, gy, 23);
+              if (py < 3 && nb[0] && h2 < (3 - py) * 0.2) c = nb[0];
+              else if (px > 12 && nb[1] && h2 < (px - 12) * 0.2) c = nb[1];
+              else if (py > 12 && nb[2] && h2 < (py - 12) * 0.2) c = nb[2];
+              else if (px < 3 && nb[3] && h2 < (3 - px) * 0.2) c = nb[3];
             }
+            const cl = feat === F.clay ? Math.hypot((px - 7.5) / 7, (py - 7.5) / 5.5) + (hash2(gx >> 1, gy >> 1, 5) - 0.5) * 0.6 : 9;
+            if (cl < 1) { c = lerp(c, rgbOf(MAP_COLORS.clay), 0.45 + 0.3 * (1 - cl)); hue = 0; f *= n > 0.85 ? 0.85 : 1; }       // a clay bank
+            else if (feat === F.ore && n > 0.72) { c = rgbOf(n > 0.93 ? '#5e2a1a' : MAP_COLORS.ore); f = 1; hue = 0; }
+            else if (feat === F.ruins && n > 0.88) { c = rgbOf(MAP_COLORS.ruins); f = n > 0.95 ? 1.15 : 0.9; }
+            else if (t === T.rock || t === T.crag) f *= 0.94 + 0.12 * hash2(gx >> 2, gy >> 2, 3) - (hash2(gx >> 1, gy, 9) > 0.93 ? 0.18 : 0);
+            else if (t === T.hills) f *= 0.97 + 0.06 * hash2(gx >> 3, gy >> 3, 4);
           }
-          put(gx, gy, c, f);
+          const o = ((gy - y0 * TILE) * CPX + (gx - x0 * TILE)) * 4;
+          d[o] = c[0] * f * (1 + 0.16 * hue); d[o + 1] = c[1] * f * (1 + 0.04 * hue); d[o + 2] = c[2] * f * (1 - 0.2 * hue); d[o + 3] = 255;
         }
       if (!isW && !isF) decorate(map, i, tx, ty, season, base, put);
     }
@@ -258,6 +268,7 @@ export class TerrainPainter {
   private fade = 1;
   private mini: HTMLCanvasElement | null = null;
   private miniKey = '';
+  private frameNo = 0;
 
   /** Forget every cache (new or loaded game). */
   reset(): void {
@@ -315,7 +326,7 @@ export class TerrainPainter {
     pass(cur, true);
     g.globalAlpha = 1;
     // paint one off-screen chunk per frame in the background so panning never meets a blurry chunk
-    if (budget.n > 0) for (let c = 0; c < NCX * NCY; c++) if (!this.bases.has(`${cur}:${c}`)) { this.chunk(s, cur, c, budget); break; }
+    if (budget.n > 0 && ++this.frameNo % IDLE_BAKE_EVERY === 0) for (let c = 0; c < NCX * NCY; c++) if (!this.bases.has(`${cur}:${c}`)) { this.chunk(s, cur, c, budget); break; }
   }
 
   /** The 1 px/tile ground colour canvas (woods by standing timber), for the minimap and chunk placeholders. */
