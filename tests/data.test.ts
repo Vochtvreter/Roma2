@@ -224,8 +224,11 @@ describe('decisions (DESIGN §9.2, §10.8–10.10)', () => {
     expect([...all].sort()).toEqual([...PATH_OPTIONS].sort());
     for (const p of PATH_DECISIONS) {
       expect(PATH_DEFS[p].options.length).toBe(3);
-      for (const o of PATH_DEFS[p].options) { expectEffects(o.fx); expect(o.visible?.length ?? 0).toBeGreaterThan(0); }
+      for (const o of PATH_DEFS[p].options) { expectEffects(o.fx); if (o.visible !== undefined) expect(o.visible.length).toBeGreaterThan(0); }
     }
+    // only what the map draws is promised (R30): the cloaks, carts, smoke, incense, basalt via, togas, steam and crowns
+    expect(PATH_DECISIONS.flatMap(p => PATH_DEFS[p].options.filter(o => o.visible !== undefined).map(o => o.id))).toEqual(
+      ['veterani', 'coloni', 'arsFabrilis', 'pietas', 'viaMilitaris', 'iusLatii', 'aquaeSalutares', 'iuppiter', 'aeternitas', 'imperium']);
     expect(PATH_DECISIONS.map(p => PATH_DEFS[p].grants)).toEqual([0, 1, 2, 3, 4]);
   });
   it('settings: defaults inside their range on a step; milestone unlocks', () => {
