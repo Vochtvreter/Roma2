@@ -125,6 +125,26 @@ describe('evolution (DESIGN §7.2)', () => {
     expect(firstWant(s, h)).toBe('rank');
   });
 
+  it('shows a service only once the rank can build it, else the charter (R03, DESIGN §7.7)', () => {
+    const { s, houses } = setup();
+    const h = houses[0];
+    setTier(s, h, 'casa');
+    cover(h, ['water', 'shrine']);                      // fed, a shrine, water; no market (a taberna is a Vicus work)
+    expect(s.rank).toBe(0);
+    expect(unmetNeeds(s, h, 'tegulata')).toEqual(['market', 'rank']);   // the Ordo's order is kept
+    expect(firstWant(s, h)).toBe('rank');
+    s.rank = 1;
+    expect(firstWant(s, h)).toBe('market');
+    s.rank = 0;
+    cover(h, ['water']);                                // missing religion and the market: the shrine comes first
+    expect(firstWant(s, h)).toBe('religion');
+    setTier(s, h, 'tegulata');
+    s.rank = 1;
+    cover(h, ['water', 'shrine', 'market']);            // a templum is an Oppidum work
+    expect(unmetNeeds(s, h, 'domusParva')[0]).toBe('temple');
+    expect(firstWant(s, h)).toBe('rank');
+  });
+
   it('reports the houses a service would let evolve', () => {
     const { s, houses } = setup();
     for (const h of houses) setTier(s, h, 'casa');

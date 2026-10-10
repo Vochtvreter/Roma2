@@ -34,6 +34,18 @@ const LAYER_NEEDS: Record<CoverageLayerId, readonly NeedId[]> = {
   water: ['water'], fountain: ['water'], shrine: ['religion'], temple: ['temple', 'religion'],
   market: ['market'], macellum: ['macellum', 'market'], baths: ['baths'], culture: [],
 };
+/** The lowest rank at which the player can raise a work that meets each coverage need (a need no work meets is absent). */
+const NEED_RANK: Partial<Record<NeedId, number>> = {};
+for (const d of Object.values(BUILDING_DEFS)) {
+  if (d.place.includes('fixed')) continue;
+  for (const sv of d.service ?? []) for (const n of LAYER_NEEDS[sv.layer]) NEED_RANK[n] = Math.min(NEED_RANK[n] ?? Infinity, d.rank);
+}
+
+/** The want a house shows (bubble, Populus, tips, the Aedilis): the first unmet need the colony's rank can answer, so a
+ *  service Rome has not yet granted falls through to 'rank' (DESIGN §7.7); `unmet` keeps its order for the Ordo. */
+export function shownWant(s: GameState, unmet: readonly NeedId[]): NeedId | null {
+  return unmet.find((n) => (NEED_RANK[n] ?? 0) <= s.rank) ?? unmet[0] ?? null;
+}
 
 function level(t: HouseTierId): number {
   return TIER_DEFS[t].level;
@@ -95,13 +107,13 @@ function covers(pool: Cost, cost: Cost): boolean {
   return true;
 }
 
-/** The first unmet need of the next tier (the want bubble); 'materials' when every need holds but the renovation pool
- *  lacks the materials; null when nothing is wanted. */
+/** The shown unmet need of the next tier (the want bubble; shownWant); 'materials' when every need holds but the
+ *  renovation pool lacks the materials; null when nothing is wanted. */
 export function firstWant(s: GameState, b: Building): NeedId | null {
   const next = targetTier(s, b);
   if (!next) return null;
   const unmet = unmetNeeds(s, b, next);
-  if (unmet.length > 0) return unmet[0];
+  if (unmet.length > 0) return shownWant(s, unmet);
   const pool = memo(s, 'renovationPool', dayEpoch(s), () => renovationPool(s, view(s)));
   return covers(pool, TIER_DEFS[next].renovation) ? null : 'materials';
 }
