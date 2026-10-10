@@ -84,7 +84,7 @@ function serviceWorks(s: GameState): Building[] {
 
 /** Coverage keys are built only when the sources change: the same structure epoch and the same (id, layer, radius) list
  *  make the same key, so the last coverage is reused without a string per check. */
-const covBuilt = new WeakMap<GameState, { epoch: number; list: Source[]; cov: Coverage }>();
+const covBuilt = new WeakMap<GameState, { epoch: number; list: Source[]; road: Uint8Array; rank: number; cov: Coverage }>();
 
 function sameSources(a: readonly Source[], b: readonly Source[]): boolean {
   if (a.length !== b.length) return false;
@@ -151,9 +151,21 @@ function coverageOf(s: GameState): Coverage {
   const last = covBuilt.get(s);
   if (last && last.epoch === src.epoch && sameSources(last.list, src.list)) return last.cov;
   const key = `${src.epoch}|${src.list.map((x) => `${x.id}.${x.layer}.${x.r}`).join(',')}`;
-  const cov = buildCoverage(s, src, key);
-  covBuilt.set(s, { epoch: src.epoch, list: src.list, cov });
+  const d = derived(s);
+  // A new layout with the same sources over the same road tiles at the same rank (a house or a work finished, a plot laid
+  // beside the roads) floods the same tiles: the layers are kept and only the house masks are read again.
+  const cov = last && last.rank === s.rank && sameSources(last.list, src.list) && sameRoad(last.road, d.road)
+    ? { layers: last.cov.layers, houseMask: houseMasks(s, d, last.cov.layers), key }
+    : buildCoverage(s, src, key);
+  covBuilt.set(s, { epoch: src.epoch, list: src.list, road: d.road, rank: s.rank, cov });
   return cov;
+}
+
+function sameRoad(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 function buildCoverage(s: GameState, src: { list: Source[] }, key: string): Coverage {
@@ -172,6 +184,11 @@ function buildCoverage(s: GameState, src: { list: Source[] }, key: string): Cove
     if (srcs.length > 0) flood(d.road, srcs, out);
     layers[l] = out;
   });
+  return { layers, houseMask: houseMasks(s, d, layers), key };
+}
+
+/** Each house's layer mask: the layers covering a road tile beside it. */
+function houseMasks(s: GameState, d: ReturnType<typeof derived>, layers: Record<CoverageLayerId, Uint8Array>): Map<number, number> {
   const houseMask = new Map<number, number>();
   const byIndex = LAYERS.map((l) => layers[l]);
   for (const id of d.houses) {
@@ -186,7 +203,7 @@ function buildCoverage(s: GameState, src: { list: Source[] }, key: string): Cove
     }
     houseMask.set(id, mask);
   }
-  return { layers, houseMask, key };
+  return houseMask;
 }
 
 /** True when the house is covered by the layer. */
