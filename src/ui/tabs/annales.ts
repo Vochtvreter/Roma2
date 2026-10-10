@@ -97,7 +97,8 @@ function fasti(s: GameState): HTMLElement | null {
 }
 
 function commentarii(s: GameState): HTMLElement | null {
-  const seen = GUIDE.filter((t) => s.guidance.tips.includes(t.id));
+  // urgent tips speak of the moment ("grain lasts 191 days"): read again later they would contradict the HUD
+  const seen = GUIDE.filter((t) => !t.urgent && s.guidance.tips.includes(t.id));
   if (!seen.length) return null;
   const sec = section('Commentarii', 'The mentor\'s notes, to read again', { anchor: 'commentarii' });
   for (const t of seen) sec.append(h('details', { class: 'ann-tip' }, h('summary', null, t.title), h('p', null, t.text(s))));
