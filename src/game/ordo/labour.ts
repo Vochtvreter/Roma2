@@ -90,14 +90,27 @@ function workableSites(s: GameState, v: SimView): Building[] {
 
 /** The plan's hands by building id: every post that took a hand, filled from the highest id down (a record that starts
  *  at a high key keeps sparse elements, not a backing array as long as the highest id). */
-function perRecord(all: readonly Post[], hands: Int32Array): Record<number, number> {
-  const ids: number[] = [];
-  for (const p of all) if (hands[p.i] > 0) ids.push(p.i);
-  ids.sort((a, c) => all[c].b.id - all[a].b.id);
+function perRecord(s: GameState, all: readonly Post[], hands: Int32Array): Record<number, number> {
+  const byId = postsById(all);
   const per: Record<number, number> = {};
-  for (const i of ids) per[all[i].b.id] = hands[i];
+  for (let k = s.buildings.length - 1; k >= 0; k--) {
+    const p = byId.get(s.buildings[k].id);
+    if (p && hands[p.i] > 0) per[p.b.id] = hands[p.i];
+  }
   return per;
 }
+
+/** The posts of one order by building id (kept per order array). */
+function postsById(all: readonly Post[]): Map<number, Post> {
+  let m = postIndex.get(all);
+  if (!m) {
+    m = new Map();
+    for (const p of all) m.set(p.b.id, p);
+    postIndex.set(all, m);
+  }
+  return m;
+}
+const postIndex = new WeakMap<readonly Post[], Map<number, Post>>();
 
 /** The Ordo's daily labour plan with a Reason per line (DESIGN §10.4). Pure. */
 export function planLabour(s: GameState, v: SimView): LabourPlan {
@@ -292,7 +305,7 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
 
   const out: LabourLine[] = [];
   for (const [cat, l] of lines) out.push({ cat, target: cat === 'builders' ? builders : l.n, have: c.catStaffed[cat], slots: c.catSlots[cat], reason: l.reason });
-  return { perBuilding: perRecord(all, hands), builders, lines: out };
+  return { perBuilding: perRecord(s, all, hands), builders, lines: out };
 }
 
 /** Manual labour: the player's category targets → buildings (prioritised categories first; High first, then nearest the forum). */
