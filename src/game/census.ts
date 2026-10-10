@@ -69,7 +69,16 @@ function push(m: Map<number, Person[]>, k: number, p: Person): void {
 /** People indexed by home, work and family (memo on the census epoch; the home and family lists on the people epoch, so
  *  a reassignment of jobs rebuilds only the work lists). */
 export function peopleIndex(s: GameState): PeopleIndex {
-  return memo(s, 'peopleIndex', censusEpoch(s), () => {
+  const e = censusEpoch(s);
+  if (s === lastIndex.s && e === lastIndex.e) return lastIndex.ix as PeopleIndex;   // the last read, without a memo call
+  const ix = indexOf(s, e);
+  lastIndex = { s, e, ix };
+  return ix;
+}
+let lastIndex: { s: GameState | null; e: number; ix: PeopleIndex | null } = { s: null, e: 0, ix: null };
+
+function indexOf(s: GameState, e: number): PeopleIndex {
+  return memo(s, 'peopleIndex', e, () => {
     const homes = memo(s, 'peopleIndex.homes', peopleEpoch(s), () => {
       const byHome = new Map<number, Person[]>();
       const byFamily = new Map<number, Person[]>();

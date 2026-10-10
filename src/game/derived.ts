@@ -21,8 +21,13 @@ const URBAN: readonly PlaceClass[] = ['plot', 'half', 'block'];
 
 /** Structural derived data of a state (memo on the layout epoch: house tiers do not enter). */
 export function derived(s: GameState): Derived {
-  return memo(s, 'derived', layoutEpoch(s), () => computeDerived(s));
+  const e = layoutEpoch(s);
+  if (s === lastDerived.s && e === lastDerived.e) return lastDerived.d as Derived;   // the last read, without a memo call
+  const d = memo(s, 'derived', e, () => computeDerived(s));
+  lastDerived = { s, e, d };
+  return d;
 }
+let lastDerived: { s: GameState | null; e: number; d: Derived | null } = { s: null, e: 0, d: null };
 
 /** Footprint size of a type in a placement class: plot 2×2, half 4×2, block 4×4, rural/fixed from the def. */
 export function sizeOf(type: BuildingId, cls: PlaceClass): [number, number] {
