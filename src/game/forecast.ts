@@ -86,21 +86,25 @@ export function projectEssential(s: GameState, res: Essential): EssentialForecas
   let y = d0.year, m = d0.month, st = stock;
   let lowestDoh = doh(stock), lowestDay = s.day;
   let day = s.day;
+  const grain = res === 'grain';
   for (let k = 0; k < CELLS; k++) {
     const end = dayOf(y, m, 1) + daysInMonth(y, m);   // first day of the next month
     let minSt = st;
     let minDay = day;
     const q = seasonOf(end - 1);                        // seasons change only on a Kalends
     const p = prodBy[q];
+    // the month's factors read once (the same operands in the same order: (x × a) × b, so the same floats)
+    const a = grain ? E.SHED_ROT : E.EVAPORATION, b = grain ? E.ROT_SEASON[q] : E.EVAP_SEASON[q];
     while (day + 1 < end) {
       day++;
       st = Math.min(cap, Math.max(0, st + p - cons));
-      if (res === 'grain') st -= Math.max(0, st - horrea) * E.SHED_ROT * E.ROT_SEASON[q];
-      else st -= st * E.EVAPORATION * E.EVAP_SEASON[q];
+      if (grain) st -= Math.max(0, st - horrea) * a * b;
+      else st -= st * a * b;
       if (st < minSt) { minSt = st; minDay = day; }
       if (day >= crunchStart && day < crunchEnd) {
         deficit += cons - p;
-        if (doh(st) < crunchLow) { crunchLow = doh(st); crunchLowDay = day; }
+        const d = need > 0 ? st / need : DOH_NONE;     // doh(st)
+        if (d < crunchLow) { crunchLow = d; crunchLowDay = day; }
         if (crunchEmpty === null && st <= 0) crunchEmpty = day;
       }
     }

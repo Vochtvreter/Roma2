@@ -3,7 +3,10 @@
 import { B as B$ } from './balance';
 import { BUILDER as BUILDER$, HOUSE_TIERS as HOUSE_TIERS$, LABOR_CATS as LABOR_CATS$ } from './types';
 import type { Building, Census, GameState, HouseTierId, LaborCat, Person, Quad, StageIndex } from './types';
-import { censusEpoch as censusEpoch$, memo as memo$, peopleEpoch as peopleEpoch$, structEpoch as structEpoch$ } from './memo';
+import {
+  censusEpoch as censusEpoch$, homesEpoch as homesEpoch$, jobsEpoch as jobsEpoch$, layoutEpoch as layoutEpoch$, memo as memo$,
+  peopleEpoch as peopleEpoch$, structEpoch as structEpoch$,
+} from './memo';
 import { derived as derived$ } from './derived';
 import { caps, horreaCap, portion } from './economy';
 import { fx as fx$, fxAdd as fxAdd$ } from './fx';
@@ -16,6 +19,7 @@ import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDER = BUILDER$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, censusEpoch = censusEpoch$,
   memo = memo$, peopleEpoch = peopleEpoch$, structEpoch = structEpoch$, derived = derived$, fx = fx$, fxAdd = fxAdd$,
+  homesEpoch = homesEpoch$, jobsEpoch = jobsEpoch$, layoutEpoch = layoutEpoch$,
   BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
   getBuilding = getBuilding$;
 
@@ -66,10 +70,10 @@ function push(m: Map<number, Person[]>, k: number, p: Person): void {
   else m.set(k, [p]);
 }
 
-/** People indexed by home, work and family (memo on the census epoch; the home and family lists on the people epoch, so
- *  a reassignment of jobs rebuilds only the work lists). */
+/** People indexed by home, work and family (memo on the jobs epoch; the home and family lists on the homes epoch, so a
+ *  reassignment of jobs rebuilds only the work lists, and a house changing tier rebuilds neither). */
 export function peopleIndex(s: GameState): PeopleIndex {
-  const e = censusEpoch(s);
+  const e = jobsEpoch(s);
   if (s === lastIndex.s && e === lastIndex.e) return lastIndex.ix as PeopleIndex;   // the last read, without a memo call
   const ix = indexOf(s, e);
   lastIndex = { s, e, ix };
@@ -79,7 +83,7 @@ let lastIndex: { s: GameState | null; e: number; ix: PeopleIndex | null } = { s:
 
 function indexOf(s: GameState, e: number): PeopleIndex {
   return memo(s, 'peopleIndex', e, () => {
-    const homes = memo(s, 'peopleIndex.homes', peopleEpoch(s), () => {
+    const homes = memo(s, 'peopleIndex.homes', homesEpoch(s), () => {
       const byHome = new Map<number, Person[]>();
       const byFamily = new Map<number, Person[]>();
       const homeless: Person[] = [];
@@ -100,25 +104,53 @@ function indexOf(s: GameState, e: number): PeopleIndex {
   });
 }
 
-/** The census's pass over people: life stages, the able workers in id order and the patricii (memo on the people epoch
- *  and the day: ages and sickness move with the day, homes and tiers bump the people epoch, jobs do not enter). */
-function peopleCounts(s: GameState, domusOf: () => Set<number>): { byStage: Quad; workforce: number; patricii: number; able: Person[] } {
-  return memo(s, 'census.people', peopleEpoch(s) * DAY_SPAN + s.day, () => {
-    const day = s.day;
-    const domus = domusOf();
-    const byStage: Quad = [0, 0, 0, 0];
-    const able: Person[] = [];
-    const P = B.people;
-    let patricii = 0;
-    for (const p of s.people) {
-      const age = Math.floor((day - p.born) / YEAR);
-      byStage[age < P.YOUTH ? 0 : age < P.ADULT ? 1 : age < P.ELDER ? 2 : 3]++;
-      const patrician = p.home !== null && domus.has(p.home);
-      if (patrician) patricii++;
-      if (age >= P.ADULT && age < P.RETIRE && !patrician && !(p.sickUntil !== undefined && p.sickUntil > day)) able.push(p);
-    }
-    return { byStage, workforce: able.length, patricii, able };
-  });
+/** The census's pass over people: life stages, the able workers in id order and the patricii. Kept while the homes
+ *  epoch (who lives where), the day (ages and sickness move with it) and the domus houses (patricii take no work) stand:
+ *  a house changing tier bumps the structure, and only then is the list of domus houses compared. */
+interface PeopleCounts { byStage: Quad; workforce: number; patricii: number; able: Person[] }
+const countsLast = new WeakMap<GameState, { he: number; day: number; struct: number; domus: number[]; v: PeopleCounts }>();
+
+function peopleCounts(s: GameState): PeopleCounts {
+  const he = homesEpoch(s), day = s.day, st = structEpoch(s);
+  const c = countsLast.get(s);
+  if (c && c.he === he && c.day === day) {
+    if (c.struct === st) return c.v;
+    const domus = domusHouses(s);
+    if (sameIds(domus, c.domus)) { c.struct = st; return c.v; }
+  }
+  const domus = domusHouses(s);
+  const v = countPeople(s, new Set(domus));
+  countsLast.set(s, { he, day, struct: st, domus, v });
+  return v;
+}
+
+/** The finished domus houses (the homes of the patricii), in house order. */
+function domusHouses(s: GameState): number[] {
+  const out: number[] = [];
+  for (const id of derived(s).houses) if (getBuilding(s, id)?.house?.tier === 'domus') out.push(id);
+  return out;
+}
+
+function sameIds(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return false;
+  return true;
+}
+
+function countPeople(s: GameState, domus: ReadonlySet<number>): PeopleCounts {
+  const day = s.day;
+  const byStage: Quad = [0, 0, 0, 0];
+  const able: Person[] = [];
+  const P = B.people;
+  let patricii = 0;
+  for (const p of s.people) {
+    const age = Math.floor((day - p.born) / YEAR);
+    byStage[age < P.YOUTH ? 0 : age < P.ADULT ? 1 : age < P.ELDER ? 2 : 3]++;
+    const patrician = p.home !== null && domus.has(p.home);
+    if (patrician) patricii++;
+    if (age >= P.ADULT && age < P.RETIRE && !patrician && !(p.sickUntil !== undefined && p.sickUntil > day)) able.push(p);
+  }
+  return { byStage, workforce: able.length, patricii, able };
 }
 
 /** Age in whole years on a day. */
@@ -210,11 +242,11 @@ function countHouses(s: GameState, houses: readonly number[], byHome: ReadonlyMa
 }
 
 /** Slots per building and per labour category (builders aside) and each building's category, in building order (memo
- *  on the structure epoch: completions, closures and reopenings bump it). */
+ *  on the layout epoch: completions, closures and reopenings bump it; a house's tier holds no slots). */
 interface SlotCounts { slots: Record<number, number>; catSlots: Record<LaborCat, number>; staffable: { id: number; labor: LaborCat | null }[] }
 
 function slotCounts(s: GameState): SlotCounts {
-  return memo(s, 'census.slots', structEpoch(s), () => {
+  return memo(s, 'census.slots', layoutEpoch(s), () => {
     const slots: Record<number, number> = {};
     const catSlots = {} as Record<LaborCat, number>;
     for (const c of LABOR_CATS) catSlots[c] = 0;
@@ -236,13 +268,9 @@ function slotCounts(s: GameState): SlotCounts {
   });
 }
 
-/** The census's pass over people for today (memo on the people epoch and the day). */
-function todaysPeople(s: GameState): ReturnType<typeof peopleCounts> {
-  return peopleCounts(s, () => {
-    const domus = new Set<number>();
-    for (const id of derived(s).houses) if (getBuilding(s, id)?.house?.tier === 'domus') domus.add(id);
-    return domus;
-  });
+/** The census's pass over people for today (see peopleCounts). */
+function todaysPeople(s: GameState): PeopleCounts {
+  return peopleCounts(s);
 }
 
 /** Everyone who canWork today, in id order (the census's pass: adults and elders under RETIRE, not sick, not patrician). */
