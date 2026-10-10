@@ -105,13 +105,14 @@ export function moraleDay(s: GameState, v: SimView): void {
   s.morale = Math.min(M.MAX, Math.max(M.MIN, s.morale + M.ALPHA * (target - s.morale)));
 }
 
-/** The colony's dignitas and its groups (memo on day and structure; DESIGN §8.11). */
+/** The colony's dignitas and its groups (DESIGN §8.11). Works and homes are memoised on day and structure; deeds,
+ *  roads, fama and the effect multiplier are read live (events and path choices change them within a day). */
 export function dignitas(s: GameState): { value: number; groups: { works: number; homes: number; roads: number; deeds: number; fama: number } } {
   let deeds = 0;
   for (const id of MILESTONE_IDS) if (s.guidance.milestoneDays[id] !== undefined) deeds += B.dignitas.DEEDS;
-  return memo(s, 'dignitas', `${s.day}|${structEpoch(s)}|${deeds}|${s.paved.length}|${s.rank}`, () => {
+  const temple = fx(s, 'templeDignitas');
+  const built = memo(s, 'dignitas', `${s.day}|${structEpoch(s)}|${s.rank}|${temple}`, () => {
     let works = 0, homes = 0;
-    const temple = fx(s, 'templeDignitas');
     for (const b of s.buildings) {
       if (b.status !== 'done') continue;
       if (b.type === 'principia') works += B.dignitas.FORUM[RANK_DEFS[s.rank].forumStage] ?? 0;
@@ -119,11 +120,12 @@ export function dignitas(s: GameState): { value: number; groups: { works: number
       else works += BUILDING_DEFS[b.type].dignitas;
       if (b.house) homes += TIER_DEFS[b.house.tier].dignitas + (isAquae(s, b) ? B.housing.AQUAE_DIGNITAS : 0);
     }
-    const roads = B.dignitas.ROADS * s.paved.length;
-    const fama = fxAdd(s, 'fama');
-    const groups = { works, homes, roads, deeds, fama };
-    return { value: (works + homes + roads + deeds + fama) * fx(s, 'dignitas'), groups };
+    return { works, homes };
   });
+  const roads = B.dignitas.ROADS * s.paved.length;
+  const fama = fxAdd(s, 'fama');
+  const groups = { works: built.works, homes: built.homes, roads, deeds, fama };
+  return { value: (groups.works + groups.homes + roads + deeds + fama) * fx(s, 'dignitas'), groups };
 }
 
 /** Accrues taxes (residents × house tax × fx(tax) × forum ×1.10) and market tax, and pays Rome's subsidy for the day. */
