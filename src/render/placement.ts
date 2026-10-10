@@ -139,12 +139,12 @@ export class Placement {
     if (!p) return;
     const inView = (r: Rect): boolean => r.x <= vis.x + vis.w && r.y <= vis.y + vis.h && r.x + r.w >= vis.x && r.y + r.h >= vis.y;
     if (p.kind === 'building') {
-      const pulse = 0.16 + 0.08 * Math.sin(time / 300);
+      const pulse = 0.2 + 0.08 * Math.sin(time / 300);
       for (const sl of this.slots) {
         const r = sl.rural ? { x: sl.r.x, y: sl.r.y, w: 1, h: 1 } : sl.r;
         if (!inView(r)) continue;
         const gold = sl.mult >= GOLD_MULT;
-        g.fillStyle = gold ? `rgba(242,201,76,${pulse + 0.12})` : `rgba(156,204,90,${pulse})`;
+        g.fillStyle = gold ? `rgba(242,201,76,${pulse + 0.16})` : `rgba(250,244,226,${pulse + 0.06})`;
         g.fillRect(r.x * TILE + 1, r.y * TILE + 1, r.w * TILE - 2, r.h * TILE - 2);
         if (!sl.rural) { g.fillStyle = gold ? 'rgba(242,201,76,0.8)' : 'rgba(244,234,214,0.45)'; edge(g, r); }
       }

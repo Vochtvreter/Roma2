@@ -100,13 +100,14 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
   const water = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && map.terrain[idx(x, y)] === T.river;
   const fos = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && sv.fossa[idx(x, y)] === 1;
   // soft value noise at tile corners (one octave per tile, one per 4 tiles) plus a little hill shade from the elevation
-  const G = CH + 1, ng = new Float32Array(G * G);
+  const G = CH + 1, ng = new Float32Array(G * G), hg = new Float32Array(G * G);
   const e = (xx: number, yy: number): number => map.elev[idx(Math.max(0, Math.min(W - 1, xx)), Math.max(0, Math.min(H - 1, yy)))];
   for (let j = 0; j < G; j++)
     for (let k = 0; k < G; k++) {
       const x = x0 + k, y = y0 + j;
       ng[j * G + k] = valueNoise(x, y, 1, 17) * 0.06 + valueNoise(x, y, 4, 19) * 0.1
         + Math.max(-0.08, Math.min(0.08, (e(x - 1, y - 1) - e(x, y)) * 0.6));
+      hg[j * G + k] = valueNoise(x, y, 6, 29) + valueNoise(x, y, 2, 31) * 0.4;     // warm/cool patches of the grass
     }
   const shore = rgbOf(SHORE[season]), foam = rgbOf(MAP_COLORS.foam), fossaC = rgbOf(MAP_COLORS.fossa);
   const put = (gx: number, gy: number, c: RGB, f = 1): void => {
@@ -130,13 +131,16 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
       });
       const deep = isW && water(tx - 1, ty) && water(tx + 1, ty) && water(tx, ty - 1) && water(tx, ty + 1);
       const fN = isF && fos(tx, ty - 1), fS = isF && fos(tx, ty + 1), fE = isF && fos(tx + 1, ty), fWd = isF && fos(tx - 1, ty);
+      const it = sv.interior, odx = Math.max(it.x - tx, 0, tx - (it.x + it.w - 1)), ody = Math.max(it.y - ty, 0, ty - (it.y + it.h - 1));
+      const midH = isF && ody === 3 && odx <= 3, midV = isF && odx === 3 && ody <= 3;          // the ditch's middle line
       for (let py = 0; py < TILE; py++)
         for (let px = 0; px < TILE; px++) {
           const gx = tx * TILE + px, gy = ty * TILE + py;
           const n = hash2(gx, gy, 7);
           const u = px / TILE, v = py / TILE, k = (ty - y0) * G + (tx - x0);
           const soft = ng[k] * (1 - u) * (1 - v) + ng[k + 1] * u * (1 - v) + ng[k + G] * (1 - u) * v + ng[k + G + 1] * u * v;
-          let c: RGB = base;
+          const hue = hg[k] * (1 - u) * (1 - v) + hg[k + 1] * u * (1 - v) + hg[k + G] * (1 - u) * v + hg[k + G + 1] * u * v;
+          let c: RGB = isW || isF ? base : [base[0] * (1 + 0.16 * hue), base[1] * (1 + 0.04 * hue), base[2] * (1 - 0.2 * hue)];
           let f = 1 + soft + (n > 0.9 ? 0.08 : n < 0.1 ? -0.08 : 0);
           if (isW) {
             const wave = Math.sin((gx + gy * 0.6) * 0.45) + Math.sin(gx * 0.17 - gy * 0.31);
@@ -148,7 +152,7 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
             f = 1 + (n > 0.88 ? 0.07 : n < 0.12 ? -0.07 : 0);
             if ((!fN && py < 3) || (!fWd && px < 3)) f = 1.42 - (Math.min(px, py) * 0.04);       // lit bank
             else if ((!fS && py > 12) || (!fE && px > 12)) f = 0.78;                               // shaded bank
-            else if ((fN && fS && py >= 6 && py <= 9) || (fE && fWd && px >= 6 && px <= 9)) {      // muddy water at the bottom
+            else if ((midH && py >= 6 && py <= 9) || (midV && px >= 6 && px <= 9)) {                // muddy water at the bottom
               c = [58, 74, 72];
               f = 1 + Math.sin(gx * 0.5 + gy * 0.3) * 0.05;
             }
@@ -158,7 +162,7 @@ function paintBase(map: WorldMap, season: SeasonIndex, cx: number, cy: number): 
             else {
               const dist = [py, 15 - px, 15 - py, px];
               for (let s = 0; s < 4; s++) if (nb[s] && dist[s] < 3 && hash2(gx, gy, 23) < (3 - dist[s]) * 0.2) c = nb[s] as RGB;
-              if (feat === F.clay && hash2(gx >> 1, gy >> 1, 5) > 0.35) c = lerp(c, rgbOf(MAP_COLORS.clay), 0.55 + 0.2 * hash2(gx >> 2, gy, 6));
+              if (feat === F.clay && hash2(gx >> 2, gy >> 2, 5) > 0.4) c = lerp(c, rgbOf(MAP_COLORS.clay), 0.35 + 0.15 * hash2(gx >> 1, gy >> 1, 6));
               else if (feat === F.ore && n > 0.72) { c = rgbOf(n > 0.93 ? '#5e2a1a' : MAP_COLORS.ore); f = 1; }
               else if (feat === F.ruins && n > 0.88) { c = rgbOf(MAP_COLORS.ruins); f = n > 0.95 ? 1.15 : 0.9; }
               else if (t === T.rock || t === T.crag) f *= 0.94 + 0.12 * hash2(gx >> 2, gy >> 2, 3) - (hash2(gx >> 1, gy, 9) > 0.93 ? 0.18 : 0);

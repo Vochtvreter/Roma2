@@ -54,20 +54,21 @@ function paint(g: CanvasRenderingContext2D, k: Look, w: number, h: number): void
   const R = (c: string, x: number, y: number, rw: number, rh: number): void => { g.fillStyle = c; g.fillRect(x, y, rw, rh); };
   const x0 = 1, x1 = w - 1, bw = x1 - x0;
   const shade = 'rgba(0,0,0,0.22)', light = 'rgba(255,255,255,0.22)', dark = '#2a2030';
-  const gable = (top: number, base: number, inset: number): void => {     // stepped roof from `base` up to `top`
+  const gable = (top: number, base: number, inset: number): void => {     // stepped roof from `base` up to `top`, lit from the left
     const rows = base - top;
     for (let r = 0; r < rows; r++) {
-      const ins = Math.round(((rows - r) / rows) * inset);
-      R(r % 3 === 0 ? k.roof : r % 3 === 1 ? TERRA_D : k.roof, x0 + ins - 1, base - r - 1, bw - 2 * ins + 2, 1);
+      const ins = Math.round((r / rows) * inset), y = base - r - 1, x = x0 + ins - 1, rw = bw - 2 * ins + 2, half = rw >> 1;
+      R(r % 3 === 1 ? TERRA_D : k.roof, x, y, rw, 1);
+      R(light, x, y, half, 1);
+      R(shade, x + half, y, rw - half, 1);
     }
-    R(light, x0, base - rows, bw >> 1, rows);
   };
   switch (k.kind) {
     case 'tents': {
       const n = Math.max(2, Math.floor(bw / 10));
       for (let t = 0; t < n; t++) {
         const tx = x0 + Math.floor((t * bw) / n), tw = Math.floor(bw / n) - 1, th = h - 4 - (t % 2) * 3;
-        for (let r = 0; r < th; r++) { const ins = Math.round(((th - r) / th) * (tw / 2 - 1)); R(r % 4 ? k.wall : k.roof, tx + ins, h - 1 - r, tw - 2 * ins, 1); }
+        for (let r = 0; r < th; r++) { const ins = Math.round((r / th) * (tw / 2 - 1)); R(r % 4 ? k.wall : k.roof, tx + ins, h - 1 - r, tw - 2 * ins, 1); }
         R(dark, tx + (tw >> 1) - 1, h - 5, 2, 4);
       }
       return;
@@ -111,7 +112,7 @@ function paint(g: CanvasRenderingContext2D, k: Look, w: number, h: number): void
         for (let x = x0 + 3; x < x1 - 4; x += 6) R(s === storeys - 1 && Math.abs(x - (x0 + bw / 2)) < 4 ? k.wall : dark, x, y + 3, 2, 3);
       }
       R(dark, x0 + (bw >> 1) - 2, h - 7, 4, 6);
-      if (k.kind === 'gable') gable(1, wallTop, Math.min(bw >> 1, roofH));
+      if (k.kind === 'gable') gable(1, wallTop, Math.round(bw * 0.3));
       else if (k.kind === 'flat') { R(k.roof, x0, wallTop - 3, bw, 3); R(shade, x0, wallTop, bw, 1); }
       else {
         const r = roofH, cx = x0 + bw / 2;

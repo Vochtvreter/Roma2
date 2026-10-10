@@ -14,7 +14,7 @@ import { firstWant } from '../game/housing';
 import { capitoliumStage } from '../game/construction';
 import { B } from '../game/balance';
 import { buildingSprite, wantIcon } from './art/index';
-import { alphaMask, hasSprite, sprite } from './sprites';
+import { alphaMask, hasSprite, makeCanvas, sprite } from './sprites';
 import { fallbackSprite } from './fallback';
 import type { Push } from './camera';
 import { TILE } from './camera';
@@ -37,6 +37,7 @@ const GROUND_TYPES: readonly string[] = ['ager', 'olivetum'];            // fiel
 const CROWNS: readonly string[] = ['iuppiter', 'aeternitas', 'imperium'];
 const ORDO_SEAL_DAYS = 10;                                               // an Ordo site shows its seal this long
 const TRENCH_UNTIL = 0.12;
+const SHADOW = { alpha: 0.24, lean: 0.55, flat: 0.42 } as const;
 const C = { chalk: '#efe8d8', plan: '#f2c94c', bar: '#1d1410', gold: '#f2c94c', ember: '#f0a04b', bubble: '#f4ead6', ink: '#1d1410' } as const;
 
 let rectEpoch = -1;
@@ -115,10 +116,12 @@ export class BuildingPainter {
         const tr = sprite('ov_trench');
         for (let y = Y; y < Y + h; y += TILE) for (let x = X; x < X + w; x += TILE) g.drawImage(tr, x, y);
       }
-      if (GROUND_TYPES.includes(b.type) && b.status !== 'plan' && b.status !== 'staked') {
-        const { cv } = lookOf(buildingSprite(s, b, season), b.type, b.house?.tier ?? null, r.w);
-        if (b.status === 'done') g.drawImage(cv, X + ((w - cv.width) >> 1), Y + h - cv.height);
-        else rise(g, cv, X + ((w - cv.width) >> 1), Y + h - cv.height, b.progress);
+      if (b.status === 'done' || (b.status === 'building' && b.progress > 0)) {
+        const look = b.type === 'capitolium' ? null : lookOf(buildingSprite(s, b, season), b.type, b.house?.tier ?? null, r.w);
+        if (look && GROUND_TYPES.includes(b.type)) {
+          if (b.status === 'done') g.drawImage(look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height);
+          else rise(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h - look.cv.height, b.progress);
+        } else if (look) castShadow(g, look.cv, X + ((w - look.cv.width) >> 1), Y + h, b.status === 'done' ? 1 : b.progress);
       }
       if (b.id === sel || b.id === hover) ring(g, X, Y, w, h, b.id === sel ? C.ember : 'rgba(244,234,214,0.8)', b.id === sel ? time : 0);
     }
@@ -145,8 +148,6 @@ export class BuildingPainter {
       this.record(b, r, name, left, bottom - risen, cv.width, risen, cv.width, top);
       if (GROUND_TYPES.includes(b.type)) continue;
       push(bottom, X, (g) => {
-        g.fillStyle = 'rgba(16,10,6,0.22)';
-        g.fillRect(left + 2, bottom - 2, cv.width - 1, 3);
         if (p >= 1) g.drawImage(cv, left, top);
         else { rise(g, cv, left, top, p); scaffold(g, left, cv.width, bottom, risen); }
         if (b.type === 'lignarius' && p >= 1 && hasSprite('b_lignarius_logs')) {
@@ -245,6 +246,25 @@ export class BuildingPainter {
     }
     return null;
   }
+}
+
+const shadows = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+/** A sprite's shadow on the ground: its silhouette sheared to the north-east (light from the top-left), under the objects. */
+function castShadow(g: CanvasRenderingContext2D, c: HTMLCanvasElement, left: number, bottom: number, p: number): void {
+  let sh = shadows.get(c);
+  if (!sh) {
+    sh = makeCanvas(c.width, c.height);
+    const sg = sh.getContext('2d');
+    if (sg) { sg.drawImage(c, 0, 0); sg.globalCompositeOperation = 'source-in'; sg.fillStyle = '#140c08'; sg.fillRect(0, 0, c.width, c.height); }
+    shadows.set(c, sh);
+  }
+  const h = Math.round(c.height * Math.max(0, Math.min(1, p)));
+  if (h <= 0) return;
+  g.save();
+  g.globalAlpha = SHADOW.alpha;
+  g.transform(1, 0, -SHADOW.lean, SHADOW.flat, left + SHADOW.lean * c.height, bottom - SHADOW.flat * c.height);   // (x, y) → (x + lean·(H − y), bottom − flat·(H − y))
+  g.drawImage(sh, 0, c.height - h, c.width, h, 0, c.height - h, c.width, h);
+  g.restore();
 }
 
 /** A footprint ring on the ground: four corner brackets and a soft edge, pulsing when `time` > 0. */
