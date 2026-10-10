@@ -34,10 +34,10 @@ function mode<T>(xs: readonly T[], order: readonly T[]): T {
   return best;
 }
 
-/** The houses that wait on exactly one next-tier need, grouped by that need (NEEDS order). */
+/** The houses that wait on exactly one next-tier need, grouped by that need; water is the Curator's (aquarum.access). */
 function oneShort(s: GameState, v: SimView): Map<NeedId, HouseWant[]> {
   const by = new Map<NeedId, HouseWant[]>();
-  for (const w of houseWants(s, v)) if (w.next && w.unmet.length === 1) by.set(w.unmet[0], [...(by.get(w.unmet[0]) ?? []), w]);
+  for (const w of houseWants(s, v)) if (w.next && w.unmet.length === 1 && w.unmet[0] !== 'water') by.set(w.unmet[0], [...(by.get(w.unmet[0]) ?? []), w]);
   return by;
 }
 

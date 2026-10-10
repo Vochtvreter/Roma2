@@ -19,6 +19,7 @@ import {
 
 const HIEMS = 3;
 const EPS = 1e-6;
+const RESERVE_STEP = 3;   // the Grain reserve remedy raises the setting by 3 steps (15 days)
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 
 /** "Grain runs out in 18 days." */
@@ -119,9 +120,8 @@ const hiems: AdvisorRule = {
   remedies(s, _v, a) {
     const p = a.params;
     const def = SETTING_DEFS.grainReserve;
-    const want = Math.ceil(P(p.need) / Math.max(EPS, P(p.daily)) / def.step) * def.step;
-    const x = Math.min(def.max, Math.max(def.min, want));
-    const reserve: Remedy | null = x > settingValue(s, 'grainReserve') ? { kind: 'setting', setting: 'grainReserve', value: x } : null;
+    const x = Math.min(def.max, settingValue(s, 'grainReserve') + RESERVE_STEP * def.step);
+    const reserve: Remedy | null = s.ordo.on.build && x > settingValue(s, 'grainReserve') ? { kind: 'setting', setting: 'grainReserve', value: x } : null;
     return three(P(p.cap) < P(p.need) ? { kind: 'place', building: 'horreum' } : null, reserve,
       { kind: 'place', building: 'venatio' }, importRemedy(s, 'grain', B.ordo.CARGO));
   },

@@ -23,7 +23,7 @@ import { log } from '../state';
 import { view } from '../sim';
 import { ADVISOR_DEFS } from '../data/advisors';
 import { checkRemedy, remedyLabel } from './remedies';
-import { blockedHouses, lendRates, markAway } from './util';
+import { blockedHouses, lendRates, markAway, tidy } from './util';
 import { ANNONAE_RULES } from './rules-annonae';
 import { AQUARUM_RULES } from './rules-aquarum';
 import { FABRUM_RULES } from './rules-fabrum';
@@ -143,7 +143,7 @@ function announce(s: GameState, ctx: TickContext, rule: AdvisorRule, m: Advisory
   if (hidden(s, rule.id, m)) return;
   ctx.fx.push({ kind: 'advisory', rule: rule.id, sev: m.sev });
   if (m.sev < CAVE) return;
-  const title = attempt(() => rule.title(s, m), '');
+  const title = tidy(attempt(() => rule.title(s, m), ''));
   if (title) log(s, 'advisor', `${ADVISOR_DEFS[rule.advisor].office}: ${title}`, m.sev >= PERICULUM ? ['highlight'] : undefined);
 }
 
@@ -191,7 +191,7 @@ export function renderAdvisory(s: GameState, v: SimView, a: ActiveAdvisory): { t
     text = `${text} ${WATCH_NOTE}`.trim();
   }
   const list = attempt(() => def.remedies(s, v, a.memo), [] as Remedy[]).slice(0, 3);
-  return { title, text, remedies: list.map((remedy) => ({ remedy, label: remedyLabel(s, remedy), check: checkRemedy(s, remedy) })) };
+  return { title: tidy(title), text: tidy(text), remedies: list.map((remedy) => ({ remedy, label: remedyLabel(s, remedy), check: checkRemedy(s, remedy) })) };
 }
 
 /** An advisor's portrait mood from their worst visible severity: 0 calm, 1 concerned (Monitum/Cave), 2 alarmed (Periculum). */

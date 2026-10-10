@@ -20,6 +20,7 @@ import {
 const AESTAS = 1;
 const MUNICIPIUM = 3, COLONIA = 4;
 const EPS = 1e-6;
+const RESERVE_STEP = 5;   // the Water reserve remedy raises the setting by 5 steps (5 days)
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 
 /** Finished, open, staffed works that draw water (concrete works, baths), in id order. */
@@ -96,11 +97,10 @@ const aestas: AdvisorRule = {
     return `Cisterns catch ${fractionWord(seasonMult(s, 'cisterna', AESTAS))} of their rain in Aestas and wells draw `
       + `${fractionWord(seasonMult(s, 'puteus', AESTAS))}. We hold ${int(P(p.stock))} amphorae, with room for ${int(P(p.cap))}.`;
   },
-  remedies(s, _v, a) {
-    const p = a.params;
+  remedies(s) {
     const def = SETTING_DEFS.waterReserve;
-    const want = Math.min(def.max, Math.max(def.min, Math.ceil(P(p.need) / Math.max(EPS, P(p.daily)) / 2)));
-    const reserve: Remedy | null = want > settingValue(s, 'waterReserve') ? { kind: 'setting', setting: 'waterReserve', value: want } : null;
+    const want = Math.min(def.max, settingValue(s, 'waterReserve') + RESERVE_STEP * def.step);
+    const reserve: Remedy | null = s.ordo.on.build && want > settingValue(s, 'waterReserve') ? { kind: 'setting', setting: 'waterReserve', value: want } : null;
     return three({ kind: 'place', building: 'cisterna' }, { kind: 'place', building: 'puteus' }, reserve);
   },
 };

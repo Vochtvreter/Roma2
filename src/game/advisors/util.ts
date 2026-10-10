@@ -216,6 +216,11 @@ export function bName(t: BuildingId): string {
   return aName(t).replace(/^(a|an|the) /, '');
 }
 
+/** Mends the seams of generated copy: a date's abbreviation point before a full stop ("Kal. Oct.."). */
+export function tidy(text: string): string {
+  return text.replace(/\.\./g, '.');
+}
+
 /** "a, b and c". */
 export function listJoin(xs: readonly string[]): string {
   if (xs.length <= 1) return xs[0] ?? '';
