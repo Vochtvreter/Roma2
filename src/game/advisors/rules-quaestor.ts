@@ -48,7 +48,7 @@ const coin: AdvisorRule = {
     let unpaid = 0, upkeep = 0;
     for (const b of s.buildings) {
       if (b.unpaid) unpaid++;
-      if (b.status === 'done') upkeep += BUILDING_DEFS[b.type].upkeep;
+      if (b.status === 'done' && b.open) upkeep += BUILDING_DEFS[b.type].upkeep;   // closed works pay no upkeep (civic.upkeepDay)
     }
     const r = runway(c.stock, c.net30);
     const sev = unpaid > 0 ? 3 : r === null ? null : lowLadder(r, R.COIN_RUNOUT, held(s, 'quaestor.coin'));

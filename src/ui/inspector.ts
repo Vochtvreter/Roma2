@@ -223,7 +223,7 @@ export class Inspector {
     const site = Math.abs(mult - 1) > 0.01 ? `Site ${pct(mult)}` : 'Site';
     if (site !== 'Site' || b.notes?.length) out.push(h('div', { class: 'ins-small' }, `${site}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`));
     const flags: string[] = [];
-    if (def.upkeep) flags.push(`Upkeep ${fmt(def.upkeep)} den a day${b.unpaid ? ' · UNPAID: works at half pace' : ''}`);
+    if (def.upkeep) flags.push(b.open ? `Upkeep ${fmt(def.upkeep)} den a day${b.unpaid ? ' · UNPAID: works at half pace' : ''}` : 'Closed: no upkeep');
     if ((b.toolUntil ?? 0) > s.day) flags.push(`Tool kit: +20%, ${(b.toolUntil ?? 0) - s.day} days left`);
     if ((b.damagedUntil ?? 0) > s.day) flags.push(`Damaged by fire until ${formatRoman(b.damagedUntil ?? 0)}`);
     if ((b.idleUntil ?? 0) > s.day) flags.push(`Idle until ${formatRoman(b.idleUntil ?? 0)}`);

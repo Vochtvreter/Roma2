@@ -155,13 +155,18 @@ export function taxesDay(s: GameState, ctx: TickContext): void {
   }
 }
 
-/** Pays each finished building's upkeep in id order, or marks it unpaid (it works at half pace until paid). */
+/** Pays each finished, open building's upkeep in id order, or marks it unpaid (it works at half pace until paid).
+ *  A closed building pays nothing (closing the costliest optional work is the Quaestor's coin remedy). */
 export function upkeepDay(s: GameState, ctx: TickContext): void {
   let flipped = false;
   for (const b of s.buildings) {
     if (b.status !== 'done') continue;
     const up = BUILDING_DEFS[b.type].upkeep;
     if (up <= 0) continue;
+    if (!b.open) {
+      if (b.unpaid) { delete b.unpaid; flipped = true; }
+      continue;
+    }
     if (s.res.denarii >= up) {
       s.res.denarii -= up;
       ctx.rates.cons.denarii.upkeep = (ctx.rates.cons.denarii.upkeep ?? 0) + up;
