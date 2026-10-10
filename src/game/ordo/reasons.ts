@@ -42,7 +42,7 @@ const TEXT: Record<ReasonCode, string> = {
   luxury: 'The great houses want {res} and our groves press too little: {a:type} is planted.',
   focusPlan: 'The council\'s focus on {focus} calls for {a:type}.',
   beauty: '{A:type} to lift {n} stone houses toward the dignity of a domus.',
-  capitolium: 'The Capitolium needs {qty} {res} a month to keep rising.',
+  capitolium: 'The Capitolium needs {qty} more {res} to keep rising[, ≈ {eta} days at our pace]: {a:type} will bring it in.',
   needWater: 'Wells drawing {goal} a day for a need of {need}[ — {why}].',
   needFood: 'Hands in the fields for {goal} grain a day against a need of {need}[ — {why}][, and a winter stock ({stock} of {target})].',
   reserveTopup: 'Topping up the grain: {doh} days in store and we keep {keep}[, and a winter stock ({stock} of {target})].',
@@ -78,7 +78,7 @@ const SHORT: Record<ReasonCode, string> = {
   waterAccess: '{Type} — {n} homes lack water', evolve: '{Type} — {n} homes lack {want}',
   rank: '{Type} — the {rank} petition names it', materials: '{Type} — we lack {qty} {res}',
   luxury: '{Type} — the great houses want {res}', focusPlan: '{Type} — the {focus} plan',
-  beauty: '{Type} — beauty for {n} stone houses', capitolium: 'Capitolium — {qty} {res} a month',
+  beauty: '{Type} — beauty for {n} stone houses', capitolium: '{Type} — the Capitolium needs {res}',
   needWater: 'Staffed the wells: water need {need}/day',
   needFood: 'Staffed the fields: grain need {need}/day[ + winter stock ({stock} of {target})]',
   reserveTopup: 'Topping up the grain: {doh} d, we keep {keep}', requiredService: 'Manning {n} works our homes depend on',
@@ -103,6 +103,12 @@ const FLIPPED: Partial<Record<ReasonCode, [string, string]>> = {
 /** Display name of a work in running text ('house plot', 'horreum', 'shrine', …). */
 export function workName(type: BuildingId): string {
   return WORK[type] ?? BUILDING_DEFS[type].name.toLowerCase();
+}
+
+/** A work's name with its indefinite article ('a horreum', 'an apotheca'). */
+export function aWork(type: BuildingId): string {
+  const n = workName(type);
+  return `${/^[aeiou]/i.test(n) ? 'an' : 'a'} ${n}`;
 }
 
 function fmtNum(v: number): string {
