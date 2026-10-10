@@ -119,15 +119,17 @@ function casa(v: 0 | 1): string[] {
 
 // ───────────────────────────── T2 casa tegulata ─────────────────────────────
 
-/** A vine pergola: two posts under a leafy top with grape clusters. */
+/** A vine pergola: two posts under a leafy canopy with drooping tendrils and grape clusters. */
 function pergola(p: Pix, x0: number, x1: number, top: number, ground: number): void {
   p.vline(x0, top + 3, ground, 'B').vline(x1, top + 3, ground, 'b');
-  for (let j = top; j < top + 3; j++)
-    for (let i = x0 - 1; i <= x1 + 1; i++) {
-      if (j === top && (i === x0 - 1 || i === x1 + 1)) continue;
-      p.set(i, j, j === top ? ((i * 3) % 4 === 0 ? 'l' : 'L') : (i * 5 + j) % 4 === 0 ? 'd' : j === top + 2 ? 'V' : 'L');
+  for (let j = top; j < top + 4; j++)
+    for (let i = x0 - 2; i <= x1 + 1; i++) {
+      if ((j === top && (i < x0 || i > x1)) || (j === top + 3 && (i + j) % 3 === 0)) continue;
+      const k = (i * 5 + j * 3) % 7;
+      p.set(i, j, j === top ? (k < 3 ? 'l' : 'L') : k === 0 ? 'd' : k < 3 ? 'V' : 'L');
     }
-  p.set(x0 + 1, top + 3, 'P').set(x0 + 1, top + 4, 'p').set(x1 - 1, top + 3, 'P').set(x0 + 3, top + 3, 'V');
+  for (const [x, y] of [[x0 - 1, top + 4], [x0 + 2, top + 4], [x1, top + 5]]) p.set(x, y, 'L');
+  p.set(x0 + 1, top + 4, 'P').set(x0 + 1, top + 5, 'p').set(x1 - 1, top + 4, 'P').set(x1 - 1, top + 5, 'P');
 }
 
 function tegulata(v: 0 | 1): string[] {
@@ -147,7 +149,7 @@ function tegulata(v: 0 | 1): string[] {
     p.set(13, apex + 4, 'q').set(13, apex + 5, 'q');                                      // vent slot
     door(p, 10, 16, 6, 8, true);
     windowAt(p, 18, 17, 2, 3);
-    pergola(p, 25, 29, 12, 24);
+    pergola(p, 26, 30, 12, 24);
   }
   return p.outline().rows();
 }
@@ -276,8 +278,18 @@ function compluvium(p: Pix, x: number, y: number, w: number, h: number, aquae: b
 
 function domus(v: 0 | 1, aquae: boolean): string[] {
   const p = new Pix(32, 30);
-  hipRoof(p, 1, 1, 30, 17, 3, 7);
-  compluvium(p, 9, 5, 14, 9, aquae);
+  if (v === 0) {
+    hipRoof(p, 1, 1, 30, 17, 3, 7);
+    compluvium(p, 9, 5, 14, 9, aquae);
+  } else {
+    // a lower atrium roof with a little upper room (cenaculum) at the back-left
+    hipRoof(p, 1, 5, 30, 13, 3, 7);
+    compluvium(p, 13, 8, 13, 8, aquae);
+    wall(p, 3, 5, 9, 4, 'a', 'i');
+    windowAt(p, 6, 6, 2, 1);
+    p.hline(3, 11, 8, 'k');
+    hipRoof(p, 2, 1, 11, 4, 1, 3);
+  }
   // facade: white plaster, Pompeian red dado, pilastered doorway with a gilt lintel
   wall(p, 3, 18, 26, 10, 'a', 'i', 3);
   p.hline(3, 28, 18, 'k');
@@ -318,12 +330,12 @@ function cracks(): string[] {
   const crack = (pts: [number, number][]): void => { for (let k = 0; k + 1 < pts.length; k++) p.line(...pts[k], ...pts[k + 1], 'k'); };
   crack([[6, 3], [8, 6], [7, 9], [9, 12], [8, 15]]);
   crack([[8, 6], [11, 7]]);
-  crack([[25, 2], [23, 5], [24, 8], [22, 11]]);
-  crack([[24, 8], [27, 10]]);
-  p.rect(13, 13, 6, 4, 'u').box(12, 12, 8, 6, 'K');
-  for (let i = 13; i < 19; i++) if (i % 3 === 0) p.set(i, 14, 'v');
-  p.hline(13, 18, 15, 'v');
-  p.set(20, 18, 'O').set(21, 19, 'Q').set(15, 19, 'i');
+  crack([[25, 2], [23, 5], [24, 8], [23, 11]]);
+  crack([[13, 9], [15, 12], [14, 15], [16, 18]]);
+  p.rect(21, 13, 6, 3, 'u').box(20, 12, 8, 5, 'K');                     // fallen plaster showing brick
+  for (let i = 21; i < 27; i += 3) p.set(i, 13, 'v');
+  p.hline(21, 26, 14, 'v');
+  p.set(21, 18, 'O').set(22, 19, 'Q').set(25, 19, 'i');
   for (const [x, y] of [[2, 22], [10, 22], [27, 22], [29, 22]]) p.set(x, y, 'O').set(x + 1, y, 'Q');
   p.set(4, 22, 'L').set(4, 21, 'l').set(5, 22, 'd').set(28, 21, 'L').set(28, 20, 'L');
   return p.rows();
