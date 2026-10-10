@@ -23,7 +23,7 @@ import { idx, tx, ty } from '../map';
 import { BUILDING_DEFS } from '../data/buildings';
 import { TIER_DEFS } from '../data/housing';
 import { FOCUS_DEFS } from '../data/decisions';
-import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, savingParts, type SavingPart } from './saving';
+import { canSpend, capitoliumAhead, etaDays, floorOk, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
@@ -82,7 +82,7 @@ function closedBlocks(s: GameState): Set<number> {
 
 /** The Ordo's slot for a type: A's best slot, or the best one off closed blocks (ties by lowest tile); memo per day and structure. */
 export function ordoSlot(s: GameState, type: BuildingId, purpose: ReasonCode): number | null {
-  return memo(s, `ordo.slot.${type}.${purpose}`, `${s.day}|${structEpoch(s)}`, () => {
+  return memo(s, `ordo.slot.${type}.${purpose}`, structEpoch(s), () => {
     const closed = closedBlocks(s);
     const open = (tile: number): boolean => { const blk = blockOfTile(s, tile); return !blk || !closed.has(blk.id); };
     const best = bestSlot(s, type, { owner: 'ordo', purpose });
@@ -252,6 +252,12 @@ function olivePotential(s: GameState): number {
   return oil;
 }
 
+/** A wish's cost with the treasury floor added to its denarii (what must be in the aerarium before it may be paid). */
+function withFloor(s: GameState, w: Wish): Cost {
+  const den = w.cost.denarii ?? 0;
+  return den > 0 && !w.survival ? { ...w.cost, denarii: den + treasuryFloor(s) } : w.cost;
+}
+
 /** Walks the wish table (pure; memo on day, epochs, stock, fed gate and the player's orders and settings). */
 export function walkWishes(s: GameState, v: SimView): Walk {
   const key = [s.day, structEpoch(s), censusEpoch(s), RESOURCES.map((r) => s.res[r]).join(','), s.fed >= B.needs.FED_MIN, s.ordo.pin,
@@ -267,9 +273,9 @@ export function walkWishes(s: GameState, v: SimView): Walk {
         out.take ??= w;
       } else if (!out.pending && !out.take) {
         out.pending = w;
-        out.list.push({ wish: w, state: 'saving', lacking: missing(s, w.cost, w.survival || w.unblock ? undefined : base) });
+        out.list.push({ wish: w, state: 'saving', lacking: missing(s, withFloor(s, w), w.survival || w.unblock ? undefined : base) });
       } else {
-        out.list.push({ wish: w, state: 'waiting', lacking: missing(s, w.cost, held) });
+        out.list.push({ wish: w, state: 'waiting', lacking: missing(s, withFloor(s, w), held) });
       }
       if (out.take && out.list.length >= LIST_MAX) break;
     }
