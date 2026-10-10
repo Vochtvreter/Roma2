@@ -1,0 +1,328 @@
+// tests/advisors.test.ts — the 22 rule fixtures (raise at each severity, then clear), hysteresis, flapping, ordering,
+// hush/mute, appointment, and remedies that never throw (ARCHITECTURE §14.2 WP-E, §15). Owner: WP-E.
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ADVISORS, BUILDINGS, EDICTS, HUBS, LABOR_CATS, ORDO_AREAS, OVERLAYS, RULES, SETTINGS, TABS, TRADE_RES } from '../src/game/types';
+import type { Census, CoverageLayerId, EssentialForecast, Forecast, GameState, HouseTierId, Remedy, RuleId, Severity, SimView, TickContext } from '../src/game/types';
+
+const ctl = vi.hoisted(() => ({ pet: null as unknown, flow: null as unknown, morale: null as unknown, covered: null as string[] | null }));
+vi.mock('../src/game/decisions', async (orig) => {
+  const m = await orig<typeof import('../src/game/decisions')>();
+  return { ...m, petitionNeeds: (...a: Parameters<typeof m.petitionNeeds>) => (ctl.pet ?? m.petitionNeeds(...a)) as ReturnType<typeof m.petitionNeeds> };
+});
+vi.mock('../src/game/construction', async (orig) => {
+  const m = await orig<typeof import('../src/game/construction')>();
+  return { ...m, capitoliumFlow: (s: GameState) => (ctl.flow ?? m.capitoliumFlow(s)) as ReturnType<typeof m.capitoliumFlow> };
+});
+vi.mock('../src/game/civic', async (orig) => {
+  const m = await orig<typeof import('../src/game/civic')>();
+  return { ...m, moraleTarget: (...a: Parameters<typeof m.moraleTarget>) => (ctl.morale ?? m.moraleTarget(...a)) as ReturnType<typeof m.moraleTarget> };
+});
+vi.mock('../src/game/coverage', async (orig) => {
+  const m = await orig<typeof import('../src/game/coverage')>();
+  return { ...m, houseHas: (s: GameState, id: number, l: CoverageLayerId) => (ctl.covered ? ctl.covered.includes(l) : m.houseHas(s, id, l)) };
+});
+
+import { fresh, run } from './util';
+import { B } from '../src/game/balance';
+import { Rng } from '../src/game/rng';
+import { invalidate } from '../src/game/memo';
+import { newCtx, view } from '../src/game/sim';
+import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
+import { applyRemedy, checkRemedy, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
+
+type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number };
+type Setup = (s: GameState) => Patch | void;
+interface Fix { levels: [Severity, Setup, number?][]; clear: Setup }
+
+const A = B.advisors;
+const ZERO = { water: 0, food: 0, materials: 0, industry: 0, services: 0, builders: 0 };
+const ALL_LAYERS = ['water', 'fountain', 'shrine', 'temple', 'market', 'macellum', 'baths', 'culture'];
+const NEUTRAL: Patch = { grain: { net3: 1, crunch: null }, water: { net3: 1, crunch: null }, coin: { net30: 1 } };
+
+/** A view over the real derived/census/coverage with forecast and census fields patched. */
+function fake(s: GameState, p: Patch): SimView {
+  const v = view(s);
+  const f = v.f;
+  return {
+    d: v.d, cov: v.cov, c: { ...v.c, ...p.c },
+    f: { ...f, grain: { ...f.grain, ...NEUTRAL.grain, ...p.grain }, water: { ...f.water, ...NEUTRAL.water, ...p.water }, coin: { ...f.coin, ...NEUTRAL.coin, ...p.coin } },
+  };
+}
+
+/** One advisors pass on the next day with the patch applied; returns the context. */
+function day(s: GameState, p: Patch = {}): TickContext {
+  s.day++;
+  const ctx = newCtx();
+  const v = fake(s, p);
+  const g = v.c.groupNeed.grain;
+  ctx.rates.cons.grain.eating = p.eat ?? g[0] + g[1] + g[2] + g[3];   // everyone fed unless the patch says otherwise
+  if (p.rot !== undefined) ctx.rates.cons.grain.rot = p.rot;
+  advisorsDay(s, ctx, v);
+  return ctx;
+}
+
+function base(): GameState {
+  const s = fresh(42);
+  s.guidance.appointed = [...ADVISORS];
+  return s;
+}
+
+const houses = (s: GameState) => s.buildings.filter((b) => b.house);
+const setTier = (s: GameState, t: HouseTierId): void => { for (const b of houses(s)) { b.house!.tier = t; b.house!.declining = false; } };
+const crunch = (season: number, startsIn: number, low: number) => (s: GameState) =>
+  ({ season, startsIn, lowestDoh: low, lowestDay: s.day + startsIn + 20, emptyDay: low <= 0 ? s.day + startsIn + 30 : null, needInStore: 2000 }) as EssentialForecast['crunch'];
+const ess = (stock: number, net3: number): Partial<EssentialForecast> => ({ stock, net3, need: 50, cons: 50 - net3, prod: 50, maxPotential: 200, structural: false });
+const runout = (res: 'grain' | 'water', t: readonly number[]): Fix => ({
+  levels: [[3, () => ({ [res]: ess(t[0] * 50, -100) })], [2, () => ({ [res]: ess((t[0] + t[1]) * 50, -100) })], [1, () => ({ [res]: ess((t[1] + t[2]) * 50, -100) })]],
+  clear: () => ({ [res]: { net3: 5 } }),
+});
+function site(s: GameState, ago: number | null): void {
+  s.buildings = s.buildings.filter((b) => b.status !== 'plan');
+  if (ago !== null) s.buildings.push({ id: s.nextId++, type: 'horreum', x: 2, y: 2, owner: 'player', status: 'plan', placed: s.day - ago, progress: 0, work: 60, paid: false, order: 1, open: true, prio: 1 });
+  invalidate(s);
+}
+function extraHouses(s: GameState, declining: number): void {
+  while (houses(s).length < 16) {
+    const k = houses(s).length;
+    s.buildings.push({ id: s.nextId++, type: 'area', x: 2 + 3 * k, y: 70, owner: 'player', status: 'done', placed: 0, progress: 1, work: 4, paid: true, order: 1, open: true, prio: 1,
+      house: { tier: 'tentoria', pref: 'auto', okDays: 0, badDays: 0, recoverDays: 0, declining: false, declineDays: 0, renovating: null, oil: 0, wine: 0 } });
+    invalidate(s);
+  }
+  houses(s).forEach((b, i) => { b.house!.declining = i < declining; b.house!.declineDays = 20; });
+}
+const choice = (d: number) => (s: GameState) => {
+  s.choice = { event: 'legatus', kicker: 'NUNTIUS', title: 'The Legate writes', text: '', defaultIndex: 1, created: s.day, expires: s.day + d,
+    options: [{ label: 'Agree', note: '', key: 'a' }, { label: 'Decline politely', note: 'Nothing changes.', key: 'b' }] };
+};
+const merchant = (s: GameState): void => {
+  s.trade.merchant = { name: 'Syrian spice traders', arrived: s.day, until: s.day + 12, offers: [{ id: 1, kind: 'buy', res: 'grain', qty: 40, price: 2, taken: false }] };
+};
+const pet = (ready: boolean, label = '50 souls') => ({ decision: 'path1', rank: 1, ready, fee: { denarii: 9e9 }, affordable: false, needs: [{ label, met: ready }] });
+
+const FIX: Record<RuleId, Fix> = {
+  'annonae.grain.runout': runout('grain', A.RULES.GRAIN_RUNOUT),
+  'annonae.famine': { levels: [[3, () => ({ grain: { ...ess(250, -50), maxPotential: 20, structural: true } })]], clear: () => ({ grain: { maxPotential: 90 } }) },
+  'annonae.hiems.forecast': {
+    levels: [[3, (s) => ({ grain: { crunch: crunch(3, 30, 0)(s) } })], [2, (s) => ({ grain: { crunch: crunch(3, 60, 0)(s) } })], [1, (s) => ({ grain: { crunch: crunch(3, 60, 10)(s) } })]],
+    clear: (s) => ({ grain: { crunch: crunch(3, 60, 30)(s) } }),
+  },
+  'annonae.mess': {
+    levels: [[3, () => ({ eat: 1, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } })], [2, () => ({ eat: 3, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } })]],
+    clear: () => ({ eat: 16, c: { groupNeed: { grain: [2, 2, 10, 2], water: [2, 2, 10, 2] } } }),
+  },
+  'annonae.storage': { levels: [[1, () => ({ grain: { stock: 990, cap: 1000, net3: 5 } }), A.RULES.STORAGE_DAYS], [2, () => ({ rot: 12, grain: { stock: 990, cap: 1000 } })]], clear: () => ({ rot: 0, grain: { stock: 500, cap: 1000 } }) },
+  'annonae.goods': {
+    levels: [[1, (s) => { setTier(s, 'tentoria'); houses(s)[0].house!.tier = 'insula'; houses(s)[0].house!.oil = 1; s.res.oil = 3; }],
+      [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'insula', oil: 0.4, declining: true }); s.res.oil = 3; }]],
+    clear: (s) => { setTier(s, 'tentoria'); s.res.oil = 1000; },
+  },
+  'aquarum.water.runout': runout('water', A.RULES.WATER_RUNOUT),
+  'aquarum.aestas.forecast': {
+    levels: [[3, (s) => ({ water: { crunch: crunch(1, 20, 0)(s) } })], [2, (s) => ({ water: { crunch: crunch(1, 50, 0)(s) } })], [1, (s) => ({ water: { crunch: crunch(1, 50, 5)(s) } })]],
+    clear: (s) => ({ water: { crunch: crunch(1, 50, 20)(s) } }),
+  },
+  'aquarum.access': {
+    levels: [[1, (s) => setTier(s, 'tentoria')], [2, (s) => { setTier(s, 'tentoria'); Object.assign(houses(s)[0].house!, { tier: 'casa', declining: true }); }]],
+    clear: (s) => setTier(s, 'domus'),
+  },
+  'aquarum.aqueduct': { levels: [[1, (s) => { s.rank = 3; }], [2, (s) => { s.rank = 3; ctl.pet = { ...pet(false, 'Aqueduct flowing'), rank: 4 }; }]], clear: (s) => { s.rank = 0; } },
+  'fabrum.labour': {
+    levels: [[1, (s) => ({ c: { idle: s.people.slice(0, 5).map((p) => p.id), workforce: 20, catSlots: ZERO, catStaffed: ZERO } }), A.RULES.IDLE_DAYS],
+      [2, () => ({ c: { idle: [], catSlots: { ...ZERO, food: 10 }, catStaffed: ZERO }, water: { net3: -1 } })]],
+    clear: () => ({ c: { idle: [], catSlots: ZERO, catStaffed: ZERO } }),
+  },
+  'fabrum.stalled': { levels: [[1, (s) => site(s, 25)], [2, (s) => site(s, 45)]], clear: (s) => site(s, null) },
+  'fabrum.capitolium': { levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 11 }; }]], clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 11 }; } },
+  'quaestor.coin': {
+    levels: [[3, () => ({ coin: { stock: 1000, net30: -100 } })], [2, () => ({ coin: { stock: 3000, net30: -100 } })], [1, () => ({ coin: { stock: 8000, net30: -100 } })],
+      [3, (s) => { s.buildings[1].unpaid = true; }]],
+    clear: (s) => { delete s.buildings[1].unpaid; return { coin: { net30: 5 } }; },
+  },
+  'quaestor.contract': {
+    levels: [[1, (s) => { s.trade.contracts = [{ id: 500, hub: 'metellianus', mode: 'export', res: 'timber', qty: 40, repeat: true, owner: 'player', status: 'paused', pause: 'reserve', trips: 0, created: s.day }]; }]],
+    clear: (s) => { s.trade.contracts = []; },
+  },
+  'quaestor.merchant': { levels: [[0, merchant], [1, (s) => { merchant(s); return { grain: ess(1000, -100) }; }]], clear: (s) => { s.trade.merchant = null; } },
+  'aedilis.evolve': {   // coverage is mocked here, so each setup bumps the structure epoch as a real coverage change would
+    levels: [[1, (s) => { setTier(s, 'casa'); s.rank = 1; ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple'); invalidate(s); }],
+      [2, (s) => { setTier(s, 'casa'); s.rank = 1; ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple'); ctl.pet = pet(false, '10 houses at T2+'); invalidate(s); }]],
+    clear: (s) => { ctl.covered = ALL_LAYERS; invalidate(s); },
+  },
+  'aedilis.declining': { levels: [[2, (s) => extraHouses(s, 1)], [3, (s) => extraHouses(s, 2)]], clear: (s) => extraHouses(s, 0) },
+  'aedilis.beds': {
+    levels: [[1, (s) => { s.counters.lastArrivalBlocked = s.day; return { c: { freeBeds: 0, homeless: 0 } }; }], [2, () => ({ c: { freeBeds: 0, homeless: 3 } })],
+      [1, () => ({ c: { pop: 100, roll: 100, freeBeds: 10, homeless: 0 } })]],
+    clear: (s) => { s.counters.lastArrivalBlocked = -9999; return { c: { freeBeds: 10, homeless: 0, pop: 24, roll: 100 } }; },
+  },
+  'aedilis.morale': {
+    levels: [[1, (s) => { s.morale = 45; }], [2, (s) => { s.morale = 30; }], [3, (s) => { s.morale = 20; }],
+      [1, (s) => { s.morale = 60; ctl.morale = { value: 40, terms: [{ label: 'Rations', value: -6 }, { label: 'Deaths', value: -4 }] }; }, A.RULES.MORALE_FALL_DAYS]],
+    clear: (s) => { s.morale = 70; ctl.morale = { value: 70, terms: [] }; },
+  },
+  'augur.choice': { levels: [[0, choice(20)], [1, choice(5)]], clear: (s) => { s.choice = null; } },
+  'augur.petition': { levels: [[1, () => { ctl.pet = pet(true); }]], clear: () => { ctl.pet = pet(false); } },
+};
+
+const ruleDef = (id: RuleId) => RULE_DEFS.find((r) => r.id === id)!;
+const every = (id: RuleId): number => (ruleDef(id) as { every?: number }).every ?? 1;   // the house rules follow the house checks
+const life = (id: RuleId): number => (A.MIN_LIFE + A.DOWNGRADE_DAYS + 2) * every(id);
+const LIFE = life('annonae.grain.runout');
+
+beforeEach(() => { ctl.pet = null; ctl.flow = null; ctl.morale = null; ctl.covered = null; });
+
+describe('rule fixtures', () => {
+  it('has one rule per RULES id, in order, each with a fixture', () => {
+    expect(RULE_DEFS.map((r) => r.id)).toEqual([...RULES]);
+    for (const r of RULE_DEFS) expect(r.id.startsWith(`${r.advisor}.`)).toBe(true);
+  });
+  for (const id of RULES) {
+    FIX[id].levels.forEach(([sev, setup, hold = 1], k) => {
+      it(`${id} raises at severity ${sev} (#${k}) with 1–3 remedies, then clears`, () => {
+        const s = base();
+        for (let i = 0; i < Math.max(hold, every(id)); i++) day(s, setup(s) ?? {});
+        const m = s.guidance.advisories[id]!;
+        expect(m?.active).toBe(true);
+        expect(m.sev).toBe(sev);
+        const r = renderAdvisory(s, fake(s, setup(s) ?? {}), { rule: id, advisor: ruleDef(id).advisor, memo: m });
+        expect(r.remedies.length).toBeGreaterThanOrEqual(1);
+        expect(r.remedies.length).toBeLessThanOrEqual(3);
+        expect(r.title.length).toBeGreaterThan(8);
+        expect(`${r.title} ${r.text} ${r.remedies.map((x) => x.label).join()}`).not.toMatch(/undefined|NaN|\[object|\.\./);
+        for (let i = 0; i < life(id); i++) day(s, FIX[id].clear(s) ?? {});
+        expect(s.guidance.advisories[id]!.active).toBe(false);
+      });
+    });
+  }
+});
+
+describe('hysteresis', () => {
+  const at = (r: number): Patch => ({ grain: ess(r * 100, -100) });
+  const G = 'annonae.grain.runout';
+  it('clears only past threshold × 1.25, and falls only after 3 stable days', () => {
+    const s = base();
+    day(s, at(40));
+    expect(s.guidance.advisories[G]!.sev).toBe(1);
+    day(s, at(5));
+    expect(s.guidance.advisories[G]!.sev).toBe(3);               // rises at once
+    for (let i = 0; i < A.DOWNGRADE_DAYS; i++) day(s, at(40));
+    expect(s.guidance.advisories[G]!.sev).toBe(3);               // not yet
+    day(s, at(40));
+    expect(s.guidance.advisories[G]!.sev).toBe(1);
+    for (let i = 0; i < 10; i++) day(s, at(70));                 // inside the band (60 … 75)
+    expect(s.guidance.advisories[G]!.active).toBe(true);
+    for (let i = 0; i < LIFE; i++) day(s, at(80));
+    expect(s.guidance.advisories[G]!.active).toBe(false);
+  });
+  it('lives at least MIN_LIFE days', () => {
+    const s = base();
+    day(s, at(40));
+    for (let i = 0; i < A.MIN_LIFE - 1; i++) day(s, at(200));
+    expect(s.guidance.advisories[G]!.active).toBe(true);
+  });
+  for (const id of RULES) {
+    it(`${id} is raised at most FLAP_MAX times in any ${A.FLAP_WINDOW} days on a sawtooth`, () => {
+      const s = base();
+      const [, on, hold = 1] = FIX[id].levels[FIX[id].levels.length - 1];
+      const n = Math.max(hold, every(id));
+      const raises: number[] = [];
+      for (let d = 0; d < 240; d++) {
+        const was = s.guidance.advisories[id]?.active === true;
+        day(s, (d % (n + 10) < n + 4 ? on : FIX[id].clear)(s) ?? {});
+        if (!was && s.guidance.advisories[id]?.active) raises.push(s.day);
+      }
+      expect(raises.length).toBeGreaterThan(0);
+      for (const r of raises) expect(raises.filter((x) => x > r - A.FLAP_WINDOW && x <= r).length).toBeLessThanOrEqual(A.FLAP_MAX);
+    });
+  }
+});
+
+describe('engine', () => {
+  it('orders by severity, advisor tie order and age; supersedes; logs new ≥ Cave with fx', () => {
+    const s = base();
+    const ctx = day(s, { grain: { ...ess(250, -50), maxPotential: 20, structural: true }, water: ess(1000, -100) });
+    const list = activeAdvisories(s).map((a) => a.rule);
+    expect(list[0]).toBe('annonae.famine');
+    expect(list).not.toContain('annonae.grain.runout');            // hidden by the famine
+    expect(list.indexOf('aquarum.water.runout')).toBeGreaterThan(0);
+    expect(ctx.fx).toContainEqual({ kind: 'advisory', rule: 'annonae.famine', sev: 3 });
+    expect(s.log.some((l) => l.kind === 'advisor' && l.text.startsWith('Praefectus Annonae: Famine looms'))).toBe(true);
+    expect(advisorMood(s, 'annonae')).toBe(2);
+  });
+  it('hushes below Periculum, mutes only a Nota, and the card drops Nota and hushed', () => {
+    const s = base();
+    merchant(s);
+    day(s, { grain: ess(4000, -100) });
+    expect(hush(s, 'annonae.grain.runout').ok).toBe(true);
+    expect(activeAdvisories(s, { forCard: true }).map((a) => a.rule)).not.toContain('annonae.grain.runout');
+    expect(activeAdvisories(s, { forCard: true }).map((a) => a.rule)).not.toContain('quaestor.merchant');
+    expect(mute(s, 'annonae.grain.runout').ok).toBe(false);
+    expect(mute(s, 'quaestor.merchant').ok).toBe(true);
+    expect(activeAdvisories(s).map((a) => a.rule)).not.toContain('quaestor.merchant');
+    day(s, { grain: ess(500, -100) });
+    expect(hush(s, 'annonae.grain.runout').ok).toBe(false);
+  });
+  it('appoints advisors by their triggers and keeps unappointed rules silent', () => {
+    const s = fresh(42);
+    s.morale = 10;
+    day(s, { coin: { stock: 500, net30: -100 } });
+    expect(s.guidance.appointed).toContain('quaestor');               // his first coin advisory
+    expect(s.guidance.advisories['quaestor.coin']?.active).toBe(true);
+    expect(s.guidance.advisories['aedilis.morale']).toBeUndefined();
+    s.day = 242;
+    day(s);
+    expect(s.guidance.appointed).toContain('augur');                  // Kal. Sept. AUC DCCC
+    expect(s.guidance.appointed).toEqual(ADVISORS.filter((a) => s.guidance.appointed.includes(a)));
+  });
+  it('replays identically from a JSON copy (no hidden state)', () => {
+    const a = run(base(), 60);
+    const b = JSON.parse(JSON.stringify(a)) as GameState;
+    run(a, 60); run(b, 60);
+    expect(JSON.stringify(b.guidance)).toBe(JSON.stringify(a.guidance));
+  });
+});
+
+describe('remedies', () => {
+  it('applies sim remedies through the actions and leaves UI remedies to the UI', () => {
+    const s = base();
+    expect(applyRemedy(s, { kind: 'setting', setting: 'grainReserve', value: 60 }).ok).toBe(true);
+    expect(s.decisions.settings.grainReserve).toBe(60);
+    expect(checkRemedy(s, { kind: 'setting', setting: 'grainReserve', value: 60 }).ok).toBe(false);
+    expect(applyRemedy(s, { kind: 'edict', edict: 'rationes', option: 'parcae' }).ok).toBe(true);
+    const w = checkRemedy(s, { kind: 'edict', edict: 'rationes', option: 'largae' });
+    expect(w.ok ? '' : w.reason).toMatch(/^Next edict window: Kal\. Iun\./);
+    expect(isUiRemedy({ kind: 'place', building: 'puteus' })).toBe(true);
+    expect(remedyLabel(s, { kind: 'priority', cat: 'food', days: 30 })).toBe('Food first for 30 days');
+    expect(remedyLabel(s, { kind: 'edict', edict: 'tributum', option: 'grave' })).toBe('Edict: Tributum Grave');
+    expect(checkRemedy(s, { kind: 'place', building: 'thermae' })).toMatchObject({ ok: false, code: 'rankLocked' });
+  });
+  it('never throws over random states and random remedies', () => {
+    const rng = new Rng(7);
+    const pick = <T>(xs: readonly T[]): T => xs[rng.int(0, xs.length - 1)];
+    for (let k = 0; k < 25; k++) {
+      const s = run(fresh(1 + k), rng.int(0, 40));
+      s.rank = rng.int(0, 4) as GameState['rank'];
+      for (const r of Object.keys(s.res) as (keyof GameState['res'])[]) s.res[r] = pick([0, 1, 50, 1e6]);
+      for (const a of ORDO_AREAS) s.ordo.on[a] = rng.chance(0.5);
+      if (rng.chance(0.3)) choice(rng.int(1, 30))(s);
+      if (rng.chance(0.3)) s.buildings = s.buildings.filter(() => rng.chance(0.7));
+      if (rng.chance(0.3)) s.people = s.people.filter(() => rng.chance(0.5));
+      invalidate(s);
+      const v = view(s);
+      for (const rule of RULE_DEFS) expect(() => rule.evaluate(s, v)).not.toThrow();
+      const remedies: Remedy[] = [
+        { kind: 'ask', building: pick(BUILDINGS) }, { kind: 'place', building: pick(BUILDINGS), tile: rng.int(-5, 99999) },
+        { kind: 'priority', cat: pick(LABOR_CATS), days: rng.int(-1, 30) }, { kind: 'assign', cat: pick(LABOR_CATS), n: rng.int(-1, 5) },
+        { kind: 'edict', edict: pick(EDICTS), option: pick(['parcae', 'grave', 'nope']) }, { kind: 'setting', setting: pick(SETTINGS), value: rng.range(-10, 4000) },
+        { kind: 'switch', sw: 'emergency', value: rng.chance(0.5) }, { kind: 'focus', focus: 'copia' },
+        { kind: 'contract', spec: { hub: pick(HUBS), mode: pick(['import', 'export'] as const), res: pick(TRADE_RES), qty: rng.int(-5, 200), repeat: false } },
+        { kind: 'buyNow', res: pick(TRADE_RES), qty: rng.int(0, 500) }, { kind: 'relief' }, { kind: 'toggleOrdo', area: pick(ORDO_AREAS), on: rng.chance(0.5) },
+        { kind: 'building', op: pick(['open', 'close', 'prioritise', 'center'] as const), id: rng.int(0, 200) },
+        { kind: 'open', tab: pick(TABS), anchor: 'petition' }, { kind: 'overlay', overlay: pick(OVERLAYS) },
+      ];
+      for (const r of remedies) {
+        expect(() => { checkRemedy(s, r); remedyLabel(s, r); applyRemedy(structuredClone(s), r); }).not.toThrow();
+      }
+      for (const a of activeAdvisories(s)) expect(() => renderAdvisory(s, v, a)).not.toThrow();
+    }
+  });
+});
