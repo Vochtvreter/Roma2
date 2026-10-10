@@ -12,7 +12,7 @@ import type { Camera, Push, Xform } from './camera';
 import { Motion, TILE, ZOOM_LEVELS, clampCamera, defaultLevel, makeCamera, nearestLevel, scaleFor, screenToWorld, tilesIn, worldToScreen } from './camera';
 import { Input } from './input';
 import { TerrainPainter } from './terrain';
-import { ForestLayer, natureItems } from './forest';
+import { ForestLayer, forestItems, natureItems } from './forest';
 import { OVERLAY_ALPHA, OverlayPainter } from './overlays';
 import { Minimap } from './minimap';
 import { Placement, label, lPath } from './placement';
@@ -190,6 +190,7 @@ export class MapView {
     this.painter.items(s, vis, cur, push);
     linearItems(s, vis, push);
     natureItems(s, vis, push);
+    forestItems(s, vis, cur, push);
     this.actors.items(s, vis, push);
     this.items.sort((a, b) => a.y - b.y || a.x - b.x);
     for (const it of this.items) it.draw(g);
