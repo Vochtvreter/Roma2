@@ -230,3 +230,4 @@
 .ann-tip summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .ann-tip p { margin: 2px 0 6px 14px; font-size: 12px; }
 .tab-confirm { display: block; margin-top: 3px; font-size: 12px; color: var(--gold); font-family: var(--font-caps); letter-spacing: .03em; }
+.ann-filters .btn.bld-cat { padding: 1px 5px; font-size: 11px; }
