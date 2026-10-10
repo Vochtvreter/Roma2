@@ -12,7 +12,7 @@ import { censusEpoch, memo, structEpoch } from '../memo';
 import { seasonOf } from '../calendar';
 import { buildingRate } from '../economy';
 import { fx } from '../fx';
-import { BUILDING_DEFS } from '../data/buildings';
+import { placementCost } from '../place';
 import { walkWishes } from './build';
 
 /** What a saving part is for, in priority order. */
@@ -22,11 +22,7 @@ export interface SavingPart { kind: SavingKind; cost: Cost; type?: BuildingId; r
 
 /** A work's cost as the Ordo budgets it: the registry cost (castellum: plus its route), with the path discounts. */
 export function workCost(s: GameState, type: BuildingId, routeLen = 0): Cost {
-  const def = BUILDING_DEFS[type];
-  let cost = def.perTile && routeLen > 0 ? addCost(def.cost, scaleCost(def.perTile.cost, routeLen)) : def.cost;
-  if (type === 'castellum') cost = scaleCost(cost, fx(s, 'castellumCost'));
-  if (type === 'lacus') cost = scaleCost(cost, fx(s, 'lacusCost'));
-  return cost;
+  return placementCost(s, type, routeLen);
 }
 
 /** The player-ordered parts of the saving target in priority order: petition fee, plans, pin, requests. */

@@ -6,7 +6,7 @@ import { RESOURCES } from './types';
 import type { ActionResult, Building, Cost, GameState, HouseState, Person, ResId, TickContext } from './types';
 import { getMap } from './map';
 import { invalidate, touchPeople } from './memo';
-import { addCost, canAfford, getBuilding, log, nextId, pay, refund, scaleCost } from './state';
+import { canAfford, getBuilding, log, nextId, pay, refund } from './state';
 import { fx } from './fx';
 import { census, peopleIndex, stageOf } from './census';
 import { buildingRate, legacyMult, productivity } from './economy';
@@ -15,6 +15,7 @@ import { savingFor } from './ordo/saving';
 import { settingValue } from './decisions';
 import { seasonOf } from './calendar';
 import { view } from './sim';
+import { placementCost } from './place';
 import { BUILDING_DEFS } from './data/buildings';
 
 const C = B.construction;
@@ -32,12 +33,7 @@ function notFound(): ActionResult {
 
 /** The cost a site was paid (or a plan will pay): its type's cost plus the aqueduct route, × castellum/lacus fx. */
 export function siteCost(s: GameState, b: Pick<Building, 'type' | 'route'>): Cost {
-  const def = BUILDING_DEFS[b.type];
-  let cost: Cost = { ...def.cost };
-  if (def.perTile && b.route) cost = addCost(cost, scaleCost(def.perTile.cost, b.route.length));
-  if (b.type === 'castellum') cost = scaleCost(cost, fx(s, 'castellumCost'));
-  if (b.type === 'lacus') cost = scaleCost(cost, fx(s, 'lacusCost'));
-  return cost;
+  return placementCost(s, b.type, b.route?.length ?? 0);   // one formula with the placement pipeline (WP-A)
 }
 
 /** Unfinished buildings (plan, staked, building) in works order: player-owned first, then `order`, then id. */
