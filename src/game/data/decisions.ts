@@ -151,27 +151,26 @@ export const EDICT_DEFS: Record<EdictId, EdictDef> = {
   },
 };
 
-/** The charter and the four paths (DESIGN §9.2): five permanent three-way choices; `grants` is the rank each confers.
- *  `visible` names what the map shows for an option (Edicta's "You will see: …"); options whose change is in the numbers only have none. */
+/** The charter and the four paths (DESIGN §9.2): five permanent three-way choices; `grants` is the rank each confers. */
 export const PATH_DEFS: Record<PathDecisionId, PathDef> = {
   charter: {
     id: 'charter', name: 'Lex coloniae', prompt: 'By what law is this colony founded?', grants: 0,
     options: [
       { id: 'veterani', name: 'Colonia veteranorum', desc: 'Builders ×1.25; veterans at the gate twice as often, their heads +1 skill; morale +2.',
-        fx: { mul: { builders: 1.25, veterans: 2 }, add: { morale: 2 } }, visible: 'Walkers in legion-red cloaks.' },
+        fx: { mul: { builders: 1.25, veterans: 2 }, add: { morale: 2 } }, visible: 'Walkers in legion-red cloaks; extra standards at the principia.' },
       { id: 'agricolae', name: 'Coloni agrarii', desc: 'Fields ×1.2; horrea capacity ×1.25.',
-        fx: { mul: { fields: 1.2, horreaCap: 1.25 } } },
+        fx: { mul: { fields: 1.2, horreaCap: 1.25 } }, visible: 'Centuriation boundary stones between the fields.' },
       { id: 'mercatores', name: 'Emporium castrense', desc: '+1 caravan slot; trade prices ×1.10 better; merchants ×2; contracts with Vicus Metellianus already at Castra.',
-        fx: { mul: { tradePrice: 1.1, merchants: 2 }, add: { caravanSlots: 1 } } },
+        fx: { mul: { tradePrice: 1.1, merchants: 2 }, add: { caravanSlots: 1 } }, visible: 'Market stalls in the forum; mules join the caravans.' },
     ],
   },
   path1: {
     id: 'path1', name: 'Vicus', prompt: 'The canabae outside the gates swell with camp-followers. What will the vicus become?', grants: 1,
     options: [
       { id: 'canabae', name: 'Canabae', desc: 'A market village: market radius +3; market tax ×1.4; oil ×1.2.',
-        fx: { mul: { marketTax: 1.4, olives: 1.2 }, add: { marketRadius: 3 } } },
+        fx: { mul: { marketTax: 1.4, olives: 1.2 }, add: { marketRadius: 3 } }, visible: 'The casae grow shop awnings.' },
       { id: 'pagus', name: 'Pagus rusticus', desc: 'Hunting and forage ×1.3; winter wheat: Hiems fields 0.35 → 0.45.',
-        fx: { mul: { hunting: 1.3, forage: 1.3 }, add: { hiemsFields: 0.1 } } },
+        fx: { mul: { hunting: 1.3, forage: 1.3 }, add: { hiemsFields: 0.1 } }, visible: 'Haystacks in the fields.' },
       { id: 'coloni', name: 'Coloni', desc: 'Immigration ×1.3; tents, huts and tiled cottages +2 beds; births ×1.2.',
         fx: { mul: { immigration: 1.3, births: 1.2 }, add: { lowCap: 2 } }, visible: 'More family carts on the via.' },
     ],
@@ -180,9 +179,9 @@ export const PATH_DEFS: Record<PathDecisionId, PathDef> = {
     id: 'path2', name: 'Oppidum', prompt: 'A walled town rises. What will Castra Valeria be known for?', grants: 2,
     options: [
       { id: 'arsFabrilis', name: 'Ars fabrilis', desc: 'Tile kiln, concrete works, bloomery and smithy ×1.25; tool kits last 180 days.',
-        fx: { mul: { industry: 1.25, toolDays: 1.5 } }, visible: 'Thicker smoke over the kilns and forges.' },
+        fx: { mul: { industry: 1.25, toolDays: 1.5 } }, visible: 'Smoke plumes; an anvil sign on the gates.' },
       { id: 'pietas', name: 'Pietas', desc: 'Shrine and temple radius +4; temple dignitas ×1.5; festival costs ×0.5; morale +4.',
-        fx: { mul: { templeDignitas: 1.5, festivalCost: 0.5 }, add: { shrineRadius: 4, morale: 4 } }, visible: 'Incense rising from the shrines and temples.' },
+        fx: { mul: { templeDignitas: 1.5, festivalCost: 0.5 }, add: { shrineRadius: 4, morale: 4 } }, visible: 'Incense particles; garlanded shrines.' },
       { id: 'viaMilitaris', name: 'Via militaris', desc: 'Caravan trips ×0.8; +1 caravan slot; bandits ×0.3.',
         fx: { mul: { tripDays: 0.8, bandits: 0.3 }, add: { caravanSlots: 1 } }, visible: 'The via is paved in basalt to the edge, with milestones.' },
     ],
@@ -193,7 +192,7 @@ export const PATH_DEFS: Record<PathDecisionId, PathDef> = {
       { id: 'iusLatii', name: 'Ius Latii', desc: 'Immigration ×1.5; taxes ×1.10; insulae +4 beds.',
         fx: { mul: { immigration: 1.5, tax: 1.1 }, add: { insulaCap: 4 } }, visible: 'Citizen togas on the walkers.' },
       { id: 'annonaPublica', name: 'Annona publica', desc: 'Grain need ×0.95; horrea ×1.25; morale +6 in Hiems; one free Legate\'s relief a year.',
-        fx: { mul: { grainUse: 0.95, horreaCap: 1.25 }, add: { hiemsMorale: 6 } } },
+        fx: { mul: { grainUse: 0.95, horreaCap: 1.25 }, add: { hiemsMorale: 6 } }, visible: 'A grain-dole queue at the forum.' },
       { id: 'aquaeSalutares', name: 'Aquae salutares', desc: 'Castellum cost ×0.7; lacus cost ×0.5; baths radius +4; care +0.2.',
         fx: { mul: { castellumCost: 0.7, lacusCost: 0.5 }, add: { bathsRadius: 4, care: 0.2 } }, visible: 'Steam from every bath; extra fountain sparkle.' },
     ],

@@ -510,32 +510,32 @@ A council switch, **default On**, revealed at the first emergency or milestone 5
 - **Paths are never chosen automatically**, not even offline. The away report's first line becomes *"Rome would hear our petition for Oppidum."*
 
 ### 9.2 The Founding Charter and the four paths (5 permanent choices)
-Each option changes how the city plays; ten of the fifteen also show on the map (the *Visible change* column, which Edicta prints as "You will see: …"; — where the change is in the numbers only, and no option promises what is not drawn).
+Each option changes how the city plays **and** names a visible change.
 
 **Lex coloniae** (charter; free; any time at Castra; required for the Vicus petition) — *"By what law is this colony founded?"*
 
 | Option id | Name | Effects | Visible change |
 |---|---|---|---|
-| `veterani` | *Colonia veteranorum* | builders ×1.25; veteran events ×2 and their heads +1 skill; morale +2 | walkers in legion-red cloaks |
-| `agricolae` | *Coloni agrarii* | fields ×1.2; horrea capacity ×1.25 | — |
-| `mercatores` | *Emporium castrense* | +1 caravan slot; trade prices ×1.10 better; merchants ×2; Commercium (Vicus Metellianus only) usable at Castra | — |
+| `veterani` | *Colonia veteranorum* | builders ×1.25; veteran events ×2 and their heads +1 skill; morale +2 | walkers in legion-red cloaks; extra standards at the principia |
+| `agricolae` | *Coloni agrarii* | fields ×1.2; horrea capacity ×1.25 | centuriation boundary stones between fields |
+| `mercatores` | *Emporium castrense* | +1 caravan slot; trade prices ×1.10 better; merchants ×2; Commercium (Vicus Metellianus only) usable at Castra | market stalls in the forum; mules join caravans |
 
 **Path 1 — Vicus** — *"The canabae outside the gates swell with camp-followers. What will the vicus become?"*
 
-| `canabae` | *Canabae* (market village) | market radius +3; market tax ×1.4; oil ×1.2 | — |
-| `pagus` | *Pagus rusticus* | hunting & forage ×1.3; Hiems fields +0.10 (0.35 → 0.45, winter wheat) | — |
+| `canabae` | *Canabae* (market village) | market radius +3; market tax ×1.4; oil ×1.2 | casae grow shop awnings |
+| `pagus` | *Pagus rusticus* | hunting & forage ×1.3; Hiems fields +0.10 (0.35 → 0.45, winter wheat) | haystacks in the fields |
 | `coloni` | *Coloni* | immigration ×1.3; T0–T2 +2 beds; births ×1.2 | more family carts on the via |
 
 **Path 2 — Oppidum** — *"A walled town rises. What will Castra Valeria be known for?"*
 
-| `arsFabrilis` | *Ars fabrilis* | figlina, caementarium, officina, fabrica ×1.25; tool kits last 180 days | thicker smoke over the kilns and forges |
-| `pietas` | *Pietas* | shrine & temple radius +4; temple dignitas ×1.5; festival costs ×0.5; morale +4 | incense rising from the shrines and temples |
+| `arsFabrilis` | *Ars fabrilis* | figlina, caementarium, officina, fabrica ×1.25; tool kits last 180 days | smoke plumes; an anvil sign on the gates |
+| `pietas` | *Pietas* | shrine & temple radius +4; temple dignitas ×1.5; festival costs ×0.5; morale +4 | incense particles; garlanded shrines |
 | `viaMilitaris` | *Via militaris* | caravan trips ×0.8; +1 caravan slot; bandits ×0.3 | the via is paved in basalt to the edge, with milestones |
 
 **Path 3 — Municipium** — *"Rome grants a charter. What rights will the municipium hold?"*
 
 | `iusLatii` | *Ius Latii* | immigration ×1.5; taxes ×1.10; insula +4 beds | citizen togas on walkers |
-| `annonaPublica` | *Annona publica* | grain need ×0.95; horrea ×1.25; morale +6 in Hiems; one free Legate's relief per year | — |
+| `annonaPublica` | *Annona publica* | grain need ×0.95; horrea ×1.25; morale +6 in Hiems; one free Legate's relief per year | grain-dole queue at the forum |
 | `aquaeSalutares` | *Aquae salutares* | castellum cost ×0.7; lacus cost ×0.5; baths radius +4; care +0.2 | steam from every bath; extra fountain sparkle |
 
 **Path 4 — Colonia** — *"Under what vision will the Capitolium rise?"* (choosing it starts the Capitolium)
