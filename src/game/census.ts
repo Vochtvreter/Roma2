@@ -7,7 +7,7 @@ import { censusEpoch as censusEpoch$, memo as memo$, peopleEpoch as peopleEpoch$
 import { derived as derived$ } from './derived';
 import { caps, horreaCap, portion } from './economy';
 import { fx as fx$, fxAdd as fxAdd$ } from './fx';
-import { getBuilding } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { isAquae } from './housing';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
@@ -16,7 +16,8 @@ import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDER = BUILDER$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, censusEpoch = censusEpoch$,
   memo = memo$, peopleEpoch = peopleEpoch$, structEpoch = structEpoch$, derived = derived$, fx = fx$, fxAdd = fxAdd$,
-  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$;
+  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
+  getBuilding = getBuilding$;
 
 const YEAR = B.time.YEAR_DAYS;
 const PORTION_VALUES: readonly number[] = Object.values(B.economy.PORTIONS);

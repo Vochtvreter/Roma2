@@ -9,7 +9,7 @@ import type { Building, BuildingDef, BuildingId, CoverageLayerId, GameState, Lab
 import { nextSeasonStart as nextSeasonStart$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
 import { buildingRateOf, maxPotential, seasonMult } from '../economy';
 import { settingValue } from '../decisions';
-import { getBuilding } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
 import { dayEpoch as dayEpoch$, memo as memo$ } from '../memo';
 import { roadNeighbors as roadNeighbors$ } from '../derived';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
@@ -21,7 +21,8 @@ import { houseWants, materialNeeds } from './build';
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
   nextSeasonStart = nextSeasonStart$, seasonLength = seasonLength$, seasonOf = seasonOf$, dayEpoch = dayEpoch$,
   memo = memo$, roadNeighbors = roadNeighbors$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
-  FOCUS_DEFS = FOCUS_DEFS$;
+  FOCUS_DEFS = FOCUS_DEFS$,
+  getBuilding = getBuilding$;
 
 /** Works that stop drawing water while the Lex de annona pauses them (DESIGN §8.12 step 2): they get no hands. */
 export const WATER_PAUSED: readonly BuildingId[] = ['caementarium', 'balneum', 'thermae'];

@@ -9,7 +9,7 @@ import { peopleIndex, stageOf } from '../census';
 import { edictOption, settingValue } from '../decisions';
 import { buildingRateOf, seasonMult } from '../economy';
 import { fx as fx$ } from '../fx';
-import { getBuilding } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
@@ -19,7 +19,8 @@ import {
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, formatRoman = formatRoman$, seasonOf = seasonOf$, fx = fx$, BUILDING_DEFS = BUILDING_DEFS$,
-  SETTING_DEFS = SETTING_DEFS$;
+  SETTING_DEFS = SETTING_DEFS$,
+  getBuilding = getBuilding$;
 
 const HIEMS = 3;
 const EPS = 1e-6;

@@ -9,7 +9,8 @@ import { toRoman as toRoman$ } from '../calendar';
 import { capitoliumFlow } from '../construction';
 import { petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
-import { getBuilding, missing } from '../state';
+import { missing } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
@@ -18,7 +19,8 @@ import {
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$, TRADE_RES = TRADE_RES$, toRoman = toRoman$,
-  BUILDING_DEFS = BUILDING_DEFS$, BUILD_ORDER = BUILD_ORDER$, SETTING_DEFS = SETTING_DEFS$;
+  BUILDING_DEFS = BUILDING_DEFS$, BUILD_ORDER = BUILD_ORDER$, SETTING_DEFS = SETTING_DEFS$,
+  getBuilding = getBuilding$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 const WORK_CATS = LABOR_CATS.filter((c) => c !== 'builders');

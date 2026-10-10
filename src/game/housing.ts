@@ -14,7 +14,8 @@ import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
 import { evictOverflow } from './people';
 import { view } from './sim';
-import { getBuilding, log } from './state';
+import { log } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
 import { feminine as feminine$ } from './data/names';
@@ -22,7 +23,8 @@ import { feminine as feminine$ } from './data/names';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, RESOURCES = RESOURCES$, derived = derived$, footprintOf = footprintOf$,
   fx = fx$, dayEpoch = dayEpoch$, invalidateTiers = invalidateTiers$, memo = memo$, touchPeople = touchPeople$,
-  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, feminine = feminine$;
+  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, feminine = feminine$,
+  getBuilding = getBuilding$;
 
 const H = B.housing;
 const TOP = 4;

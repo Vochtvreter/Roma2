@@ -6,7 +6,8 @@ import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Building, Cost, GameState, HouseState, Person, ResId, TickContext } from './types';
 import { getMap as getMap$ } from './map';
 import { invalidate as invalidate$, touchPeople as touchPeople$ } from './memo';
-import { canAfford, getBuilding, log, nextId, pay, refund } from './state';
+import { canAfford, log, nextId, pay, refund } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { fx as fx$ } from './fx';
 import { census, peopleIndex, stageOf } from './census';
 import { buildingRate, legacyMult, productivity } from './economy';
@@ -20,7 +21,8 @@ import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, invalidate = invalidate$, touchPeople = touchPeople$, fx = fx$,
-  seasonOf = seasonOf$, BUILDING_DEFS = BUILDING_DEFS$;
+  seasonOf = seasonOf$, BUILDING_DEFS = BUILDING_DEFS$,
+  getBuilding = getBuilding$;
 
 const C = B.construction;
 const EPS = 1e-9;

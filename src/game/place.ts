@@ -9,7 +9,8 @@ import { getMap as getMap$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as
 import { activeRings as activeRings$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, plotOrigin as plotOrigin$ } from './survey';
 import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, sizeOf as sizeOf$ } from './derived';
 import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layoutEpoch$, memo as memo$, touchPeople as touchPeople$ } from './memo';
-import { addCost, canAfford, getBuilding, log, missing, nextId, pay, refund, scaleCost } from './state';
+import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { cancelSite } from './construction';
 import { buildingRate } from './economy';
 import { seasonOf as seasonOf$ } from './calendar';
@@ -32,7 +33,8 @@ const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = i
   RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$, GN = GN$, anySide = anySide$, rectTiles = rectTiles$,
   aqueductRoute = aqueductRoute$, autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$, fell = fell$,
   roadField = roadField$, standingTimber = standingTimber$, RULE_REASON = RULE_REASON$, ruleFail = ruleFail$,
-  ruleTester = ruleTester$, terrainFail = terrainFail$, woodDependent = woodDependent$;
+  ruleTester = ruleTester$, terrainFail = terrainFail$, woodDependent = woodDependent$,
+  getBuilding = getBuilding$;
 
 const URBAN: readonly PlaceClass[] = ['plot', 'half', 'block'];
 const PLOT = B.map.PLOT;

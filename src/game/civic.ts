@@ -11,7 +11,8 @@ import { meanRation, portion } from './economy';
 import { fx as fx$, fxAdd as fxAdd$, fxBreakdown as fxBreakdown$ } from './fx';
 import { seasonOf as seasonOf$ } from './calendar';
 import { idx as idx$ } from './map';
-import { getBuilding, log } from './state';
+import { log } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
@@ -20,7 +21,8 @@ import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 const B = B$, LABOR_CATS = LABOR_CATS$, MILESTONE_IDS = MILESTONE_IDS$, dayEpoch = dayEpoch$, invalidate = invalidate$,
   memo = memo$, structEpoch = structEpoch$, blockOfTile = blockOfTile$, derived = derived$, fx = fx$, fxAdd = fxAdd$,
   fxBreakdown = fxBreakdown$, seasonOf = seasonOf$, idx = idx$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
-  RANK_DEFS = RANK_DEFS$;
+  RANK_DEFS = RANK_DEFS$,
+  getBuilding = getBuilding$;
 
 const M = B.morale;
 const HIEMS = 3;

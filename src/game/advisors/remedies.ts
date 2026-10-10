@@ -15,7 +15,7 @@ import { MILESTONES } from '../objectives';
 import { canPlace, validSlots } from '../place';
 import { overlayRevealed, tabRevealed } from '../reveal';
 import { newCtx, view } from '../sim';
-import { getBuilding } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
 import { checkDispatch, hubOpen, price } from '../trade';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { EDICT_DEFS as EDICT_DEFS$, FOCUS_DEFS as FOCUS_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from '../data/decisions';
@@ -25,7 +25,8 @@ import { aName, bestHub, days, int, rankWord, resName } from './util';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, aucYear = aucYear$, formatRoman = formatRoman$, derived = derived$, pushActionFx = pushActionFx$,
   BUILDING_DEFS = BUILDING_DEFS$, EDICT_DEFS = EDICT_DEFS$, FOCUS_DEFS = FOCUS_DEFS$, SETTING_DEFS = SETTING_DEFS$,
-  SWITCH_DEFS = SWITCH_DEFS$, HUB_DEFS = HUB_DEFS$;
+  SWITCH_DEFS = SWITCH_DEFS$, HUB_DEFS = HUB_DEFS$,
+  getBuilding = getBuilding$;
 
 const OK: ActionResult = { ok: true };
 const fail = (code: FailCode, reason: string): ActionResult => ({ ok: false, code, reason });

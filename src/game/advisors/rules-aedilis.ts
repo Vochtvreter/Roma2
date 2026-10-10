@@ -9,7 +9,7 @@ import { moraleTarget } from '../civic';
 import { previewCoverage } from '../coverage';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { bestSlot } from '../site';
-import { getBuilding } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
@@ -21,7 +21,8 @@ import type { CadencedRule, HouseWant } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, NEEDS = NEEDS$, RANK_DEFS = RANK_DEFS$, SETTING_DEFS = SETTING_DEFS$,
-  TIER_DEFS = TIER_DEFS$;
+  TIER_DEFS = TIER_DEFS$,
+  getBuilding = getBuilding$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
 const COVERED: readonly NeedId[] = ['water', 'religion', 'market', 'temple', 'baths', 'macellum'];

@@ -11,7 +11,8 @@ import type { Rng } from './rng';
 import { aucYear as aucYear$, formatRoman as formatRoman$, nextSeasonStart as nextSeasonStart$, seasonOf as seasonOf$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { touchPeople as touchPeople$ } from './memo';
-import { getPerson, log, nextId } from './state';
+import { log, nextId } from './state';
+import { getPerson as getPerson$ } from './lookup';
 import { coverage, houseHas } from './coverage';
 import { footprintOf as footprintOf$, roadNeighbors as roadNeighbors$ } from './derived';
 import { getMap as getMap$ } from './map';
@@ -27,7 +28,8 @@ import { TRADE_BASE as TRADE_BASE$ } from './data/hubs';
 const B = B$, aucYear = aucYear$, formatRoman = formatRoman$, nextSeasonStart = nextSeasonStart$, seasonOf = seasonOf$,
   fx = fx$, touchPeople = touchPeople$, footprintOf = footprintOf$, roadNeighbors = roadNeighbors$, getMap = getMap$,
   BUILDING_DEFS = BUILDING_DEFS$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, GENTES_VETERAN = GENTES_VETERAN$,
-  TRADE_BASE = TRADE_BASE$;
+  TRADE_BASE = TRADE_BASE$,
+  getPerson = getPerson$;
 
 const E = B.events;
 const EV = B.events;                             // the catalogue's tunables (DESIGN §12.2)

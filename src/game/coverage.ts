@@ -11,7 +11,7 @@ import { dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEp
 import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, footprintOf as footprintOf$, sizeOf as sizeOf$ } from './derived';
 import { peopleIndex } from './census';
 import { fxAdd as fxAdd$ } from './fx';
-import { getBuilding } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
@@ -23,7 +23,8 @@ const B = B$, BUILDINGS = BUILDINGS$, F = F$, LAYERS = LAYERS$, T = T$, getMap =
   dayStruct = dayStruct$, layoutEpoch = layoutEpoch$, memo = memo$, blockOfTile = blockOfTile$, classAt = classAt$,
   derived = derived$, footprintOf = footprintOf$, sizeOf = sizeOf$, fxAdd = fxAdd$, BUILDING_DEFS = BUILDING_DEFS$,
   TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, GH = GH$, GN = GN$, GW = GW$, sideTiles = sideTiles$,
-  autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$;
+  autoRoad = autoRoad$, blockStreetTiles = blockStreetTiles$,
+  getBuilding = getBuilding$;
 
 /** Path radius bonus that applies to each layer (DESIGN §9.3). */
 const RADIUS_BONUS: Partial<Record<CoverageLayerId, AddKey>> = {

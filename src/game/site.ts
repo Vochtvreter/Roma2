@@ -12,7 +12,7 @@ import { fxAdd as fxAdd$ } from './fx';
 import { coverage, desirability, previewCovered, previewDesir, type PreviewLayer } from './coverage';
 import { needWant } from './housing';
 import { routeAqueduct, validSlots } from './place';
-import { getBuilding } from './state';
+import { getBuilding as getBuilding$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { GH as GH$, GW as GW$, PrefixSum, rectGap as rectGap$, rectTiles as rectTiles$, sideTiles as sideTiles$ } from './world/grid';
 import { countRingT as countRingT$, countT as countT$, fertilityOf as fertilityOf$, isForestT as isForestT$, isHillsRockT as isHillsRockT$, isHillsScrubT as isHillsScrubT$, quarryFactor as quarryFactor$ } from './world/rules';
@@ -25,7 +25,8 @@ const B = B$, BUILDINGS = BUILDINGS$, LAYERS = LAYERS$, T = T$, getMap = getMap$
   rectTiles = rectTiles$, sideTiles = sideTiles$, countRingT = countRingT$, countT = countT$,
   fertilityOf = fertilityOf$, isForestT = isForestT$, isHillsRockT = isHillsRockT$, isHillsScrubT = isHillsScrubT$,
   quarryFactor = quarryFactor$, aroundSum = aroundSum$, woodAround = woodAround$, woodDependent = woodDependent$,
-  woodSums = woodSums$;
+  woodSums = woodSums$,
+  getBuilding = getBuilding$;
 
 const S = B.site;
 const SC = B.score;

@@ -16,6 +16,7 @@ import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { EDICT_DEFS as EDICT_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from './data/decisions';
 import { COLONY_NAMES as COLONY_NAMES$ } from './data/names';
 import { SAVE_VERSION } from './save';
+import { getBuilding, getPerson } from './lookup';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, ADVISORS = ADVISORS$, EDICTS = EDICTS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
@@ -261,27 +262,7 @@ export function log(s: GameState, kind: LogKind, text: string, tags?: LogTag[], 
   if (s.log.length > B.LOG_CAP) s.log.splice(0, s.log.length - B.LOG_CAP);
 }
 
-function bsearch<T extends { id: number }>(arr: T[], id: number): T | undefined {
-  let lo = 0, hi = arr.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const v = arr[mid].id;
-    if (v === id) return arr[mid];
-    if (v < id) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return undefined;
-}
-
-/** Building by id (binary search on the id-sorted list). */
-export function getBuilding(s: GameState, id: number): Building | undefined {
-  return bsearch(s.buildings, id);
-}
-
-/** Living person by id (binary search on the id-sorted list). */
-export function getPerson(s: GameState, id: number): Person | undefined {
-  return bsearch(s.people, id);
-}
+export { getBuilding, getPerson };   // the id lookups live in a leaf module (lookup.ts) so hot loops can copy them
 
 // ───────────────────────────── costs ─────────────────────────────
 

@@ -10,7 +10,8 @@ import { toRoman as toRoman$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, touchPeople as touchPeople$ } from './memo';
 import { careShare } from './civic';
-import { getBuilding, getPerson, log, nextId } from './state';
+import { log, nextId } from './state';
+import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
@@ -20,7 +21,8 @@ import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, P
 const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
   toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
   touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
-  DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$;
+  DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$,
+  getBuilding = getBuilding$, getPerson = getPerson$;
 
 const P = B.people;
 const YEAR = B.time.YEAR_DAYS;

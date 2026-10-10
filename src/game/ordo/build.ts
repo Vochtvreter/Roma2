@@ -9,7 +9,8 @@ import { B as B$ } from '../balance';
 import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
 import type { BuildingId, Cost, CoverageLayerId, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
 import { dateOf as dateOf$, seasonLength as seasonLength$, seasonOf as seasonOf$ } from '../calendar';
-import { addCost, canAfford, getBuilding, log, missing } from '../state';
+import { addCost, canAfford, log, missing } from '../state';
+import { getBuilding as getBuilding$ } from '../lookup';
 import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$ } from '../memo';
 import { settingValue } from '../decisions';
 import { bestSlot } from '../site';
@@ -32,7 +33,8 @@ import { rectGap as rectGap$ } from '../world/grid';
 const B = B$, NEEDS = NEEDS$, RESOURCES = RESOURCES$, dateOf = dateOf$, seasonLength = seasonLength$,
   seasonOf = seasonOf$, memo = memo$, structEpoch = structEpoch$, dayEpoch = dayEpoch$, dayStruct = dayStruct$,
   fxAdd = fxAdd$, idx = idx$, tx = tx$, ty = ty$, BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$,
-  FOCUS_DEFS = FOCUS_DEFS$, classAt = classAt$, sizeOf = sizeOf$, rectGap = rectGap$;
+  FOCUS_DEFS = FOCUS_DEFS$, classAt = classAt$, sizeOf = sizeOf$, rectGap = rectGap$,
+  getBuilding = getBuilding$;
 
 const LIST_MAX = 6;          // wishes the walk evaluates past the first ready one (Agenda + "would" ghost)
 const COMING = B.ordo.COMING;                   // days ahead that "the coming season" means for survival food

@@ -12,7 +12,7 @@ import { seasonMult } from '../economy';
 import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } from '../map';
 import { memo as memo$, structEpoch as structEpoch$ } from '../memo';
 import { personName } from '../people';
-import { getBuilding, getPerson } from '../state';
+import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup';
 import { nextTier, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
@@ -23,7 +23,8 @@ import { RESOURCE_DEFS as RESOURCE_DEFS$ } from '../data/resources';
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, HUBS = HUBS$, seasonOf = seasonOf$, distToRect = distToRect$,
   getMap = getMap$, tx = tx$, ty = ty$, memo = memo$, structEpoch = structEpoch$, BUILDING_DEFS = BUILDING_DEFS$,
-  NEED_META = NEED_META$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$;
+  NEED_META = NEED_META$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$,
+  getBuilding = getBuilding$, getPerson = getPerson$;
 
 /** Hysteresis release factor: an advisory clears only past its threshold × CLEAR (DESIGN §11.4). */
 export const CLEAR = B.advisors.CLEAR;
