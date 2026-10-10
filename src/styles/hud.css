@@ -122,10 +122,13 @@
 .hud-sp.on { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; }
 .hud-menu { font-family: var(--font-body); font-size: 18px; min-width: 38px; }
 
-/* Below 1760 px the full row no longer fits: the chips tighten and the brand shrinks to its aquila (name and rank in its
-   tooltip), then steps aside below 1440 px, so the material strip keeps its numbers (DESIGN §15.2). */
+/* Below 1760 px the full row no longer fits: the chips tighten, and once five or more materials are on the strip the
+   brand shrinks to its aquila (name and rank in its tooltip); below 1440 px it steps aside, so the material strip keeps
+   its numbers (DESIGN §15.2). */
 @media (max-width: 1759px) {
-  .hud-brand-text { display: none; }
+  .hud-title { display: none; }
+  .hud-brand { max-width: 170px; }
+  #hud:has(.hud-strip > :nth-child(5)) .hud-brand-text { display: none; }
   #hud { gap: 5px; padding: 0 8px; }
   .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
   .hud-stages { width: 40px; }
