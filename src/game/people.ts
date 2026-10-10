@@ -4,7 +4,7 @@ import { B } from './balance';
 import { BUILDER, SKILLS } from './types';
 import type { Building, DeathCause, Family, GameState, LabourPlan, Person, SkillId, TickContext } from './types';
 import type { Rng } from './rng';
-import { ageOf, canWork, census, houseBeds, peopleIndex } from './census';
+import { ablePeople, ageOf, census, houseBeds, peopleIndex } from './census';
 import { derived, roadNeighbors } from './derived';
 import { toRoman } from './calendar';
 import { fx } from './fx';
@@ -58,9 +58,11 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   const at = new Map<number, Person[]>();
   const builders: Person[] = [];
   const release = (p: Person): void => { p.work = null; changed = true; };
+  const ableList = ablePeople(s);   // canWork today for everyone, from the census's pass over people
+  const able = new Set(ableList);
   for (const p of s.people) {
     if (p.work === null) continue;
-    if (!canWork(s, p)) { release(p); continue; }
+    if (!able.has(p)) { release(p); continue; }
     if (p.work === BUILDER) { builders.push(p); continue; }
     const b = getBuilding(s, p.work);
     if (!b || b.status !== 'done' || !b.open) { release(p); continue; }
@@ -84,7 +86,7 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   // idle pool: each pick takes the best untaken worker in the skill, then the least gifted elsewhere (specialists stay
   // free for their own trade), then the lowest id. A day moves a handful of hands, so each pick scans the pool for the
   // first in that order instead of sorting the whole pool per skill (keys computed once per skill and person).
-  const pool = s.people.filter((p) => p.work === null && canWork(s, p));
+  const pool = ableList.filter((p) => p.work === null);
   const keyed = new Map<string, { k: number[]; o: number[] }>();
   const pick = (skill: SkillId | null): Person | null => {
     const key = skill ?? '';

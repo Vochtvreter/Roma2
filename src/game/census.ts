@@ -206,16 +206,26 @@ function slotCounts(s: GameState): SlotCounts {
   });
 }
 
+/** The census's pass over people for today (memo on the people epoch and the day). */
+function todaysPeople(s: GameState): ReturnType<typeof peopleCounts> {
+  return peopleCounts(s, () => {
+    const domus = new Set<number>();
+    for (const id of derived(s).houses) if (getBuilding(s, id)?.house?.tier === 'domus') domus.add(id);
+    return domus;
+  });
+}
+
+/** Everyone who canWork today, in id order (the census's pass: adults and elders under RETIRE, not sick, not patrician). */
+export function ablePeople(s: GameState): readonly Person[] {
+  return todaysPeople(s).able;
+}
+
 function computeCensus(s: GameState): Census {
   const day = s.day;
   const d = derived(s);
   const ix = peopleIndex(s);
   const staffed: Record<number, number> = {};
-  const pc = peopleCounts(s, () => {
-    const domus = new Set<number>();
-    for (const id of d.houses) if (getBuilding(s, id)?.house?.tier === 'domus') domus.add(id);
-    return domus;
-  });
+  const pc = todaysPeople(s);
   const byStage: Quad = [pc.byStage[0], pc.byStage[1], pc.byStage[2], pc.byStage[3]];
   const { workforce, patricii } = pc;
   const idle: number[] = [];
