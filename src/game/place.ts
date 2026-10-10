@@ -372,6 +372,13 @@ export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts
     log(s, 'ordo', `The Ordo ${status === 'staked' ? 'stakes out' : 'raises'} ${withArticle(name)}.${why}`, ['decided'], id);
   } else if (status === 'plan') log(s, 'build', `${def.name} planned: works begin when the stores allow.`, undefined, id);
   else log(s, 'build', `Works begin on ${withArticle(name)}.`, undefined, id);
+  if (owner === 'player' && !opts?.reason) {               // the player builds by hand what they had asked of the Ordo
+    const k = s.ordo.requests.findIndex((r) => r.type === type);
+    if (k >= 0) {
+      s.ordo.requests.splice(k, 1);
+      log(s, 'ordo', `You raise ${withArticle(name)} yourself; the Ordo lets your request go.`, undefined, id);
+    }
+  }
   invalidate(s);
   return { ok: true, id };
 }
