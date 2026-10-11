@@ -249,6 +249,14 @@ export function validSlots(s: GameState, type: BuildingId, owner: Owner): Map<nu
   return memo(s, `validSlots:${type}:${owner}`, key, () => computeSlots(s, type, owner));
 }
 
+/** The lowest valid house-plot origin (a glowing plot) inside survey block `block` for an owner, or null when it has none. */
+export function freePlot(s: GameState, block: number, owner: Owner): number | null {
+  const at = getMap$(s.seed).survey.blockAt;
+  let first: number | null = null;
+  for (const tile of validSlots(s, 'area', owner).keys()) if (at[tile] === block && (first === null || tile < first)) first = tile;
+  return first;
+}
+
 function computeSlots(s: GameState, type: BuildingId, owner: Owner): Map<number, number> {
   const out = new Map<number, number>();
   const def = BUILDING_DEFS[type];

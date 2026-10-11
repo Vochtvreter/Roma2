@@ -1,7 +1,7 @@
 // src/ui/mapbar.ts — the map widgets of the shell (DESIGN §15.4, §11.9): the overlay bar (five toggles, the Officia
 // layer selector and a legend), the zoom buttons and the placement banner. Owner: WP-H (split from ui/index.ts).
 import { OVERLAYS } from '../game/types';
-import type { CoverageLayerId, OverlayId, PlaceCheck } from '../game/types';
+import type { CoverageLayerId, GameState, OverlayId, PlaceCheck } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
@@ -107,6 +107,15 @@ function watchPointer(): void {
   const note = (e: PointerEvent): void => { lastTouch = e.pointerType !== 'mouse'; };
   window.addEventListener('pointerdown', note, true);
   window.addEventListener('pointermove', note, true);
+}
+
+/** Enters a placing mode on the map and opens its banner. The banner opens first because the map may answer at once:
+ *  a pre-positioned placement (`p.at`: an advisor's "Place it myself", "Could be built here") centres on its tile and
+ *  previews it as it starts, and that verdict, with the touch Place button, must not be overwritten by an empty one. */
+export function openPlacing(view: Pick<Game['view'], 'startPlacing'>, banner: (p: PlacingState, check: PlaceCheck | null) => void,
+  p: PlacingState, s: GameState): void {
+  banner(p, null);
+  view.startPlacing(p, s);
 }
 
 /** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. */
