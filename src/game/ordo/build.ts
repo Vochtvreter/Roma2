@@ -9,7 +9,7 @@ import { B as B$ } from '../balance';
 import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
 import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
 import { dateOf as dateOf$, seasonOf as seasonOf$ } from '../calendar';
-import { addCost, canAfford, log, missing } from '../state';
+import { NEVER, addCost, canAfford, log, missing } from '../state';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
 import { settingValue } from '../decisions';
@@ -561,6 +561,25 @@ export function walkWishes(s: GameState, v: SimView): Walk {
   });
 }
 
+/** The wishes that grow the colony rather than keep it (DESIGN §10.3): beds, water within reach, the services homes
+ *  wait for, the petition's works, materials, luxuries, the focus plan and beauty. The Ordo raises one of them only every
+ *  GROWTH_EVERY days, so a colony left to it grows slowly but never starves (survival, the Aestas cistern and the
+ *  stores keep the full cadence); a Praefectus who raises them by hand, as the advisors and the Agenda name them,
+ *  outpaces it. */
+const GROWTH: ReadonlySet<ReasonCode> = new Set<ReasonCode>(['beds', 'waterAccess', 'evolve', 'rank', 'materials', 'luxury', 'focusPlan', 'beauty', 'capitolium']);
+
+/** Whether a wish grows the colony (paced) rather than keeps it. */
+export function isGrowth(w: { reason: Reason }): boolean {
+  return GROWTH.has(w.reason.code);
+}
+
+/** Days until the Ordo may raise its next growth work (0: it may now). */
+export function growthWait(s: GameState): number {
+  let last = NEVER;
+  for (const b of s.buildings) if (b.owner === 'ordo' && b.reason && GROWTH.has(b.reason.code) && b.placed > last) last = b.placed;
+  return Math.max(0, last + B.ordo.GROWTH_EVERY - s.day);
+}
+
 /** Unfinished Ordo sites (the Capitolium is extra). */
 export function ordoSites(s: GameState): number {
   return s.buildings.filter((b) => b.owner === 'ordo' && b.status !== 'done' && b.type !== 'capitolium').length;
@@ -577,7 +596,10 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   if (s.decisions.focus === 'urbs' && dateOf(s.day).day <= B.ordo.BUILD_EVERY) paveBusyStreets(s, v, decided);
   const walk = walkWishes(s, v);
   const full = ordoSites(s) >= maxSites(v);
-  const w = full ? walk.list.find((e) => e.state === 'proposed' && e.wish.survival)?.wish : walk.take;
+  const paced = growthWait(s) > 0;
+  // sites full: only survival; a growth work raised lately: only what keeps the colony (survival, Aestas, stores)
+  const w = full ? walk.list.find((e) => e.state === 'proposed' && e.wish.survival)?.wish
+    : paced ? walk.list.find((e) => e.state === 'proposed' && !isGrowth(e.wish))?.wish : walk.take;
   if (!w) return;
   const res = w.reason.params.res;
   const had = typeof res === 'string' && (RESOURCES as readonly string[]).includes(res) ? s.res[res as ResId] : 0;
@@ -649,11 +671,14 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
 /** The next `n` wishes not yet placed, with states (concurrency full → ready wishes wait), lacking goods and ETA. */
 export function newWishes(s: GameState, v: SimView, n: number): WishView[] {
   const full = ordoSites(s) >= maxSites(v);
+  const wait = growthWait(s);
   const out: WishView[] = [];
   for (const e of walkWishes(s, v).list) {
     if (out.length >= n) break;
     const wish = e.wish;
-    const w: WishView = lazyTile({ type: wish.type, state: e.state === 'proposed' && full && !wish.survival ? 'waiting' : e.state, reason: wish.reason }, () => wish.tile);
+    const state: WishView['state'] = e.state !== 'proposed' ? e.state : full && !wish.survival ? 'waiting' : wait > 0 && isGrowth(wish) ? 'paced' : 'proposed';
+    const w: WishView = lazyTile({ type: wish.type, state, reason: wish.reason }, () => wish.tile);
+    if (state === 'paced') w.eta = wait;
     if (e.lacking && RESOURCES.some((r) => (e.lacking?.[r] ?? 0) > 0)) {
       w.lacking = e.lacking;
       const eta = etaDays(s, v, e.lacking);

@@ -1128,6 +1128,8 @@ export function personName(p: Person): string;                   // 'Marcus II V
 export function assignJobs(s: GameState, plan: LabourPlan): void; // sticky; fill empty slots with the best-skilled idle; builders = plan.builders; touchPeople
 export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void;   // stage-change logs, deaths (hazard, starvation, thirst, fever), widowing, marriages (gens buckets), births, homeless timers, emigration, mentor death
 export function immigrationDay(s: GameState, ctx: TickContext, rng: Rng): void;   // one Bernoulli roll; roll and beds respected
+export function splendour(s: GameState): number;                     // dignitas of the works the Ordo leaves to the player: gardens, paved streets (DESIGN §6.6)
+export function renownFactor(s: GameState): number;                  // Rome's favour: min(RENOWN.MAX, 1 + RENOWN.K × splendour per home); ×1 for a colony kept by the Ordo alone
 export function makeFamily(s: GameState, rng: Rng, kind: 'couple' | 'craftsman' | 'widow' | 'veteran', gentes: readonly string[]): { family: Family; people: Person[] };
 export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Family; people: Person[] }): boolean;   // house in the most free beds nearest the forum; fx arrive
 export function rehouse(s: GameState): void;
@@ -1401,7 +1403,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   // 9 · bookkeeping and counsel
   updateCounters(s, v);
   checkObjectives(s, ctx);
-  advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 22 rules with hysteresis
+  advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 24 rules with hysteresis
   pruneGuide(s);
   s.stats.peakPop = Math.max(s.stats.peakPop, s.people.length);
   s.counters.coinEma += B.economy.COIN_ALPHA * ((s.res.denarii + s.taxAccrued - coin0) - s.counters.coinEma);
@@ -1937,7 +1939,7 @@ keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/a
 - Acceptance: petition readiness per rank; an edict cannot change twice inside one season window (reason names the next Kalends); every path option's effect appears in `fx`; milestones fire in order and each unlock becomes visible through `reveal`; no event before day 300, ≥ 200 days between cards, ≥ 120 between harmful events, none harmful offline; property test over 2,000 forced events: ≤ 30% of a stock, ≤ 5% of pop; asymmetric prices and trip-day formula; contracts pause with the right code; save round trip and sanitiser fixtures (NaN, unknown ids, missing keys); `offlineRun` = N ticks; report fields filled.
 
 **WP-E · Guidance** — owns `advisors/*`, `guide.ts`, `hints.ts`; tests `advisors`, `guide`.
-- Implement DESIGN §11.3–11.7: the 22 rules (one file per advisor), engine with hysteresis (raise, clear ×1.25, 3-day downgrade, 3-day minimum life, flap limit, supersede), ordering and appointment, render-time titles/texts/remedies, `checkRemedy`/`applyRemedy`/`remedyLabel`, Hush/Mute, the 24 mentor tips with `after`/`until`, `mentorKicker`, `howToGetMore`, `benefitLine`, `outputChain`.
+- Implement DESIGN §11.3–11.7: the 24 rules (one file per advisor), engine with hysteresis (raise, clear ×1.25, 3-day downgrade, 3-day minimum life, flap limit, supersede), ordering and appointment, render-time titles/texts/remedies, `checkRemedy`/`applyRemedy`/`remedyLabel`, Hush/Mute, the 20 mentor tips with `after`/`until`, `mentorKicker`, `howToGetMore`, `benefitLine`, `outputChain`.
 - Acceptance: each rule has a fixture that raises it at each severity and clears it; no rule flaps > 2 times in 60 days on a sawtooth fixture; every rule returns 1–3 remedies; `checkRemedy` never throws over random states; tips: ids unique, every `after` exists, `welcome` first, `vitals` before day 10 (with the bot under `INTEGRATED`).
 
 **WP-F · Render core** — owns `camera.ts`, `input.ts`, `terrain.ts`, `view.ts`, `buildings.ts`, `linear.ts`, `placement.ts`, `overlays.ts`, `minimap.ts`, `actors.ts`, `particles.ts`.

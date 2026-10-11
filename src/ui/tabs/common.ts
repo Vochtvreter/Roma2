@@ -140,7 +140,7 @@ export function lacking(s: GameState, cost: Cost): Cost | null {
 
 /** A wish's state as the ticker and the focus line name it ('Raising: Lumber camp'). */
 export const WISH_STATE: Record<WishView['state'], string> = {
-  staked: 'Staked', building: 'Raising', saving: 'Saving for', waiting: 'Waiting on', proposed: 'Next',
+  staked: 'Staked', building: 'Raising', saving: 'Saving for', waiting: 'Waiting on', paced: 'Later', proposed: 'Next',
 };
 
 type Saving = NonNullable<CouncilReport['saving']>;
@@ -189,6 +189,7 @@ export function wishState(g: Game, w: WishView): string {
     case 'building': return `building ${Math.round((site?.progress ?? 0) * 100)}%`;
     case 'saving': return w.lacking ? `saving: ${fmtCost(w.lacking)}${w.eta !== undefined ? ` ≈ ${Math.max(0, Math.round(w.eta))} d` : ''}` : 'saving';
     case 'waiting': return 'waiting for builders';
+    case 'paced': return `the Ordo raises it in ${Math.max(1, w.eta ?? 1)} d: raise it yourself for sooner`;
     case 'proposed': return 'proposed';
   }
 }
@@ -201,7 +202,10 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
   const box = h('div', { class: 'tab-agenda' });
   const list = rep.agenda.length ? rep.agenda : manual && rep.would.build ? [rep.would.build] : [];
   if (manual) box.append(h('div', { class: 'tab-note' }, 'Construction is yours. The Ordo would raise:'));
-  if (!list.length) box.append(h('div', { class: 'tab-quiet' }, manual ? 'Nothing it would add today.' : 'The Ordo has nothing in hand. It raises one wish every 2 days.'));
+  if (!list.length) {
+    box.append(h('div', { class: 'tab-quiet' }, manual ? 'Nothing it would add today.'
+      : `The Ordo has nothing in hand. It keeps the colony every ${B.ordo.BUILD_EVERY} days, and grows it by one work every ${B.ordo.GROWTH_EVERY}: raise more yourself to grow faster.`));
+  }
   list.forEach((w, i) => {
     const state = h('span', { class: 'tab-agenda-state' });
     up.push(() => { state.textContent = wishState(g, w); });

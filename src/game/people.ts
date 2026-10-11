@@ -505,7 +505,8 @@ function births(s: GameState, ctx: TickContext, rng: Rng): void {
   if (s.people.length >= P.POP_CAP) return;   // the hard cap (DESIGN §18.3); not a blocked birth for the Aedilis
   const c = census(s);
   const moraleF = Math.min(P.BIRTH_MORALE[2], Math.max(P.BIRTH_MORALE[1], s.morale / P.BIRTH_MORALE[0]));
-  const base = (P.BIRTH_RATE * foodFactor(s) * moraleF * fx(s, 'births')) / YEAR;
+  const favour = P.RENOWN.BIRTHS > 0 ? 1 + P.RENOWN.BIRTHS * (renownFactor(s) - 1) : 1;   // a splendid town's families thrive (§6.6)
+  const base = (P.BIRTH_RATE * foodFactor(s) * moraleF * favour * fx(s, 'births')) / YEAR;
   let free = c.freeBeds;
   const mothers = s.people.filter((w) => w.female && w.spouse !== null && between(ageOf(w, s.day), P.FERTILE));
   for (const w of mothers) {
@@ -586,14 +587,20 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 
 // ───────────────────────────── immigration (DESIGN §6.6) ─────────────────────────────
 
-/** Rome's favour (DESIGN §6.6, §8.11): Rome sends colonists faster to a town of renown. At ranks RENOWN.FROM..TO (the
- *  Vicus) the colony is measured against the dignitas its next charter asks: every share of that bar it clears raises
- *  immigration by RENOWN.K × that share, up to ×RENOWN.MAX; at or below the bar, and at other ranks, it is ×1. Houses,
- *  services, gardens, paving, deeds and fama all count, so what the player builds beyond the Ordo draws colonists. */
+/** The colony's splendour (DESIGN §6.6, §10.3): the dignitas of the works the Ordo leaves to the player — gardens and
+ *  paved streets (the Ordo raises them only under the Urbs focus, which the player sets). */
+export function splendour(s: GameState): number {
+  let gardens = 0;
+  for (const b of s.buildings) if (b.type === 'hortus' && b.status === 'done') gardens++;
+  return gardens * BUILDING_DEFS.hortus.dignitas + dignitas(s).groups.roads;
+}
+
+/** Rome's favour (DESIGN §6.6): Rome sends colonists faster to a splendid town, ×(1 + RENOWN.K × splendour per home),
+ *  at most ×RENOWN.MAX. A colony kept by the Ordo alone has ×1: it grows, slowly; a Praefectus who beautifies it draws
+ *  colonists up to three times as fast. Per home, so a garden among the homes counts the same from tents to insulae. */
 export function renownFactor(s: GameState): number {
   const R = P.RENOWN;
-  if (s.rank < R.FROM || s.rank > R.TO || s.rank >= RANK_DEFS.length - 1) return 1;
-  return Math.min(R.MAX, 1 + R.K * Math.max(0, dignitas(s).value / RANK_DEFS[s.rank + 1].dignitas - 1));
+  return Math.min(R.MAX, 1 + (R.K * splendour(s)) / Math.max(1, derived(s).houses.length));
 }
 
 /** Today's chance of a new household: IMM_RATE[rank] × attract (morale, food, water, renown, fx immigration). */

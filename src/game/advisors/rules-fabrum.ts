@@ -10,6 +10,8 @@ import { capitoliumFlow } from '../construction';
 import { petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { missing } from '../state';
+import { newWishes } from '../ordo/build';
+import { reasonText } from '../ordo/reasons';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
@@ -236,5 +238,35 @@ const capitolium: AdvisorRule = {
   },
 };
 
+// ───────────────────────────── 13b · fabrum.agenda ─────────────────────────────
+// The Ordo raises a growth work only every GROWTH_EVERY days (DESIGN §10.3): when its next one waits on that pace, the
+// Praefectus Fabrum names it, why, and when, so the player may raise it now. A colony left to the Ordo still grows, but
+// slowly; this is how the advisors point the way to growing faster.
+
+const agenda: AdvisorRule = {
+  id: 'fabrum.agenda', advisor: 'fabrum',
+  evaluate(s, v) {
+    if (!s.ordo.on.build) return null;
+    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined);
+    if (!w) return null;
+    return {
+      rule: 'fabrum.agenda', severity: 1, metric: { label: 'In', value: w.eta ?? 1, unit: 'days' },
+      params: { type: w.type, tile: w.tile ?? 0, wait: w.eta ?? 1, why: reasonText(w.reason) },
+    };
+  },
+  title(_s, a) {
+    const p = a.params;
+    return `The Ordo will raise ${aName(p.type as BuildingId)} in ${days(P(p.wait))}.`;
+  },
+  text(_s, _v, a) {
+    const why = typeof a.params.why === 'string' ? a.params.why : '';
+    return `${why ? `${cap1(why.replace(/\.$/, ''))}. ` : ''}The council raises one such work at a time; raise it yourself and it starts today.`;
+  },
+  remedies(_s, _v, a) {
+    const p = a.params;
+    return three({ kind: 'place', building: p.type as BuildingId, tile: P(p.tile) }, null, null);
+  },
+};
+
 /** The Praefectus Fabrum's rules, in RULES order. */
-export const FABRUM_RULES: AdvisorRule[] = [labour, stalled, capitolium];
+export const FABRUM_RULES: AdvisorRule[] = [labour, stalled, capitolium, agenda];

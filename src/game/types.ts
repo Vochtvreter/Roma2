@@ -73,9 +73,9 @@ export type AdvisorId = (typeof ADVISORS)[number];
 export const RULES = [
   'annonae.grain.runout', 'annonae.famine', 'annonae.hiems.forecast', 'annonae.mess', 'annonae.storage', 'annonae.goods',
   'aquarum.water.runout', 'aquarum.aestas.forecast', 'aquarum.access', 'aquarum.aqueduct',
-  'fabrum.labour', 'fabrum.stalled', 'fabrum.capitolium',
+  'fabrum.labour', 'fabrum.stalled', 'fabrum.capitolium', 'fabrum.agenda',
   'quaestor.coin', 'quaestor.contract', 'quaestor.merchant',
-  'aedilis.evolve', 'aedilis.declining', 'aedilis.beds', 'aedilis.morale',
+  'aedilis.evolve', 'aedilis.declining', 'aedilis.beds', 'aedilis.morale', 'aedilis.favour',
   'augur.choice', 'augur.petition',
 ] as const;
 export type RuleId = (typeof RULES)[number];
@@ -496,7 +496,7 @@ export interface SimView { readonly d: Derived; readonly c: Census; readonly f: 
 export interface LabourLine { cat: LaborCat; target: number; have: number; slots: number; reason: Reason }
 export interface LabourPlan { perBuilding: Record<number, number>; builders: number; lines: LabourLine[] }
 export interface WishView {
-  type: BuildingId; state: 'staked' | 'building' | 'saving' | 'waiting' | 'proposed';
+  type: BuildingId; state: 'staked' | 'building' | 'saving' | 'waiting' | 'paced' | 'proposed';
   reason: Reason; lacking?: Cost; eta?: number; siteId?: number; tile?: number;
 }
 export interface CouncilReport {

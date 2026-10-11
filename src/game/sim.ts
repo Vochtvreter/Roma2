@@ -66,7 +66,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   // 9 · bookkeeping and counsel
   updateCounters(s, v);
   checkObjectives(s, ctx);
-  advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 22 rules with hysteresis
+  advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 24 rules with hysteresis
   pruneGuide(s);
   introDay(s);                   // the Ordo builds once the colony is old enough, even before its lesson (§11.13)
   s.stats.peakPop = Math.max(s.stats.peakPop, s.people.length);

@@ -492,7 +492,7 @@ describe('progressive reveal', () => {
 });
 
 describe.runIf(INTEGRATED)('with the real simulation', () => {
-  it('a charter and petitions when ready: the early Res Gestae complete in order and Vicus comes inside its band', () => {
+  it('a charter and petitions when ready (the Ordo alone): the early Res Gestae complete in order and the Vicus comes, about three times later than the attentive pace', () => {
     const s = fresh(42);
     let vicusDay: number | null = null;
     run(s, 4000, (st) => {
@@ -507,7 +507,8 @@ describe.runIf(INTEGRATED)('with the real simulation', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(milestoneDone(s, 'hiems')).toBe(true);
     expect(vicusDay).not.toBeNull();
-    expect(vicusDay!).toBeGreaterThanOrEqual(420);
-    expect(vicusDay!).toBeLessThanOrEqual(780);
+    // the idle floor (DESIGN §18.4): the Vicus band (420–780) × the Ordo alone's 2.2–3.6 (autoplayer BANDS, ORDO_RATIO)
+    expect(vicusDay!).toBeGreaterThanOrEqual(420 * 2.2);
+    expect(vicusDay!).toBeLessThanOrEqual(780 * 3.6);
   });
 });
