@@ -6,7 +6,7 @@
 import { ADVISORS } from '../game/types';
 import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GuideStep, Remedy } from '../game/types';
 import type { Game } from './types';
-import { clear, fmtDays, h, img, tip } from './dom';
+import { clear, fmtDays, h, img, reveal, tip } from './dom';
 import { caps } from './tipkit';
 import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
@@ -92,7 +92,7 @@ export function pulseTarget(selector: string): void {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) { if (++tries < PULSE_TRIES) window.setTimeout(go, 60); return; }
     el.classList.add('guide-glow');
-    el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    reveal(el, { smooth: true });   // not scrollIntoView: that would scroll the fixed #app frame too (dom.ts)
     window.setTimeout(() => el.classList.remove('guide-glow'), PULSE_MS);
   };
   go();

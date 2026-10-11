@@ -8,7 +8,7 @@ import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
-import { clear, h, img, tip } from './dom';
+import { clear, h, img, reveal, tip } from './dom';
 import { tabShown } from './intro';
 import { notePractice } from '../game/actions';
 import { ControlHold, ScrollAnchor } from './steady';
@@ -28,17 +28,18 @@ export const PANELS: Readonly<Record<TabId, TabPanel>> = {
 };
 
 const PULSE_MS = 1600;
+const PULSE_MARGIN = 8;   // px left above a pulsed anchor, so its glow is not cut off at the body's top edge
 
 /** Runs a UI step; a bug in one panel must never stop the game loop. */
 function safe(what: string, fn: () => void): boolean {
   try { fn(); return true; } catch (e) { console.error(`[panels] ${what}`, e); return false; }
 }
 
-/** Scrolls to `[data-anchor=…]` inside the body and pulses it. */
+/** Scrolls the body (only: see reveal) to `[data-anchor=…]` and pulses it. */
 export function pulseAnchor(anchor: string, body: HTMLElement): void {
   const el = body.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(anchor)}"]`);
   if (!el) return;
-  el.scrollIntoView({ block: 'start' });
+  reveal(el, { block: 'start', margin: PULSE_MARGIN });
   el.classList.add('side-pulse');
   window.setTimeout(() => el.classList.remove('side-pulse'), PULSE_MS);
 }
