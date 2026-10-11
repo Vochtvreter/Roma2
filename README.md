@@ -4,8 +4,10 @@ It is the Kalends of April, AUC 800. Twenty-four souls of six legionary families
 earth-and-timber rampart on a river bend at the frontier, and you are the *Praefectus castrorum*.
 
 You lay out the colony: house plots, wells, fields, granaries, shrines and markets, later baths, an aqueduct and a
-theatre, all on the surveyed Roman grid. The **Ordo Decurionum**, the town council, staffs the jobs, builds and trades
-every day, also while you are away, and the ticker says *why*: it keeps the colony alive and growing, but plays it safe.
+theatre, all on the surveyed Roman grid. At first you run the camp by hand: who works where, what is raised, what is
+traded. Every chore you have done yourself becomes a duty you may hand to the **Ordo Decurionum**, the town council,
+which then does it every day, also while you are away, and the ticker says *why*: the colony comes to run itself as you
+master it. The Ordo keeps it alive and growing, but plays it safe.
 Six **advisors** count the days of grain and water, name what is wrong and what would grow the town faster, and offer
 one-click remedies; a Praefectus who acts on them, raises the council's works before it gets to them and makes the town
 splendid (Rome sends settlers faster to a beautiful town) grows the colony 2½–3 times as fast as the Ordo alone.
@@ -18,16 +20,18 @@ atrium *domus*, and dedicate the **Capitolium**.
 ## How to play
 
 1. **Found a new colony** on the title screen, read the Legate's letter and press **Raise the standard**. Decimus
-   Cassius then teaches the colony one system at a time, each with a small job you do yourself: raise a cistern, lay
-   out a house plot, then watch the Ordo take over. Played before? **Skip the introduction** on the letter.
+   Cassius then teaches the colony one system at a time, each with a small job you do yourself: put hands on the
+   fields, raise a cistern, lay out a house plot, then hand one of those chores to the Ordo. Played before? **Skip the
+   introduction** on the letter.
 2. Watch the two tablets at the top: **Grain** and **Water** in *days on hand*, with the year ahead beneath. Aestas
    (summer) dries the wells and Hiems (winter) starves the fields: fill the cisterns in Ver and the horrea before the
    Kalends of December.
 3. Set the council's course in **Edicta**: proclaim the founding charter, pick a focus and edicts. When every
    requirement is met, petition Rome for the next rank and choose one of three permanent paths.
 4. Build what you like from **Aedificia**: a glowing plot shows where a work fits, and gold means a bonus. Your works
-   are raised before the Ordo's. You can also leave the building to the Ordo, or answer an advisor's remedy with one
-   click.
+   are raised before the Ordo's. Each kind of work you raise yourself (water, food, homes, services, materials) is a
+   duty you can then hand to the Ordo in **Edicta → Mandata**, or keep; staffing and trade too. Take a duty back
+   whenever you like. Answer an advisor's remedy with one click.
 5. Close the tab whenever you like. Time away passes at half speed (up to five years), and the Ordo writes you a
    letter, the *Litterae Ordinis*, about what happened and what it decided in your name.
 

@@ -28,6 +28,7 @@ import { chronicle } from './chronicle';
 import { aestasWork } from './water';
 import { houseWants as eachHouseWant, liftSlot, serveSlot } from '../advisors/util';
 import { goodsPlan } from './goods';
+import { maskAllows, walkMask } from './duties';
 import { view } from '../sim';
 import { classAt as classAt$, derived, sizeOf as sizeOf$ } from '../derived';
 import { getMap } from '../map';
@@ -338,12 +339,13 @@ export function materialNeeds(s: GameState, v: SimView): { lack: Cost; forOf: Pa
 const unfinished = (v: SimView, t: BuildingId): boolean => (v.d.all[t] ?? 0) > (v.d.counts[t] ?? 0);
 
 /** The DESIGN §10.5 wish table in order, lazily (each row checks rank, max count, one site of a kind, and a slot). */
-function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }): Generator<Wish> {
+function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: string): Generator<Wish> {
   const { c, d, f } = v;
   const seen = new Set<BuildingId>();
   const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; again?: boolean; store?: boolean; serves?: NeedId } = {}): Wish | null => {
     const def = BUILDING_DEFS[type];
     if (seen.has(type) || def.rank > s.rank) return null;
+    if (!maskAllows(mask, { code, params }, !!o.survival)) return null;   // a duty the Ordo does not hold (duties.ts)
     if (type === 'hortus' && s.decisions.focus !== 'urbs') return null;
     if (def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount) return null;
     if (!o.again && unfinished(v, type)) return null;
@@ -537,13 +539,16 @@ function withFloor(s: GameState, w: Wish): Cost {
  *  (runOrdo's labour plan reads it first), and made again only when the works change (a placement, a completion) or
  *  the player's orders do; the stock and the people of that hour decide it for the rest of the day, so the saving
  *  target the renovations, the trade and the Capitolium respect is the one the council set (memo on day, structure
- *  epoch and the player's orders and settings). */
-export function walkWishes(s: GameState, v: SimView): Walk {
-  const key = `${s.day}|${structEpoch(s)}|${ordersOf(s).walk}`;
-  return memo(s, 'ordo.walk', key, () => {
+ *  epoch, the player's orders and settings, and the duties the Ordo holds). Only the wishes of those duties are walked:
+ *  the Ordo neither raises nor saves for a work that is the player's to raise; `full` walks every wish (what the Ordo
+ *  would raise if it held every duty). */
+export function walkWishes(s: GameState, v: SimView, full = false): Walk {
+  const mask = full ? 'all' : walkMask(s);
+  const key = `${s.day}|${structEpoch(s)}|${ordersOf(s).walk}|${mask}`;
+  return memo(s, mask === 'all' ? 'ordo.walk' : 'ordo.walkHeld', key, () => {
     const base = addCost(partsCost(savingParts(s, v)), capitoliumAhead(s));
     const out: Walk = { list: [], take: null, pending: null };
-    for (const w of rows(s, v, out)) {
+    for (const w of rows(s, v, out, mask)) {
       const held = out.pending ? addCost(base, out.pending.cost) : base;
       const ok = w.survival ? canAfford(s, w.cost) : w.unblock ? canAfford(s, w.cost) && floorOk(s, w.cost) : canAfford(s, w.cost, held) && floorOk(s, w.cost);
       if (ok) {
@@ -593,7 +598,7 @@ export function maxSites(v: SimView): number {
 /** Every 2nd day: places the first ready wish (staked 5 days unless survival) within the site limit; Urbs paves on the month's first build day. */
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   const decided = ctx.offline && !s.ordo.on.build;
-  if (s.decisions.focus === 'urbs' && dateOf(s.day).day <= B.ordo.BUILD_EVERY) paveBusyStreets(s, v, decided);
+  if (s.decisions.focus === 'urbs' && dateOf(s.day).day <= B.ordo.BUILD_EVERY && maskAllows(walkMask(s), { code: 'beauty', params: {} }, false)) paveBusyStreets(s, v, decided);
   const walk = walkWishes(s, v);
   const full = ordoSites(s) >= maxSites(v);
   const paced = growthWait(s) > 0;
@@ -668,14 +673,16 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
   return true;
 }
 
-/** The next `n` wishes not yet placed, with states (concurrency full → ready wishes wait), lacking goods and ETA. */
-export function newWishes(s: GameState, v: SimView, n: number): WishView[] {
+/** The next `n` wishes not yet placed, with states (concurrency full → ready wishes wait), lacking goods and ETA; with
+ *  `held`, only the wishes of the full walk the Ordo does not hold the duty for (what it would raise). */
+export function newWishes(s: GameState, v: SimView, n: number, held?: string): WishView[] {
   const full = ordoSites(s) >= maxSites(v);
   const wait = growthWait(s);
   const out: WishView[] = [];
-  for (const e of walkWishes(s, v).list) {
+  for (const e of walkWishes(s, v, held !== undefined).list) {
     if (out.length >= n) break;
     const wish = e.wish;
+    if (held !== undefined && maskAllows(held, wish.reason, wish.survival)) continue;
     const state: WishView['state'] = e.state !== 'proposed' ? e.state : full && !wish.survival ? 'waiting' : wait > 0 && isGrowth(wish) ? 'paced' : 'proposed';
     const w: WishView = lazyTile({ type: wish.type, state, reason: wish.reason }, () => wish.tile);
     if (state === 'paced') w.eta = wait;
@@ -687,6 +694,14 @@ export function newWishes(s: GameState, v: SimView, n: number): WishView[] {
     out.push(w);
   }
   return out;
+}
+
+/** The first wish the Ordo would raise if it held every duty, among those it does not hold (null: it holds them all, or
+ *  none of their wishes stands). What the Agenda, Edicta and Apply once offer the player to raise by hand. */
+export function wouldRaise(s: GameState, v: SimView): WishView | null {
+  const mask = walkMask(s);
+  if (mask === 'all') return null;
+  return newWishes(s, v, 1, mask)[0] ?? null;
 }
 
 /** The first `n` wishes with state and reason (pure): works in hand first (staked, building), then the wish list. */

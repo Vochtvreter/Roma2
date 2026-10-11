@@ -1,20 +1,23 @@
 // src/game/intro.ts — the opening lessons (DESIGN §11.13): the colony's systems arrive one at a time, each with a small
 // job the player does by hand. A lesson brings the parts of the interface its job needs; once the job is done, the next
 // lesson waits a breather of real play time (stats.playMs: never game days, so speeding up does not rush the player).
-// The Ordo does not build until its own lesson: the first works are the player's (it still staffs the fields and wells
-// from the first day, and builds anyway once the colony is ORDO_BY days old, so a player who wanders off is not left to
-// starve). This module only says what the player is shown and when the Ordo begins to build: everything else the
-// colony does stays as it is, and the UI asks reveal.ts too (a tab shows when reveal.ts reveals it and a lesson brought it).
+// A colony with the lessons is run by hand (ordo/duties.ts, DESIGN §10.2): each job teaches a duty, and the Ordo's
+// lesson asks the player to hand it one of the duties they have learned. This module only says what the player is shown:
+// everything else the colony does stays as it is, and the UI asks reveal.ts too (a tab shows when reveal.ts reveals it
+// and a lesson brought it).
 import { B } from './balance';
+import { DUTIES } from './types';
 import type { ActionResult, BuildingId, GameState, PracticeId, TabId, TipId } from './types';
-import { elapsed } from './calendar';
+import { census } from './census';
+import { granted, learnAll } from './ordo/duties';
 
 /** A part of the interface a lesson brings: a HUD chip or widget, the faster speeds, or a side-panel tab. */
 export type IntroPart = 'ticker' | 'portraits' | 'souls' | 'coin' | 'materials' | 'goals' | 'dignitas' | 'overlays' | 'speed'
   | 'catalog'   // every work in Aedificia, with the tools, the categories and the Ordo's buttons (before: the taught works only)
-  | 'edicts'    // all of Edicta: focus, edicts, settings, switches (before: the charter alone)
+  | 'mandates'  // the duties in Edicta: what the Ordo holds, what the player has learned (before: none)
+  | 'edicts'    // all of Edicta: focus, edicts, settings, switches (before: the duties and the charter alone)
   | TabId;
-export type LessonId = 'water' | 'homes' | 'ordo' | 'charter' | 'advisors' | 'speed' | 'works' | 'people' | 'overlays' | 'edicts';
+export type LessonId = 'fields' | 'water' | 'homes' | 'ordo' | 'charter' | 'advisors' | 'speed' | 'works' | 'overlays' | 'edicts';
 
 /** One opening lesson: the mentor's words, the job, the parts it brings and the breather after it. */
 export interface Lesson {
@@ -50,6 +53,14 @@ const rising = (type: string) => (s: GameState): string | null => {
  *  "Understood": reading alone teaches little. */
 export const LESSONS: readonly Lesson[] = [
   {
+    id: 'fields', title: 'Hands to the fields',
+    text: () => 'Our grain falls every day. Put more hands on the fields.',
+    job: 'Put hands on the fields', done: (s) => census(s).catStaffed.food >= B.intro.FIELD_HANDS,
+    progress: (s) => `Hands on the fields: ${census(s).catStaffed.food} of ${B.intro.FIELD_HANDS}`, brings: ['people'],
+    reward: 'The grain climbs. Who works where is yours to choose.',
+    breather: 40, tab: 'people', anchor: 'labour', target: '.tab-lab[data-cat="food"]',
+  },
+  {
     id: 'water', title: 'Water for the dry season',
     text: () => 'Our one well will not last the summer. Raise a cistern.',
     job: 'Raise a cistern', done: raised('cisterna'), progress: rising('cisterna'), brings: ['build', 'coin', 'materials'],
@@ -65,15 +76,17 @@ export const LESSONS: readonly Lesson[] = [
   },
   {
     id: 'ordo', title: 'The Ordo takes up the work',
-    text: () => 'The Ordo keeps the colony alive, even while you sleep. Watch it build.',
-    job: 'Watch the Ordo build', done: (s) => s.buildings.some((b) => b.owner === 'ordo'), brings: ['ticker'],
-    reward: 'It plays safe. Where the colony lags, your own hand does better.',
-    breather: 45, target: '#ticker',
+    text: () => 'The Ordo can take up any chore you have mastered. Hand it one.',
+    job: 'Hand the Ordo a duty',
+    done: (s) => s.ordo.answered.length > 0 || DUTIES.some((d) => granted(s, d)) || s.ordo.learned.length === 0,   // none learned: nothing to hand
+    brings: ['ticker', 'council', 'mandates'],
+    reward: 'It works in your name, even while you sleep. Take a duty back anytime.',
+    breather: 45, tab: 'council', anchor: 'mandates',
   },
   {
     id: 'charter', title: 'The founding law',
     text: () => 'Rome awaits our founding law. Choose it in Edicta: it is for good.',
-    job: 'Proclaim the charter', done: (s) => s.decisions.paths.charter !== undefined, brings: ['goals', 'council'],
+    job: 'Proclaim the charter', done: (s) => s.decisions.paths.charter !== undefined, brings: ['goals'],
     rewardBrings: ['dignitas'],
     reward: 'Our first deed. The laurel above is Rome\'s regard: works, homes and deeds raise it.',
     breather: 45, tab: 'council', target: '.path-card',
@@ -87,7 +100,7 @@ export const LESSONS: readonly Lesson[] = [
   },
   {
     id: 'speed', title: 'Time is yours',
-    text: () => 'The Ordo keeps the colony now. Hurry the days, or pause to think.',
+    text: () => 'Hurry the days when all is well, or pause to think.',
     job: 'Choose a faster speed', done: practised('speed'), brings: ['speed'],
     reward: 'Space pauses; 1 to 4 set the speed.',
     breather: 40, target: '#speed',
@@ -96,13 +109,7 @@ export const LESSONS: readonly Lesson[] = [
     id: 'works', title: 'Every work is yours',
     text: () => 'All of Rome\'s works are open to you now. Raise one of your choosing.',
     job: 'Place a work you choose', done: (s) => s.buildings.some((b) => b.owner === 'player' && !TAUGHT.includes(b.type) && b.reason?.code !== 'request'),
-    brings: ['catalog'], reward: 'Your works are raised before the Ordo\'s.', breather: 40, tab: 'build',
-  },
-  {
-    id: 'people', title: 'The roll of souls',
-    text: () => 'Every soul has a name, an age and a trade. Open Populus.',
-    job: 'Open Populus', done: practised('people'), brings: ['people'],
-    reward: 'Who works where, and who stands idle, is kept there.', breather: 40, tab: 'people', find: true,
+    brings: ['catalog'], reward: 'Each kind of work you raise, the Ordo can learn to raise.', breather: 40, tab: 'build',
   },
   {
     id: 'overlays', title: 'Maps of the land',
@@ -131,7 +138,6 @@ export function plainWork(type: BuildingId): string | undefined {
   return PLAIN[type];
 }
 
-const L = B.intro;
 /** The mentor's tips the lessons teach in their place: read once the lessons end, so they are not told twice. */
 export const INTRO_TIPS: readonly TipId[] = ['welcome', 'vitals', 'ordo', 'counsel', 'speed', 'build', 'charter', 'edicts'];
 /** The lesson that brings each part, and whether it comes as the lesson's reward (once its job is done). */
@@ -189,7 +195,7 @@ export function lessonAge(s: GameState): number {
 export type IntroStep = 'done' | 'next' | 'end' | null;
 
 /** Advances the lessons (called every frame with the live colony): marks the job done, and after the breather begins
- *  the next lesson. Also lets the Ordo build once its lesson comes or the colony is ORDO_BY days old. */
+ *  the next lesson. */
 export function introStep(s: GameState): IntroStep {
   const it = s.guidance.intro;
   let step: IntroStep = null;
@@ -207,25 +213,7 @@ export function introStep(s: GameState): IntroStep {
       if (it.lesson >= LESSONS.length) { finish(s); step = 'end'; } else step = 'next';
     }
   }
-  releaseOrdo(s);
   return step;
-}
-
-/** The day's check from the simulation tick: the Ordo builds once the colony is ORDO_BY days old, even while no one
- *  watches (the catch-up after an absence runs no UI). */
-export function introDay(s: GameState): void {
-  releaseOrdo(s);
-}
-
-/** The Ordo begins to build: its lesson has come (or passed), or the colony is ORDO_BY days old. Once only: after
- *  that, Ordo building is the player's toggle (Edicta → "Who decides the details?"). */
-function releaseOrdo(s: GameState): void {
-  const it = s.guidance.intro;
-  if (!it.ordoHeld) return;
-  const ordo = LESSONS.findIndex((l) => l.id === 'ordo');
-  if (it.lesson >= 0 && it.lesson < ordo && elapsed(s) < L.ORDO_BY) return;
-  it.ordoHeld = false;
-  s.ordo.on.build = true;
 }
 
 /** The lessons end: the tips they taught are read, and every part shows. */
@@ -236,7 +224,6 @@ function finish(s: GameState): void {
   it.practice = [];
   s.guidance.tipAt = s.stats.playMs;   // the mentor's tips resume after a quiet spell, not on the heels of the last lesson
   for (const t of INTRO_TIPS) if (!s.guidance.tips.includes(t)) s.guidance.tips.push(t);
-  releaseOrdo(s);
 }
 
 /** The UI notes a job done by hand (a speed chosen, an overlay opened, the advisors heard). */
@@ -265,8 +252,10 @@ export function skipLesson(s: GameState): ActionResult {
   return { ok: true };
 }
 
-/** Skips the lessons: every part shows, the Ordo builds, and the tips they would have taught count as read. */
+/** Skips the lessons: every part shows, every duty counts as learned (the player knows the camp: theirs to hand to the
+ *  Ordo, which the counsel offers at once), and the tips the lessons would have taught count as read. */
 export function skipIntro(s: GameState): ActionResult {
+  if (s.guidance.intro.lesson >= 0) learnAll(s);
   finish(s);
   return { ok: true };
 }

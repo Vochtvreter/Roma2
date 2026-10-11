@@ -67,6 +67,13 @@ export const PATH_OPTIONS = [
 export type PathOptionId = (typeof PATH_OPTIONS)[number];
 export const ORDO_AREAS = ['labour', 'build', 'trade'] as const;
 export type OrdoArea = (typeof ORDO_AREAS)[number];
+/** The council's duties (DESIGN §10.2): each is the player's until learned by doing it by hand, then theirs to hand to
+ *  the Ordo or keep. Staffing and trade are the labour and trade areas; the rest divide the Ordo's building. */
+export const DUTIES = ['labour', 'water', 'food', 'homes', 'services', 'materials', 'plan', 'trade'] as const;
+export type DutyId = (typeof DUTIES)[number];
+/** The duties that divide the Ordo's building (granted: `ordo.on.build` and `ordo.works[id]`). */
+export const WORK_DUTIES = ['water', 'food', 'homes', 'services', 'materials', 'plan'] as const;
+export type WorkDuty = (typeof WORK_DUTIES)[number];
 
 export const ADVISORS = ['annonae', 'aquarum', 'fabrum', 'quaestor', 'aedilis', 'augur'] as const;
 export type AdvisorId = (typeof ADVISORS)[number];
@@ -285,7 +292,7 @@ export type ReasonCode =
   | 'needWater' | 'needFood' | 'reserveTopup' | 'requiredService' | 'builderShare' | 'monument' | 'pendingInput'
   | 'winterStock' | 'tools' | 'luxuryStaff' | 'serviceFull' | 'focusSplit' | 'leftover' | 'priority'
   | 'deficitImport' | 'luxuryImport' | 'wishImport' | 'surplusExport' | 'merchantDeal'
-  | 'emergencyRations' | 'emergencyWater' | 'emergencyImport' | 'relief' | 'saving';
+  | 'emergencyRations' | 'emergencyWater' | 'emergencyHands' | 'emergencyImport' | 'relief' | 'saving';
 export interface Reason { code: ReasonCode; params: Record<string, number | string> }
 
 export interface DecisionState {
@@ -304,7 +311,10 @@ export interface OrdoState {
   pin: BuildingId | null;
   reserved: number[];                                // reserved block ids (sorted)
   priorities: { cat: LaborCat; until: number }[];    // temporary "X first for N days"
-  emergency: { rations: 'none' | 'parcae' | 'arctae'; waterPause: boolean; lastImport: number; lastRelief: number; freeReliefYear: number };
+  emergency: { rations: 'none' | 'parcae' | 'arctae'; waterPause: boolean; lastImport: number; lastRelief: number; freeReliefYear: number; hands: boolean };
+  works: Record<WorkDuty, boolean>;                  // which kinds of work the Ordo may raise (with on.build)
+  learned: DutyId[];                                 // duties the player has done by hand: theirs to hand over (DUTIES order)
+  answered: DutyId[];                                // learned duties the player has handed over or chosen to keep
 }
 export interface Metric { label: string; value: number; unit: 'days' | 'houses' | 'den' | 'pct' | 'souls' }
 export interface AdvisoryMemo {
@@ -323,7 +333,6 @@ export interface IntroState {
   done: boolean;                                      // the lesson's job is done: its breather runs
   at: number;                                         // stats.playMs when the lesson began or, once done, when its job was done
   practice: PracticeId[];                             // jobs the UI noted during this lesson
-  ordoHeld: boolean;                                  // the Ordo does not build yet: the first works are the player's own
 }
 export interface GuidanceState {
   advisories: Partial<Record<RuleId, AdvisoryMemo>>;
@@ -443,6 +452,7 @@ export type FxEvent =
   | { kind: 'event'; id: EventId }
   | { kind: 'advisory'; rule: RuleId; sev: Severity }
   | { kind: 'ordoPlaced'; id: number }
+  | { kind: 'learned'; duty: DutyId }
   | { kind: 'victory' };
 export interface TickContext { fx: FxEvent[]; rates: Rates; offline: boolean }
 

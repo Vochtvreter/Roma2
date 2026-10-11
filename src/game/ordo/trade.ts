@@ -181,7 +181,7 @@ function merchantDeals(s: GameState, v: SimView, decided: boolean): void {
     const good = o.kind === 'sell'
       ? o.price >= B.ordo.MERCHANT_DEAL * TRADE_BASE[o.res] && surplus(s, v, o.res) >= o.qty
       : wanted.has(o.res) && v.c.caps[o.res] - s.res[o.res] >= o.qty && canSpend(s, { denarii: cost }, v) && runway(v, cost) > B.ordo.MERCHANT_RUNWAY;
-    if (!good || !takeOffer(s, o.id).ok) continue;
+    if (!good || !takeOffer(s, o.id, 'ordo').ok) continue;
     chronicle(s, 'ordo', { code: 'merchantDeal', params: { res: o.res, qty: o.qty, price: o.price, why: o.kind === 'sell' ? 'sold' : 'bought' } }, { decided });
   }
 }

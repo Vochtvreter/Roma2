@@ -189,14 +189,15 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   ordo/build.ts                    C   wish list, agenda, requests                                 (360)
   ordo/trade.ts                    C   trade automation                                            (150)
   ordo/goods.ts                    C   oil/wine plan: lean-season reserve, projection, shortfall    (130)
-  ordo/emergency.ts                C   Lex de annona ladder                                        (120)
+  ordo/emergency.ts                C   Lex de annona ladder; hands to the fields under manual labour (150)
+  ordo/duties.ts                   C   duties: learned by hand, handed over, the wish walk's mask   (170)
   ordo/saving.ts                   C   savingFor, reserved, canSpend                               (90)
-  ordo/actions.ts                  C   askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority (110)
+  ordo/actions.ts                  C   askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority, setDuty, handOverAll, keepDuties (130)
   ordo/reasons.ts                  C   reason templates                                            (110)
   decisions.ts                     D   focus/edicts/settings/switches/paths, petitions, rankUp     (320)
   objectives.ts                    D   MILESTONES, checkObjectives, counters                       (200)
   reveal.ts                        D   reveal predicates, teaser                                   (110)
-  intro.ts                         E   the opening lessons: jobs, real-time pacing, Ordo hold, parts shown (180)
+  intro.ts                         E   the opening lessons: jobs, real-time pacing, parts shown    (180)
   events.ts                        D   EVENT_DEFS, festivals, rolls, choices, gate                 (520)
   trade.ts                         D   prices, market, caravans, contracts, merchant               (380)
   save.ts                          D   serialize, migrations, prefs, fasti, export/import          (190)
@@ -590,7 +591,10 @@ export interface OrdoState {
   pin: BuildingId | null;
   reserved: number[];                                // reserved block ids (sorted)
   priorities: { cat: LaborCat; until: number }[];    // temporary "X first for N days"
-  emergency: { rations: 'none' | 'parcae' | 'arctae'; waterPause: boolean; lastImport: number; lastRelief: number; freeReliefYear: number };
+  emergency: { rations: 'none' | 'parcae' | 'arctae'; waterPause: boolean; lastImport: number; lastRelief: number; freeReliefYear: number; hands: boolean };
+  works: Record<WorkDuty, boolean>;                  // the kinds of work the Ordo may raise (with on.build), DESIGN §10.2
+  learned: DutyId[];                                 // duties the player has done by hand (DUTIES order)
+  answered: DutyId[];                                // learned duties handed over or kept: the counsel offers the rest
 }
 export interface Metric { label: string; value: number; unit: 'days' | 'houses' | 'den' | 'pct' | 'souls' }
 export interface AdvisoryMemo {
@@ -615,7 +619,6 @@ export interface IntroState {
   done: boolean;                                      // the lesson's job is done: its breather runs
   at: number;                                         // stats.playMs when the lesson began or, once done, when its job was done
   practice: PracticeId[];                             // UI-noted jobs this lesson ('speed' | 'overlay' | 'advisors' | 'people' | 'edict')
-  ordoHeld: boolean;                                  // the Ordo does not build yet (ordo.on.build false until its lesson)
 }
 
 // ───────────────────────────── trade, events ─────────────────────────────
@@ -1328,18 +1331,24 @@ export function pruneGuide(s: GameState): void;
 export function nextTip(s: GameState): GuideStep | null;            // a tip not urgent also waits B.intro.GAP days after the last one read
 export function dismissTip(s: GameState, id: TipId): ActionResult;  // records guidance.tipDay and tipAt
 export function mentorKicker(s: GameState): string;                   // 'DECIMVS CASSIVS ADVISES' / 'FROM THE NOTES OF DECIMVS CASSIVS'
-// intro.ts (DESIGN §11.13; what the player is shown and when the Ordo begins to build; reveal.ts is unchanged)
+// intro.ts (DESIGN §11.13; what the player is shown; reveal.ts is unchanged; the duties are ordo/duties.ts)
 export const LESSONS: readonly Lesson[];                              // { id, title, text, job, done, progress?, brings, rewardBrings?, reward, breather, tab?, anchor?, target? }
 export const INTRO_TIPS: readonly TipId[];                            // the tips the lessons teach: read when they end or are skipped
 export function introRunning(s: GameState): boolean;                 // guidance.intro.lesson ≥ 0 (newGame({ intro: true }) only)
 export function introduced(s: GameState, part: IntroPart): boolean;  // the current or an earlier lesson brought it (a reward part once its job is done)
 export function currentLesson(s: GameState): { lesson: Lesson; index: number; done: boolean } | null;
 export function introStep(s: GameState): 'done' | 'next' | 'end' | null;   // every frame (main.ts): job → done; breather of stats.playMs → next
-export function introDay(s: GameState): void;                         // sim tick: the Ordo builds once elapsed ≥ B.intro.ORDO_BY
 export function notePractice(s: GameState, p: PracticeId): ActionResult;   // UI-noted jobs: a speed chosen, an overlay opened, the advisors heard
 export function beginNextLesson(s: GameState): ActionResult;         // "Begin now"
 export function skipLesson(s: GameState): ActionResult;              // "Skip this step" (after B.intro.STUCK_S)
-export function skipIntro(s: GameState): ActionResult;               // every lesson: Skip the lessons, Hide tips, tips off on entering, the Founding Dispatch link
+export function skipIntro(s: GameState): ActionResult;               // every lesson: Skip the lessons, Hide tips, tips off on entering, the Founding Dispatch link; every duty learned
+// ordo/duties.ts (DESIGN §10.2)
+export const DUTY_DEFS: Record<DutyId, DutyDef>;                      // { latin, name, does, learn, done }
+export function granted(s: GameState, d: DutyId): boolean;            // labour/trade: ordo.on[d]; a kind of work: ordo.on.build && ordo.works[d]
+export function wishDuty(r: Reason): WorkDuty | null;                 // the duty a wish is raised under (null: request, pin)
+export function walkMask(s: GameState): string;                       // 'all' (every duty held, or away with Govern while away) or the held kinds + 'e' (Lex de annona)
+export function dutiesDay(s: GameState, fx?: (e: FxEvent) => void): void;   // end of the tick: finished works by hand teach their duty; a petition the plan
+export function pendingOffers(s: GameState): DutyId[];               // learned, not held, not answered: the counsel's offer
 // hints.ts
 export function howToGetMore(s: GameState, res: ResId, v: SimView): string[];   // generated from BUILDING_DEFS and HUB_DEFS + a live line
 export function benefitLine(type: BuildingId): string;

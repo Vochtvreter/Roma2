@@ -1,7 +1,8 @@
 // src/ui/tabs/edicta.ts — Edicta / Decisions: the Crossroads card, your story, focus, edicts, settings, switches, the
-// next-unlock teaser and "Who decides the details?" (DESIGN §9.1–9.2, §10.2, §10.8–10.10, §15.3). Owner: WP-I.
-import { EDICTS, FOCUSES, ORDO_AREAS, PATH_DECISIONS, SETTINGS, SWITCHES } from '../../game/types';
-import type { ActionResult, EdictId, GameState, LaborCat, OrdoArea, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
+// next-unlock teaser and the Mandata, the duties the player hands to the Ordo (DESIGN §9.1–9.2, §10.2, §10.8–10.10,
+// §15.3). Owner: WP-I.
+import { DUTIES, EDICTS, FOCUSES, PATH_DECISIONS, SETTINGS, SWITCHES } from '../../game/types';
+import type { ActionResult, DutyId, EdictId, GameState, LaborCat, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
 import { costEl, fmt, fmtCost, h, img, sentence, tip } from '../dom';
 import * as A from '../../game/actions';
@@ -9,6 +10,7 @@ import { edictOption, edictWindow, isUnlocked, petitionNeeds, settingValue, swit
 import { nextTeaser, sectionRevealed } from '../../game/reveal';
 import { introduced } from '../../game/intro';
 import { councilReport } from '../../game/ordo/index';
+import { DUTY_DEFS, granted, learned, wishDuty } from '../../game/ordo/duties';
 import { reasonText } from '../../game/ordo/reasons';
 import { view } from '../../game/sim';
 import { census } from '../../game/census';
@@ -31,11 +33,6 @@ const STORY: Record<PathOptionId, string> = {
   annonaPublica: 'the municipium took up the public grain dole', aquaeSalutares: 'the municipium chose healing waters',
   iuppiter: 'the Capitolium was vowed to Iuppiter Optimus Maximus', aeternitas: 'the Capitolium was vowed to Aeternitas',
   imperium: 'the Capitolium was vowed to the Imperium',
-};
-const AREA_LABEL: Record<OrdoArea, [string, string, string]> = {
-  labour: ['Operae', 'Labour', 'who works where (Populus)'],
-  build: ['Aedificatio', 'Construction', 'what is raised (Aedificia)'],
-  trade: ['Negotia', 'Trade', 'contracts and merchant deals (Commercium)'],
 };
 const SECTIONS: readonly SectionId[] = ['story', 'focus', 'edicts', 'settings', 'switches', 'manual'];
 
@@ -245,35 +242,52 @@ function switchesSec(g: Game): HTMLElement | null {
   return sec;
 }
 
-function wouldLine(g: Game, area: OrdoArea): string | null {
+/** What the Ordo would do today in a duty the player keeps, or null (a work only under the duty its wish belongs to). */
+function wouldLine(g: Game, d: DutyId): string | null {
   const would = councilReport(g.state).would;
-  if (area === 'labour') {
+  if (d === 'labour') {
     const parts = (Object.entries(would.labour) as [LaborCat, number][]).filter(([, n]) => n > 0).map(([c, n]) => `${CAT_LABEL[c][1]} ${n}`);
     return parts.length ? `The Ordo would assign: ${parts.join(' · ')}` : null;
   }
-  if (area === 'build') return would.build ? `The Ordo would raise: ${BUILDING_DEFS[would.build.type].name}. ${reasonText(would.build.reason)}` : null;
-  return would.trade ? `The Ordo would: ${reasonText(would.trade)}` : null;
+  if (d === 'trade') return would.trade ? `The Ordo would: ${reasonText(would.trade)}` : null;
+  const w = would.build;
+  return w && wishDuty(w.reason) === d ? `The Ordo would raise: ${BUILDING_DEFS[w.type].name}. ${reasonText(w.reason)}` : null;
 }
 
-function manualSec(g: Game, up: Updater[]): HTMLElement {
+/** The duties' discrete state for the signature: held, learned, and which duty the Ordo's would-be work belongs to. */
+function dutiesKey(s: GameState): string {
+  const would = councilReport(s).would;
+  return `${DUTIES.map((d) => `${+granted(s, d)}${+learned(s, d)}`).join('')}:${would.build ? wishDuty(would.build.reason) ?? '' : ''}`
+    + `${+Object.values(would.labour).some((n) => (n ?? 0) > 0)}${+!!would.trade}`;
+}
+
+/** The Mandata (DESIGN §10.2): every duty, whether the Ordo holds it, how to learn it, and for a duty the player keeps
+ *  what the Ordo would do today (Apply once). */
+export function dutiesSec(g: Game, up: Updater[]): HTMLElement {
   const s = g.state;
-  const sec = section('Quis decernit?', 'Who decides the details?', { guide: 'manual', anchor: 'manual',
-    note: 'The Ordo runs the day-to-day and says why. Take any part of it yourself; leaving it all to them works just as well.' });
-  for (const area of ORDO_AREAS) {
-    const on = s.ordo.on[area];
-    const [latin, en, where] = AREA_LABEL[area];
-    const row = h('div', { class: 'ed-row' },
-      h('div', { class: 'ed-row-main' }, h('b', null, latin), h('span', { class: 'ed-en' }, en),
-        h('div', { class: 'ed-q' }, on ? `The Ordo decides ${where}.` : `You decide ${where}.`)),
-      toggle(g, on, ['Ordo', 'Mine'], (v) => A.setOrdo(g.state, area, v)));
-    sec.append(row);
-    if (on) continue;
+  const sec = section('Mandata', 'What the Ordo does for you', { guide: 'manual', anchor: 'mandates',
+    note: 'Every chore is yours until you have done it yourself. Then hand it to the Ordo, or keep it; take it back whenever you like.' });
+  for (const d of DUTIES) {
+    const def = DUTY_DEFS[d];
+    const on = granted(s, d);
+    const know = learned(s, d);
+    sec.append(h('div', { class: `ed-row${know ? '' : ' unlearned'}`, 'data-duty': d },
+      h('div', { class: 'ed-row-main' }, h('b', null, def.latin), h('span', { class: 'ed-en' }, def.name),
+        h('div', { class: 'ed-q' }, on ? `The Ordo decides ${def.does}.` : know ? `Yours: ${def.does}.` : `To learn: ${def.learn.replace(/\.$/, '')}.`)),
+      toggle(g, on, ['Ordo', 'Mine'], (v) => A.setDuty(g.state, d, v), know ? null : def.learn)));
+    if (on || (d !== 'labour' && d !== 'trade' && !know)) continue;
     const ghost = h('div', { class: 'ed-would' });
-    const refresh = (): void => { const t = wouldLine(g, area); ghost.textContent = t ?? 'The Ordo would change nothing today.'; };
+    const row = h('div', { class: 'ed-would-row' }, img('i_seal', 1), ghost,
+      btn(g, 'Apply once', () => A.applyOnce(g.state, d === 'labour' || d === 'trade' ? d : 'build'), { tip: 'Do what the Ordo would do, this once.' }));
+    const refresh = (): void => { const t = wouldLine(g, d); row.hidden = !t; ghost.textContent = t ?? ''; };
     refresh();
     up.push(refresh);
-    sec.append(h('div', { class: 'ed-would-row' }, img('i_seal', 1), ghost,
-      btn(g, 'Apply once', () => A.applyOnce(g.state, area), { tip: 'Do what the Ordo would do, this once.' })));
+    sec.append(row);
+  }
+  const more = s.ordo.learned.filter((d) => !granted(s, d));
+  if (more.length >= 2) {
+    sec.append(h('div', { class: 'tab-row-end' }, btn(g, 'Hand over all you have learned', () => A.handOverAll(g.state),
+      { cls: 'primary', tip: more.map((d) => DUTY_DEFS[d].name).join(', ') })));
   }
   return sec;
 }
@@ -290,7 +304,6 @@ export const panel: Panel = {
   signature(g: Game): string {
     const s = g.state;
     const pn = petitionNeeds(s, view(s));
-    const would = councilReport(s).would;
     return [
       pn ? `${pn.decision}:${pn.rank}:${+pn.ready}${+pn.affordable}:${pn.needs.map((n) => +n.met).join('')}` : '-',
       PATH_DECISIONS.map((d: PathDecisionId) => s.decisions.paths[d] ?? '').join(','),
@@ -299,17 +312,20 @@ export const panel: Panel = {
       SETTINGS.map((id) => `${+isUnlocked(s, { kind: 'setting', id })}${+fresh(s, s.guidance.milestoneDays[SETTING_DEFS[id].unlock])}`).join(''),
       SWITCHES.map((id) => `${+isUnlocked(s, { kind: 'switch', id })}${+switchOn(s, id)}`).join(''),
       SECTIONS.map((x) => +sectionRevealed(s, x)).join(''),
-      ORDO_AREAS.map((a) => +s.ordo.on[a]).join(''),
-      `${+Object.values(would.labour).some((n) => (n ?? 0) > 0)}${+!!would.build}${+!!would.trade}`,
-      s.ordo.emergency.rations, nextTeaser(s)?.label ?? '', +s.victory, +introduced(s, 'edicts'),
+      dutiesKey(s),
+      s.ordo.emergency.rations, nextTeaser(s)?.label ?? '', +s.victory, +introduced(s, 'edicts'), +introduced(s, 'mandates'), +introduced(s, 'goals'),
     ].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;
-    // while the lessons run, Edicta is the founding charter alone (§11.13); its other orders come with their own lesson
+    // while the lessons run, Edicta is the duties and the founding charter alone (§11.13); its other orders come with
+    // their own lesson
     if (!introduced(s, 'edicts')) {
-      if (!s.decisions.paths.charter) body.append(crossroads(g, up));
-      else { const st = story(s); if (st) body.append(st); }
+      if (introduced(s, 'goals')) {
+        if (!s.decisions.paths.charter) body.append(crossroads(g, up));
+        else { const st = story(s); if (st) body.append(st); }
+      }
+      if (introduced(s, 'mandates')) body.append(dutiesSec(g, up));
       return;
     }
     body.append(crossroads(g, up));
@@ -320,9 +336,10 @@ export const panel: Panel = {
     if (sectionRevealed(s, 'switches')) { const e = switchesSec(g); if (e) body.append(e); }
     const teaser = nextTeaser(s);
     if (teaser) body.append(h('div', { class: 'ed-teaser' }, img('i_laurel', 1), h('span', null, h('b', null, `Next: ${teaser.label}`), ` · ${teaser.at}`)));
-    if (sectionRevealed(s, 'manual')) body.append(manualSec(g, up));
+    if (sectionRevealed(s, 'manual')) body.append(dutiesSec(g, up));
   },
   badge(g: Game) {
+    if (!introduced(g.state, 'goals')) return null;   // the charter's call waits for its lesson (§11.13)
     const pn = petitionNeeds(g.state, view(g.state));
     return pn && pn.ready && pn.affordable ? { text: '!', kind: 'gold' } : null;
   },

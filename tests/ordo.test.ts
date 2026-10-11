@@ -501,7 +501,7 @@ describe('reasons', () => {
     'rank', 'materials', 'luxury', 'focusPlan', 'beauty', 'capitolium', 'needWater', 'needFood', 'reserveTopup', 'requiredService',
     'builderShare', 'monument', 'pendingInput', 'winterStock', 'tools', 'luxuryStaff', 'serviceFull', 'focusSplit', 'leftover',
     'priority', 'deficitImport', 'luxuryImport', 'wishImport', 'surplusExport', 'merchantDeal', 'emergencyRations', 'emergencyWater',
-    'emergencyImport', 'relief', 'saving',
+    'emergencyHands', 'emergencyImport', 'relief', 'saving',
   ];
   const P = {
     type: 'horreum', res: 'stone', hub: 'durii', cat: 'food', focus: 'concordia', rank: 1, want: 'religion', why: 'low', level: 'parcae',
@@ -514,6 +514,7 @@ describe('reasons', () => {
     clean({ code: 'priority', params: { cat: 'water', n: 4, manual: 1 } });
     clean({ code: 'emergencyRations', params: { level: 'none', doh: 27 } });
     clean({ code: 'emergencyWater', params: { paused: 0, doh: 16 } });
+    clean({ code: 'emergencyHands', params: { paused: 0, doh: 16 } });
   });
 
   it('speaks in the DESIGN voice', () => {

@@ -26,7 +26,7 @@ It is the Kalends of April, AUC 800. Twenty-four souls of six legionary families
 You lay out blocks, wells, granaries, shrines and fields yourself — or leave it to the **Ordo Decurionum**, the council that staffs, builds and trades every day, even while you are away, and always says *why*. Six advisors with pixel portraits count the days of grain and water, name what is wrong, and offer one-click remedies. Tents become thatched *casae*, tiled cottages, stone houses, and finally three-storey *insulae* or atrium *domus*; the palisade becomes a stone *murus*; aqueduct arches stride in from a hill spring; the forum grows from tents and standards to marble. Five ranks lie ahead — **Castra → Vicus → Oppidum → Municipium → Colonia** — each sealed by a permanent three-way choice, and the run ends when the **Capitolium** is dedicated, about four hours of 1× play (or a few days of short check-ins).
 
 ### 1.2 Pillars
-1. **You decide, the Ordo runs.** Automation guarantees survival; decisions (charter, paths, focus, edicts, settings) drive progress; building by hand makes you *better and faster* than the Ordo.
+1. **By your hand first, then the Ordo's.** A new camp is run by hand; every chore the player has done becomes a duty they may hand to the Ordo (§10.2), so the colony comes to run itself as the player masters it. Automation guarantees survival; decisions (charter, paths, focus, edicts, settings) drive progress; building by hand makes you *better and faster* than the Ordo.
 2. **Every number is a runway.** Grain and water are always shown as *days on hand*, with a 12-month forecast. Every warning names cause, deadline and remedy.
 3. **The city visibly grows up.** Housing evolves on a surveyed Roman grid; roofs, storeys, walls, streets, forum, aqueduct and Capitolium all change on screen.
 4. **Nothing waits for you; absence is never punished.** Events resolve to the cautious option, rank-ups are non-blocking, offline time replays the real tick at half speed, houses never lose a tier while you are away, and there is no game over.
@@ -498,7 +498,10 @@ A council switch, **default On**, revealed at the first emergency or milestone 5
 1. **Rations**: grain runs out in < 12 days → portions *Parcae*; < 6 days → *Arctae*. Ignores the edict window. Lifted (back to the edict's portion) when grain DoH > 25.
 2. **Water**: water runs out in < 8 days → caementarium and baths pause (no water draw) until water DoH > 15.
 3. **Emergency import**: grain runs out in < 8 days and the coin covers it → one import of 20 days of grain from the cheapest open hub, arriving after that hub's one-way days, outside the caravan slots, ignoring the trade reserve. Cooldown 90 days.
-4. **The Legate's relief** (*mutuum*): structural famine (max potential < need) and grain runs out in < 10 days, or grain < 6 days with coin below the import cost → the relief card (§12): accept (default) → 30 days of grain arrive in 5 days; debt = 2 × base price × qty, repaid from 25% of each Kalends tax payment. Once per 365 days (one free relief per year with *Annona Publica*). Works offline (auto-accepted).
+4. **Hands to the fields** (only while the player staffs by hand, §10.2): grain or water on hand < 12 days and falling, or any group's hunger or thirst > 25 → the fields and wells get at least the hands the Ordo would give them (the player's targets are left as they are), until both stores hold > 25 days or are 90% full (`B.duties`). This is what keeps a camp nobody plays fed (test: no hunger or thirst deaths over two years).
+5. **The Legate's relief** (*mutuum*): structural famine (max potential < need) and grain runs out in < 10 days, or grain < 6 days with coin below the import cost → the relief card (§12): accept (default) → 30 days of grain arrive in 5 days; debt = 2 × base price × qty, repaid from 25% of each Kalends tax payment. Once per 365 days (one free relief per year with *Annona Publica*). Works offline (auto-accepted).
+
+Holding no duty, the Ordo still raises a famine's field or a drought's well under this switch (the survival rows of §10.5).
 
 **Guarantee**: with the Ordo on and emergency measures on, no year loses more than 5% of the average population to hunger or thirst (balance test).
 
@@ -623,7 +626,40 @@ All paths, edicts, timed modifiers (events, festivals), emergency rations and le
 | **Remedies** | Advisor card / Consiliarii | One click, typed (§11.5). |
 | **Overlays, inspection** | Overlay bar, `O` | §11.9. |
 
-### 10.2 What the Ordo automates (*"Who decides the details?"*, revealed at Vicus or when any toggle is off)
+### 10.2 What the Ordo automates — duties the player hands over (*Mandata*, Edicta)
+A new colony is **run by hand**: the player staffs it, raises its works and trades. Each chore is a **duty**; doing it
+once by hand **learns** it (a toast, an Annales line), and a learned duty is the player's to **hand to the Ordo** or
+**keep**. The counsel card offers each newly learned duty once (*Hand to the Ordo* / *Keep it mine*, below a Cave
+advisory, above the tips; during the lessons the Ordo's lesson offers them); Edicta → **Mandata** lists every duty,
+how to learn it, a toggle *Ordo / Mine*, and for a duty the player keeps what the Ordo would do today with **Apply
+once**. A duty is taken back as easily. The colony comes to run itself as the player masters it (`ordo/duties.ts`).
+
+| Duty (`id`) | *Latin* / English | The Ordo does (its rows of §10.4–10.7) | Learned when the player … |
+|---|---|---|---|
+| `labour` | *Operae* / Staffing | the daily staffing (§10.4) | sets a trade's hands in Populus |
+| `water` | *Aquae* / Water works | `survivalWater`, `aestasWater`, `waterAccess`, a full water store | raises a well, a cistern or a fountain |
+| `food` | *Annona* / Food and granaries | `survivalFood`, `hiemsStore`, a full grain store | raises fields, a hunting lodge, a forage camp or a granary |
+| `homes` | *Domus* / House plots | `beds` | lays out a house plot |
+| `services` | *Officia* / Services | `evolve` | raises a shrine, a shop row, a temple, a market hall or baths |
+| `materials` | *Materia* / Materials | `materials`, `capitolium`, full material stores | raises a lumber camp, a quarry, a workshop or a warehouse |
+| `plan` | *Consilium* / Rome's works and the plan | `rank`, `luxury`, `focusPlan`, `beauty`, Urbs paving | carries a petition to Rome |
+| `trade` | *Negotia* / Trade | contracts and merchant deals (§10.7) | signs a contract, takes a merchant's deal or buys at once |
+
+- Only the player's own finished work teaches (not a site in hand, nor the Ordo's, nor one it raised on request).
+- **The Ordo raises and saves only for the duties it holds**: the wish walk (§10.5) leaves out the others, so its
+  saving target never holds stock back for a work that is the player's to raise. The Agenda shows the next such work
+  under *"Annona is in your hands. The Ordo would raise:"* with **Apply once**. The player's requests and pin are
+  raised whatever it holds.
+- **Two nets keep "nothing is lost while you are away"**: under the *Lex de annona* the Ordo still raises a famine's
+  field or a drought's well, and sends idle hands to the fields and wells while the player staffs by hand (§8.12 step
+  4); with **Govern while away** it holds every duty while the player is away, in their name (the away report lists it).
+- *I know the camp: skip the introduction* (or *Skip the lessons*) counts every duty as learned: the counsel offers them
+  at once, with *Hand over all*.
+- Colonies from before the duties, the bots and every test colony without the lessons hold every duty, learned and
+  answered, as the toggles below say.
+
+The three areas below remain the Ordo's switches (building on or off hands over or takes back every kind of work
+learned at once):
 
 | Toggle (`code`) | UI label | Ordo on | Manual |
 |---|---|---|---|
@@ -863,7 +899,7 @@ GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; but
 | 13 | `wants` | What a house wants | a house blocked ≥ 5 days | build | Domus overlay opened | `#overlay-bar` | *"Hover a house to see what it needs next, or open the Domus overlay."* (+ *"A shrine within five steps is often all it takes."* when the first house wants a shrine) |
 | 14 | `autumn` | Hiems is coming | Autumnus, or the Hiems forecast ≥ Monitum | welcome | a horreum exists and the forecast is clear | `#vital-grain` | *"In Hiems our fields give a third. Open sheds hold weeks and rot; a Horreum keeps grain for months. If grain runs low the Ordo cuts rations before anyone starves."* |
 | 15 | `edicts` | Your first edict | M3 done | charter | — | `[data-guide=edicts]` | *"Edicts trade one good for another. Each may change once a season; the window opens on the season's Kalends."* |
-| 16 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"You may take labour, building or trade from the Ordo. Leaving it all to them works just as well."* |
+| 16 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"Every duty you have learned is yours to hand to the Ordo, or keep. Change it any day in the Mandata."* |
 | 17 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract of the player's exists (the Ordo's do not count) | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
 | 18 | `fork` | Insula or domus? | rank ≥ III and a T3 house exists | wants | — | Dignitas loci overlay | *"A stone house rises two ways: near shops and noise it becomes an insula, many hands for work; near gardens, temples and fountains a domus, few hands but rich taxes and prestige. Each house has a preference in its inspector."* |
 | 19 | `aqueduct` | Water from the hills | rank ≥ IV | trade | castellum placed | Aedificia | *"Place a castellum in town; the arches find their own way from the spring."* |
@@ -923,27 +959,28 @@ it asks for — the right action is the one in front of the player.
 
 | # | Lesson | Card | Job (concludes when) | Brings | Breather |
 |---|---|---|---|---|---|
-| I | Water for the dry season | *"Our one well will not last the summer. Raise a cistern."* | a cistern the player placed **stands** (live "Rising · 41%") | Aedificia (the cistern only), coin, timber and stone | 45 s |
-| II | Beds for newcomers | *"Rome sends families only to free beds. Lay out a house plot."* | the player's house plot stands | souls and spirits | 45 s |
-| III | The Ordo takes up the work | *"The Ordo keeps the colony alive, even while you sleep. Watch it build."* → *"It plays safe. Where the colony lags, your own hand does better."* | the Ordo stakes its first work | the ticker; **the Ordo begins to build** | 45 s |
-| IV | The founding law | *"Rome awaits our founding law. Choose it in Edicta: it is for good."* | the charter proclaimed | Res Gestae (goal and meter), Edicta (the charter alone); **dignitas as the reward** | 45 s |
-| V | Your advisors | *"Advisors warn of trouble, each with a remedy. Hear them out."* | the player opens Consiliarii (its button glows; it does not open by itself) | portraits, Consiliarii | 40 s |
-| VI | Time is yours | *"The Ordo keeps the colony now. Hurry the days, or pause to think."* | a faster speed chosen | 2× – 10× | 40 s |
-| VII | Every work is yours | *"All of Rome's works are open to you now. Raise one of your choosing."* | the player places a work not yet taught | the full Aedificia: every work, tools, categories, the Ordo's agenda and buttons | 40 s |
-| VIII | The roll of souls | *"Every soul has a name, an age and a trade. Open Populus."* | the player opens Populus | Populus | 40 s |
+| I | Hands to the fields | *"Our grain falls every day. Put more hands on the fields."* | 4 hands work the fields (`FIELD_HANDS`; live "Hands on the fields: 1 of 4"); learns **staffing** | Populus (its labour lines glow on the Food row) | 40 s |
+| II | Water for the dry season | *"Our one well will not last the summer. Raise a cistern."* | a cistern the player placed **stands** (live "Rising · 41%"); learns **water works** | Aedificia (the cistern only), coin, timber and stone | 45 s |
+| III | Beds for newcomers | *"Rome sends families only to free beds. Lay out a house plot."* | the player's house plot stands; learns **house plots** | souls and spirits | 45 s |
+| IV | The Ordo takes up the work | *"The Ordo can take up any chore you have mastered. Hand it one."* → *"It works in your name, even while you sleep. Take a duty back anytime."* | a learned duty handed to the Ordo (a *Hand over* button per duty on the card), or *Keep them all mine* | the ticker, Edicta (the Mandata alone) | 45 s |
+| V | The founding law | *"Rome awaits our founding law. Choose it in Edicta: it is for good."* | the charter proclaimed | Res Gestae (goal and meter), the charter in Edicta; **dignitas as the reward** | 45 s |
+| VI | Your advisors | *"Advisors warn of trouble, each with a remedy. Hear them out."* | the player opens Consiliarii (its button glows; it does not open by itself) | portraits, Consiliarii | 40 s |
+| VII | Time is yours | *"Hurry the days when all is well, or pause to think."* | a faster speed chosen | 2× – 10× | 40 s |
+| VIII | Every work is yours | *"All of Rome's works are open to you now. Raise one of your choosing."* → *"Each kind of work you raise, the Ordo can learn to raise."* | the player places a work not yet taught | the full Aedificia: every work, tools, categories, the Ordo's agenda and buttons | 40 s |
 | IX | Maps of the land | *"Lay a map over the land: water, soil, what houses lack."* | an overlay opened | the overlay bar | 40 s |
 | X | The council's course | *"The council takes standing orders from you. Change one in Edicta."* | an edict, focus, setting or switch changed | the rest of Edicta; **the Annales as the closing reward** | 8 s |
 
 - **Only what has been taught, plus the one new thing.** While the lessons run, every panel shows only what the lessons
   have brought: Aedificia offers the works they asked for as plain cards (name, what it does in words, cost, Place: no
-  numbers, no tools, no categories, the queue only while something rises); Edicta is the charter alone; the Res Gestae
+  numbers, no tools, no categories, the queue only while something rises); Edicta is the Mandata and the charter alone; the Res Gestae
   is the goal and its meter (no unlock list, no seasonal chips); the HUD shows timber and stone only; a deed's toast
   names no unlocks. Nothing waits to be dumped at the end: each remaining system is its own lesson.
-- **Hand first, then the Ordo as the reward.** Until lesson III the Ordo staffs the fields and wells (nobody starves)
-  but builds nothing: the first works are the player's. With lesson III it takes over the very chore the player has
-  just done. A colony left alone gets its Ordo anyway by elapsed day **150** (`B.intro.ORDO_BY`, a game-day safety net
-  checked in the sim tick); the lessons themselves still wait.
-- **Speed is earned.** Pause and 1× only until lesson VI, so the first works are raised at the pace of reading.
+- **Hand first, then the Ordo as the reward.** A colony with the lessons is run by hand (§10.2): the founders keep
+  their posts (2 at the well, 1 on the field, 2 builders) and the Ordo holds no duty. Each early job teaches a duty,
+  and lesson IV asks the player to hand one of them over: the Ordo takes up the very chore just mastered. Nobody
+  starves meanwhile: the *Lex de annona* sends hands to the fields when grain runs low (§8.12) and raises a famine's
+  field or a drought's well.
+- **Speed is earned.** Pause and 1× only until lesson VII, so the first works are raised at the pace of reading.
 - **Nothing blocks, nothing traps, nothing floods.** The colony runs throughout; a Periculum advisory and the urgent
   tips still take the card (the other tips wait for the end of the lessons, then come at most one per **40 s of real
   play**, `TIP_GAP_S`). A job that waits 45 s (`NUDGE_S`) and has not been started pulses its target; after 120 s
@@ -951,10 +988,8 @@ it asks for — the right action is the one in front of the player.
   every card; *Hide tips*, mentor tips off, or *"I know the camp: skip the introduction"* on the Founding Dispatch skip
   them too.
 - **A job done before it is asked counts** (a cistern raised through an advisor's remedy ends lesson I at once).
-- Measured in a real-time browser run (an eager player who reads each card ≈ 5 s, acts at once, never presses Begin
-  now, and presses 10× whenever it is offered): the Ordo arrives at 1:52, a new system every 45–55 s, the lessons end
-  at 7:36; a player who reads and explores takes longer. Colonies from before the lessons, and the bots, have none
-  (`intro.lesson = −1`).
+- Colonies from before the lessons, and the bots, have none (`intro.lesson = −1`). A colony saved in the middle of the
+  earlier ten lessons keeps its place (its lesson by name; the roll of souls goes on to the maps) and every duty.
 
 **Why (sources).**
 - *Learn by doing, not by reading.* Fan, GDC 2012 (*Plants vs. Zombies*): "do rather than read", ~8 words on screen,
@@ -1253,7 +1288,7 @@ Other: cypress and umbrella pine `#24402c` / `#3d6b3a`; dirt road `#9b7a52` edge
 | Jobs | Marcus Valerius on the ager; Lucius Antonius and Titus Flavius at the well (the Ordo re-plans on day 1) |
 | Stocks | denarii **600** · grain **480** (cap 600 → 23.6 days) · water **240** (cap 300 → 11.8 days) · timber **80** · stone **40** · tools **4** · others 0 |
 | Meters | morale 65 · fed index 1.0 · dignitas ≈ 5 |
-| Ordo | labour, build and trade on (trade inert until Vicus unless *Mercatores*) · focus *Concordia* · settings at defaults · emergency and govern-away on |
+| Ordo | a new colony (with the lessons): **no duty held**, labour targets as the founders stand (water 2 · food 1 · builders 2); colonies without the lessons and the bots: labour, build and trade on, every duty held (trade inert until Vicus unless *Mercatores*) · focus *Concordia* · settings at defaults · emergency and govern-away on |
 | Advisors | Annonae, Aquarum, Fabrum appointed |
 | Market | all 1.0, easing toward the Ver targets |
 

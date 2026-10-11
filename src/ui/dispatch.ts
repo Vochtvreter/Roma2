@@ -146,7 +146,7 @@ function foundingBody(g: Game, start: () => void): HTMLElement {
   return h('div', { class: 'disp-body letter' },
     h('p', { class: 'disp-salute' }, `To the Praefectus castrorum at ${s.name}.`),
     h('p', { class: 'disp-letter' }, text),
-    h('p', { class: 'disp-letter' }, 'The Ordo Decurionum will staff, build and trade in your name every day. Set its course, raise what you will with your own hands, and keep the people fed.'),
+    h('p', { class: 'disp-letter' }, 'The camp is yours to run by hand: who works where, and what is raised. Each chore you have shown the Ordo Decurionum, it will take up in your name if you bid it, every day and even while you sleep. Keep the people fed.'),
     h('div', { class: 'disp-facts' },
       h('span', { class: 'disp-fact' }, img('i_souls', 2), `${s.people.length} souls`),
       h('span', { class: 'disp-fact' }, img('i_grain', 2), `${Math.floor(f.grain.doh)} days of grain`),

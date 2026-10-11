@@ -18,6 +18,7 @@ import { PATH_DEFS } from '../../game/data/decisions';
 import { LAYER_META } from '../../game/data/housing';
 import { RESOURCE_DEFS } from '../../game/data/resources';
 import { confirm2 } from '../modals';
+import { councilReport } from '../../game/ordo/index';
 import { agendaEl, bar, btn, fresh, lackLine, lacking, newMark, rankReason, section, typeSprite } from './common';
 import type { TabPanel } from './common';
 import { labourEl, labourKey, labourShown } from './labour';
@@ -153,7 +154,7 @@ export const panel: TabPanel = {
       (['pin', 'road', 'pave', 'reserve', 'demolish'] as const).map((t) => +toolRevealed(s, t)).join(''),
       worksQueue(s).map((b) => `${b.id}:${b.status}:${b.owner}`).join(','),
       BUILD_ORDER.map((t) => `${d.counts[t] ?? 0}.${d.all[t] ?? 0}`).join(','),
-      +s.ordo.on.build, +introduced(s, 'catalog'), taughtWorks(s).join(','), labourKey(s), s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
+      +s.ordo.on.build, Object.values(s.ordo.works).map(Number).join(''), councilReport(s).would.build?.type ?? '', +introduced(s, 'catalog'), taughtWorks(s).join(','), labourKey(s), s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
       placing?.kind === 'building' ? placing.type : placing?.kind ?? '',
       BUILD_ORDER.map((t) => +fresh(s, rankDay(s, BUILDING_DEFS[t].rank))).join(''),
     ].join('|');

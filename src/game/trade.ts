@@ -17,6 +17,7 @@ import { settingValue } from './decisions';
 import { reserved } from './ordo/saving';
 import { goodsPlan } from './ordo/goods';
 import { banditCheck } from './events';
+import { learnDuty } from './ordo/duties';
 import { HUB_DEFS as HUB_DEFS$, MERCHANT_NAMES as MERCHANT_NAMES$, SEASON_TARGET as SEASON_TARGET$, TRADE_BASE as TRADE_BASE$ } from './data/hubs';
 import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
@@ -164,6 +165,7 @@ export function createContract(s: GameState, spec: ContractSpec, owner?: 'player
   s.trade.contracts.push(c);
   const verb = spec.mode === 'import' ? `buy ${qty} ${resName(spec.res)} from` : `sell ${qty} ${resName(spec.res)} to`;
   log(s, 'trade', `Contract${c.repeat ? ' (standing)' : ''}: ${verb} ${HUB_DEFS[spec.hub].name}.`, undefined, id);   // an Ordo contract is tagged 'decided' by chronicle() only when due
+  if (c.owner === 'player') learnDuty(s, 'trade', pushActionFx);
   return { ok: true, id };
 }
 
@@ -358,7 +360,7 @@ export function tradeDay(s: GameState, ctx: TickContext, rng: Rng, v: SimView): 
 }
 
 /** Takes one of the visiting merchant's offers ('buy': we buy from them; 'sell': we sell to them). */
-export function takeOffer(s: GameState, offerId: number): ActionResult {
+export function takeOffer(s: GameState, offerId: number, by: 'player' | 'ordo' = 'player'): ActionResult {
   const m = s.trade.merchant;
   const o = m?.offers.find((x) => x.id === offerId && !x.taken);
   if (!m || !o) return fail('notFound', 'No such offer.');
@@ -380,6 +382,7 @@ export function takeOffer(s: GameState, offerId: number): ActionResult {
   o.taken = true;
   const verb = o.kind === 'buy' ? 'bought' : 'sold';
   log(s, 'trade', `${m.name}: ${verb} ${o.qty} ${resName(o.res)} for ${Math.round(total)} denarii.`);
+  if (by === 'player') learnDuty(s, 'trade', pushActionFx);
   offerClosed(s, m);
   return { ok: true, id: offerId };
 }
@@ -424,6 +427,7 @@ export function buyNow(s: GameState, res: TradeRes, qty: number): ActionResult {
   if (s.res.denarii < cost) return fail('denarii', `The aerarium cannot pay ${Math.ceil(cost)} denarii.`);
   const car = sendEmergency(s, res, n, hub, pushActionFx);
   log(s, 'trade', `Bought ${n} ${resName(res)} from ${HUB_DEFS[hub].name} for ${Math.round(cost)} denarii; the carts arrive ${formatRoman(car.arrive)}.`, undefined, car.id);
+  learnDuty(s, 'trade', pushActionFx);
   return { ok: true, id: car.id };
 }
 

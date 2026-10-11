@@ -1,8 +1,8 @@
 // src/game/ordo/actions.ts — player actions that steer the Ordo (ARCHITECTURE §8.4, §8.7). Owner: WP-C.
 // Every action returns an ActionResult with a plain reason, never throws, and logs what it changed.
 import { B } from '../balance';
-import { LABOR_CATS, ORDO_AREAS } from '../types';
-import type { ActionResult, BuildingId, FailCode, GameState, LaborCat, OrdoArea } from '../types';
+import { LABOR_CATS, ORDO_AREAS, WORK_DUTIES } from '../types';
+import type { ActionResult, BuildingId, DutyId, FailCode, GameState, LaborCat, OrdoArea } from '../types';
 import { log } from '../state';
 import { pushActionFx } from '../memo';
 import { createContract } from '../trade';
@@ -11,7 +11,8 @@ import { view } from '../sim';
 import { BUILDING_DEFS } from '../data/buildings';
 import { RANK_DEFS } from '../data/ranks';
 import { planLabour } from './labour';
-import { newWishes, ordoSlot } from './build';
+import { ordoSlot, wouldRaise } from './build';
+import { granted, keepDuties as keep, learnDuty, learned, pendingOffers, setDuty as grant } from './duties';
 import { tradeMoves } from './trade';
 import { aWork, reasonText } from './reasons';
 
@@ -59,9 +60,15 @@ export function pinBuild(s: GameState, type: BuildingId | null): ActionResult {
   return OK;
 }
 
-/** Turns an Ordo area (labour, build, trade) on or off; manual labour starts from today's staffing, manual trade takes over the Ordo's contracts. */
+/** Turns an Ordo area (labour, build, trade) on or off; manual labour starts from today's staffing, manual trade takes over
+ *  the Ordo's contracts; building on hands the Ordo every kind of work the player has learned, off takes them all back. */
 export function setOrdo(s: GameState, area: OrdoArea, on: boolean): ActionResult {
   if (!ORDO_AREAS.includes(area)) return fail('invalid', 'No such part of the council\'s work.');
+  if (area === 'build') {
+    const kinds = WORK_DUTIES.filter((d) => learned(s, d));
+    if (on && kinds.length === 0) return fail('locked', 'Raise a work of your own first: then the Ordo can learn to raise its kind.');
+    for (const d of WORK_DUTIES) s.ordo.works[d] = on && kinds.includes(d);
+  }
   if (s.ordo.on[area] === on) return OK;
   if (!on && area === 'labour') {
     const c = view(s).c;
@@ -71,7 +78,7 @@ export function setOrdo(s: GameState, area: OrdoArea, on: boolean): ActionResult
   if (!on && area === 'trade') for (const c of s.trade.contracts) if (c.owner === 'ordo') { c.owner = 'player'; handed++; }
   s.ordo.on[area] = on;
   const more = handed > 0 ? ` The Ordo hands you its ${handed} contract${handed === 1 ? '' : 's'}.` : '';
-  log(s, 'ordo', on ? `The Ordo takes ${AREA[area]} back in hand.` : `You take ${AREA[area]} into your own hands.${more}`);
+  log(s, 'ordo', on ? `The Ordo takes ${AREA[area]} in hand.` : `You take ${AREA[area]} into your own hands.${more}`);
   return OK;
 }
 
@@ -80,6 +87,7 @@ export function setManualTarget(s: GameState, cat: LaborCat, n: number): ActionR
   if (!LABOR_CATS.includes(cat) || !Number.isFinite(n)) return fail('invalid', 'No such kind of work.');
   if (s.ordo.on.labour) return fail('manualOnly', 'The Ordo assigns the labour: take it into your own hands first.');
   s.ordo.manual[cat] = Math.max(0, Math.min(Math.round(n), view(s).c.workforce));
+  learnDuty(s, 'labour', pushActionFx);
   return OK;
 }
 
@@ -95,7 +103,7 @@ export function applyOnce(s: GameState, area: OrdoArea): ActionResult {
     return OK;
   }
   if (area === 'build') {
-    const w = newWishes(s, v, 1)[0];
+    const w = wouldRaise(s, v);
     if (!w || w.tile === undefined) return fail('notFound', 'The Ordo has nothing to propose.');
     const r = placeBuilding(s, w.type, w.tile, { owner: 'player', reason: w.reason });
     if (r.ok && r.id !== undefined) pushActionFx({ kind: 'ordoPlaced', id: r.id });
@@ -116,4 +124,22 @@ export function setLabourPriority(s: GameState, cat: LaborCat, days: number): Ac
   s.ordo.priorities = [...s.ordo.priorities.filter((p) => p.cat !== cat), { cat, until: s.day + d }];
   log(s, 'ordo', reasonText({ code: 'priority', params: { cat, days: d } }));
   return OK;
+}
+
+/** Hands a learned duty to the Ordo (`on`), or takes it back (DESIGN §10.2). */
+export function setDuty(s: GameState, duty: DutyId, on: boolean): ActionResult {
+  return grant(s, duty, on, (area, v) => setOrdo(s, area, v));
+}
+
+/** Hands the Ordo every duty learned and not yet held (or those of `only`). */
+export function handOverAll(s: GameState, only?: readonly DutyId[]): ActionResult {
+  const ds = s.ordo.learned.filter((d) => (!only || only.includes(d)) && !granted(s, d));
+  if (ds.length === 0) return fail('notFound', 'The Ordo already holds every duty you have learned.');
+  for (const d of ds) setDuty(s, d, true);
+  return OK;
+}
+
+/** Keeps the duties now offered in the player's own hands (the offer is answered; Edicta can hand them over later). */
+export function keepDuties(s: GameState, ds: readonly DutyId[] = pendingOffers(s)): ActionResult {
+  return keep(s, ds);
 }

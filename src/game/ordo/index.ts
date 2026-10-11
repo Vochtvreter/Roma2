@@ -1,14 +1,16 @@
 // src/game/ordo/index.ts — the council's daily session and its last report (ARCHITECTURE §8.4, DESIGN §10). Owner: WP-C.
 // Order: emergency (daily) → labour (daily) → the player's pin and requests (daily) → build (even days) → trade
-// (day % 10 == 5). An area runs when its toggle is on, or offline with Govern while away; the player's own orders (pin,
-// requests) are carried out either way. The report is kept in a WeakMap (never saved, never read by the sim).
+// (day % 10 == 5). An area runs when its toggle is on, or offline with Govern while away; the Ordo builds only the duties
+// handed to it (ordo/duties.ts; every duty offline with Govern while away); the player's own orders (pin, requests) are
+// carried out either way. The report is kept in a WeakMap (never saved, never read by the sim).
 import { B as B$ } from '../balance';
 import type { CouncilReport, GameState, LaborCat, LabourPlan, OrdoArea, Reason, SimView, TickContext } from '../types';
 import type { Rng } from '../rng';
 import { switchOn } from '../decisions';
-import { emergencyDay } from './emergency';
+import { emergencyDay, emergencyHands } from './emergency';
+import { governAway } from './duties';
 import { manualPlan, planLabour } from './labour';
-import { newWishes, ordoBuild, processRequests, wishList } from './build';
+import { newWishes, ordoBuild, processRequests, wishList, wouldRaise } from './build';
 import { ordoTrade, ordoTradeWould } from './trade';
 import { savingFor, savingReason } from './saving';
 import { beginDay, decisionsToday } from './chronicle';
@@ -39,9 +41,12 @@ export function runOrdo(s: GameState, ctx: TickContext, rng: Rng, v: SimView): L
   beginDay(s);
   emergencyDay(s, ctx, v);       // checks the Lex de annona switch itself
   const on = { labour: ordoActive(s, 'labour', ctx.offline), build: ordoActive(s, 'build', ctx.offline), trade: ordoActive(s, 'trade', ctx.offline) };
-  const plan = on.labour ? planLabour(s, v) : manualPlan(s, v);
+  // away with Govern while away on, the Ordo holds every duty today; at home only those handed to it (duties.ts)
+  governAway(s, ctx.offline && switchOn(s, 'governAway'));
+  const plan = on.labour ? planLabour(s, v) : manualPlan(s, v, emergencyHands(s, v) ?? undefined);
   processRequests(s, ctx, v);
-  if (on.build && s.day % B.ordo.BUILD_EVERY === 0) ordoBuild(s, ctx, v);
+  // the Ordo builds the duties it holds; holding none, it still raises a famine's field or a drought's well under the Lex de annona
+  if ((on.build || switchOn(s, 'emergency')) && s.day % B.ordo.BUILD_EVERY === 0) ordoBuild(s, ctx, v);
   if (on.trade && s.day % B.ordo.TRADE_EVERY === B.ordo.TRADE_OFFSET) ordoTrade(s, ctx, v);
   const rep = report(s, v, plan, on);
   reports.set(s, { rep, shown: rep, layout: layoutEpoch(s), focus: s.decisions.focus, plan, on });
@@ -50,8 +55,7 @@ export function runOrdo(s: GameState, ctx: TickContext, rng: Rng, v: SimView): L
 
 function report(s: GameState, v: SimView, plan: LabourPlan, on: Record<OrdoArea, boolean>): CouncilReport {
   const agenda = wishList(s, v, AGENDA);
-  const next = newWishes(s, v, 1)[0] ?? null;
-  const would: CouncilReport['would'] = { labour: {}, build: on.build ? null : next, trade: on.trade ? null : ordoTradeWould(s, v) };
+  const would: CouncilReport['would'] = { labour: {}, build: wouldRaise(s, v), trade: on.trade ? null : ordoTradeWould(s, v) };
   if (!on.labour) for (const l of planLabour(s, v).lines) would.labour[l.cat] = l.target;
   const trade = s.trade.contracts.filter((c) => c.owner === 'ordo' && c.reason).map((c) => ({ contract: c.id, reason: c.reason as Reason }));
   return { day: s.day, labour: plan.lines, agenda, saving: savingFor(s, v), trade, would, ticker: ticker(s, v, plan, agenda, on.build) };

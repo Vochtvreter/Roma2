@@ -7,6 +7,7 @@ import { fmtCost, h, img, sentence, tip } from '../dom';
 import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
+import { DUTY_DEFS, wishDuty } from '../../game/ordo/duties';
 import { checkRemedy } from '../../game/advisors/remedies';
 import { reasonText } from '../../game/ordo/reasons';
 import { formatRoman } from '../../game/calendar';
@@ -199,29 +200,38 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
   const s = g.state;
   const rep = councilReport(s);
   const manual = !s.ordo.on.build;
+  const would = rep.would.build;   // the Ordo's next work among the duties it does not hold (§10.2)
   const box = h('div', { class: 'tab-agenda' });
-  const list = rep.agenda.length ? rep.agenda : manual && rep.would.build ? [rep.would.build] : [];
-  if (manual) box.append(h('div', { class: 'tab-note' }, 'Construction is yours. The Ordo would raise:'));
-  if (!list.length) {
-    box.append(h('div', { class: 'tab-quiet' }, manual ? 'Nothing it would add today.'
+  if (!rep.agenda.length && !would) {
+    box.append(h('div', { class: 'tab-quiet' }, manual ? 'Building is yours, and the Ordo would add nothing today.'
       : `The Ordo has nothing in hand. It keeps the colony every ${B.ordo.BUILD_EVERY} days, and grows it by one work every ${B.ordo.GROWTH_EVERY}: raise more yourself to grow faster.`));
   }
-  list.forEach((w, i) => {
+  // a work the player keeps is theirs to raise: the Ordo saves for none of it, so its line says what it still needs
+  const yours = (w: WishView): string => (w.lacking ? `needs ${fmtCost(w.lacking)}` : 'yours to raise now');
+  const row = (w: WishView, i: number, mine = false): HTMLElement => {
     const state = h('span', { class: 'tab-agenda-state' });
-    up.push(() => { state.textContent = wishState(g, w); });
-    state.textContent = wishState(g, w);
-    const row = h('div', { class: 'tab-agenda-row', 'data-key': `w-${w.type}-${w.tile ?? i}` },
+    const say = (): string => (mine ? yours(w) : wishState(g, w));
+    up.push(() => { state.textContent = say(); });
+    state.textContent = say();
+    const el = h('div', { class: 'tab-agenda-row', 'data-key': `w-${w.type}-${w.tile ?? i}` },
       h('span', { class: 'tab-agenda-n num' }, String(i + 1)), img(typeSprite(w.type), 1, 'tab-agenda-img'),
       h('div', { class: 'tab-agenda-main' }, h('div', null, h('b', null, BUILDING_DEFS[w.type].name), ' · ', state),
         h('div', { class: 'tab-why' }, reasonText(w.reason))));
     if (w.tile !== undefined) {
       const t = w.tile;
-      row.classList.add('click');
-      row.addEventListener('click', () => g.focusTile(t));
+      el.classList.add('click');
+      el.addEventListener('click', () => g.focusTile(t));
     }
-    box.append(row);
-  });
-  if (manual && rep.would.build) box.append(btn(g, 'Apply once', () => A.applyOnce(g.state, 'build'), { cls: 'primary', tip: 'Place the Ordo\'s first wish now as your own site.' }));
+    return el;
+  };
+  rep.agenda.forEach((w, i) => box.append(row(w, i)));
+  if (would) {
+    const d = wishDuty(would.reason);
+    box.append(h('div', { class: 'tab-note' }, manual ? 'Building is yours. The Ordo would raise:'
+      : `${d ? DUTY_DEFS[d].latin : 'This work'} is in your hands. The Ordo would raise:`));
+    box.append(row(would, rep.agenda.length, true));
+    box.append(btn(g, 'Apply once', () => A.applyOnce(g.state, 'build'), { cls: 'primary', tip: 'Place the Ordo\'s wish now as your own site.' }));
+  }
   const saving = h('div', { class: 'tab-agenda-save' });
   const refreshSave = (): void => {
     const sv = councilReport(g.state).saving;

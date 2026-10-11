@@ -3,8 +3,8 @@
 // enters only as `now` (saveGame). Keys are namespaced: every repo of a GitHub user shares one origin.
 import { B } from './balance';
 import {
-  ADVISORS, BUILDER, BUILDINGS, EDICTS, EVENTS, FOCUSES, HOUSE_TIERS, HUBS, LABOR_CATS, MILESTONE_IDS, PATH_DECISIONS, RESOURCES, RULES, SETTINGS,
-  PATH_OPTIONS, PRACTICE, SKILLS, SWITCHES, TIPS, TRADE_RES,
+  ADVISORS, BUILDER, BUILDINGS, DUTIES, EDICTS, EVENTS, FOCUSES, HOUSE_TIERS, HUBS, LABOR_CATS, MILESTONE_IDS, PATH_DECISIONS, RESOURCES, RULES, SETTINGS,
+  PATH_OPTIONS, PRACTICE, SKILLS, SWITCHES, TIPS, TRADE_RES, WORK_DUTIES,
 } from './types';
 import type { Building, FastiEntry, GameState, PathDecisionId, PathOptionId, Person, Prefs, RankIndex, Speed } from './types';
 import { NEVER, newGame } from './state';
@@ -204,6 +204,10 @@ function sanitise(s: GameState): void {
   o.priorities = Array.isArray(o.priorities) ? o.priorities.filter((p) => isObj(p) && LABOR_CATS.includes(p.cat) && Number.isFinite(p.until)) : [];
   for (const k of LABOR_CATS) o.manual[k] = Math.max(0, Math.round(finite(o.manual[k])));
   sanitiseNumbers(o.emergency as unknown as Obj);
+  o.emergency.hands = o.emergency.hands === true;
+  for (const d of WORK_DUTIES) o.works[d] = o.works[d] === true;
+  o.learned = DUTIES.filter((d) => o.learned.includes(d));
+  o.answered = DUTIES.filter((d) => o.answered.includes(d));
 
   const g = s.guidance;
   for (const k of Object.keys(g.advisories)) if (!(RULES as readonly string[]).includes(k)) delete (g.advisories as Obj)[k];
@@ -214,7 +218,7 @@ function sanitise(s: GameState): void {
   const it = g.intro;
   it.lesson = clamp(Math.round(finite(it.lesson, -1)), -1, LESSONS.length - 1);
   it.done = it.done === true;
-  it.ordoHeld = it.ordoHeld === true;
+  delete (it as unknown as Obj).ordoHeld;   // the Ordo's hold of the first lessons is the duties now (ordo/duties.ts)
   it.at = clamp(finite(it.at), 0, Math.max(0, finite(s.stats.playMs)));   // a lesson begun in the future would never end
   it.practice = Array.isArray(it.practice) ? it.practice.filter((p) => PRACTICE.includes(p)) : [];
   g.appointed = g.appointed.filter((a) => ADVISORS.includes(a));
@@ -228,6 +232,22 @@ function sanitise(s: GameState): void {
     for (const x of list) if (x.id > maxId) maxId = x.id;
   }
   s.nextId = Math.max(Math.floor(finite(s.nextId, 1)), maxId + 1);
+}
+
+/** The lessons of a colony from before the duties, which had no "Hands to the fields" and a "Roll of souls" after its
+ *  works. */
+const LESSONS_BEFORE = ['water', 'homes', 'ordo', 'charter', 'advisors', 'speed', 'works', 'people', 'overlays', 'edicts'] as const;
+
+/** A colony from before the duties knew every duty (newGame's defaults) and chose what the Ordo runs by its toggles:
+ *  nothing is offered anew. A lesson under way keeps its place in today's list (the roll of souls is taught by the
+ *  fields now: it goes on to the maps). */
+function beforeDuties(s: GameState): void {
+  s.ordo.answered = DUTIES.slice();
+  const it = s.guidance.intro;
+  const old = typeof it.lesson === 'number' && it.lesson >= 0 ? LESSONS_BEFORE[Math.round(it.lesson)] : undefined;
+  if (!old) return;
+  it.lesson = LESSONS.findIndex((l) => l.id === (old === 'people' ? 'overlays' : old));
+  if (old === 'people') it.done = false;
 }
 
 /** Every number found (recursively) in a plain record becomes finite (0 when it was not). */
@@ -257,8 +277,10 @@ export function deserialize(json: string): GameState | null {
   if (!Array.isArray(cur.people) || !Array.isArray(cur.buildings)) return null;
   if (!cur.buildings.some((b) => isObj(b) && b.type === 'principia')) return null;
   try {
+    const before = !isObj(cur.ordo) || !Array.isArray(cur.ordo.learned);   // a colony from before the duties: it held them all
     fillDefaults(cur, newGame({ seed: cur.seed, now: 0 }) as unknown as Obj);
     const s = cur as unknown as GameState;
+    if (before) beforeDuties(s);
     sanitise(s);
     return stateShape(s);   // the live state's object shapes (shapes.ts): same keys, same order, same bytes
   } catch {
