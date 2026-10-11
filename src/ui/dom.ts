@@ -1,4 +1,4 @@
-// src/ui/dom.ts — DOM helpers: h, img, number formatting, cost chips, tooltips (ARCHITECTURE §13.4). Owner: S (scaffold).
+// src/ui/dom.ts — DOM helpers: h, img, reveal (scrolling into view), number formatting, cost chips, tooltips (ARCHITECTURE §13.4). Owner: S (scaffold).
 // Game text is data: never use innerHTML or title= with it; build with h() (text nodes) and tip().
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, ResId } from '../game/types';
@@ -66,6 +66,36 @@ export function img(spriteName: string, scale = 2, cls?: string): HTMLImageEleme
 /** Removes every child of an element. */
 export function clear(el: Element): void {
   while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+const SCROLLS = /auto|scroll/;
+
+/** How far to scroll so a span at `at` (`len` long) shows whole in a view `view` long, `margin` clear: 0 when it does. */
+function nearest(at: number, len: number, view: number, margin: number): number {
+  if (at < margin) return at - margin;
+  if (at + len > view - margin) return Math.min(at - margin, at + len - view + margin);
+  return 0;
+}
+
+/** Scrolls `el` into view inside the boxes the player can scroll (overflow auto or scroll), and only those. Never
+ *  Element.scrollIntoView: it scrolls every ancestor script can scroll, overflow: hidden ones too, and on a phone it took
+ *  the fixed #app frame along (the whole interface rode up, the HUD off the top). `block` 'start' sets the element `margin`
+ *  px below the box's top edge; 'nearest' (and sideways, always) moves only as far as it must to show it `margin` clear. */
+export function reveal(el: Element, opts: { block?: 'start' | 'nearest'; margin?: number; smooth?: boolean } = {}): void {
+  const { block = 'nearest', margin = 0, smooth = false } = opts;
+  for (let box = el.parentElement; box; box = box.parentElement) {
+    const cs = getComputedStyle(box);
+    const sy = SCROLLS.test(cs.overflowY);
+    const sx = SCROLLS.test(cs.overflowX);
+    if (!sy && !sx) continue;
+    const r = el.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    const top = r.top - b.top - box.clientTop;     // from the edges of the box's scrolling area (inside its border)
+    const left = r.left - b.left - box.clientLeft;
+    const dy = !sy ? 0 : block === 'start' ? top - margin : nearest(top, r.height, box.clientHeight, margin);
+    const dx = sx ? nearest(left, r.width, box.clientWidth, margin) : 0;
+    if (dy || dx) box.scrollTo({ top: box.scrollTop + dy, left: box.scrollLeft + dx, behavior: smooth ? 'smooth' : 'auto' });
+  }
 }
 
 function sign(n: number, s: string): string {
