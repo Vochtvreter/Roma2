@@ -130,6 +130,27 @@ export class PointerHold {
   }
 }
 
+/** Tracks a form control the player is working inside a widget: a focused <select> (its list may be open: a rebuild
+ *  would tear it shut under the mouse) or a slider being dragged. A pick or a let-go ends the hold. */
+export class ControlHold {
+  private el: Element | null = null;
+
+  constructor(root: HTMLElement) {
+    root.addEventListener('focusin', (e) => { if (e.target instanceof HTMLSelectElement) this.el = e.target; });
+    root.addEventListener('pointerdown', (e) => { if (e.target instanceof HTMLInputElement && e.target.type === 'range') this.el = e.target; });
+    const letGo = (e: Event): void => { if (e.target === this.el) this.el = null; };
+    root.addEventListener('change', letGo);
+    root.addEventListener('focusout', letGo);
+    window.addEventListener('pointerup', () => { if (this.el instanceof HTMLInputElement) this.el = null; }, true);
+    window.addEventListener('pointercancel', () => { if (this.el instanceof HTMLInputElement) this.el = null; }, true);
+  }
+
+  /** True while a rebuild must wait (a control replaced by its own widget no longer counts). */
+  holds(): boolean {
+    return !!this.el?.isConnected;
+  }
+}
+
 /** Grow-only widths: each element keeps the widest box it has had, until reset (a resize or a new layout). */
 export class Ratchet {
   private readonly els = new Set<HTMLElement>();
