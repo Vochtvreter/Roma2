@@ -1,6 +1,7 @@
 // src/ui/panels.ts — the side panel host: tabs, badges, NEW markers, signature diffing (ARCHITECTURE §13.3, DESIGN §15.3). Owner: WP-I.
 // Signature-diff pattern (Hearthlands): at most every UI_THROTTLE_MS compute the open tab's signature; when it changed,
-// clear and rebuild, else run the updaters. Never rebuild under the pointer within 300 ms of a click. Either way the
+// clear and rebuild, else run the updaters. Never rebuild under the pointer within 300 ms of a click, nor while a
+// dropdown is focused (its list may be open) or a slider is being dragged. Either way the
 // element under the mouse (else the first in view) keeps its place on screen (steady.ts): a works row finishing or a
 // caravan coming home never slides the card the player is about to click.
 import { TABS } from '../game/types';
@@ -9,7 +10,7 @@ import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
 import { clear, h, img, tip } from './dom';
 import { tabRevealed } from '../game/reveal';
-import { ScrollAnchor } from './steady';
+import { ControlHold, ScrollAnchor } from './steady';
 import { B } from '../game/balance';
 import { panel as edicta } from './tabs/edicta';
 import { panel as consiliarii } from './tabs/consiliarii';
@@ -57,6 +58,7 @@ export class SidePanel {
   private readonly fresh = new Set<TabId>();   // revealed since, not yet visited: NEW sticker
   private stateRef: GameState | null = null;
   private readonly steady: ScrollAnchor;   // keeps the pointed row in place across rebuilds
+  private readonly control: ControlHold;   // an open dropdown or a dragged slider: rebuilds wait
   /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
   onChoiceAnchor: (() => boolean) | null = null;
 
@@ -64,6 +66,7 @@ export class SidePanel {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
     this.body = root.querySelector<HTMLElement>('#tab-body') ?? root.appendChild(h('div', { id: 'tab-body', role: 'tabpanel' }));
     this.steady = new ScrollAnchor(this.body);
+    this.control = new ControlHold(this.body);
     this.toggleEl = root.querySelector<HTMLButtonElement>('#side-toggle');
     this.toggleEl?.addEventListener('click', () => { g.sfx('click'); this.toggle(); });
     this.toggleEl?.setAttribute('aria-expanded', 'true');
@@ -93,7 +96,7 @@ export class SidePanel {
     const p = PANELS[this.cur];
     let sig = '';
     safe(`${this.cur} signature`, () => { sig = `${this.cur}|${p.signature(g)}`; });
-    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS) { this.rebuild(sig); return; }
+    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS && !this.control.holds()) { this.rebuild(sig); return; }
     if (!this.ups.length) return;
     let mark: ReturnType<ScrollAnchor['capture']> = [];
     safe('anchor', () => { mark = this.steady.capture(); });
