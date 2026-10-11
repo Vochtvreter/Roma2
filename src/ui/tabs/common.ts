@@ -206,7 +206,7 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
     const state = h('span', { class: 'tab-agenda-state' });
     up.push(() => { state.textContent = wishState(g, w); });
     state.textContent = wishState(g, w);
-    const row = h('div', { class: 'tab-agenda-row' },
+    const row = h('div', { class: 'tab-agenda-row', 'data-key': `w-${w.type}-${w.tile ?? i}` },
       h('span', { class: 'tab-agenda-n num' }, String(i + 1)), img(typeSprite(w.type), 1, 'tab-agenda-img'),
       h('div', { class: 'tab-agenda-main' }, h('div', null, h('b', null, BUILDING_DEFS[w.type].name), ' · ', state),
         h('div', { class: 'tab-why' }, reasonText(w.reason))));

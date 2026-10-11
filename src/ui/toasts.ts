@@ -1,5 +1,6 @@
 // src/ui/toasts.ts — toasts (ARCHITECTURE §13.4; DESIGN §15.1: completions, evolutions, milestones, rank-ups and errors
 // only — Annales lines go to the ticker). Max B.ui.TOASTS_MAX visible, the oldest dropped; repeats batch within 1.5 s.
+// A toast does not expire while the mouse rests on the stack, so the one being read or clicked never slides away.
 // Owner: WP-H.
 import { h, img } from './dom';
 import { B } from '../game/balance';
@@ -7,6 +8,7 @@ import { B } from '../game/balance';
 const DEFAULT_MS = 4000;
 const BATCH_MS = 1500;
 const FADE_MS = 300;
+const RETRY_MS = 500;
 const ICON: Record<Kind, string> = { info: 'i_seal', good: 'i_star', bad: 'i_unpaid', gold: 'i_laurel' };
 
 type Kind = 'info' | 'good' | 'bad' | 'gold';
@@ -15,6 +17,12 @@ function remove(el: HTMLElement): void {
   if (el.classList.contains('toast-out')) return;
   el.classList.add('toast-out');
   window.setTimeout(() => el.remove(), FADE_MS);
+}
+
+/** Removes a toast when its time is up, or once the mouse leaves the stack. */
+function expire(el: HTMLElement): void {
+  if (el.parentElement?.matches(':hover') && matchMedia('(hover: hover)').matches) { window.setTimeout(() => expire(el), RETRY_MS); return; }
+  remove(el);
 }
 
 function show(text: string, kind: Kind, icon: string | undefined, ms: number, sub?: string): HTMLElement | null {
@@ -27,7 +35,7 @@ function show(text: string, kind: Kind, icon: string | undefined, ms: number, su
   root.appendChild(el);
   const live = Array.from(root.children).filter((c) => !c.classList.contains('toast-out')) as HTMLElement[];
   for (const old of live.slice(0, Math.max(0, live.length - B.ui.TOASTS_MAX))) remove(old);
-  window.setTimeout(() => remove(el), ms);
+  window.setTimeout(() => expire(el), ms);
   return el;
 }
 

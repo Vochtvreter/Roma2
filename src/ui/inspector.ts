@@ -1,5 +1,6 @@
 // src/ui/inspector.ts — the house / building / block / tile inspector (ARCHITECTURE §13.3, DESIGN §15.4, §11.10). Owner: WP-I.
 // Hover = a transient card bottom left, click = a closable popup pinned beside the target; signature-diffed like the panels (rebuild on discrete change, else updaters).
+// The same target is not rebuilt while the mouse rests on its card, unless to answer a click there (steady.ts): its buttons stay put.
 import { BUILDER, F, T } from '../game/types';
 import type { Building, GameState, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
@@ -27,6 +28,7 @@ import { RESOURCE_DEFS } from '../game/data/resources';
 import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
 import { confirm2 } from './modals';
+import { PointerHold } from './steady';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
 
@@ -113,7 +115,7 @@ class InspectorCard {
   target: InspectTarget | null = null;
   private sig = '';
   private last = -Infinity;
-  private lastClick = -Infinity;
+  private readonly hold: PointerHold;
   private ups: Updater[] = [];
   private collapsed = false;
   private placed = '';
@@ -121,7 +123,7 @@ class InspectorCard {
   constructor(private readonly g: Game, private readonly root: HTMLElement, private readonly sticky: boolean) {
     root.hidden = true;
     root.setAttribute('aria-live', 'polite');
-    root.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
+    this.hold = new PointerHold(root);
   }
 
   set(t: InspectTarget | null): void {
@@ -139,7 +141,7 @@ class InspectorCard {
       const t = this.target;
       const sig = t ? `${t.kind}|${targetSig(s, t, this.sticky)}|${+this.collapsed}` : '';
       const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
-      if (sig !== this.sig && (!sameTarget || now - this.lastClick > B.ui.CLICK_GUARD_MS)) this.rebuild(t, sig, this.sticky);
+      if (sig !== this.sig && (!sameTarget || !this.hold.holds(now))) this.rebuild(t, sig, this.sticky);
       else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
     }
     if (this.sticky) this.place();
@@ -225,7 +227,7 @@ class InspectorCard {
     card.append(h('div', { class: 'ins-head' }, h('div', { class: 'ins-img' }, img(sprite, 2)),
       h('div', { class: 'ins-titles' }, h('div', { class: 'kicker' }, kicker), h('div', { class: 'ins-title' }, title)),
       h('div', { class: 'ins-ctl' },
-        h('button', { class: 'btn small ghost', type: 'button', 'aria-label': this.collapsed ? 'Expand' : 'Collapse', onclick: () => { this.collapsed = !this.collapsed; this.last = -Infinity; this.lastClick = -Infinity; } }, this.collapsed ? '▸' : '▾'),
+        h('button', { class: 'btn small ghost', type: 'button', 'aria-label': this.collapsed ? 'Expand' : 'Collapse', onclick: () => { this.collapsed = !this.collapsed; this.last = -Infinity; this.hold.release(); } }, this.collapsed ? '▸' : '▾'),
         sticky ? h('button', { class: 'btn small ghost', type: 'button', 'aria-label': 'Close', onclick: () => { g.select(null); g.inspect(null, true); } }, '✕') : null)));
   }
 

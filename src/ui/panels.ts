@@ -1,12 +1,15 @@
 // src/ui/panels.ts — the side panel host: tabs, badges, NEW markers, signature diffing (ARCHITECTURE §13.3, DESIGN §15.3). Owner: WP-I.
 // Signature-diff pattern (Hearthlands): at most every UI_THROTTLE_MS compute the open tab's signature; when it changed,
-// clear and rebuild (keeping scroll), else run the updaters. Never rebuild under the pointer within 300 ms of a click.
+// clear and rebuild, else run the updaters. Never rebuild under the pointer within 300 ms of a click. Either way the
+// element under the mouse (else the first in view) keeps its place on screen (steady.ts): a works row finishing or a
+// caravan coming home never slides the card the player is about to click.
 import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
 import { clear, h, img, tip } from './dom';
 import { tabRevealed } from '../game/reveal';
+import { ScrollAnchor } from './steady';
 import { B } from '../game/balance';
 import { panel as edicta } from './tabs/edicta';
 import { panel as consiliarii } from './tabs/consiliarii';
@@ -53,12 +56,14 @@ export class SidePanel {
   private known: Set<TabId> | null = null;     // revealed tabs the player has already been shown
   private readonly fresh = new Set<TabId>();   // revealed since, not yet visited: NEW sticker
   private stateRef: GameState | null = null;
+  private readonly steady: ScrollAnchor;   // keeps the pointed row in place across rebuilds
   /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
   onChoiceAnchor: (() => boolean) | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
     this.body = root.querySelector<HTMLElement>('#tab-body') ?? root.appendChild(h('div', { id: 'tab-body', role: 'tabpanel' }));
+    this.steady = new ScrollAnchor(this.body);
     this.toggleEl = root.querySelector<HTMLButtonElement>('#side-toggle');
     this.toggleEl?.addEventListener('click', () => { g.sfx('click'); this.toggle(); });
     this.toggleEl?.setAttribute('aria-expanded', 'true');
@@ -88,8 +93,12 @@ export class SidePanel {
     const p = PANELS[this.cur];
     let sig = '';
     safe(`${this.cur} signature`, () => { sig = `${this.cur}|${p.signature(g)}`; });
-    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS) this.rebuild(sig);
-    else for (const u of this.ups) safe(`${this.cur} updater`, u);
+    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS) { this.rebuild(sig); return; }
+    if (!this.ups.length) return;
+    let mark: ReturnType<ScrollAnchor['capture']> = [];
+    safe('anchor', () => { mark = this.steady.capture(); });
+    for (const u of this.ups) safe(`${this.cur} updater`, u);
+    safe('anchor', () => this.steady.restore(mark));   // a status line that wrapped or a line that appeared above
   }
 
   /** Opens a tab (and the panel); an anchor focuses panel state and scrolls to `[data-anchor]`. */
@@ -168,15 +177,21 @@ export class SidePanel {
     }
   }
 
+  /** Rebuilds the open tab; `keepScroll` (a refresh, not a newly opened page) keeps the pointed element in place. */
   private rebuild(sig: string, keepScroll = true): void {
+    let mark: ReturnType<ScrollAnchor['capture']> = [];
+    if (keepScroll) safe('anchor', () => { mark = this.steady.capture(); });
     const top = keepScroll ? this.body.scrollTop : 0;
     this.sig = sig;
     this.ups = [];
     clear(this.body);
     const wrap = h('div', { class: `side-body side-${this.cur}` });
     if (!safe(`${this.cur} build`, () => PANELS[this.cur].build(this.g, wrap, this.ups))) wrap.append(h('div', { class: 'tab-quiet' }, 'Part of this page could not be drawn (see the console).'));
-    this.body.appendChild(wrap);
+    this.steady.head.style.height = '';
+    this.steady.foot.style.height = '';
+    this.body.append(this.steady.head, wrap, this.steady.foot);
     this.body.scrollTop = top;
+    if (keepScroll) safe('anchor', () => this.steady.restore(mark));
   }
 
   /** Arrow keys move between tabs (WAI-ARIA tabs pattern). */

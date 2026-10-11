@@ -5,6 +5,11 @@ import '@fontsource/pixelify-sans/600.css';
 import '@fontsource/silkscreen/400.css';
 import './styles/index.css';
 
+// A browser fetches a font face (a weight, a character subset) only when text first needs it, and the line it sits on
+// changes height when it arrives: mid-game that nudged the side panel the first time a bold name or a '≈' showed.
+// Fetch every bundled face up front, while the title screen is up.
+if (typeof document !== 'undefined' && document.fonts) for (const f of document.fonts) f.load().catch(() => {});
+
 import type { ActionResult, ContractSpec, FxEvent, GameState, OfflineRun, Prefs, Rates, Remedy, Speed, TabId } from './game/types';
 import { B } from './game/balance';
 import { newGame } from './game/state';

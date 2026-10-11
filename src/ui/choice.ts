@@ -50,6 +50,7 @@ export class ChoiceCard {
   private ups: Updater[] = [];
   private folded = false;
   private folding: PendingChoice | null = null;
+  private shown = '';                         // the dispatch on screen: only a new one slides in, a refresh stays put
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     root.hidden = true;
@@ -110,10 +111,13 @@ export class ChoiceCard {
     tip(left, () => realTime(Math.max(0, c.expires - g.state.day), g.speed));
     const fold = h('button', { class: 'btn small ghost choice-fold', type: 'button', 'aria-expanded': String(!this.folded), 'aria-label': this.folded ? 'Open the dispatch' : 'Fold the dispatch',
       onclick: () => { this.folded = !this.folded; this.last = -Infinity; this.lastClick = -Infinity; } }, this.folded ? '▾' : '▴');
+    const id = `${c.event}:${c.created}`;
+    const enter = id !== this.shown ? ' enter' : '';
+    this.shown = id;
     const head = h('div', { class: 'choice-head' }, img('f_seal', 2, 'choice-seal'),
       h('div', { class: 'choice-titles' }, h('div', { class: 'kicker choice-kicker' }, caps(c.kicker)), h('div', { class: 'choice-title' }, c.title)), left, fold);
     if (this.folded) {
-      this.root.append(h('div', { class: 'card choice-card folded' }, head, h('div', { class: 'meter choice-meter' }, meter)));
+      this.root.append(h('div', { class: `card choice-card folded${enter}` }, head, h('div', { class: 'meter choice-meter' }, meter)));
       return;
     }
     const opts = h('div', { class: 'choice-opts' }, c.options.map((o, i) => {
@@ -123,7 +127,7 @@ export class ChoiceCard {
         o.cost || o.gain ? h('span', { class: 'choice-opt-cost' }, o.cost ? chips(o.cost, '−', s) : null, o.gain ? chips(o.gain, '+', s) : null) : null];
       return btn(g, body, () => A.chooseOption(g.state, i), { cls: `choice-opt${i === c.defaultIndex ? ' default' : ''}`, reason });
     }));
-    this.root.append(h('div', { class: 'card choice-card' }, head, h('p', { class: 'choice-text' }, c.text), gate(g), opts,
+    this.root.append(h('div', { class: `card choice-card${enter}` }, head, h('p', { class: 'choice-text' }, c.text), gate(g), opts,
       h('div', { class: 'meter choice-meter' }, meter), silent));
   }
 }

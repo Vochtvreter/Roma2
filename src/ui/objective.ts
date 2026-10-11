@@ -1,10 +1,13 @@
 // src/ui/objective.ts — the Res Gestae panel (DESIGN §11.8): kicker and progress, goal, hint, meter, "Unlocks: …", the
 // pulsing CTA (charter / petition), danger chips from Periculum advisories only, and active timed modifiers. Owner: WP-H.
-// Signature-diffed: rebuilt when the milestone, the CTA or the chip set changes; numbers are patched in place.
+// Signature-diffed: rebuilt when the milestone, the CTA or the chip set changes; numbers are patched in place. A rebuild
+// changes the panel's height and so moves the counsel card below it: it waits while the mouse rests on either. The chips
+// only grow between rebuilds, so a countdown ("…, 9 d") never re-wraps the row and nudges the card either.
 import type { ActiveAdvisory, Effects, MilestoneDef, Modifier, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import { clear, fmt, fmtCost, h, img, tip } from './dom';
 import { caps } from './tipkit';
+import { PointerHold, Ratchet } from './steady';
 import { MILESTONES, currentMilestone } from '../game/objectives';
 import { petitionNeeds } from '../game/decisions';
 import { activeAdvisories } from '../game/advisors/engine';
@@ -55,11 +58,17 @@ export class Objective {
   private sig = '';
   private shownId = '';
   private readonly up: (() => void)[] = [];
+  private readonly hold: PointerHold;
+  private readonly ratchet = new Ratchet();
+  private chips: HTMLElement[] = [];
 
-  constructor(private readonly g: Game, private readonly root: HTMLElement) {}
+  constructor(private readonly g: Game, private readonly root: HTMLElement) {
+    this.hold = new PointerHold(root);
+  }
 
-  /** Rebuilds when the milestone, CTA or chips change; otherwise refreshes the meter and chip numbers. */
-  update(): void {
+  /** Rebuilds when the milestone, CTA or chips change (not while the panel or, `below`, the counsel card is pointed at);
+   *  otherwise refreshes the meter and chip numbers. */
+  update(below = false): void {
     const s = this.g.state;
     const m = currentMilestone(s);
     const pn = petitionNeeds(s, view(s));
@@ -67,7 +76,7 @@ export class Objective {
     const mods = s.modifiers.filter((x) => x.until > s.day);
     const sig = `${m?.id ?? '-'}|${s.guidance.objective}|${pn?.decision ?? '-'}|${pn?.ready ? 1 : 0}${pn?.affordable ? 1 : 0}|`
       + `${danger.map((a) => a.rule).join(',')}|${mods.map((x) => x.id).join(',')}`;
-    if (sig !== this.sig) {
+    if (sig !== this.sig && !below && !this.hold.holds()) {
       this.sig = sig;
       this.build(m, pn, danger, mods);
       const id = m?.id ?? '';
@@ -75,6 +84,7 @@ export class Objective {
       this.shownId = id;
     }
     for (const u of this.up) u();
+    this.ratchet.hold(this.chips);
   }
 
   private pop(): void {
@@ -88,6 +98,7 @@ export class Objective {
     const s = g.state;
     clear(this.root);
     this.up.length = 0;
+    this.ratchet.reset();
     const main = MILESTONES.filter((x) => !x.postVictory).length;
     const idx = s.guidance.objective;
     const kicker = m ? (m.postVictory ? 'RES GESTAE · POST VICTORIAM' : `RES GESTAE · ${toRoman(idx + 1)} / ${toRoman(Math.max(1, main))}`) : 'RES GESTAE';
@@ -122,6 +133,7 @@ export class Objective {
       this.up.push(() => { chip.textContent = `${x.label}, ${Math.max(0, x.until - g.state.day)} d`; });
       chips.push(chip);
     }
+    this.chips = chips;
     if (chips.length) this.root.append(h('div', { class: 'obj-chips' }, chips));
   }
 

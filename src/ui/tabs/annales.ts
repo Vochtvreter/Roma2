@@ -34,7 +34,7 @@ function shownLog(s: GameState): LogEntry[] {
 function entry(g: Game, e: LogEntry): HTMLElement {
   const s = g.state;
   const b = e.ref !== undefined ? getBuilding(s, e.ref) : undefined;
-  const li = h('li', { class: `ann-e ann-${e.kind}${e.tags?.includes('highlight') ? ' hi' : ''}` },
+  const li = h('li', { class: `ann-e ann-${e.kind}${e.tags?.includes('highlight') ? ' hi' : ''}`, 'data-key': `e-${e.day}-${e.text}` },
     h('span', { class: 'ann-date num' }, formatRoman(e.day)),
     h('span', { class: 'ann-text' }, e.tags?.includes('decided') ? img('i_seal', 1, 'ann-seal') : null, e.text));
   if (b) {
@@ -54,7 +54,7 @@ function log(g: Game): HTMLElement {
     if (y !== year || !ul) {
       year = y;
       ul = h('ul', { class: 'ann-year' });
-      list.append(h('div', { class: 'ann-year-head num' }, formatAuc(y)), ul);
+      list.append(h('div', { class: 'ann-year-head num', 'data-key': `y-${y}` }, formatAuc(y)), ul);
     }
     ul.append(entry(g, e));
   }

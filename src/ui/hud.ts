@@ -1,10 +1,12 @@
 // src/ui/hud.ts — the HUD bar (DESIGN §15.2): brand, vital tablets, coin, souls, spirits, dignitas, resource strip, date,
 // speed and menu. Owner: WP-H. Built once; numbers are patched in place every UI tick; tooltips are lazy (hud-tips.ts).
+// The chips and material cells only grow (steady.ts Ratchet): a shorter figure or date never shuffles its neighbours.
 import type { ResId, Speed, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import { clear, fmt, fmtRate, h, img, tip } from './dom';
 import { Vitals } from './vitals';
 import { caps } from './tipkit';
+import { Ratchet } from './steady';
 import { STRIP_RES, coinTip, dateTip, dignitasTip, moraleTip, netRate, resourceTip, seasonFrac, soulsTip } from './hud-tips';
 import { openMenu, openRename } from './modals';
 import { census } from '../game/census';
@@ -51,6 +53,8 @@ export class Hud {
   private stripKey = '';
   private readonly last: Partial<Record<ResId, number>> = {};
   private coinEl: HTMLElement | null = null;
+  private readonly chips: HTMLElement[] = [];      // coin, souls, spirits, dignitas, date: widths held by the ratchet
+  private readonly ratchet = new Ratchet('(max-width: 899px)');   // the phone rows share out their width themselves
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.vitals = new Vitals(g);
@@ -73,8 +77,11 @@ export class Hud {
   build(): void {
     clear(this.root);
     this.up.length = 0;
-    this.root.append(this.brand(), this.vitals.el, this.coin(), this.souls(), this.spirits(), this.dignitas(),
-      h('div', { class: 'hud-break' }), this.date(), this.strip, this.speed(), this.menu());
+    this.ratchet.reset();
+    const chips = [this.coin(), this.souls(), this.spirits(), this.dignitas()];
+    const date = this.date();
+    this.chips.splice(0, this.chips.length, ...chips, date);
+    this.root.append(this.brand(), this.vitals.el, ...chips, h('div', { class: 'hud-break' }), date, this.strip, this.speed(), this.menu());
     this.update();
   }
 
@@ -83,6 +90,7 @@ export class Hud {
     this.vitals.update();
     for (const u of this.up) u();
     this.updateStrip();
+    this.ratchet.hold([...this.chips, ...(Array.from(this.strip.children) as HTMLElement[])]);
   }
 
   /** Flashes the coin chip (Kalends taxes, caravans). */

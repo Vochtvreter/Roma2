@@ -76,6 +76,19 @@ export class MapTools {
   }
 }
 
+/** The banner's largest box while one thing is placed at one window size: it only grows, so Cancel (and Place on touch)
+ *  stay where the eye left them while the verdict under the cursor changes length. */
+let floor = { key: '', w: 0, h: 0 };
+
+function steadyBox(box: HTMLElement, what: string): void {
+  const key = `${what}|${window.innerWidth}|${document.getElementById('side')?.classList.contains('collapsed') ?? false}`;
+  if (key !== floor.key) floor = { key, w: 0, h: 0 };
+  if (floor.w) { box.style.minWidth = `${floor.w}px`; box.style.minHeight = `${floor.h}px`; }
+  const r = box.getBoundingClientRect();
+  floor.w = Math.max(floor.w, Math.ceil(r.width));
+  floor.h = Math.max(floor.h, Math.ceil(r.height));
+}
+
 let lastTouch = false;       // the last pointer was a finger or a pen, whatever the device's main pointer
 let watching = false;
 
@@ -114,12 +127,13 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
     ? h('button', { class: 'btn small primary', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
-  root.appendChild(h('div', { class: `place-box${check && !check.ok ? ' bad' : ''}` },
+  const box = root.appendChild(h('div', { class: `place-box${check && !check.ok ? ' bad' : ''}` },
     img(p.type === 'area' ? 'h_tentoria_0' : `b_${p.type}`, 1, 'place-ico'),
     h('div', { class: 'place-main' },
       h('div', { class: 'place-name' }, def.name, h('span', { class: 'place-latin' }, def.latin), costEl(g.state, check?.ok ? check.cost : def.cost)),
       verdict,
       h('div', { class: 'place-help' }, coarse ? 'TAP A GLOWING PLOT, THEN PLACE' : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
     place, cancel));
+  steadyBox(box, `${p.type}:${coarse}`);
 }
 
