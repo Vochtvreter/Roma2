@@ -33,6 +33,7 @@
      between the HUD and the map tools (320 px: the column, the tools and the ticker). */
   :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
   #app:has(#side.collapsed) { --sheet: 56px; }
+  #app:has(#side.empty) { --sheet: 0px; }
   #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
   .hud-brand { display: none; }
   .hud-break { display: block; flex: 0 0 100% !important; height: 0; }

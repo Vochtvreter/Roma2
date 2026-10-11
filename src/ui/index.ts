@@ -27,6 +27,7 @@ import { HUB_DEFS } from '../game/data/hubs';
 import { PATH_DEFS } from '../game/data/decisions';
 import { PATH_DECISIONS } from '../game/types';
 import { B } from '../game/balance';
+import { present, shows } from './intro';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
@@ -95,8 +96,12 @@ export class UI {
     this.choice.frame(now);
     if (now - this.last < B.time.UI_THROTTLE_MS) return;
     this.last = now;
+    const g = this.g;
     // the 'wants' tip asks the player to open the Domus overlay; seeing it (by any route: bar, key, remedy) reads it
     if (this.g.view.overlay === 'domus' && !this.g.state.guidance.tips.includes('wants')) this.g.act(dismissTip(this.g.state, 'wants'));
+    present(g, el('objective'), shows(g, 'goals'));
+    present(g, el('ticker'), shows(g, 'ticker'));
+    present(g, el('overlay-bar'), shows(g, 'overlays'));
     this.hud.update();
     this.objective.update(this.counsel.held);
     this.counsel.update();
@@ -123,6 +128,7 @@ export class UI {
           g.sfx('tink');
           break;
         case 'milestone': {
+          if (!shows(g, 'goals')) break;   // the Res Gestae are not introduced yet: their tip tells of the first deed
           const m = milestoneToast(e.id);
           toast(m.text, 'gold', 'i_laurel', 6000, m.unlock || undefined);
           g.sfx('lyre');

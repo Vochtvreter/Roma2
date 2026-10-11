@@ -285,6 +285,7 @@ class App implements Game {
   setPref<K extends keyof Prefs>(k: K, v: Prefs[K]): void {
     this.prefs[k] = v;
     savePrefs(this.prefs);
+    if (k === 'tips' && v === false && this.mode !== 'title') actions.skipIntro(this.state);   // no mentor, no paced introduction
     setAudio(this.prefs.sound, this.prefs.volume);
     this.changed();
   }
@@ -297,6 +298,7 @@ class App implements Game {
   /** Switches to a game state (new, continued or imported): attach the view, preview the ledger, game mode. */
   private enter(s: GameState): void {
     closeAllModals();
+    if (!this.prefs.tips) actions.skipIntro(s);   // tips are off: the whole interface from the first day
     this.state = s;
     this.mode = 'game';
     this.broken = false;

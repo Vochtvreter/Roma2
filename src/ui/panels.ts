@@ -9,7 +9,7 @@ import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
 import { clear, h, img, tip } from './dom';
-import { tabRevealed } from '../game/reveal';
+import { tabShown } from './intro';
 import { ControlHold, ScrollAnchor } from './steady';
 import { B } from '../game/balance';
 import { panel as edicta } from './tabs/edicta';
@@ -56,6 +56,7 @@ export class SidePanel {
   private barKey = '';
   private known: Set<TabId> | null = null;     // revealed tabs the player has already been shown
   private readonly fresh = new Set<TabId>();   // revealed since, not yet visited: NEW sticker
+  private forced: TabId | null = null;         // a tab opened by a button before the introduction brought it in
   private stateRef: GameState | null = null;
   private readonly steady: ScrollAnchor;   // keeps the pointed row in place across rebuilds
   private readonly control: ControlHold;   // an open dropdown or a dragged slider: rebuilds wait
@@ -89,6 +90,7 @@ export class SidePanel {
       this.stateRef = g.state;
       this.known = null;
       this.fresh.clear();
+      this.forced = null;
       this.sig = '';
     }
     safe('tabs', () => this.syncTabs());
@@ -107,6 +109,7 @@ export class SidePanel {
   /** Opens a tab (and the panel); an anchor focuses panel state and scrolls to `[data-anchor]`. */
   open(tab: TabId, anchor?: string): void {
     if (anchor === 'choice' && this.onChoiceAnchor?.()) return;
+    this.forced = tabShown(this.g.state, tab) ? null : tab;
     this.cur = tab;
     this.fresh.delete(tab);
     this.toggle(true);
@@ -133,17 +136,27 @@ export class SidePanel {
     this.lastClick = -Infinity;
   }
 
-  /** Reveals tabs; tabs revealed during play wear a NEW sticker until visited. */
+  /** Reveals tabs; tabs revealed during play wear a NEW sticker until visited. With no tab yet (a new colony, before the
+   *  introduction brings the first one) the panel is hidden; the first tab to arrive opens it. */
   private syncTabs(): void {
     const s = this.g.state;
-    const revealed = TABS.filter((t) => tabRevealed(s, t));
+    const revealed = TABS.filter((t) => tabShown(s, t));
     if (!this.known) this.known = new Set(revealed);
     for (const t of revealed) {
       if (this.known.has(t)) continue;
       this.known.add(t);
       if (t !== this.cur) this.fresh.add(t);
     }
-    const shown = TABS.filter((t) => revealed.includes(t) || t === this.cur);
+    if (this.forced !== null && (this.forced !== this.cur || revealed.includes(this.forced))) this.forced = null;
+    const shown = TABS.filter((t) => revealed.includes(t) || t === this.forced);
+    if (shown.length > 0 && !shown.includes(this.cur)) {
+      this.cur = shown[0];
+      this.fresh.delete(this.cur);
+    }
+    const wasEmpty = this.root.classList.contains('empty');
+    this.root.classList.toggle('empty', shown.length === 0);
+    if (shown.length === 0) this.toggle(false);
+    else if (wasEmpty) this.toggle(true);
     const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}`;
     if (key === this.barKey) return;
     this.barKey = key;

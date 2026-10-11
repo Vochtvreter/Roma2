@@ -101,6 +101,13 @@ button.chip { cursor: pointer; }
 /* What a guide tip points at ("Show me", DESIGN §11.7). */
 .guide-glow { outline: 2px solid var(--gold) !important; outline-offset: 2px; animation: guidePulse 1.4s ease-in-out infinite; }
 @keyframes guidePulse { 50% { outline-color: rgba(242, 201, 76, .3); box-shadow: 0 0 18px rgba(242, 201, 76, .4); } }
+/* a part of the interface the paced introduction brings in (ui/intro.ts): it fades in and glows once */
+.intro-in { animation: introIn 2.6s ease-out; }
+@keyframes introIn {
+  0% { opacity: 0; box-shadow: 0 0 0 2px rgba(242, 201, 76, 0); }
+  15% { opacity: 1; box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242, 201, 76, .5); }
+  100% { box-shadow: 0 0 0 2px rgba(242, 201, 76, 0), 0 0 18px rgba(242, 201, 76, 0); }
+}
 
 .kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin: 0 1px; border: 1px solid var(--line-2); border-bottom-width: 2px;
   border-radius: 3px; background: rgba(255, 255, 255, .05); font-family: var(--font-caps); font-size: 10px; text-align: center; }

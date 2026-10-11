@@ -172,7 +172,7 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
     decisions: defaultDecisions(), ordo: defaultOrdo(),
     trade: { market, contracts: [], caravans: [], merchant: null, lastMerchant: NEVER, hubsTraded: [], debt: 0 },
     choice: null, gate: null, eventDays: {}, modifiers: [],
-    guidance: { advisories: {}, muted: [], appointed: START_ADVISORS.slice(), tips: [], objective: 0, milestoneDays: {} },
+    guidance: { advisories: {}, muted: [], appointed: START_ADVISORS.slice(), tips: [], tipDay: NEVER, objective: 0, milestoneDays: {} },
     counters: {
       fedStreak: 0, stabStreak: 0, ironMade: 0, tilesMade: 0, caravansReturned: 0,
       festivalsKept: {}, robigaliaYear: -1, lastArrivalBlocked: NEVER, lastBirthBlocked: NEVER, immCall: 0,

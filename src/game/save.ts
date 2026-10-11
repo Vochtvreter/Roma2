@@ -208,6 +208,7 @@ function sanitise(s: GameState): void {
   for (const k of Object.keys(g.advisories)) if (!(RULES as readonly string[]).includes(k)) delete (g.advisories as Obj)[k];
   g.muted = g.muted.filter((r) => RULES.includes(r));
   g.tips = g.tips.filter((r) => TIPS.includes(r));
+  g.tipDay = clamp(finite(g.tipDay, NEVER), NEVER, s.day);   // a read in the future would hold every tip back
   g.appointed = g.appointed.filter((a) => ADVISORS.includes(a));
   finiteRec(g.milestoneDays as Obj, (k) => (MILESTONE_IDS as readonly string[]).includes(k));
   g.objective = clamp(Math.round(finite(g.objective)), 0, MILESTONES.length);
