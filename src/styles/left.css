@@ -64,14 +64,16 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
   position: relative; padding: 10px 12px 9px;
   background: var(--panel); border: 2px solid var(--line); border-radius: 6px;
   box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 236, 200, .04); backdrop-filter: var(--blur);
-  animation: counselIn .35s ease-out;
 }
+/* only a new item slides in: a refresh of the same one (a remedy's button changing) stays still under the cursor */
+.counsel-card.enter { animation: counselIn .35s ease-out; }
 @keyframes counselIn { from { transform: translateY(8px); opacity: 0; } }
 .counsel-card.tip { border-color: #a8873a; }
 .counsel-card.tip.urgent { border-color: var(--ember); }
 .counsel-card.adv.sev-1 { border-color: rgba(242, 201, 76, .55); }
 .counsel-card.adv.sev-2 { border-color: rgba(227, 132, 58, .8); }
-.counsel-card.adv.sev-3 { border-color: var(--bad); animation: counselIn .35s ease-out, perilGlow 1.4s ease-in-out infinite; }
+.counsel-card.adv.sev-3 { border-color: var(--bad); animation: perilGlow 1.4s ease-in-out infinite; }
+.counsel-card.adv.sev-3.enter { animation: counselIn .35s ease-out, perilGlow 1.4s ease-in-out infinite; }
 @keyframes perilGlow { 50% { box-shadow: var(--ring-shadow), 0 0 18px rgba(229, 85, 74, .55); } }
 .counsel-card.adv.opp { border-color: var(--gold); background: linear-gradient(rgba(242, 201, 76, .08), transparent 60%), var(--panel); }
 .counsel-head { display: flex; align-items: flex-start; gap: 9px; }

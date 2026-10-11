@@ -166,7 +166,7 @@ function caravanRow(g: Game, c: Caravan, up: Updater[]): HTMLElement {
   refresh();
   up.push(refresh);
   const what = `${c.mode === 'export' ? 'Selling' : 'Buying'} ${c.qty} ${resName(c.res)} ${c.mode === 'export' ? 'to' : 'from'} ${HUB_DEFS[c.hub].name}`;
-  return h('div', { class: 'tr-row' }, img(resIcon(c.res), 2),
+  return h('div', { class: 'tr-row', 'data-key': `caravan-${c.id}` }, img(resIcon(c.res), 2),
     h('div', { class: 'tr-row-main' }, h('div', null, what, c.kind !== 'contract' ? h('span', { class: 'chip gold' }, c.kind === 'relief' ? 'relief' : 'emergency') : null),
       h('div', { class: 'tr-sub' }, `${c.mode === 'export' ? '+' : '−'}${fmt(c.value)} den · `, when), pb.el));
 }
@@ -193,7 +193,7 @@ function offerRow(g: Game, o: MerchantOffer): HTMLElement {
   const total = o.price * o.qty;
   const weBuy = o.kind === 'buy';
   const reason = o.taken ? 'Already struck.' : weBuy && s.res.denarii < total ? `We hold only ${fmt(s.res.denarii)} den.` : !weBuy && s.res[o.res] < o.qty ? `We hold only ${fmt(s.res[o.res])} ${resName(o.res)}.` : null;
-  return h('div', { class: `tr-row${o.taken ? ' taken' : ''}` }, img(resIcon(o.res), 2),
+  return h('div', { class: `tr-row${o.taken ? ' taken' : ''}`, 'data-key': `offer-${o.id}` }, img(resIcon(o.res), 2),
     h('div', { class: 'tr-row-main' }, `${weBuy ? 'Buy' : 'Sell'} ${o.qty} ${resName(o.res)} at ${fmt(o.price)} each`,
       h('div', { class: 'tr-sub' }, `${weBuy ? '−' : '+'}${fmt(total)} den · base ${TRADE_BASE[o.res]}`)),
     btn(g, o.taken ? 'Struck' : 'Strike the deal', () => A.takeOffer(g.state, o.id), { cls: 'primary', reason, sfx: false }));

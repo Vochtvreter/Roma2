@@ -49,7 +49,11 @@
 #tab-body {
   flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 12px 28px; overscroll-behavior: contain;
   scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
+  overflow-anchor: none;   /* the panel anchors its own scroll across rebuilds (ui/steady.ts); the browser's would fight it */
 }
+/* blank room the panel borrows above or below its page while the mouse rests on it, so a row that vanishes never pulls
+   the card under the cursor up; given back when the mouse leaves */
+.steady-pad { flex: none; pointer-events: none; }
 .side-body { display: flex; flex-direction: column; gap: 4px; }
 .side-pulse { animation: side-pulse 1.6s ease-out; border-radius: var(--r2); }
 @keyframes side-pulse { 0%, 40% { box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242,201,76,.5); } 100% { box-shadow: none; } }

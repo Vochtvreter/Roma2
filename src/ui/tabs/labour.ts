@@ -53,7 +53,7 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
       manual ? h('button', { class: 'btn small ghost tab-lab-pm', type: 'button', 'aria-label': `More ${CAT_LABEL[cat][1]} hands`, onclick: step(1) }, '+') : null,
       cat === 'builders' ? null : btn(g, 'First', () => A.setLabourPriority(g.state, cat, B.ordo.PRIORITY_DAYS),
         { cls: 'ghost', tip: `${CAT_LABEL[cat][1]} first for ${B.ordo.PRIORITY_DAYS} days: staffed right after water and food.` }));
-    box.append(h('div', { class: 'tab-lab', 'data-cat': cat },
+    box.append(h('div', { class: 'tab-lab', 'data-cat': cat, 'data-key': `lab-${cat}` },
       h('div', { class: 'tab-lab-name' }, h('b', null, CAT_LABEL[cat][0]), h('span', { class: 'ed-en' }, CAT_LABEL[cat][1]), prio), ctl, why));
     const refresh = (): void => {
       const s = g.state;

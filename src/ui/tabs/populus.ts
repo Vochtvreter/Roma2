@@ -122,7 +122,7 @@ function homes(g: Game, up: Updater[]): HTMLElement {
     box.replaceChildren(...HOUSE_TIERS.filter((t) => c.byTier[t] > 0).map((t: HouseTierId) => {
       const def = TIER_DEFS[t];
       const blocked = Object.entries(wants[t] ?? {}) as [NeedId, number][];
-      return h('div', { class: 'pop-tier' },
+      return h('div', { class: 'pop-tier', 'data-key': `tier-${t}` },
         img(houseSprite(t, false, 0, 0), 1, 'pop-tier-img'),
         h('div', { class: 'pop-tier-main' },
           h('div', null, h('b', null, def.latin), h('span', { class: 'ed-en' }, def.name), h('span', { class: 'pop-tier-n num' }, String(c.byTier[t]))),
@@ -153,7 +153,7 @@ function gentes(g: Game, up: Updater[]): HTMLElement {
     const row = (f: GameState['families'][number]): HTMLElement => {
       const head = s.people.find((p) => p.id === f.head);
       const home = f.home !== null ? getBuilding(s, f.home) : undefined;
-      return h('div', { class: 'pop-gens' }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
+      return h('div', { class: 'pop-gens', 'data-key': `gens-${f.id}` }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
         h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${plural(size[f.id] ?? 0, 'soul', 'souls')} · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
     };
     list.replaceChildren(...fams.slice(0, GENTES_SHOWN).map(row));

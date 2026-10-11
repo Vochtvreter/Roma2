@@ -1,12 +1,14 @@
 // src/ui/counsel.ts — the portrait strip and the ONE counsel card (ARCHITECTURE §13.5, DESIGN §15.1, §11.1–11.7). Owner: WP-H.
 // Exactly one item by priority: Periculum advisory › urgent tip › Cave advisory › tip (prefs.tips) › Monitum / Opportunitas
-// advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; buttons are never rebuilt
-// under the pointer within B.ui.CLICK_GUARD_MS of a click.
+// advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; the card is never rebuilt
+// under the pointer within B.ui.CLICK_GUARD_MS of a click, nor while the mouse rests on it (unless to answer a click
+// there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
 import { ADVISORS } from '../game/types';
 import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, GuideStep, Remedy } from '../game/types';
 import type { Game } from './types';
 import { clear, fmtDays, h, img, tip } from './dom';
 import { caps } from './tipkit';
+import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
 import { activeAdvisories, advisorMood, renderAdvisory } from '../game/advisors/engine';
 import { checkRemedy } from '../game/advisors/remedies';
@@ -80,12 +82,18 @@ export function pulseTarget(selector: string): void {
 export class Counsel {
   private sig = '';
   private textDay = -1;
-  private clickAt = -Infinity;
+  private readonly hold: PointerHold;
+  private shownKey = '';                      // the shown item (not its remedies): a new one slides in, a refresh does not
   private refresh: (() => void) | null = null;
   private open = false;                       // mobile: the card is expanded from its portrait chip
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
-    root.addEventListener('pointerdown', () => { this.clickAt = performance.now(); });
+    this.hold = new PointerHold(root);
+  }
+
+  /** True while the mouse rests on the card or the strip: the Res Gestae above holds still too (objective.ts). */
+  get held(): boolean {
+    return this.hold.holds();
   }
 
   /** Rebuilds when the shown item, the strip or the remedies' availability change; refreshes the text daily. */
@@ -94,7 +102,7 @@ export class Counsel {
     const s = g.state;
     const item = pickCounsel(g);
     const sig = counselSig(g, item);
-    if (sig !== this.sig && performance.now() - this.clickAt > B.ui.CLICK_GUARD_MS) {
+    if (sig !== this.sig && !this.hold.holds()) {
       this.sig = sig;
       this.build(item);
       this.textDay = s.day;
@@ -107,10 +115,14 @@ export class Counsel {
   private build(item: CounselItem): void {
     clear(this.root);
     this.refresh = null;
+    const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}` : 'c';
+    const enter = key !== this.shownKey;
+    this.shownKey = key;
     this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
     this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
     if (item.kind === 'calm') { this.root.appendChild(this.calm()); return; }
     const card = item.kind === 'tip' ? this.tipCard(item.t) : this.advisoryCard(item.a);
+    if (enter) card.classList.add('enter');
     const toggle = h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾');
     card.prepend(toggle);
     this.root.appendChild(card);

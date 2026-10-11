@@ -98,7 +98,7 @@ export class UI {
     // the 'wants' tip asks the player to open the Domus overlay; seeing it (by any route: bar, key, remedy) reads it
     if (this.g.view.overlay === 'domus' && !this.g.state.guidance.tips.includes('wants')) this.g.act(dismissTip(this.g.state, 'wants'));
     this.hud.update();
-    this.objective.update();
+    this.objective.update(this.counsel.held);
     this.counsel.update();
     this.ticker.update(now);
     this.tools.update();

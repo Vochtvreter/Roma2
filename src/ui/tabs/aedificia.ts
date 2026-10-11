@@ -92,7 +92,7 @@ function queueRow(g: Game, b: Building, first: boolean, up: Updater[]): HTMLElem
     cancel.addEventListener('click', (e) => e.stopPropagation());
   }
   const owner = b.owner === 'ordo' ? img('i_seal', 1, 'bld-q-owner') : b.status === 'plan' ? img('i_plan', 1, 'bld-q-owner') : null;
-  const row = h('div', { class: `bld-q${b.owner === 'ordo' ? ' ordo' : ''}`, role: 'button', tabindex: '0' },
+  const row = h('div', { class: `bld-q${b.owner === 'ordo' ? ' ordo' : ''}`, role: 'button', tabindex: '0', 'data-key': `q-${b.id}` },
     img(typeSprite(b.type), 1, 'bld-q-img'),
     h('div', { class: 'bld-q-main' }, h('div', { class: 'bld-q-name' }, owner, def.name, b.status === 'staked' ? img('i_stake', 1) : null), status, pb.el,
       b.owner === 'ordo' && b.reason ? h('div', { class: 'tab-why' }, reasonText(b.reason)) : null),

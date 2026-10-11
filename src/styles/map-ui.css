@@ -12,6 +12,10 @@
 #map-tools > * { pointer-events: auto; }
 #overlay-bar { grid-area: ov; justify-self: end; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
 #overlay-bar:empty { display: none; }
+/* the bar sits on the bottom edge: the Officia layers and the legend open above the toggles, never under them, so the
+   toggle just clicked (and the next one) stay where the cursor is */
+#overlay-bar > .map-legend { order: -2; }
+#overlay-bar > .map-ov-row.sub { order: -1; }
 #minimap {
   grid-area: mini; width: 224px; height: 168px; display: block; border: 2px solid var(--line); border-radius: 6px;
   background: #0a0710; cursor: crosshair; box-shadow: var(--ring-shadow), 0 4px 14px rgba(0, 0, 0, .45);
