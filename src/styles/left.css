@@ -11,12 +11,6 @@
 /* The inspector takes what the column has left and scrolls inside (.ins-card), so it never runs under the map tools,
    the ticker or the sheet, nor off the bottom of the screen. */
 #left > #inspector { margin-top: auto; z-index: var(--z-inspector); flex: 0 1 auto; min-height: 0; }
-/* A clicked (sticky) card is what the player is looking at: the Res Gestae drops to its goal line, CTA and one scrolling
-   row of chips, and the portrait strip steps aside (the card itself stays). Hover cards change nothing, so the column
-   never jumps while the pointer crosses the map. */
-#left:has(> #inspector > .ins-card.sticky) :is(.obj-hint, .obj-unlocks, .obj-meter, .counsel-strip) { display: none; }
-#left:has(> #inspector > .ins-card.sticky) .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
-#left:has(> #inspector > .ins-card.sticky) .obj-chip { flex: none; }
 
 /* ───────── Res Gestae ───────── */
 #objective {
