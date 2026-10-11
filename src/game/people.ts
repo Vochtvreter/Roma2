@@ -188,6 +188,19 @@ function houseGroup(s: GameState, group: Person[], prefer: number | null = null)
   return main;
 }
 
+/** Rehouses groups of people who have lost their homes to a renewal (urbs.ts): each group, in order, into the best house
+ *  that holds it whole, else split across the best houses; each family's home follows its head. False when the colony
+ *  lacks the beds for a group (its people are left homeless, to be housed or leave as any homeless soul). */
+export function rehouseGroups(s: GameState, groups: readonly Person[][]): boolean {
+  let all = true;
+  for (const g of groups) {
+    const home = houseGroup(s, g.slice());
+    if (home === null) { all = false; continue; }
+    for (const f of s.families) if (g.some((p) => p.id === f.head)) f.home = getPerson(s, f.head)?.home ?? home;
+  }
+  return all;
+}
+
 function insertById<T extends { id: number }>(arr: T[], item: T): void {
   let k = arr.length;
   while (k > 0 && arr[k - 1].id > item.id) k--;

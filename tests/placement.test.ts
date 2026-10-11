@@ -206,7 +206,7 @@ describe('canPlace: the twelve checks with their exact codes and reasons', () =>
     atRank(s, 2);
     expect(findFail(s, 'fodina', 'terrain', 'Must stand on an iron vein.')).toBeGreaterThanOrEqual(0);
     atRank(s, 3);
-    expect(findFail(s, 'lacus', 'noCastellum', 'No castellum within 18 paces.')).toBeGreaterThanOrEqual(0);
+    expect(findFail(s, 'lacus', 'noCastellum', 'No castellum within 18 paces, nor the aqueduct within 8 in the town.')).toBeGreaterThanOrEqual(0);
     expect(findFail(s, 'thermae', 'noCastellum', 'No castellum within 18 paces.')).toBeGreaterThanOrEqual(0);
     expect(validSlots(s, 'castellum', 'player').size).toBeGreaterThan(0);
     for (const f of getMap(42).fontes) insert(s, 'hortus', tx(f), ty(f));       // springs built over: nothing to draw from

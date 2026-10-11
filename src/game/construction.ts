@@ -17,6 +17,7 @@ import { settingValue } from './decisions';
 import { seasonOf as seasonOf$ } from './calendar';
 import { view } from './sim';
 import { placementCost } from './place';
+import { wallsDay } from './urbs';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -181,8 +182,11 @@ export function constructionDay(s: GameState, ctx: TickContext): void {
     worked = true;
     if (b.progress >= 1 - EPS) complete(s, ctx, b);
   }
+  // the town wall takes what the works leave, at most its crew (urbs.ts), before the Capitolium
+  const avg = builders.length > 0 ? crew / builders.length : 0;
+  const walls = wallsDay(s, ctx, left, avg);
+  if (walls > 0) { left -= walls; worked = true; }
   if (monument) {
-    const avg = builders.length > 0 ? crew / builders.length : 0;
     const crewWork = Math.min(left, crew, C.CAP_CREW * avg);
     if (capitoliumDay(s, ctx, monument, crewWork)) worked = true;
   }

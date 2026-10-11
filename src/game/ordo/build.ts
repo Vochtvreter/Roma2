@@ -3,8 +3,10 @@
 // the Ordo saves for — and a later wish goes ahead only if it can be paid from the stock above the saving target. Two kinds
 // of wish may dip into that reserve so saving never deadlocks: a store the target cannot fit into, and the first producer
 // of a good the target lacks. Survival wishes ignore the reserve, the treasury floor, the stake and the site limit.
-// Never: demolish, move, convert, build in reserved blocks or blocks holding unfinished player works, place on future-ring
-// blocks (canPlace for owner 'ordo'), raise a hortus or pave except under Urbs (or on request).
+// Never: demolish, move or convert the player's works, build in reserved blocks or blocks holding unfinished player works,
+// place on future-ring blocks (canPlace for owner 'ordo'), raise a hortus or pave except under Urbs (or on request). Its
+// one renewal here: a block-sized service no free block can bring to the homes waiting for it goes where a block of its
+// own homes is bought out, every family rehoused (urbs.ts, DESIGN §3.9).
 import { B as B$ } from '../balance';
 import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
 import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
@@ -16,7 +18,7 @@ import { settingValue } from '../decisions';
 import { sectionRevealed } from '../reveal';
 import { bestSlot, siteScore } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
-import { desirability, houseDesir, previewCovered } from '../coverage';
+import { desirability, houseDesir, houseHas, previewCovered } from '../coverage';
 import { buildingRateOf, seasonMult } from '../economy';
 import { fxAdd as fxAdd$ } from '../fx';
 import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
@@ -29,10 +31,11 @@ import { aestasWork } from './water';
 import { houseWants as eachHouseWant, liftSlot, serveSlot } from '../advisors/util';
 import { goodsPlan } from './goods';
 import { maskAllows, walkMask } from './duties';
+import { busiestDirt, buyOut, cottageBlock, renewalReason } from '../urbs';
 import { view } from '../sim';
 import { classAt as classAt$, derived, sizeOf as sizeOf$ } from '../derived';
 import { getMap } from '../map';
-import { isActiveBlock } from '../survey';
+import { isActiveBlock, isRazed } from '../survey';
 import { rectGap as rectGap$ } from '../world/grid';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -60,7 +63,7 @@ const NEED_OF: Partial<Record<BuildingId, NeedId>> = { lararium: 'religion', tab
 const PETITION_WORKS: BuildingId[][] = [[], ['horreum'], [], ['templum', 'macellum', 'balneum'], ['castellum', 'thermae', 'theatrum']];
 
 /** A wish: a type at the Ordo's slot, what it costs, why, and how it may spend. */
-export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean }
+export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean; renew?: number[] }
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
 /** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus. */
@@ -174,7 +177,7 @@ function freeBlocks(s: GameState): Rect[] {
     }
     const out: Rect[] = [];
     for (const blk of sv.blocks) {
-      if (!isActiveBlock(sv, blk, s.rank) || keep.has(blk.id)) continue;
+      if (!isActiveBlock(sv, blk, s.rank, isRazed(s)) || keep.has(blk.id)) continue;
       let free = true;
       for (let y = blk.y; free && y < blk.y + 4; y++) for (let x = blk.x; x < blk.x + 4; x++) {
         const i = idx(x, y);
@@ -185,7 +188,7 @@ function freeBlocks(s: GameState): Rect[] {
     return out;
   });
 }
-const blockKey = (s: GameState): string => `${layoutEpoch(s)}|${s.rank}|${s.ordo.reserved.join(',')}`;
+const blockKey = (s: GameState): string => `${layoutEpoch(s)}|${s.rank}|${isRazed(s) ? 1 : 0}|${s.ordo.reserved.join(',')}`;
 
 /** The free blocks within a castellum's reach of a castellum footprint at (x, y), but `not`. */
 function blocksInReach(s: GameState, x: number, y: number, not: Rect | null = null): Rect[] {
@@ -342,7 +345,7 @@ const unfinished = (v: SimView, t: BuildingId): boolean => (v.d.all[t] ?? 0) > (
 function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: string): Generator<Wish> {
   const { c, d, f } = v;
   const seen = new Set<BuildingId>();
-  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; again?: boolean; store?: boolean; serves?: NeedId } = {}): Wish | null => {
+  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; again?: boolean; store?: boolean; serves?: NeedId; ids?: number[]; reach?: number } = {}): Wish | null => {
     const def = BUILDING_DEFS[type];
     if (seen.has(type) || def.rank > s.rank) return null;
     if (!maskAllows(mask, { code, params }, !!o.survival)) return null;   // a duty the Ordo does not hold (duties.ts)
@@ -352,7 +355,7 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     // a service goes to the slot that serves the most of the houses waiting for it (none: the row is dropped, unless
     // its cost overflows a store, which asks for the store first); a castellum's route cost is measured at its slot;
     // any other row only needs a slot
-    const at = o.serves !== undefined ? ordoServeSlot(s, v, type, o.serves) : null;
+    const at = o.serves === undefined ? null : o.ids ? serveSlot(s, type, 'ordo', o.serves, o.ids, keptSlots(s, type)) : ordoServeSlot(s, v, type, o.serves);
     if (o.serves !== undefined && !at && !overCap(s, c.caps, type)) return null;
     const exact = o.serves !== undefined || type === 'castellum';
     const tile = at ? at.tile : type === 'castellum' ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
@@ -361,7 +364,7 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     const over = RESOURCES.find((r) => (chk.cost[r] ?? 0) > c.caps[r]);
     if (over && !o.store) return store(over, type);
     const reach = at?.k ?? 0;
-    if (o.serves && reach === 0) return null;
+    if (o.serves && reach < (o.reach ?? 1)) return null;
     seen.add(type);
     const p = o.serves ? { type, ...params, reach } : { type, ...params };
     const wish = { type, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock };
@@ -374,6 +377,17 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     return make(t, 'storageFull', params, { unblock: forWhat !== undefined, store: true });
   };
   const yieldOf = function* (w: Wish | null): Generator<Wish> { if (w) yield w; };
+  // a block service no free block brings to the homes waiting for it: a block of cottages bought out, its families
+  // rehoused, and the work raised there (urbs.ts, DESIGN §3.9)
+  const renewal = (type: BuildingId, need: NeedId, n: number): Wish | null => {
+    const def = BUILDING_DEFS[type];
+    if (seen.has(type) || def.rank > s.rank || unfinished(v, type) || (def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount)) return null;
+    if (!maskAllows(mask, renewalReason(type, need, n, 0, 0), false) || overCap(s, c.caps, type)) return null;
+    const blk = cottageBlock(s, type, need, waitingFor(s, v, need));
+    if (!blk) return null;
+    seen.add(type);
+    return { type, tile: blk.tile, cost: placementCost(s, type, 0), reason: renewalReason(type, need, n, blk.houses.length, blk.reach), survival: false, unblock: false, renew: blk.houses };
+  };
   // 0 · the saving target must fit our stores
   const parts = savingParts(s, v);
   const target = partsCost(parts);
@@ -424,6 +438,12 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     const w = fountain ? make('lacus', 'waterAccess', { n: dry }, { serves: 'water' }) : null;
     yield* yieldOf(w ?? (fountain && unfinished(v, 'lacus') ? null : make('puteus', 'waterAccess', { n: dry }, { serves: 'water' })));
   }
+  // 5b · running water for the great houses (DESIGN §3.9): once the aqueduct flows, a fountain within reach gives an
+  //      insula or a domus beds and rent (the aquae variant), so the aqueduct's water goes where it matters
+  if (d.castellumActive && BUILDING_DEFS.lacus.rank <= s.rank) {
+    const great = d.houses.filter((id) => { const h = getBuilding(s, id)?.house; return !!h && TIER_DEFS[h.tier].level === 4 && !houseHas(s, id, 'fountain'); });
+    if (great.length >= B.urbs.AQUAE_REACH) yield* yieldOf(make('lacus', 'aquae', { n: great.length }, { serves: 'water', ids: great, reach: B.urbs.AQUAE_REACH }));
+  }
   // 6 · the service most homes wait for (baths too: one balneum cannot reach every insula of a grown city)
   const wants = (Object.keys(SERVICE_FOR) as NeedId[]).filter((n) => (hw.want[n] ?? 0) > 0)
     .sort((a, b) => (hw.want[b] ?? 0) - (hw.want[a] ?? 0) || NEEDS.indexOf(a) - NEEDS.indexOf(b));
@@ -431,7 +451,7 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     const t = SERVICE_FOR[n] as BuildingId;
     const min = BUILDING_DEFS[t].place.includes('block') ? B.ordo.EVOLVE_MIN_BLOCK : B.ordo.EVOLVE_MIN;
     if ((hw.want[n] ?? 0) < min) continue;
-    yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n }));
+    yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n }) ?? (min === B.ordo.EVOLVE_MIN_BLOCK ? renewal(t, n, hw.want[n] ?? 0) : null));
   }
   // 7 · works the next petition names (the Vicus petition only once the Lex coloniae is proclaimed)
   if (s.rank > 0 || s.decisions.paths.charter !== undefined) {
@@ -571,7 +591,7 @@ export function walkWishes(s: GameState, v: SimView, full = false): Walk {
  *  GROWTH_EVERY days, so a colony left to it grows slowly but never starves (survival, the Aestas cistern and the
  *  stores keep the full cadence); a Praefectus who raises them by hand, as the advisors and the Agenda name them,
  *  outpaces it. */
-const GROWTH: ReadonlySet<ReasonCode> = new Set<ReasonCode>(['beds', 'waterAccess', 'evolve', 'rank', 'materials', 'luxury', 'focusPlan', 'beauty', 'capitolium']);
+const GROWTH: ReadonlySet<ReasonCode> = new Set<ReasonCode>(['beds', 'waterAccess', 'evolve', 'rank', 'materials', 'luxury', 'focusPlan', 'beauty', 'capitolium', 'aquae', 'renewal']);
 
 /** Whether a wish grows the colony (paced) rather than keeps it. */
 export function isGrowth(w: { reason: Reason }): boolean {
@@ -608,6 +628,7 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   if (!w) return;
   const res = w.reason.params.res;
   const had = typeof res === 'string' && (RESOURCES as readonly string[]).includes(res) ? s.res[res as ResId] : 0;
+  if (w.renew && !buyOut(s, w.renew, w.type, (e) => ctx.fx.push(e))) return;   // the cottages first, their families rehoused
   const r = placeBuilding(s, w.type, w.tile, { owner: 'ordo', reason: w.reason, noStake: w.survival });
   if (!r.ok) return;
   if (r.id !== undefined) ctx.fx.push({ kind: 'ordoPlaced', id: r.id });
@@ -622,11 +643,10 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   chronicle(s, 'ordo', reason, { ref: r.id, decided });
 }
 
-/** Urbs: paves the busiest dirt streets nearest the forum, URBS_PAVE streets a month, from unreserved stone. */
+/** Urbs: paves the dirt streets the most feet tread (the footfall census, urbs.ts; nearer the forum on a tie),
+ *  URBS_PAVE streets a month, from unreserved stone. */
 function paveBusyStreets(s: GameState, v: SimView, decided: boolean): void {
-  const { d } = v;
-  const tiles = s.roads.filter((i) => d.road[i] === 1 && d.pomerium[i] === 1 && d.stepsToForum[i] >= 0)
-    .sort((a, b) => d.stepsToForum[a] - d.stepsToForum[b] || a - b).slice(0, B.ordo.FOCUS.URBS_PAVE * STREET_TILES);
+  const tiles = busiestDirt(s, B.ordo.FOCUS.URBS_PAVE * STREET_TILES);
   if (tiles.length === 0 || !canSpend(s, { stone: tiles.length * B.map.PAVE_STONE }, v)) return;
   if (pave(s, tiles).ok) log(s, 'ordo', `For the city beautiful the Ordo paves ${tiles.length} paces of our busiest streets.`, decided ? ['decided'] : undefined);
 }

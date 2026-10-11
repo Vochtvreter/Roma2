@@ -202,6 +202,18 @@ describe('sanitiser', () => {
     expect(deserialize(JSON.stringify({ ...r, buildings: r.buildings.filter((b: Raw) => b.type !== 'principia') }))).toBeNull();
   });
 
+  it('migrates a version-1 save (before the growing town): `urbs` arrives after `wood`, the castrum standing', () => {
+    const s = run(fresh(7), 30);
+    const r = raw(s);
+    delete r.urbs;
+    r.version = 1;
+    const back = deserialize(JSON.stringify(r))!;
+    expect(back.version).toBe(SAVE_VERSION);
+    expect(back.urbs).toEqual({ traffic: {}, moenia: null, razed: null, renewed: s.urbs.renewed });
+    expect(Object.keys(back)).toEqual(Object.keys(s));
+    expect(serialize({ ...back, urbs: s.urbs })).toBe(serialize(s));
+  });
+
   it('runs the migration chain from older versions', () => {
     const s = fresh();
     const r = raw(s);

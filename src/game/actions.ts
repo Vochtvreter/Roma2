@@ -2,6 +2,7 @@
 // UI, bots and remedies mutate state only through these (plus advisors/remedies.applyRemedy). Every action returns
 // an ActionResult, never throws, logs what it changed and calls invalidate/touchPeople as needed.
 export { placeBuilding as place, demolish, buildRoad, pave, toggleReserveBlock } from './place';
+export { commissionWalls } from './urbs';
 export { cancelSite, prioritise, setOpen, setPrio } from './construction';
 export { setHousePref } from './housing';
 export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority, setDuty, handOverAll, keepDuties } from './ordo/actions';

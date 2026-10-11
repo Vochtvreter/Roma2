@@ -6,8 +6,8 @@ import { B as B$ } from './balance';
 import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId, WorldMap } from './types';
 import { getMap as getMap$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
-import { activeRings as activeRings$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, plotOrigin as plotOrigin$ } from './survey';
-import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, sizeOf as sizeOf$ } from './derived';
+import { WALL_RING as WALL_RING$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, isRazed as isRazed$, plotOrigin as plotOrigin$, ringsOf as ringsOf$ } from './survey';
+import { blockOfTile as blockOfTile$, campRect as campRect$, classAt as classAt$, derived as derived$, inCamp as inCamp$, sizeOf as sizeOf$ } from './derived';
 import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layoutEpoch$, memo as memo$, touchPeople as touchPeople$ } from './memo';
 import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
@@ -26,8 +26,9 @@ import { RULE_REASON as RULE_REASON$, ruleFail as ruleFail$, ruleTester as ruleT
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
-  activeRings = activeRings$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$, isFutureBlock = isFutureBlock$,
-  plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$, derived = derived$, sizeOf = sizeOf$,
+  WALL_RING = WALL_RING$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$, isFutureBlock = isFutureBlock$,
+  isRazed = isRazed$, ringsOf = ringsOf$, plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$,
+  derived = derived$, campRect = campRect$, inCamp = inCamp$, sizeOf = sizeOf$,
   dayLayout = dayLayout$, invalidate = invalidate$, layoutEpoch = layoutEpoch$, memo = memo$,
   touchPeople = touchPeople$, seasonOf = seasonOf$, fx = fx$, reasonText = reasonText$, BUILDING_DEFS = BUILDING_DEFS$,
   RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$, GN = GN$, anySide = anySide$, rectTiles = rectTiles$,
@@ -42,6 +43,8 @@ const R = {
   offMap: 'Beyond the surveyed land.',
   groma: 'Reserved by the groma.',
   walls: 'The walls and ditch stay clear.',
+  moenia: 'The town wall runs here.',
+  moeniaLine: 'The groma has laid the town wall\'s line here.',
   notOnSlot: 'Choose a surveyed plot.',
   masked: 'The surveyors left this block to the fields.',
   plotTaken: 'That plot is taken.',
@@ -173,11 +176,14 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
   let block: Block | null = null;
   if (URBAN.includes(cls)) {
     // 5 · an urban slot in an active block
-    if (!slot) return sv.wall[tile] || sv.fossa[tile] ? fail('castrum', R.walls) : fail('notOnSlot', R.notOnSlot);
+    if (!slot) return d.wall[tile] ? fail('castrum', inCamp(s, tile) ? R.walls : R.moenia) : fail('notOnSlot', R.notOnSlot);
     block = blockOfTile(s, idx(slot.x, slot.y));
     if (!block) return fail('notOnSlot', R.notOnSlot);
     if (block.masked) return fail('terrain', R.masked);
-    if (!activeRings(s.rank).includes(block.ring)) return fail('notInPomerium', `Outside the pomerium: become ${withArticle(rankForRing(block.ring))} to survey these blocks.`);
+    if (!ringsOf(s).includes(block.ring)) {
+      if (block.ring === WALL_RING) return fail('castrum', R.walls);
+      return fail('notInPomerium', `Outside the pomerium: become ${withArticle(rankForRing(block.ring))} to survey these blocks.`);
+    }
     // 6 · not the forum or the Area Capitolina (nor a block the Ordo must leave alone); the plots are free
     if (block.reserved || (owner === 'ordo' && ordoKeepsOff(s).has(block.id))) return fail('reserved', R.groma);
     at = slot;
@@ -187,17 +193,16 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
     at = { x: tx(tile), y: ty(tile) };
     if (!inBounds(at.x + w - 1, at.y + h - 1)) return fail('offMap', R.offMap);
     fp = rectTiles(at.x, at.y, w, h);
-    const c = sv.castrum;
-    const inCastrum = (i: number): boolean => tx(i) >= c.x && ty(i) >= c.y && tx(i) < c.x + c.w && ty(i) < c.y + c.h;
     // 7 · rural land
     if (fp.some((i) => d.territory[i] !== 1)) return fail('outsideTerritory', R.territory);
-    if (fp.some(inCastrum)) return fail('castrum', R.castrum);
+    if (fp.some((i) => inCamp(s, i))) return fail('castrum', R.castrum);
+    if (fp.some((i) => d.wall[i] > 0)) return fail('castrum', s.urbs.moenia?.done ? R.moenia : R.moeniaLine);
     if (fp.some((i) => sv.street[i] === 1)) return fail('street', R.street);
     if (fp.some((i) => d.road[i] > 0)) return fail('road', R.road);
     if (fp.some((i) => d.pomerium[i] === 1)) return fail('notInPomerium', R.pomerium);
     if (fp.some((i) => d.reservedTile[i] === 1)) return fail('reserved', R.aqueduct);
     // 8 · the Ordo keeps the future rings clear
-    future = fp.some((i) => sv.blockAt[i] >= 0 && isFutureBlock(sv, sv.blocks[sv.blockAt[i]], s.rank));
+    future = fp.some((i) => sv.blockAt[i] >= 0 && isFutureBlock(sv, sv.blocks[sv.blockAt[i]], s.rank, isRazed(s)));
     if (future && owner === 'ordo') return fail('futureRing', R.futureRing);
     // 9 · terrain
     let worst: { code: PlaceFail; reason: string } | null = null;
@@ -258,8 +263,9 @@ function computeSlots(s: GameState, type: BuildingId, owner: Owner): Map<number,
     const rule = ruleTester(s, type, w, h);
     const keepOff = owner === 'ordo' ? ordoKeepsOff(s) : null;
     const origins = urban === 'block' ? [0] : urban === 'half' ? [0, 1] : [0, 1, 2, 3];
+    const razed = isRazed(s);
     for (const blk of sv.blocks) {
-      if (!isActiveBlock(sv, blk, s.rank) || keepOff?.has(blk.id)) continue;
+      if (!isActiveBlock(sv, blk, s.rank, razed) || keepOff?.has(blk.id)) continue;
       for (const k of origins) {
         const o = urban === 'block' ? { x: blk.x, y: blk.y } : urban === 'half' ? halfOrigin(blk, k as 0 | 1) : plotOrigin(blk, k as 0 | 1 | 2 | 3);
         if (rectTiles(o.x, o.y, w, h).some((i) => d.buildingAt[i] !== 0 || d.reservedTile[i] === 1)) continue;
@@ -293,14 +299,15 @@ function ruralBase(s: GameState, owner: Owner): Uint8Array {
   return memo(s, `ruralBase:${owner}`, layoutEpoch(s), () => {
     const sv = getMap(s.seed).survey;
     const d = derived(s);
-    const c = sv.castrum;
+    const razed = isRazed(s);
+    const c = campRect(s);
     const m = new Uint8Array(GN);
     for (let i = 0; i < GN; i++) {
-      const x = tx(i), y = ty(i);
       const b = sv.blockAt[i];
-      m[i] = d.territory[i] !== 1 || (x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h) || sv.street[i] === 1
+      const x = tx(i), y = ty(i);
+      m[i] = d.territory[i] !== 1 || (x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h) || sv.street[i] === 1 || d.wall[i] > 0
         || d.road[i] > 0 || d.pomerium[i] === 1 || d.reservedTile[i] === 1 || d.buildingAt[i] !== 0
-        || (owner === 'ordo' && b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank)) ? 1 : 0;
+        || (owner === 'ordo' && b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank, razed)) ? 1 : 0;
     }
     return m;
   });
@@ -407,7 +414,6 @@ export function buildRoad(s: GameState, tiles: number[]): ActionResult {
   const map = getMap(s.seed);
   const sv = map.survey;
   const d = derived(s);
-  const c = sv.castrum;
   const add: number[] = [];
   for (const i of tiles) {
     if (!Number.isInteger(i) || i < 0 || i >= GN) return { ok: false, code: 'offMap', reason: R.offMap };
@@ -415,9 +421,8 @@ export function buildRoad(s: GameState, tiles: number[]): ActionResult {
     if (d.buildingAt[i] !== 0) return { ok: false, code: 'occupied', reason: R.occupied };
     const tf = terrainFail('lapicidina', map.terrain[i], map.feature[i]);   // river, crag, sacred ground (rock and ore are fine)
     if (tf && tf.code !== 'terrain') return { ok: false, code: tf.code, reason: tf.reason };
-    if (sv.wall[i] || sv.fossa[i]) return { ok: false, code: 'castrum', reason: R.walls };
-    const inCastrum = tx(i) >= c.x && ty(i) >= c.y && tx(i) < c.x + c.w && ty(i) < c.y + c.h;
-    if ((d.pomerium[i] === 1 || inCastrum) && sv.street[i] !== 1) return { ok: false, code: 'invalid', reason: R.survey };
+    if (d.wall[i] === 1) return { ok: false, code: 'castrum', reason: inCamp(s, i) ? R.walls : s.urbs.moenia?.done ? R.moenia : R.moeniaLine };
+    if ((d.pomerium[i] === 1 || inCamp(s, i)) && sv.street[i] !== 1) return { ok: false, code: 'invalid', reason: R.survey };
     add.push(i);
   }
   if (add.length === 0) return { ok: true };

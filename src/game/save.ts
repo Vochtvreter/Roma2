@@ -15,8 +15,8 @@ import { EDICT_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisio
 import { RANK_DEFS } from './data/ranks';
 import { buildingShape, personShape, stateShape } from './shapes';
 
-/** Current save format version (written by newGame). */
-export const SAVE_VERSION = 1;
+/** Current save format version (written by newGame). 2: the growing town (`urbs`: footfall, the town wall, the razed castrum). */
+export const SAVE_VERSION = 2;
 /** Namespaced localStorage keys: the save, prefs, Fasti, the tab that owns the save, and when a copy was last exported. */
 export const KEYS: {
   save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1';
@@ -28,7 +28,21 @@ export const KEYS: {
 /** Days past START_DAY a save may claim (a corrupt day of 1e12 would otherwise break the calendar for good). */
 const DAY_SPAN = 1_000_000;
 /** Migrations: MIGRATIONS[n] turns a version-n save into version n + 1 (and sets the new version); `any` is allowed here only. */
-export const MIGRATIONS: Record<number, (raw: any) => any> = {};
+export const MIGRATIONS: Record<number, (raw: any) => any> = {
+  // 1 → 2: the growing town arrives with no footfall counted yet, no town wall and the castrum standing; `urbs` sits after
+  // `wood`, where newGame writes it (the state's key order is its serialised order)
+  1: (raw) => {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(raw)) {
+      if (k === 'urbs') continue;
+      out[k] = raw[k];
+      if (k === 'wood') out.urbs = raw.urbs ?? { traffic: {}, moenia: null, razed: null, renewed: NEVER };
+    }
+    out.urbs ??= { traffic: {}, moenia: null, razed: null, renewed: NEVER };
+    out.version = 2;
+    return out;
+  },
+};
 /** Preferences of a first visit. */
 export const DEFAULT_PREFS: Prefs = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false };
 
@@ -172,6 +186,32 @@ function sanitiseEvents(s: GameState): void {
     : [];
 }
 
+/** The growing town: footfall on real tiles, a well-formed town wall (its tiles in building order, its gates among them),
+ *  and days that are numbers or null. */
+function sanitiseUrbs(s: GameState): void {
+  const u = s.urbs;
+  if (!isObj(u.traffic)) u.traffic = {};
+  finiteRec(u.traffic as Obj, (k) => { const i = Number(k); return Number.isInteger(i) && i >= 0 && i < W * H; });
+  for (const k of Object.keys(u.traffic)) if ((u.traffic as Obj)[k] as number <= 0) delete (u.traffic as Obj)[k];
+  const m = u.moenia;
+  if (m !== null && (!isObj(m) || !Array.isArray(m.tiles) || !Array.isArray(m.gates))) u.moenia = null;
+  else if (m) {
+    const seen = new Set<number>();
+    m.tiles = m.tiles.filter((i) => typeof i === 'number' && Number.isInteger(i) && i >= 0 && i < W * H && !seen.has(i) && (seen.add(i), true));
+    m.gates = sortedTiles(m.gates).filter((i) => seen.has(i));
+    m.surveyed = finite(m.surveyed, s.day);
+    m.work = Math.max(1, finite(m.work, 1));
+    m.progress = clamp(finite(m.progress), 0, 1);
+    if (!isObj(m.matUsed)) m.matUsed = {};
+    finiteRec(m.matUsed as Obj, (k) => (RESOURCES as readonly string[]).includes(k));
+    m.done = m.done === null || m.done === undefined ? null : finite(m.done, s.day);
+    if (m.tiles.length === 0) u.moenia = null;
+  }
+  u.razed = u.razed === null || u.razed === undefined ? null : finite(u.razed, s.day);
+  if (u.razed !== null && !u.moenia?.done) u.razed = null;   // the castrum comes down only once the town wall stands
+  u.renewed = finite(u.renewed, NEVER);
+}
+
 /** Repairs a filled-in save in place: ranges, unknown ids, dangling references, sort orders (ARCHITECTURE §11.2 step 5). */
 function sanitise(s: GameState): void {
   s.day = clamp(Math.round(finite(s.day, B.time.START_DAY)), B.time.START_DAY, B.time.START_DAY + DAY_SPAN);
@@ -196,6 +236,7 @@ function sanitise(s: GameState): void {
   finiteRec(s.wood as Obj, (k) => Number.isInteger(Number(k)));
   sanitiseTrade(s);
   sanitiseEvents(s);
+  sanitiseUrbs(s);
 
   const o = s.ordo;
   if (o.pin !== null && !BUILDINGS.includes(o.pin)) o.pin = null;
