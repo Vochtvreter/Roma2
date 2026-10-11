@@ -8,6 +8,9 @@ import { elapsed } from '../src/game/calendar';
 import { newCtx, tick, view } from '../src/game/sim';
 import { GUIDE, dismissTip, mentorKicker, nextTip, pruneGuide } from '../src/game/guide';
 import { anOrdinal, benefitLine, howToGetMore, outputChain } from '../src/game/hints';
+import { B } from '../src/game/balance';
+import { INTRO_TIPS, introduced, skipIntro } from '../src/game/intro';
+import type { IntroPart } from '../src/game/intro';
 
 /** Plays `days` days; a tip is read (dismissed) the day after it first shows. Returns the elapsed day each tip showed. */
 function play(s: GameState, days: number, step?: (s: GameState) => void): Partial<Record<TipId, number>> {
@@ -24,7 +27,7 @@ function play(s: GameState, days: number, step?: (s: GameState) => void): Partia
 }
 
 describe('tip graph', () => {
-  it('holds the 20 tips once each, welcome first, every `after` an earlier tip', () => {
+  it('holds every tip once, welcome first, every `after` an earlier tip', () => {
     expect(GUIDE.map((g) => g.id).sort()).toEqual([...TIPS].sort());
     expect(new Set(GUIDE.map((g) => g.id)).size).toBe(GUIDE.length);
     expect(GUIDE[0].id).toBe('welcome');
@@ -41,12 +44,17 @@ describe('tip graph', () => {
 });
 
 describe('tip engine', () => {
-  it('shows welcome first, then vitals from elapsed 2 once welcome is read', () => {
+  it('shows welcome first, then vitals once welcome is read and a breather has passed', () => {
     const s = fresh(42);
     expect(nextTip(s)?.id).toBe('welcome');
     run(s, 2);
     expect(nextTip(s)?.id).toBe('welcome');
     expect(dismissTip(s, 'welcome').ok).toBe(true);
+    expect(s.guidance.tipDay).toBe(s.day);
+    expect(nextTip(s)).toBeNull();                                   // nothing new straight after a tip is read
+    run(s, B.intro.GAP - 1);
+    expect(nextTip(s)).toBeNull();
+    run(s, 1);
     expect(nextTip(s)?.id).toBe('vitals');
     expect(dismissTip(s, 'nope' as TipId).ok).toBe(false);
   });
@@ -131,6 +139,62 @@ describe.runIf(INTEGRATED)('the first ten minutes (DESIGN §11.12, seed 42, deci
     expect(shown.charter).toBeGreaterThanOrEqual(10);
     expect(s.guidance.appointed).toContain('augur');                          // Kal. Sept.
     expect(s.buildings.some((b) => b.type === 'horreum' && b.status === 'done')).toBe(true);
+  });
+});
+
+describe('the paced introduction (DESIGN §11.13)', () => {
+  const PARTS: IntroPart[] = ['ticker', 'portraits', 'souls', 'coin', 'materials', 'goals', 'dignitas', 'overlays',
+    'council', 'advisors', 'build', 'people', 'annals'];
+  /** Plays like `play`, reading each tip 4 days after it shows; returns the elapsed day each part first showed. */
+  function parts(s: GameState, days: number, read = true): Partial<Record<IntroPart, number>> {
+    const at: Partial<Record<IntroPart, number>> = {};
+    let cur: TipId | null = null, since = 0;
+    for (let i = 0; i < days; i++) {
+      tick(s, newCtx());
+      for (const p of PARTS) if (at[p] === undefined && introduced(s, p)) at[p] = elapsed(s);
+      const t = nextTip(s);
+      if (!t) continue;
+      if (t.id !== cur) { cur = t.id; since = elapsed(s); } else if (read && elapsed(s) - since >= 4) dismissTip(s, t.id);
+    }
+    return at;
+  }
+  it('founds the colony with only the map, the vitals, the date and the clock', () => {
+    const s = fresh(42);
+    for (const p of PARTS) expect(introduced(s, p), p).toBe(false);
+    expect(introduced(s, 'trade')).toBe(true);                      // not part of the introduction: Vicus reveals it
+  });
+  it('brings the parts in one tip at a time, in order, each with the tip that explains it (seed 42)', () => {
+    const at = parts(fresh(42), 200);
+    const order: IntroPart[] = ['ticker', 'portraits', 'souls', 'coin', 'goals', 'council', 'overlays'];
+    for (const [i, p] of order.entries()) {
+      expect(at[p], p).toBeDefined();
+      if (i > 0) expect(at[p]!, `${order[i - 1]} before ${p}`).toBeGreaterThan(at[order[i - 1]]!);
+    }
+    expect(at.people).toBe(at.souls);
+    expect(at.materials).toBe(at.coin);
+    expect(at.build).toBe(at.coin);
+    expect(at.annals).toBe(at.goals);
+    expect(at.advisors).toBe(at.portraits);
+    expect(at.council! - at.ticker!).toBeGreaterThanOrEqual(5 * B.intro.GAP);   // spread out, not all in the first seconds
+  });
+  it('shows every part by the end of the introduction even when no tip is read', () => {
+    const s = fresh(42);
+    const at = parts(s, B.intro.END + 1, false);
+    for (const p of PARTS) expect(at[p], p).toBeLessThanOrEqual(B.intro.END);
+    expect(at.ticker).toBe(B.intro.END);                            // the welcome tip was never read: nothing came early
+  });
+  it('skips at once: every part shows, the introduction tips are read and the later ones still wait', () => {
+    const s = fresh(42);
+    expect(skipIntro(s).ok).toBe(true);
+    for (const p of PARTS) expect(introduced(s, p), p).toBe(true);
+    for (const t of INTRO_TIPS) expect(s.guidance.tips).toContain(t);
+    expect(s.guidance.tips).not.toContain('aestas');
+    expect(s.guidance.tips).not.toContain('trade');
+  });
+  it('prunes its own new tips in a colony older than the introduction (an older save)', () => {
+    const s = run(fresh(42), B.intro.END);
+    pruneGuide(s);
+    for (const t of ['people', 'goals', 'dignitas', 'overlays'] as const) expect(s.guidance.tips).toContain(t);
   });
 });
 

@@ -14,7 +14,9 @@ atrium *domus*, and dedicate the **Capitolium**.
 
 ## How to play
 
-1. **Found a new colony** on the title screen, read the Legate's letter and press **Raise the standard**.
+1. **Found a new colony** on the title screen, read the Legate's letter and press **Raise the standard**. The camp opens
+   on the map and two numbers; the rest of the interface arrives one system at a time, each with a word from Decimus
+   Cassius (press **Understood** to hear the next). Played before? **Skip the introduction** on the letter.
 2. Watch the two tablets at the top: **Grain** and **Water** in *days on hand*, with the year ahead beneath. Aestas
    (summer) dries the wells and Hiems (winter) starves the fields: fill the cisterns in Ver and the horrea before the
    Kalends of December.

@@ -286,6 +286,9 @@ export const B = {
 
   // ───────── mentor tips and reveal (DESIGN §11.7, §11.9, §15.3) ─────────
   guide: { VITALS: 2, ORDO: 5, CHARTER: 10, SPEED: 20, STARVING: 50, STARVING_UNTIL: 20, THIRST_R: 6, THIRST_UNTIL: 12, WANTS_BLOCKED: 5 },
+  // the paced introduction (DESIGN §11.13): a read tip leaves GAP days before the next one; by INTRO_END elapsed days
+  // every part of the interface shows, whether or not its tip was read
+  intro: { GAP: 6, END: 200 },
   reveal: { BUILD_ELAPSED: 20, PEOPLE_ELAPSED: 10, TERRA_ELAPSED: 30 },
 
   // ───────── milestones and petitions (DESIGN §9.1, §9.4) ─────────

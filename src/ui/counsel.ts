@@ -21,6 +21,7 @@ import { ADVISOR_DEFS } from '../game/data/advisors';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { portrait } from '../render/art/index';
+import { shows } from './intro';
 
 /** The one item the card shows. */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep } | { kind: 'calm' };
@@ -55,7 +56,7 @@ export function pickCounsel(g: Game): CounselItem {
  *  — a place remedy with its tile, so once the Ordo builds on the best plot the button aims at the next one. */
 export function counselSig(g: Game, item: CounselItem): string {
   const s = g.state;
-  const strip = ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',');
+  const strip = shows(g, 'portraits') ? ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',') : 'x';
   let key = 'c';
   if (item.kind === 'tip') key = `t:${item.t.id}`;
   if (item.kind === 'advisory') {
@@ -118,8 +119,12 @@ export class Counsel {
     const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}` : 'c';
     const enter = key !== this.shownKey;
     this.shownKey = key;
+    // a phone shows the card folded to its title: a new tip unfolds it (each brings part of the interface with it, and
+    // the next waits until it is read), and reading it folds the card again
+    if (enter && item.kind === 'tip') this.open = true;
     this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
-    this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
+    // the portraits come with the advisors' tip (the paced introduction); until then the card stands alone
+    if (shows(this.g, 'portraits')) this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
     if (item.kind === 'calm') { this.root.appendChild(this.calm()); return; }
     const card = item.kind === 'tip' ? this.tipCard(item.t) : this.advisoryCard(item.a);
     if (enter) card.classList.add('enter');
@@ -171,7 +176,7 @@ export class Counsel {
     const text = h('p', { class: 'counsel-text' }, t.text(s));
     this.refresh = () => { text.textContent = t.text(g.state); };
     const notes = s.counters.mentorDiedDay !== null;
-    const done = (): void => { g.act(dismissTip(g.state, t.id), { okSfx: 'click' }); };
+    const done = (): void => { this.open = false; g.act(dismissTip(g.state, t.id), { okSfx: 'click' }); };
     const showMe = t.tab || t.target ? h('button', { class: 'btn small', onclick: () => {
       g.sfx('click');
       if (t.tab) g.openTab(t.tab);

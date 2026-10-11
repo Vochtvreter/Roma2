@@ -105,6 +105,9 @@
 .disp-note { font-size: 12px; color: #6f5639; margin-right: auto; font-style: italic; }
 .disp-sign { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1px; color: #6f5639; margin-right: auto; }
 .disp-note + .disp-sign { margin-right: 0; }
+.disp-start { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.disp-skip { background: none; border: 0; padding: 2px 0; font-size: 12px; color: #6f5639; cursor: pointer; }
+.disp-skip:hover, .disp-skip:focus-visible { color: #3d2b18; text-decoration: underline; }
 .disp-body.letter { font-size: 16px; }
 .disp-salute { margin: 0 0 6px; font-style: italic; color: #5a4430; }
 .disp-letter { margin: 0 0 10px; font-size: 16px; line-height: 1.55; text-indent: 1.4em; }

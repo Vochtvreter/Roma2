@@ -47,7 +47,7 @@ const FOLLOW_EVERY = 10;      // advisor-follower: remedy 0 of the top advisory 
 const BUILD_EVERY = 5;        // builder: places the Aedilis/Fabrum build remedies every 5 days (DESIGN §18.5)
 const GARDENS_PER_HOUSE = 2;     // builder: from Vicus on, two gardens for every house (beautification, DESIGN §10.3)
 const TIP_READ_DAYS = 3;      // a tip stays on the card this long before the bot clicks "Understood"
-const CHARTER_LATE = 60;      // proclaim the charter by this elapsed day even if its tip never showed
+const CHARTER_LATE = 100;     // proclaim the charter by this elapsed day even if its tip never showed (it comes ≈ day 65)
 const FULL_SUMMER = 0.9;      // Largae when the sheds are this full in Aestas
 const DIGNITAS_NEAR = 0.85;   // Feriae Frequentes when dignitas is this close to the next threshold
 const BOOM_SITES = 3, TIMBER_LOW = 0.3;   // Silvae Caedua: a building boom short of timber

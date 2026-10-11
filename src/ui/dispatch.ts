@@ -17,6 +17,7 @@ import { PATH_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { B } from '../game/balance';
 import { sentence, wonWhileAway } from '../game/offline';
+import { skipIntro } from '../game/actions';
 import { typeSprite } from './tabs/common';
 
 const ONES = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
@@ -153,7 +154,10 @@ function foundingBody(g: Game, start: () => void): HTMLElement {
       h('span', { class: 'disp-fact' }, img('i_season_3', 2), `Hiems in ${hiems} days`)),
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-sign' }, `Datum ${formatRoman(s.day, { year: true })} · Legatus Augusti`),
-      h('button', { class: 'btn primary big', 'data-autofocus': '', onclick: start }, 'Raise the standard')));
+      h('div', { class: 'disp-start' },
+        h('button', { class: 'btn primary big', 'data-autofocus': '', onclick: start }, 'Raise the standard'),
+        // a returning Praefectus needs no introduction: every panel from the first day (the mentor still speaks later)
+        h('button', { class: 'disp-skip', onclick: () => { g.act(skipIntro(g.state)); start(); } }, 'I know the camp: skip the introduction'))));
 }
 
 function victoryBody(g: Game, close: () => void): HTMLElement {

@@ -6,20 +6,23 @@
 // Text is generated from state and data (names, days, options), never from stale copy.
 import { B } from './balance';
 import { TIPS } from './types';
-import type { ActionResult, GameState, GuideStep, TipId } from './types';
+import type { ActionResult, GameState, GuideStep, OverlayId, TipId } from './types';
 import { elapsed, seasonOf } from './calendar';
 import { forecast } from './forecast';
 import { derived } from './derived';
 import { seasonMult } from './economy';
 import { petitionNeeds } from './decisions';
 import { milestoneDone } from './objectives';
-import { sectionRevealed, tabRevealed } from './reveal';
+import { overlayRevealed, sectionRevealed, tabRevealed } from './reveal';
+import { census } from './census';
+import { dignitas } from './civic';
 import { view } from './sim';
 import { activeAdvisories } from './advisors/engine';
 import { blockedHouses, days, fractionWord, listJoin, needWord, rankWord, runway, wasAway } from './advisors/util';
 import { ADVISOR_DEFS, MENTOR } from './data/advisors';
 import { BUILDING_DEFS } from './data/buildings';
 import { PATH_DEFS } from './data/decisions';
+import { RANK_DEFS } from './data/ranks';
 
 const G = B.guide;
 const AESTAS = 1, AUTUMNUS = 2, HIEMS = 3;
@@ -41,6 +44,17 @@ function sev(s: GameState, rule: 'annonae.hiems.forecast' | 'aquarum.aestas.fore
 function blocked(s: GameState): ReturnType<typeof blockedHouses> {
   return blockedHouses(s, view(s), G.WANTS_BLOCKED).filter((w) => w.want !== 'rank');
 }
+
+/** The introduction is over: by now every part of the interface shows (intro.ts), so its own tips have nothing to bring. */
+function introOver(s: GameState): boolean {
+  return elapsed(s) >= B.intro.END;
+}
+
+/** What each map overlay shows, for the overlays tip. */
+const OVERLAY_NOTES: readonly (readonly [OverlayId, string])[] = [
+  ['aqua', 'Aqua, where the water reaches'], ['terra', 'Terra, the good soil, timber and stone'],
+  ['domus', 'Domus, what each house still lacks'], ['officia', 'Officia, where shrines and markets serve'],
+];
 
 /** The mentor's tips in priority order (DESIGN §11.7). */
 export const GUIDE: GuideStep[] = [
@@ -99,7 +113,10 @@ export const GUIDE: GuideStep[] = [
     },
     until: (s) => s.rank >= 1,
   },
-  // ─────────── the first days ───────────
+  // ─────────── the first days: the paced introduction (DESIGN §11.13) ───────────
+  // Each of these tips brings a part of the interface with it (intro.ts): the part shows when its tip comes, and the
+  // next tip waits until this one is read. Read in order: the vitals, the Ordo's ticker, the advisors, time, the people,
+  // building (coin and materials), the Res Gestae, the charter (Edicta), dignitas, then the map overlays.
   {
     id: 'vitals', title: 'Two numbers keep us alive', after: 'welcome', target: '#vital-grain',
     text: (s) => `Grain and Water, counted in days: ${days(doh(s, 'grain'))} and ${days(doh(s, 'water'))} today. `
@@ -108,14 +125,8 @@ export const GUIDE: GuideStep[] = [
   },
   {
     id: 'ordo', title: 'The Ordo explains itself', after: 'vitals', target: '#ticker',
-    text: () => 'This line says what the Ordo does and why. Disagree? Steer it in Edicta, or build yourself.',
+    text: () => 'This line says what the Ordo does and why. It staffs the fields and wells and raises what we lack, so you need not.',
     when: (s) => elapsed(s) >= G.ORDO,
-  },
-  {
-    id: 'charter', title: 'Your first decision', after: 'ordo', target: '.path-card', tab: 'council',
-    text: (s) => `By what law is ${s.name} founded? ${listJoin(PATH_DEFS.charter.options.map((o) => o.name))}: the charter is permanent.`,
-    when: (s) => elapsed(s) >= G.CHARTER,
-    until: (s) => s.decisions.paths.charter !== undefined,
   },
   {
     id: 'counsel', title: 'Your advisors', after: 'vitals', target: '#counsel',
@@ -127,17 +138,61 @@ export const GUIDE: GuideStep[] = [
     when: (s) => activeAdvisories(s, { forCard: true }).length > 0,
   },
   {
-    id: 'speed', title: 'Time', after: 'charter', target: '#speed',
+    id: 'speed', title: 'Time', after: 'ordo', target: '#speed',
     text: () => 'One day passes each heartbeat. Speed it up, or pause to think: Space, 1–4.',
     when: (s) => elapsed(s) >= G.SPEED,
   },
   {
-    id: 'build', title: 'Build with your own hands', after: 'speed', tab: 'build',
-    text: () => 'Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo\'s choice. Your works are raised first.',
+    id: 'people', title: 'The roll of souls', after: 'speed', target: '.hud-souls', tab: 'people',
+    text(s) {
+      const c = census(s);
+      return `${c.pop} souls sleep in ${c.beds} beds. Rome sends families only to free beds, and the face beside them shows `
+        + `our spirits, ${Math.round(s.morale)} today: content people work and settle gladly. Populus keeps the roll.`;
+    },
+    when: (s) => tabRevealed(s, 'people'),
+    until: introOver,
+  },
+  {
+    id: 'build', title: 'Build with your own hands', after: 'people', tab: 'build',
+    text: () => 'Works cost denarii, timber and stone: the purse and the stores now show above. Pick a work and a plot. '
+      + 'Gold means a bonus; the laurel marks the Ordo\'s choice. Your works are raised first.',
     when: (s) => tabRevealed(s, 'build'),
     // a work the player placed: not a site the Ordo raised for an "Ask the Ordo" request or a pin (player-owned too),
     // nor the Capitolium
     until: (s) => s.buildings.some((b) => b.owner === 'player' && b.type !== 'capitolium' && b.reason?.code !== 'request' && b.reason?.code !== 'pin'),
+  },
+  {
+    id: 'goals', title: 'Res Gestae', after: 'build', target: '#objective',
+    text: () => 'Our first work stands, and Rome counts it among our deeds. Rome reads our deeds one at a time: the panel above '
+      + 'names the next and what it opens. The Annales keep the record of all that passed.',
+    when: (s) => milestoneDone(s, 'firstWork'),
+    until: introOver,
+  },
+  {
+    id: 'charter', title: 'Your first decision', after: 'goals', target: '.path-card', tab: 'council',
+    text: (s) => `By what law is ${s.name} founded? ${listJoin(PATH_DEFS.charter.options.map((o) => o.name))}: the charter is permanent. `
+      + 'Edicta is where you set the council\'s course.',
+    when: (s) => elapsed(s) >= G.CHARTER,
+    until: (s) => s.decisions.paths.charter !== undefined,
+  },
+  {
+    id: 'dignitas', title: 'Dignitas', after: 'charter', target: '.hud-dignitas',
+    text(s) {
+      const next = RANK_DEFS[s.rank + 1];
+      const bar = next ? ` To become a ${next.name}, Rome asks for ${next.dignitas}; we stand at ${Math.round(dignitas(s).value)}.` : '';
+      return `The laurel above is Rome's regard for ${s.name}. Public works, good homes, paved roads and deeds raise it, and it is never spent.${bar}`;
+    },
+    when: (s) => s.decisions.paths.charter !== undefined,
+    until: introOver,
+  },
+  {
+    id: 'overlays', title: 'Maps of the colony', after: 'goals', target: '#overlay-bar',
+    text(s) {
+      const shown = OVERLAY_NOTES.filter(([o]) => overlayRevealed(s, o)).map(([, note]) => note);
+      return `The buttons by the minimap lay a map over the land: ${listJoin(shown)}. Placing a work picks the right one by itself.`;
+    },
+    when: (s) => overlayRevealed(s, 'terra'),
+    until: introOver,
   },
   {
     id: 'aestas', title: 'The thirsty season', after: 'welcome', target: '#vital-water',
@@ -145,7 +200,7 @@ export const GUIDE: GuideStep[] = [
     when: (s) => seasonOf(s.day) === AESTAS || sev(s, 'aquarum.aestas.forecast') >= 2,
   },
   {
-    id: 'wants', title: 'What a house wants', after: 'build', target: '#overlay-bar',
+    id: 'wants', title: 'What a house wants', after: 'overlays', target: '#overlay-bar',
     text(s) {
       const b = blocked(s);
       const first = b.find((w) => w.want !== null);
@@ -210,12 +265,14 @@ export function pruneGuide(s: GameState): void {
   for (const g of GUIDE) if (!g.urgent && !seen(s, g.id) && g.until?.(s)) s.guidance.tips.push(g.id);
 }
 
-/** The highest-priority unseen tip whose `after` is seen, whose `when` holds and whose `until` does not; or null. */
+/** The highest-priority unseen tip whose `after` is seen, whose `when` holds and whose `until` does not; or null. A tip
+ *  that is not urgent also waits B.intro.GAP days after the last one read, so new things never come all at once. */
 export function nextTip(s: GameState): GuideStep | null {
   for (const g of GUIDE) {
     if (seen(s, g.id)) continue;
     if (g.after && !seen(s, g.after)) continue;
     if (g.until?.(s)) continue;
+    if (!g.urgent && s.day - s.guidance.tipDay < B.intro.GAP) continue;   // a breather after the last tip read
     if (g.when(s)) return g;
   }
   return null;
@@ -224,7 +281,10 @@ export function nextTip(s: GameState): GuideStep | null {
 /** Marks a tip as seen ("Understood"). */
 export function dismissTip(s: GameState, id: TipId): ActionResult {
   if (!TIPS.includes(id)) return { ok: false, code: 'invalid', reason: 'No such counsel.' };
-  if (!seen(s, id)) s.guidance.tips.push(id);
+  if (!seen(s, id)) {
+    s.guidance.tips.push(id);
+    s.guidance.tipDay = s.day;
+  }
   return { ok: true };
 }
 

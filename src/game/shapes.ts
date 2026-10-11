@@ -101,7 +101,7 @@ const ORDO_KEYS = ['on', 'manual', 'requests', 'pin', 'reserved', 'priorities', 
 const ON_KEYS = ['labour', 'build', 'trade'] as const;
 const EMERGENCY_KEYS = ['rations', 'waterPause', 'lastImport', 'lastRelief', 'freeReliefYear'] as const;
 const TRADE_KEYS = ['market', 'contracts', 'caravans', 'merchant', 'lastMerchant', 'hubsTraded', 'debt'] as const;
-const GUIDANCE_KEYS = ['advisories', 'muted', 'appointed', 'tips', 'objective', 'milestoneDays'] as const;
+const GUIDANCE_KEYS = ['advisories', 'muted', 'appointed', 'tips', 'tipDay', 'objective', 'milestoneDays'] as const;
 const COUNTERS_KEYS = ['fedStreak', 'stabStreak', 'ironMade', 'tilesMade', 'caravansReturned', 'festivalsKept', 'robigaliaYear',
   'lastArrivalBlocked', 'lastBirthBlocked', 'immCall', 'renovWindow', 'lastChoiceDay', 'lastHarmfulDay', 'lastFireDay', 'coinEma', 'mentorDiedDay'] as const;
 const WINDOW_KEYS = ['start', 'count'] as const;
@@ -152,7 +152,7 @@ export function stateShape(x: S): S {
     hubsTraded: v.hubsTraded, debt: v.debt,
   }));
   const guidance = reshape(g, GUIDANCE_KEYS, (v) => ({
-    advisories: advisoriesShape(v.advisories), muted: v.muted, appointed: v.appointed, tips: v.tips, objective: v.objective,
+    advisories: advisoriesShape(v.advisories), muted: v.muted, appointed: v.appointed, tips: v.tips, tipDay: v.tipDay, objective: v.objective,
     milestoneDays: filled(v.milestoneDays),
   }));
   const counters = reshape(c, COUNTERS_KEYS, (v) => ({

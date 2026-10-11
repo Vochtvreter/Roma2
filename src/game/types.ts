@@ -80,8 +80,9 @@ export const RULES = [
 ] as const;
 export type RuleId = (typeof RULES)[number];
 export const TIPS = [
-  'welcome', 'starving', 'thirst', 'event', 'petition', 'vitals', 'ordo', 'charter', 'counsel', 'speed',
-  'build', 'aestas', 'wants', 'autumn', 'edicts', 'reins', 'trade', 'fork', 'aqueduct', 'away',
+  'welcome', 'starving', 'thirst', 'event', 'petition', 'vitals', 'ordo', 'counsel', 'speed', 'people',
+  'build', 'goals', 'charter', 'dignitas', 'overlays', 'aestas', 'wants', 'autumn', 'edicts', 'reins',
+  'trade', 'fork', 'aqueduct', 'away',
 ] as const;
 export type TipId = (typeof TIPS)[number];
 export const MILESTONE_IDS = [
@@ -318,6 +319,7 @@ export interface GuidanceState {
   advisories: Partial<Record<RuleId, AdvisoryMemo>>;
   muted: RuleId[]; appointed: AdvisorId[];
   tips: TipId[];                                      // seen tip ids
+  tipDay: number;                                     // the day a tip was last read ("Understood"); NEVER before the first
   objective: number;                                  // index into MILESTONES
   milestoneDays: Partial<Record<MilestoneId, number>>;
 }

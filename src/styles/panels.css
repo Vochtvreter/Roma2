@@ -7,6 +7,7 @@
   backdrop-filter: var(--blur); transition: transform .2s ease;
 }
 #side.collapsed { transform: translateX(100%); }
+#side.empty { display: none; }   /* no tab yet: the paced introduction brings the first one (ui/intro.ts) */
 #side-toggle {
   position: absolute; left: -30px; top: 10px; width: 28px; height: 44px; z-index: var(--z-side-toggle); cursor: pointer; padding: 0;
   background: var(--panel-solid); border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2);

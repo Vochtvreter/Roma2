@@ -3,6 +3,7 @@
 // The chips and material cells only grow (steady.ts Ratchet): a shorter figure or date never shuffles its neighbours.
 import type { ResId, Speed, UnlockRef } from '../game/types';
 import type { Game } from './types';
+import type { IntroPart } from '../game/intro';
 import { clear, fmt, fmtRate, h, img, tip } from './dom';
 import { Vitals } from './vitals';
 import { caps } from './tipkit';
@@ -19,6 +20,7 @@ import { RANK_DEFS } from '../game/data/ranks';
 import { B } from '../game/balance';
 import { faceIcon, resIcon } from '../render/art/index';
 import { spriteURL } from '../render/sprites';
+import { present, shows } from './intro';
 
 const DEV = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search);
 const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DEV ? [B.time.DEV_SPEED as Speed] : [])];
@@ -54,6 +56,7 @@ export class Hud {
   private readonly last: Partial<Record<ResId, number>> = {};
   private coinEl: HTMLElement | null = null;
   private readonly chips: HTMLElement[] = [];      // coin, souls, spirits, dignitas, date: widths held by the ratchet
+  private readonly parts: [HTMLElement, IntroPart][] = [];   // chips the introduction brings in (ui/intro.ts)
   private readonly ratchet = new Ratchet('(max-width: 899px)');   // the phone rows share out their width themselves
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
@@ -81,12 +84,14 @@ export class Hud {
     const chips = [this.coin(), this.souls(), this.spirits(), this.dignitas()];
     const date = this.date();
     this.chips.splice(0, this.chips.length, ...chips, date);
+    this.parts.splice(0, this.parts.length, [chips[0], 'coin'], [chips[1], 'souls'], [chips[2], 'souls'], [chips[3], 'dignitas'], [this.strip, 'materials']);
     this.root.append(this.brand(), this.vitals.el, ...chips, h('div', { class: 'hud-break' }), date, this.strip, this.speed(), this.menu());
     this.update();
   }
 
   /** Refreshes every number (throttled by the UI root). */
   update(): void {
+    for (const [el, part] of this.parts) present(this.g, el, shows(this.g, part));
     this.vitals.update();
     for (const u of this.up) u();
     this.updateStrip();
