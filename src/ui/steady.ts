@@ -81,11 +81,20 @@ export class ScrollAnchor {
     }
     if (!el) return;
     let want = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - y;
-    if (want < 0 && this.over) this.head.style.height = `${Math.ceil(-want)}px`;
-    if (want < 0) want = 0;
+    let head = 0;
+    if (want < 0) {
+      if (this.over) head = -want;
+      want = 0;
+    }
+    if (head) this.head.style.height = `${head}px`;
+    // Scroll offsets snap to whole (device) pixels while rows are fractions of one tall: scroll up to the next whole
+    // offset and let the head pad take up the remainder, so the target lands exactly where it was, not a pixel off.
+    const to = Math.ceil(want);
     const max = box.scrollHeight - box.clientHeight;
-    if (want > max && this.over) this.foot.style.height = `${Math.ceil(want - max)}px`;
-    if (Math.abs(box.scrollTop - want) >= 0.5) box.scrollTop = want;
+    if (to > max && this.over) this.foot.style.height = `${to - max}px`;
+    if (box.scrollTop !== to) box.scrollTop = to;
+    const rest = box.scrollTop - want;
+    if (rest > 0.001 && rest < 1) this.head.style.height = `${head + rest}px`;
   }
 
   /** Gives back borrowed room (the mouse left, or a different page opened). */
