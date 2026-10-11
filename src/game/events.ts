@@ -135,7 +135,7 @@ export function banditCheck(s: GameState, ctx: TickContext, rng: Rng, caravan: C
   if (ctx.offline || caravan.kind !== 'contract') return;
   if ((caravan.arrive - caravan.depart) / 2 < E.BANDIT_DAYS) return;
   if (s.day - s.counters.lastHarmfulDay < E.HARMFUL_GAP) return;
-  if (!rng.chance(E.BANDIT_P * fx(s, 'bandits'))) return;
+  if (!rng.chance(E.BANDIT_P * fx(s, 'bandits') * (s.urbs.moenia?.done != null ? B.urbs.MOENIA.BANDITS : 1))) return;   // the town wall's watch
   const what = RESOURCE_DEFS[caravan.res].name.toLowerCase();
   if (caravan.mode === 'export') caravan.value *= 1 - E.BANDIT_LOSS;
   else caravan.qty *= 1 - E.BANDIT_LOSS;

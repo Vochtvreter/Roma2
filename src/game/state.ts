@@ -169,6 +169,7 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
     rank: 0, victory: false, defeat: false,
     res, taxAccrued: 0,
     people: [], families: [], buildings: [], roads: [], paved: [], wood: {},
+    urbs: { traffic: {}, moenia: null, razed: null, renewed: NEVER },
     needs: { hunger: [0, 0, 0, 0], thirst: [0, 0, 0, 0] },
     fed: B.start.FED, morale: B.morale.START,
     decisions: defaultDecisions(), ordo: defaultOrdo(),

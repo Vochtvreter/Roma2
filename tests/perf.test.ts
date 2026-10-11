@@ -11,6 +11,7 @@ import { assignJobs, immigrationDay, peopleDay } from '../src/game/people';
 import { constructionDay, payPlans, startStaked } from '../src/game/construction';
 import { consume, issueTools, produce, storage } from '../src/game/economy';
 import { goodsDay, housingDay } from '../src/game/housing';
+import { urbsDay } from '../src/game/urbs';
 import { kalendsDay, moraleDay, taxesDay, upkeepDay } from '../src/game/civic';
 import { tradeDay } from '../src/game/trade';
 import { eventsDay } from '../src/game/events';
@@ -68,6 +69,7 @@ function profile(s: GameState, days: number): [string, number][] {
     step('sites', () => { startStaked(s); payPlans(s, ctx); });
     step('produce', () => produce(s, ctx, rng)); step('tools/consume/storage/goods', () => { issueTools(s, ctx); consume(s, ctx); storage(s, ctx); goodsDay(s, ctx); });
     step('construction', () => constructionDay(s, ctx)); step('housing', () => housingDay(s, ctx));
+    step('urbs', () => urbsDay(s, ctx, v, isKalends(s.day)));
     step('people', () => { peopleDay(s, ctx, rng); immigrationDay(s, ctx, rng); });
     step('civic', () => { moraleDay(s, v); taxesDay(s, ctx); upkeepDay(s, ctx); if (isKalends(s.day)) kalendsDay(s, ctx); });
     step('trade', () => tradeDay(s, ctx, rng, v)); step('events', () => eventsDay(s, ctx, rng, v));

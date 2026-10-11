@@ -5,15 +5,16 @@ import { B as B$ } from '../balance';
 import { F as F$, T as T$ } from '../types';
 import type { BuildingId, GameState, PlaceFail, Rect, Survey } from '../types';
 import { getMap as getMap$ } from '../map';
-import { dayLayout as dayLayout$, memo as memo$ } from '../memo';
-import { sizeOf as sizeOf$ } from '../derived';
+import { dayLayout as dayLayout$, layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
+import { derived as derived$, sizeOf as sizeOf$ } from '../derived';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
-import { GH as GH$, GN as GN$, GW as GW$, PrefixSum, anySide as anySide$, rectGap as rectGap$ } from './grid';
+import { GH as GH$, GN as GN$, GW as GW$, PrefixSum, anySide as anySide$, chebDistance as chebDistance$, rectGap as rectGap$ } from './grid';
 import { countT as countT$, isFertileT as isFertileT$, isHillsRockT as isHillsRockT$, isHillsScrubT as isHillsScrubT$ } from './rules';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, F = F$, T = T$, getMap = getMap$, dayLayout = dayLayout$, memo = memo$, sizeOf = sizeOf$,
-  BUILDING_DEFS = BUILDING_DEFS$, GH = GH$, GN = GN$, GW = GW$, anySide = anySide$, rectGap = rectGap$,
+const B = B$, F = F$, T = T$, getMap = getMap$, dayLayout = dayLayout$, layoutEpoch = layoutEpoch$, memo = memo$,
+  derived = derived$, sizeOf = sizeOf$, BUILDING_DEFS = BUILDING_DEFS$, GH = GH$, GN = GN$, GW = GW$, anySide = anySide$,
+  chebDistance = chebDistance$, rectGap = rectGap$,
   countT = countT$, isFertileT = isFertileT$, isHillsRockT = isHillsRockT$, isHillsScrubT = isHillsScrubT$;
 
 const S = B.site;
@@ -34,6 +35,7 @@ export const RULE_REASON = {
   scrubHills: 'Olives need dry slopes.',
   via: 'Must touch the via.',
   nearCastellum: 'No castellum within 18 paces.',
+  nearAqueduct: 'No castellum within 18 paces, nor the aqueduct within 8 in the town.',
   noFons: 'No spring can be reached.',
 } as const;
 
@@ -103,6 +105,29 @@ function activeCastella(s: GameState): Rect[] {
   return out;
 }
 
+/** Where the finished aqueducts run through the pomerium, each tile's Chebyshev distance to them (capped at 255; memo on
+ *  the layout): a fountain may draw from the line there as from the castellum (DESIGN §3.9), the thermae only from it. */
+function aqueductTaps(s: GameState): Uint8Array {
+  return memo(s, 'aqueductTaps', layoutEpoch(s), () => {
+    const pom = derived(s).pomerium;
+    const m = new Uint8Array(GN);
+    let any = false;
+    for (const b of s.buildings) {
+      if (b.type !== 'castellum' || b.status !== 'done' || !b.route) continue;
+      for (const i of b.route) if (pom[i] === 1) { m[i] = 1; any = true; }
+    }
+    return any ? chebDistance(m) : new Uint8Array(GN).fill(255);
+  });
+}
+
+/** A fountain at a w×h footprint draws from an aqueduct running through the town within LINE_REACH. */
+function nearTap(taps: Uint8Array, x: number, y: number, w: number, h: number): boolean {
+  for (let ty = y; ty < y + h; ty++) for (let tx = x; tx < x + w; tx++) {
+    if (tx >= 0 && ty >= 0 && tx < GW && ty < GH && taps[ty * GW + tx] <= B.urbs.LINE_REACH) return true;
+  }
+  return false;
+}
+
 /** Check 11 for one site: the first failed DESIGN §5.1 rule of `type` with a w×h footprint at (x, y), or null. */
 export function ruleFail(s: GameState, type: BuildingId, x: number, y: number, w: number, h: number): RuleFail | null {
   const map = getMap(s.seed);
@@ -131,7 +156,9 @@ export function ruleFail(s: GameState, type: BuildingId, x: number, y: number, w
     }
     case 'nearCastellum': {
       const me: Rect = { x, y, w, h };
-      return activeCastella(s).some((r) => rectGap(me, r) <= B.map.CASTELLUM_REACH) ? null : { code: 'noCastellum', reason: RULE_REASON.nearCastellum };
+      if (activeCastella(s).some((r) => rectGap(me, r) <= B.map.CASTELLUM_REACH)) return null;
+      if (type === 'lacus') return nearTap(aqueductTaps(s), x, y, w, h) ? null : { code: 'noCastellum', reason: RULE_REASON.nearAqueduct };
+      return { code: 'noCastellum', reason: RULE_REASON.nearCastellum };
     }
     default:
       return null;
@@ -183,6 +210,10 @@ export function ruleTester(s: GameState, type: BuildingId, w: number, h: number)
     }
     case 'nearCastellum': {
       const cs = activeCastella(s);
+      if (type === 'lacus') {
+        const taps = aqueductTaps(s);
+        return (x, y) => cs.some((r) => rectGap({ x, y, w, h }, r) <= B.map.CASTELLUM_REACH) || nearTap(taps, x, y, w, h);
+      }
       return (x, y) => cs.some((r) => rectGap({ x, y, w, h }, r) <= B.map.CASTELLUM_REACH);
     }
     default:

@@ -50,11 +50,11 @@ export function workDuty(type: BuildingId): WorkDuty | null {
 /** The duty under which the Ordo raises a wish (null: the player's own order, a request or the pin). */
 export function wishDuty(r: Reason): WorkDuty | null {
   switch (r.code) {
-    case 'survivalWater': case 'aestasWater': case 'waterAccess': return 'water';
+    case 'survivalWater': case 'aestasWater': case 'waterAccess': case 'aquae': return 'water';
     case 'survivalFood': case 'hiemsStore': return 'food';
     case 'storageFull': return r.params.res === 'grain' ? 'food' : r.params.res === 'water' ? 'water' : 'materials';
     case 'beds': return 'homes';
-    case 'evolve': return 'services';
+    case 'evolve': case 'renewal': return 'services';
     case 'materials': case 'capitolium': return 'materials';
     case 'rank': case 'luxury': case 'focusPlan': case 'beauty': return 'plan';
     default: return null;

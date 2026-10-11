@@ -5,8 +5,8 @@ import { B as B$ } from '../balance';
 import { F as F$ } from '../types';
 import type { GameState } from '../types';
 import { getMap as getMap$, woodAt as woodAt$ } from '../map';
-import { derived as derived$ } from '../derived';
-import { blockStreets as blockStreets$, isFutureBlock as isFutureBlock$ } from '../survey';
+import { derived as derived$, inCamp as inCamp$ } from '../derived';
+import { WALL_RING as WALL_RING$, blockStreets as blockStreets$, isFutureBlock as isFutureBlock$, isRazed as isRazed$ } from '../survey';
 import { layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
 import { GN as GN$, GW as GW$, forN4 as forN4$, onGrid as onGrid$ } from './grid';
 import { bfsField as bfsField$, costField as costField$, walkBack as walkBack$ } from './search';
@@ -14,8 +14,8 @@ import type { CostField, StepField } from './search';
 import { aqueductCostT as aqueductCostT$, roadCostT as roadCostT$ } from './rules';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, F = F$, getMap = getMap$, woodAt = woodAt$, derived = derived$, blockStreets = blockStreets$,
-  isFutureBlock = isFutureBlock$, layoutEpoch = layoutEpoch$, memo = memo$, GN = GN$, GW = GW$, forN4 = forN4$,
+const B = B$, F = F$, getMap = getMap$, woodAt = woodAt$, derived = derived$, inCamp = inCamp$, WALL_RING = WALL_RING$,
+  blockStreets = blockStreets$, isFutureBlock = isFutureBlock$, isRazed = isRazed$, layoutEpoch = layoutEpoch$, memo = memo$, GN = GN$, GW = GW$, forN4 = forN4$,
   onGrid = onGrid$, bfsField = bfsField$, costField = costField$, walkBack = walkBack$, aqueductCostT = aqueductCostT$,
   roadCostT = roadCostT$;
 
@@ -30,21 +30,20 @@ function isSacredTile(feature: ArrayLike<number>, i: number): boolean {
   return f === F.lucus || f === F.ruins || f === F.fons;
 }
 
-/** Road step cost of every tile on the live state (DESIGN §3.7); Infinity where a road may not run. */
+/** Road step cost of every tile on the live state (DESIGN §3.7); Infinity where a road may not run: through a work,
+ *  sacred ground, the camp off its roads, a pomerium plot, or a wall (a road crosses the town wall only at a gate). */
 function roadSteps(s: GameState): Float64Array {
   const map = getMap(s.seed);
   const sv = map.survey;
   const d = derived(s);
-  const c = sv.castrum;
+  const razed = isRazed(s);
   const step = new Float64Array(GN);
   for (let i = 0; i < GN; i++) {
-    const x = i % GW, y = (i - x) / GW;
     const b = sv.blockAt[i];
-    const inCastrum = x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h;
-    if (d.buildingAt[i] !== 0 || isSacredTile(map.feature, i) || (inCastrum && d.road[i] === 0)
+    if (d.buildingAt[i] !== 0 || isSacredTile(map.feature, i) || (inCamp(s, i) && d.road[i] === 0) || d.wall[i] === 1
       || (d.pomerium[i] === 1 && sv.street[i] === 0)) step[i] = Infinity;
     else if (sv.street[i] === 1) step[i] = M.ROAD_COST.street;
-    else if (b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank)) step[i] = M.ROAD_COST.futureBlock;
+    else if (b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank, razed)) step[i] = M.ROAD_COST.futureBlock;
     else step[i] = roadCostT(map.terrain[i]);
   }
   return step;
@@ -117,7 +116,8 @@ function computeBlockStreets(s: GameState, blockId: number): number[] {
   const blk = sv.blocks[blockId];
   if (!blk) return [];
   const road = derived(s).road;
-  const sides = blockStreets(sv, blk);
+  const razed = isRazed(s);
+  const sides = blockStreets(sv, blk).filter((i) => razed || sv.streetRing[i] !== WALL_RING);
   const out = new Set<number>(sides.filter((i) => road[i] === 0));
   if (!sides.some((i) => road[i] > 0)) {
     const prev = new Int32Array(GN).fill(-2);
@@ -126,7 +126,7 @@ function computeBlockStreets(s: GameState, blockId: number): number[] {
     let hit = -1;
     for (let k = 0; k < q.length && hit < 0; k++) {
       forN4(q[k], (j) => {
-        if (hit >= 0 || prev[j] !== -2 || sv.street[j] !== 1) return;
+        if (hit >= 0 || prev[j] !== -2 || sv.street[j] !== 1 || (!razed && sv.streetRing[j] === WALL_RING)) return;
         prev[j] = q[k];
         if (road[j] > 0) hit = j; else q.push(j);
       });
@@ -146,7 +146,7 @@ function aqueductSteps(s: GameState): Float64Array {
     const b = sv.blockAt[i];
     if (d.buildingAt[i] !== 0 || d.reservedTile[i] === 1 || (isSacredTile(map.feature, i) && map.feature[i] !== F.fons)) step[i] = Infinity;
     else if (d.road[i] > 0) step[i] = M.AQUEDUCT_COST.road;
-    else if (sv.wall[i] || sv.fossa[i]) step[i] = AQ_WALL;
+    else if (d.wall[i]) step[i] = AQ_WALL;
     else if (b >= 0 && !sv.blocks[b].masked) step[i] = AQ_PLOT;
     else step[i] = aqueductCostT(map.terrain[i]);
   }

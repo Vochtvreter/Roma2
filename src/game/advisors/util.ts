@@ -474,8 +474,10 @@ export function placeName(s: GameState, tile: number): string {
   }
   const dir = compass(fx, fy, x, y);
   const bid = sv.blockAt[tile];
-  if (bid >= 0 && sv.blocks[bid].ring > 0) return `in the canabae to the ${dir}`;
-  return `${int(distToRect(tile, sv.castrum))} paces ${dir} of the walls`;
+  const razed = s.urbs.razed !== null;
+  if (bid >= 0 && sv.blocks[bid].ring === 3) return `on the old wall line to the ${dir}`;
+  if (bid >= 0 && sv.blocks[bid].ring > 0) return `${razed ? 'in the outer city' : 'in the canabae'} to the ${dir}`;
+  return `${int(distToRect(tile, sv.castrum))} paces ${dir} of ${razed ? 'the old camp' : 'the walls'}`;
 }
 
 /** The place of a building's top-left tile. */

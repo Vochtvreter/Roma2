@@ -5,14 +5,14 @@
 import { B as B$ } from './balance';
 import type { Block, Building, BuildingId, Derived, GameState, PlaceClass } from './types';
 import { getMap as getMap$, H as H$, W as W$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
-import { activeRings as activeRings$, isActiveBlock as isActiveBlock$ } from './survey';
+import { isActiveBlock as isActiveBlock$, isRazed as isRazed$, ringsOf as ringsOf$ } from './survey';
 import { layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, getMap = getMap$, H = H$, W = W$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
-  activeRings = activeRings$, isActiveBlock = isActiveBlock$, layoutEpoch = layoutEpoch$, memo = memo$,
+  isActiveBlock = isActiveBlock$, isRazed = isRazed$, ringsOf = ringsOf$, layoutEpoch = layoutEpoch$, memo = memo$,
   BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$;
 
 const PLOT = B.map.PLOT;
@@ -57,10 +57,19 @@ export function classAt(s: GameState, type: BuildingId, x: number, y: number): P
   if (urban) {
     const sv = getMap(s.seed).survey;
     const bid = inBounds(x, y) ? sv.blockAt[idx(x, y)] : -1;
-    if (bid >= 0 && isActiveBlock(sv, sv.blocks[bid], s.rank)) return urban;
+    if (bid >= 0 && isActiveBlock(sv, sv.blocks[bid], s.rank, isRazed(s))) return urban;
     if (!def.place.includes('rural')) return urban;
   }
   return 'rural';
+}
+
+/** True on the camp: the castrum interior always (only surveyed plots and streets there), and its wall and ditch while
+ *  they stand. Once the castrum is razed its old wall line is surveyed blocks and streets like any other. */
+export function inCamp(s: GameState, i: number): boolean {
+  const sv = getMap(s.seed).survey;
+  const x = tx(i), y = ty(i);
+  const r = isRazed(s) ? sv.interior : sv.castrum;
+  return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 }
 
 /** The ring of tiles just outside a w×h rect at (x, y), clockwise from its top-left corner; off-map tiles skipped. */
@@ -114,6 +123,7 @@ function computeDerived(s: GameState): Derived {
   const pomerium = new Uint8Array(N);
   const territory = new Uint8Array(N);
   const reservedTile = new Uint8Array(N);
+  const wall = new Uint8Array(N);
   const plotOwner = new Int32Array(sv.blocks.length * 4);
   const counts: Partial<Record<BuildingId, number>> = {};
   const all: Partial<Record<BuildingId, number>> = {};
@@ -145,8 +155,23 @@ function computeDerived(s: GameState): Derived {
   for (const i of s.roads) road[i] = 1;
   for (const i of s.paved) road[i] = 2;
 
+  // fortifications: the castrum's vallum, gates and fossa until it is razed; the town wall from its survey on
+  if (!isRazed(s)) {
+    const c = sv.castrum;
+    for (let y = c.y; y < c.y + c.h; y++) for (let x = c.x; x < c.x + c.w; x++) {
+      const i = idx(x, y);
+      if (sv.wall[i]) wall[i] = sv.wall[i];
+      else if (sv.fossa[i]) wall[i] = 1;
+    }
+  }
+  const mo = s.urbs.moenia;
+  if (mo) {
+    for (const i of mo.tiles) wall[i] = 1;
+    for (const i of mo.gates) wall[i] = 2;
+  }
+
   // pomerium: blocks of active rings that are not masked (reserved forum/capitolium blocks included), active streets
-  const rings = activeRings(s.rank);
+  const rings = ringsOf(s);
   for (const blk of sv.blocks) {
     if (blk.masked || !rings.includes(blk.ring)) continue;
     for (let y = blk.y; y < blk.y + BLOCK; y++) for (let x = blk.x; x < blk.x + BLOCK; x++) if (inBounds(x, y)) pomerium[idx(x, y)] = 1;
@@ -187,5 +212,5 @@ function computeDerived(s: GameState): Derived {
   }
 
   const sites = unfinished.sort(worksCmp).map((b) => b.id);
-  return { buildingAt, road, pomerium, territory, reservedTile, plotOwner, counts, all, houses, sites, castellumActive, stepsToForum };
+  return { buildingAt, road, pomerium, territory, reservedTile, wall, plotOwner, counts, all, houses, sites, castellumActive, stepsToForum };
 }

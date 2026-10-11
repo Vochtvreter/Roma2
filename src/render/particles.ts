@@ -4,7 +4,7 @@
 // sparkle, winter chimneys, construction dust while work is applied, and burning buildings (10 s after a fire fx).
 // The paths thicken them (DESIGN §9.2): Ars fabrilis smoke plumes, Pietas incense, Aquae salutares steam and sparkle.
 import type { FxEvent, GameState, Rect, SeasonIndex } from '../game/types';
-import { getMap } from '../game/map';
+import { W, getMap } from '../game/map';
 import { getBuilding } from '../game/state';
 import { census } from '../game/census';
 import { TIER_DEFS } from '../game/data/housing';
@@ -113,6 +113,21 @@ export class Particles {
         case 'milestone': this.burst('sparkle', fx, fy - 30, 24, 60, 20, 1600); this.burst('star', fx, fy - 30, 8, 20, 30, 1100); break;
         case 'fire': this.fires.set(e.id, this.now + FIRE_MS); break;
         case 'stage': { const p = at(e.id); if (p) { this.burst('dust', p.x, p.bottom - 8, 40, p.r.w * TILE, 26, 1300, 8); flash(p.r); } break; }
+        case 'renewed': {                                                  // a well filled in, cottages pulled down
+          for (const i of e.tiles) this.burst('dust', (i % W) * TILE + 8, Math.floor(i / W) * TILE + 12, 4, 12, 12, 1000, 0, '#9a968a');
+          break;
+        }
+        case 'walls': {
+          if (e.stage !== 'raised') break;
+          const sv = getMap(s.seed).survey, c = sv.castrum;                // the old rampart comes down in clouds of dust
+          for (let k = 0; k < 90; k++) {
+            const side = k % 4, t = R();
+            const x = side < 2 ? c.x + t * c.w : side === 2 ? c.x : c.x + c.w;
+            const y = side >= 2 ? c.y + t * c.h : side === 0 ? c.y : c.y + c.h;
+            this.add('dust', x * TILE, y * TILE, (R() - 0.5) * 26, -R() * 18, 1200 + R() * 900, 1.5 + R() * 2, '#a89a80');
+          }
+          break;
+        }
         case 'ordoPlaced': {
           const p = at(e.id);
           if (!p) break;

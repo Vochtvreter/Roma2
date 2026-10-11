@@ -5,9 +5,12 @@
 // Streets: every interior pitch line (not through the forum or the sacred way), the four gate causeways across the
 // fossa (built with the castrum streets), and the pitch lines around each UNMASKED ring block — land around masked
 // blocks (river loam, outcrops, the grove) carries no chalk lines and stays free rural land.
+// Ring 3 is the castrum's own wall and ditch (offsets 1–4 from the interior, exactly one block deep): 24 blocks and the
+// pitch lines across them, latent while the camp is walled; they join the pomerium when the town wall is finished and
+// the castrum razed (urbs.ts, DESIGN §3.9). They are listed after rings 1–2, so every older block keeps its id.
 import { B as B$ } from './balance';
 import { F as F$, T as T$ } from './types';
-import type { Block, GateId, RankIndex, Rect, Survey, WorldMap } from './types';
+import type { Block, GameState, GateId, RankIndex, Rect, Survey, WorldMap } from './types';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -27,6 +30,8 @@ const DECUMANUS = (BY / 2) * P;                          // y = 10
 const FOSSA_IN = 2;                                      // fossa Chebyshev offsets 2..(1 + FOSSA)
 const FOSSA_OUT = 1 + B.map.FOSSA;                       // 4
 const RINGS = 2;
+/** The ring of blocks on the castrum's wall and ditch (latent until the castrum is razed). */
+export const WALL_RING = 3;
 
 function inMap(x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < W && y < H;
@@ -50,20 +55,23 @@ function blockSpan(ix: number, iy: number, bx: readonly number[], by: readonly n
   return { x, y, w: (bx[1] - bx[0] + 1) * P - 1, h: (by[1] - by[0] + 1) * P - 1 };
 }
 
-/** Block grid coordinates in ring order (interior, ring 1, ring 2), each by row then column. */
-function blockCoords(): { ring: 0 | 1 | 2; bx: number; by: number }[] {
-  const out: { ring: 0 | 1 | 2; bx: number; by: number }[] = [];
+/** Block grid coordinates in ring order (interior, ring 1, ring 2, then ring 3 — the castrum's wall and ditch), each by
+ *  row then column. */
+function blockCoords(): { ring: 0 | 1 | 2 | 3; bx: number; by: number }[] {
+  const out: { ring: 0 | 1 | 2 | 3; bx: number; by: number }[] = [];
   for (let by = 0; by < BY; by++) for (let bx = 0; bx < BX; bx++) out.push({ ring: 0, bx, by });
-  for (let k = 1; k <= RINGS; k++) {
+  const band = (ring: 1 | 2 | 3, k: number): void => {
     const x0 = -1 - k, x1 = BX + k, y0 = -1 - k, y1 = BY + k;
     for (let by = y0; by <= y1; by++) {
       for (let bx = x0; bx <= x1; bx++) {
         const sideCol = (bx === x0 || bx === x1);
         const sideRow = (by === y0 || by === y1) && bx >= x0 + 1 && bx <= x1 - 1;
-        if (sideCol || sideRow) out.push({ ring: k as 1 | 2, bx, by });
+        if (sideCol || sideRow) out.push({ ring, bx, by });
       }
     }
-  }
+  };
+  for (let k = 1; k <= RINGS; k++) band(k as 1 | 2, k);
+  band(WALL_RING, 0);
   return out;
 }
 
@@ -137,7 +145,7 @@ export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: num
     const viaSide = viaDir === 'W' ? bx < 0 : bx >= BX;
     const touchesVia = (by === BY / 2 - 1 || by === BY / 2) && (ring === 0 || viaSide);
     const praetoriaSide = viaDir === 'W' ? bx < BX / 2 : bx >= BX / 2;
-    const district: Block['district'] = ring > 0 ? 'canabae'
+    const district: Block['district'] = ring === WALL_RING ? 'vallum' : ring > 0 ? 'canabae'
       : touchesForum ? 'latera' : praetoriaSide ? 'praetentura' : 'retentura';
     const id = blocks.length;
     blocks.push({ id, ring, bx, by, x, y, masked, reserved, district, touchesVia, touchesForum });
@@ -169,10 +177,17 @@ export function computeSurvey(map: Omit<WorldMap, 'survey'>, ix: number, iy: num
     markStreet(cx, iy + IH - 1 + k, 0);
   }
   for (const b of blocks) {
-    if (b.ring === 0 || b.masked) continue;
+    if (b.ring === 0 || b.ring === WALL_RING || b.masked) continue;
     for (const p of perimeter({ x: b.x - 1, y: b.y - 1, w: BS + 2, h: BS + 2 })) {
       if (inRect(p.x, p.y, castrum)) continue;
       markStreet(p.x, p.y, b.ring);
+    }
+  }
+  // the pitch lines across the wall and ditch (the causeways keep ring 0): streets once the castrum is razed
+  for (let y = castrum.y; y < castrum.y + castrum.h; y++) {
+    for (let x = castrum.x; x < castrum.x + castrum.w; x++) {
+      if (chebRect(x, y, interior) === 0) continue;
+      if (((x - ix) % P + P) % P === 0 || ((y - iy) % P + P) % P === 0) markStreet(x, y, WALL_RING);
     }
   }
 
@@ -242,19 +257,32 @@ export function blockStreets(sv: Survey, b: Block): number[] {
   return out;
 }
 
-/** Rings in the pomerium at a rank (from RANK_DEFS: [0], [0, 1], [0, 1, 2] …). */
-export function activeRings(rank: RankIndex): number[] {
-  return RANK_DEFS[rank].rings;
+const RAZED_RINGS: readonly number[][] = RANK_DEFS.map((r) => [...r.rings, WALL_RING]);
+
+/** Rings in the pomerium at a rank (from RANK_DEFS: [0], [0, 1], [0, 1, 2] …), with the castrum's wall and ditch once
+ *  the castrum is razed. */
+export function activeRings(rank: RankIndex, razed = false): number[] {
+  return razed ? RAZED_RINGS[rank] : RANK_DEFS[rank].rings;
 }
 
-/** True when the block is unmasked, not reserved and its ring is in the pomerium at `rank`. */
-export function isActiveBlock(sv: Survey, b: Block, rank: RankIndex): boolean {
+/** The rings in a colony's pomerium: its rank's, and ring 3 once the castrum is razed. */
+export function ringsOf(s: Pick<GameState, 'rank' | 'urbs'>): number[] {
+  return activeRings(s.rank, isRazed(s));
+}
+
+/** True once the castrum's walls have come down (the town wall stands in their place). */
+export function isRazed(s: Pick<GameState, 'urbs'>): boolean {
+  return (s.urbs?.razed ?? null) !== null;
+}
+
+/** True when the block is unmasked, not reserved and its ring is in the pomerium at `rank` (ring 3 only once razed). */
+export function isActiveBlock(sv: Survey, b: Block, rank: RankIndex, razed = false): boolean {
   const blk = sv.blocks[b.id] ?? b;
-  return !blk.masked && blk.reserved === null && activeRings(rank).includes(blk.ring);
+  return !blk.masked && blk.reserved === null && activeRings(rank, razed).includes(blk.ring);
 }
 
 /** True when the block is unmasked and unreserved but its ring is not yet in the pomerium (kept for the canabae). */
-export function isFutureBlock(sv: Survey, b: Block, rank: RankIndex): boolean {
+export function isFutureBlock(sv: Survey, b: Block, rank: RankIndex, razed = false): boolean {
   const blk = sv.blocks[b.id] ?? b;
-  return !blk.masked && blk.reserved === null && !activeRings(rank).includes(blk.ring);
+  return !blk.masked && blk.reserved === null && !activeRings(rank, razed).includes(blk.ring);
 }

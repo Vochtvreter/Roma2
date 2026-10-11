@@ -10,6 +10,7 @@ import { TILE } from './camera';
 import { buildingColor, footprintRect } from './buildings';
 import { OVERLAY_ALPHA } from './overlays';
 import { looks } from './decor';
+import { wallBuilt } from './linear';
 
 const REDRAW_MS = 500;
 const PX_PER_TILE = 2;
@@ -63,7 +64,7 @@ export class Minimap {
     for (let i = 0; i < W * H; i++) {
       const x = (i % W) * k, y = Math.floor(i / W) * k;
       if (d.road[i]) { g.fillStyle = d.road[i] === 2 ? C.paved : C.dirt; g.fillRect(x, y, k, k); }
-      else if (sv.wall[i]) { g.fillStyle = s.rank >= 2 ? C.murus : C.wall; g.fillRect(x, y, k, k); }
+      else if (d.wall[i] && (sv.wall[i] || wallBuilt(s, i))) { g.fillStyle = s.rank >= 2 ? C.murus : C.wall; g.fillRect(x, y, k, k); }
     }
     for (const b of s.buildings) {
       const r = footprintRect(s, b);

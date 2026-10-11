@@ -314,6 +314,39 @@ export const B = {
     LEGACY_IMPERIUM: 0.05,                            // Imperium: next colony +5% legacy
   },
 
+  // ───────── the growing town (DESIGN §3.9): footfall, the town wall, the castrum razed, renewal ─────────
+  urbs: {
+    TRAFFIC: {
+      ALPHA: 0.5,                                     // monthly average: this month's count weighs half
+      FORUM: 0.25,                                    // a household's daily errand to the forum, per resident
+      VIA: [2, 3],                                    // carts on the via a day: base + per rank
+      MIN: 0.5,                                       // footfall below this is forgotten
+      MAX_STEPS: 160,                                 // a commute is followed this far along the roads
+      WEAR: [4, 14, 40],                              // walkers a day: grassy track < 4 ≤ track < 14 ≤ road < 40 ≤ highway
+    },
+    MOENIA: {
+      RANK: 3,                                        // the player may lay out the town wall from Municipium;
+      ORDO_RANK: 4,                                   // the Ordo waits for the colonial charter (a colonia walled itself) …
+      OUTER: 1,                                       // … and for the homes beyond the camp's walls to outnumber the camp's
+      LINE: 16,                                       // its line: tiles from the castrum interior (one past the outer ring's street)
+      WORK: 30,                                       // builder-days per wall tile
+      MAT: { stone: 5, denarii: 6 },                  // per wall tile, drawn as the work proceeds, from stock above the saving target
+      CREW: 8,                                        // builders' worth of the day's spare work it may take (before the Capitolium)
+      DIGNITAS: 8, MORALE: 2, BANDITS: 0.6,           // a walled town: dignitas, spirits, and the watch on the roads
+      SALVAGE: 2,                                     // stone back per tile of the razed castrum wall (stone from Oppidum, else timber)
+      PASSES: 80,                                     // the survey goes round works and along roads at most this many times
+    },
+    RENEW: {
+      WELL_MARGIN: 0.5,                               // a well is filled only if no house beside it falls within this of its tier's need
+      WELL_AGE: 365,                                  // … and only an old one (days since it was finished)
+      COTTAGE_LEVEL: 2,                               // homes up to this tier (tentoria, casa, tegulata) may be bought out for a civic block
+      SPARE: 2,                                       // beds left free elsewhere once the families are rehoused
+      GAP: 60,                                        // days between two renewals
+    },
+    LINE_REACH: 8,                                    // a fountain may draw from the aqueduct where it runs through the pomerium
+    AQUAE_REACH: 4,                                   // the Ordo pipes water to the great houses where one fountain reaches this many
+  },
+
   // ───────── starting state (DESIGN §18.1) ─────────
   start: {
     RES: { denarii: 600, grain: 480, water: 240, timber: 80, stone: 40, tools: 4 },

@@ -104,6 +104,7 @@ export function moraleTarget(s: GameState, v: SimView): { value: number; terms: 
   if (seasonOf(s.day) === HIEMS) for (const src of fxBreakdown(s, 'hiemsMorale')) add(`${src.label} (Hiems)`, src.value);
   add('Legacy', M.LEGACY * s.legacy);
   if (s.buildings.some((b) => b.type === 'capitolium' && b.status === 'done')) add('The Capitolium', M.CAPITOLIUM);
+  if (s.urbs.moenia?.done != null) add('The town wall', B.urbs.MOENIA.MORALE);
   let value = 0;
   for (const t of terms) value += t.value;
   return { value, terms };
@@ -130,6 +131,7 @@ export function dignitas(s: GameState): { value: number; groups: { works: number
       else works += BUILDING_DEFS[b.type].dignitas;
       if (b.house) homes += TIER_DEFS[b.house.tier].dignitas + (isAquae(s, b) ? B.housing.AQUAE_DIGNITAS : 0);
     }
+    if (s.urbs.moenia?.done != null) works += B.urbs.MOENIA.DIGNITAS;   // the town wall (urbs.ts)
     return { works, homes };
   });
   const roads = B.dignitas.ROADS * s.paved.length;

@@ -208,9 +208,9 @@ export function finishSite(bt: BaseTerrain, seed: number, c: SiteCand, attempt: 
   // fons: springs on the hills, within an aqueduct's reach of some surveyed plot
   const aqTargets: number[] = [];
   for (let i = 0; i < GN; i++) {
-    if (!sv.street[i]) continue;
+    if (!sv.street[i] || sv.streetRing[i] === 3) continue;          // the castrum's own wall line is no plot yet
     let plot = false;
-    forN4(i, (j) => { const b = sv.blockAt[j]; if (b >= 0 && !sv.blocks[b].masked && !sv.blocks[b].reserved) plot = true; });
+    forN4(i, (j) => { const b = sv.blockAt[j]; if (b >= 0 && !sv.blocks[b].masked && !sv.blocks[b].reserved && sv.blocks[b].ring !== 3) plot = true; });
     if (plot) aqTargets.push(i);
   }
   const aqPass = new Uint8Array(GN);

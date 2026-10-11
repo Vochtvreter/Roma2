@@ -22,6 +22,7 @@ import { checkObjectives, updateCounters } from './objectives';
 import { advisorsDay } from './advisors/engine';
 import { pruneGuide } from './guide';
 import { dutiesDay } from './ordo/duties';
+import { urbsDay } from './urbs';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, isKalends = isKalends$, seasonOf = seasonOf$, seasonStartOf = seasonStartOf$,
@@ -52,6 +53,8 @@ export function tick(s: GameState, ctx: TickContext): void {
   constructionDay(s, ctx);       // builders along worksQueue(); Capitolium crew cap and materials; completions;
                                  // Capitolium completion sets s.victory, stats.victoryDay, fx victory
   housingDay(s, ctx);            // houses with (id + day) % CHECK_EVERY == 0 (DESIGN §7.2): needs, evolution, renovation, decline
+  urbsDay(s, ctx, v, isKalends(s.day));   // the growing town (§3.9): the footfall census and a needless well on the Kalends,
+                                          // the town wall surveyed once the town outgrows its camp
   // 6 · people
   peopleDay(s, ctx, rng);        // aging logs, deaths, widowing, marriages, births, homeless, emigration
   immigrationDay(s, ctx, rng);   // Rome's roll, one Bernoulli roll

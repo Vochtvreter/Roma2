@@ -17,6 +17,7 @@ import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { materialNeeds } from './build';
 import { goodsPlan } from './goods';
+import { wallsRising } from '../urbs';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$,
@@ -255,12 +256,14 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   for (const p of req) add(p, 1, sReason);
   for (const p of req) add(p, Math.ceil(p.def.slots * B.economy.SERVICE_FULL) - hands[p.i], sReason);
 
-  // 4 · builders while a site is workable (plus the Capitolium crew in monument mode), ≤ 30% of the workforce
-  if (sites.length > 0 || capSite) {
+  // 4 · builders while a site is workable (plus the Capitolium crew in monument mode, and the town wall's crew while it
+  //     rises), ≤ 30% of the workforce
+  const walls = wallsRising(s);
+  if (sites.length > 0 || capSite || walls) {
     const share = settingValue(s, 'builderShare') + (focus === 'materia' ? B.ordo.FOCUS.MATERIA_BUILDERS : 0);
     const remaining = sites.reduce((a, b) => a + b.work * (1 - b.progress), 0);
     const base = sites.length > 0 ? Math.min(Math.max(B.ordo.BUILDERS_MIN, Math.round(W * share)), Math.ceil(remaining)) : 0;
-    const want = Math.min(bCap, base + (capSite ? B.construction.CAP_CREW : 0));
+    const want = Math.min(bCap, base + (capSite ? B.construction.CAP_CREW : 0) + (walls ? B.urbs.MOENIA.CREW : 0));
     const k = Math.max(0, Math.min(want - builders, free));
     builders += k; free -= k;
     note('builders', k, capSite

@@ -93,9 +93,10 @@ export function buildingShape(b: Building): Building {
 // newGame writes the state, and these parts of it, as literals (state.ts); the records inside are filled key by key.
 
 const STATE_KEYS = ['version', 'seed', 'rng', 'nextId', 'name', 'day', 'legacy', 'legacyBonus', 'rank', 'victory', 'defeat', 'res',
-  'taxAccrued', 'people', 'families', 'buildings', 'roads', 'paved', 'wood', 'needs', 'fed', 'morale', 'decisions', 'ordo', 'trade',
+  'taxAccrued', 'people', 'families', 'buildings', 'roads', 'paved', 'wood', 'urbs', 'needs', 'fed', 'morale', 'decisions', 'ordo', 'trade',
   'choice', 'gate', 'eventDays', 'modifiers', 'guidance', 'counters', 'stats', 'log', 'lastSave'] as const;
 const NEEDS_KEYS = ['hunger', 'thirst'] as const;
+const URBS_KEYS = ['traffic', 'moenia', 'razed', 'renewed'] as const;
 const DECISIONS_KEYS = ['focus', 'edicts', 'edictLock', 'paths', 'pathDays', 'settings', 'switches'] as const;
 const ORDO_KEYS = ['on', 'manual', 'requests', 'pin', 'reserved', 'priorities', 'emergency', 'works', 'learned', 'answered'] as const;
 const ON_KEYS = ['labour', 'build', 'trade'] as const;
@@ -138,6 +139,7 @@ type S = GameState;
 export function stateShape(x: S): S {
   const d = x.decisions, o = x.ordo, tr = x.trade, g = x.guidance, c = x.counters, st = x.stats;
   const needs = reshape(x.needs, NEEDS_KEYS, (n) => ({ hunger: n.hunger, thirst: n.thirst }));
+  const urbs = reshape(x.urbs, URBS_KEYS, (u) => ({ traffic: u.traffic, moenia: u.moenia, razed: u.razed, renewed: u.renewed }));
   const decisions = reshape(d, DECISIONS_KEYS, (v) => ({
     focus: v.focus, edicts: filled(v.edicts), edictLock: filled(v.edictLock), paths: filled(v.paths), pathDays: filled(v.pathDays),
     settings: filled(v.settings), switches: filled(v.switches),
@@ -178,7 +180,7 @@ export function stateShape(x: S): S {
   return reshape(x, STATE_KEYS, (v) => ({
     version: v.version, seed: v.seed, rng: v.rng, nextId: v.nextId, name: v.name, day: v.day, legacy: v.legacy,
     legacyBonus: v.legacyBonus, rank: v.rank, victory: v.victory, defeat: v.defeat, res: filled(v.res), taxAccrued: v.taxAccrued,
-    people: v.people, families: v.families, buildings: v.buildings, roads: v.roads, paved: v.paved, wood: v.wood, needs, fed: v.fed,
+    people: v.people, families: v.families, buildings: v.buildings, roads: v.roads, paved: v.paved, wood: v.wood, urbs, needs, fed: v.fed,
     morale: v.morale, decisions, ordo, trade, choice: v.choice, gate: v.gate, eventDays: filled(v.eventDays), modifiers: v.modifiers,
     guidance, counters, stats, log: v.log.map(logShape), lastSave: v.lastSave,
   }));
