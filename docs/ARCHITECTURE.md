@@ -1051,6 +1051,7 @@ export function previewCoverage(s: GameState, type: BuildingId, x: number, y: nu
 export function desirability(s: GameState): Float32Array;             // per tile, memo on structEpoch
 export function houseDesir(s: GameState, houseId: number): number;    // average over its 4 tiles
 export function previewDesir(s: GameState, type: BuildingId, x: number, y: number): { tile: number; v: number }[];
+export function tierShiftDesir(s: GameState, b: Building, from: HouseTierId, to: HouseTierId): Map<number, number>;   // a house's rise, per tile
 ```
 
 **`place.ts`** — the placement pipeline. `canPlace` runs these checks **in order** and returns the **first** failure with exactly this code and reason:
@@ -1139,6 +1140,7 @@ export function gainSkill(p: Person, skill: SkillId, amount: number): void;   //
 ```ts
 export function nextTier(s: GameState, b: Building): HouseTierId | null;     // T3 → insula/domus by preference and desirability
 export function unmetNeeds(s: GameState, b: Building, tier: HouseTierId): NeedId[];   // in the tier's need order
+export function crowds(s: GameState, b: Building, to: HouseTierId): { id: number; short: number }[];   // neighbours the rise would push below their tier (DESIGN §7.2)
 export function firstWant(s: GameState, b: Building): NeedId | null;
 export function housesUnlockedBy(s: GameState, type: BuildingId, x: number, y: number): number[];
 export function houseTax(s: GameState, b: Building): number;                   // per resident per day incl. declining ×0.5 and aquae

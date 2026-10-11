@@ -5,17 +5,20 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Building, CoverageLayerId, GameState, HouseTierId } from '../src/game/types';
 import { census, houseBeds, residents } from '../src/game/census';
 import {
-  firstWant, goodsDay, goodsDemand, goodsTier, houseTax, housesUnlockedBy, housingDay, nextTier, setHousePref, targetTier, unmetNeeds,
+  crowds, firstWant, goodsDay, goodsDemand, goodsTier, houseTax, housesUnlockedBy, housingDay, nextTier, setHousePref, targetTier, unmetNeeds,
 } from '../src/game/housing';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { log } from '../src/game/state';
 import { aTier } from '../src/game/data/housing';
+import { tierShiftDesir } from '../src/game/coverage';
+import { derived } from '../src/game/derived';
 import { B } from '../src/game/balance';
 import { ctx, fresh } from './util';
 
 const pin = vi.hoisted(() => ({
   layers: new Map<number, Set<string>>(),
   desir: new Map<number, number>(),
+  field: null as Float32Array | null,
   preview: [] as { layer: string; houses: number[] }[],
 }));
 vi.mock('../src/game/coverage', async (importOriginal) => {
@@ -24,6 +27,7 @@ vi.mock('../src/game/coverage', async (importOriginal) => {
     ...real,
     houseHas: (s: GameState, id: number, layer: CoverageLayerId) => (pin.layers.has(id) ? pin.layers.get(id)!.has(layer) : real.houseHas(s, id, layer)),
     houseDesir: (s: GameState, id: number) => pin.desir.get(id) ?? real.houseDesir(s, id),
+    desirability: (s: GameState) => pin.field ?? real.desirability(s),
     previewCoverage: (s: GameState, type: Parameters<typeof real.previewCoverage>[1], x: number, y: number) =>
       pin.preview.length > 0 ? pin.preview.map((p) => ({ ...p, tiles: new Uint8Array(0) })) : real.previewCoverage(s, type, x, y),
   };
@@ -35,6 +39,7 @@ const ALL: CoverageLayerId[] = ['water', 'fountain', 'shrine', 'temple', 'market
 function setup(): { s: GameState; houses: Building[] } {
   pin.layers.clear();
   pin.desir.clear();
+  pin.field = null;
   pin.preview = [];
   const s = fresh();
   s.fed = 1;
@@ -218,6 +223,53 @@ describe('the fork (DESIGN §7.1)', () => {
     expect(h.house!.tier).toBe('domus');
     expect(s.stats.evolved).toBe(0);                 // a conversion is not an evolution
     expect(residents(s, h.id).length).toBeLessThanOrEqual(houseBeds(s, h));
+  });
+});
+
+describe('a rise that would crowd a neighbour waits (DESIGN §7.2, §7.5)', () => {
+  /** A stone house ready to become an insula, and a stone house its −1/r2 would reach; the street a flat `field`. */
+  function pair(field: number): { s: GameState; a: Building; n: Building } {
+    const { s, houses } = setup();
+    s.rank = 2;
+    const d = derived(s);
+    const near = (h: Building): Building | undefined => {
+      const ids = new Set([...tierShiftDesir(s, h, 'domusParva', 'insula').keys()].map((i) => d.buildingAt[i]));
+      return houses.find((o) => o !== h && ids.has(o.id));
+    };
+    const a = houses.find((h) => near(h))!;
+    const n = near(a)!;
+    for (const h of houses) { h.house!.tier = 'domusParva'; h.house!.pref = 'insula'; h.house!.oil = 1; cover(h, h === a ? ALL : [], 1); }
+    invalidate(s);
+    pin.field = new Float32Array(d.buildingAt.length).fill(field);
+    return { s, a, n };
+  }
+
+  it('waits while the neighbour holds its desirability only by a thin margin, and says so', () => {
+    const { s, a, n } = pair(0.4);
+    const c = crowds(s, a, 'insula');
+    expect(c.map((x) => x.id)).toContain(n.id);
+    for (const x of c) expect(x.short).toBeGreaterThan(0);
+    expect(unmetNeeds(s, a, 'insula')).toEqual(['desirability']);   // its own street (pinned 1) is fine: the neighbour's is not
+    expect(firstWant(s, a)).toBe('desirability');
+    days(s, 60);
+    expect(a.house!.tier).toBe('domusParva');
+    expect(a.house!.renovating).toBe(null);
+  });
+
+  it('rises once the street holds the neighbour clear of its minimum', () => {
+    const { s, a } = pair(3);
+    expect(crowds(s, a, 'insula')).toEqual([]);
+    expect(unmetNeeds(s, a, 'insula')).toEqual([]);
+    days(s, 5 + H.OK_DAYS + H.RENOVATE_DAYS);
+    expect(a.house!.tier).toBe('insula');
+  });
+
+  it('never makes a standing insula decline, and a neighbour already below its minimum does not hold the rise', () => {
+    const { s, a } = pair(0.4);
+    setTier(s, a, 'insula');
+    expect(unmetNeeds(s, a, 'insula')).toEqual([]);
+    const b = pair(-1);
+    expect(crowds(b.s, b.a, 'insula')).toEqual([]);
   });
 });
 

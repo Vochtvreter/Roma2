@@ -5,7 +5,7 @@
 // Desirability: Σ v · (1 − d/(r + 1)) over every source within its range (Chebyshev d from the source's footprint).
 import { B as B$ } from './balance';
 import { BUILDINGS as BUILDINGS$, F as F$, LAYERS as LAYERS$, T as T$ } from './types';
-import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, WorldMap } from './types';
+import type { AddKey, Building, BuildingId, Coverage, CoverageLayerId, GameState, HouseTierId, WorldMap } from './types';
 import { getMap as getMap$ } from './map';
 import { dayEpoch as dayEpoch$, layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
 import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, footprintOf as footprintOf$, sizeOf as sizeOf$ } from './derived';
@@ -438,5 +438,26 @@ export function previewDesir(s: GameState, type: BuildingId, x: number, y: numbe
   addInfluence(field, x, y, w, h, v, r);
   const out: { tile: number; v: number }[] = [];
   for (let i = 0; i < GN; i++) if (field[i] !== 0) out.push({ tile: i, v: field[i] });
+  return out;
+}
+
+/** Desirability a house rising from tier `from` to `to` would add, per affected tile (unclamped; empty when both tiers
+ *  give the same): the change its street feels once the renovation finishes (housing.crowds, DESIGN §7.2). */
+export function tierShiftDesir(s: GameState, b: Building, from: HouseTierId, to: HouseTierId): Map<number, number> {
+  const out = new Map<number, number>();
+  const [fv, fr] = TIER_DEFS[from].desir, [tv, tr] = TIER_DEFS[to].desir;
+  if (fv === tv && fr === tr) return out;
+  const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+  const r = Math.max(fv !== 0 ? fr : 0, tv !== 0 ? tr : 0);
+  for (let ty = Math.max(0, b.y - r); ty <= Math.min(GH - 1, b.y + h - 1 + r); ty++) {
+    const dy = Math.max(b.y - ty, 0, ty - (b.y + h - 1));
+    for (let tx = Math.max(0, b.x - r); tx <= Math.min(GW - 1, b.x + w - 1 + r); tx++) {
+      const d = Math.max(dy, Math.max(b.x - tx, 0, tx - (b.x + w - 1)));
+      let v = 0;
+      if (tv !== 0 && d <= tr) v += tv * (1 - d / (tr + 1));
+      if (fv !== 0 && d <= fr) v -= fv * (1 - d / (fr + 1));
+      if (v !== 0) out.set(ty * GW + tx, v);
+    }
+  }
   return out;
 }
