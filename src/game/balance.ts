@@ -286,9 +286,11 @@ export const B = {
 
   // ───────── mentor tips and reveal (DESIGN §11.7, §11.9, §15.3) ─────────
   guide: { VITALS: 2, ORDO: 5, CHARTER: 10, SPEED: 20, STARVING: 50, STARVING_UNTIL: 20, THIRST_R: 6, THIRST_UNTIL: 12, WANTS_BLOCKED: 5 },
-  // the paced introduction (DESIGN §11.13): a read tip leaves GAP days before the next one; by INTRO_END elapsed days
-  // every part of the interface shows, whether or not its tip was read
-  intro: { GAP: 6, END: 200 },
+  // the opening lessons (DESIGN §11.13), paced in real seconds of play; a tip read leaves GAP days before the next tip;
+  // the Ordo builds by ORDO_BY elapsed days even if its lesson has not come; a job not done after NUDGE_S seconds is
+  // pointed out again, and after STUCK_S the player may skip it; the card shows a tip that is not urgent only TIP_GAP_S
+  // real seconds after the last one read (or the lessons' end): at 10× six game days are 0.6 s
+  intro: { GAP: 6, ORDO_BY: 150, NUDGE_S: 45, STUCK_S: 120, TIP_GAP_S: 40 },
   reveal: { BUILD_ELAPSED: 20, PEOPLE_ELAPSED: 10, TERRA_ELAPSED: 30 },
 
   // ───────── milestones and petitions (DESIGN §9.1, §9.4) ─────────

@@ -9,6 +9,7 @@ import { clear, fmt, fmtCost, h, img, tip } from './dom';
 import { caps } from './tipkit';
 import { PointerHold, Ratchet } from './steady';
 import { MILESTONES, currentMilestone } from '../game/objectives';
+import { introRunning } from '../game/intro';
 import { petitionNeeds } from '../game/decisions';
 import { activeAdvisories } from '../game/advisors/engine';
 import { view } from '../game/sim';
@@ -73,9 +74,11 @@ export class Objective {
     const m = currentMilestone(s);
     const pn = petitionNeeds(s, view(s));
     const danger = activeAdvisories(s).filter((a) => a.memo.sev === 3);
-    const mods = s.modifiers.filter((x) => x.until > s.day);
+    // while the lessons run (§11.13) the panel is the goal and its meter: no unlock list, no seasonal modifiers
+    const plain = introRunning(s);
+    const mods = plain ? [] : s.modifiers.filter((x) => x.until > s.day);
     const sig = `${m?.id ?? '-'}|${s.guidance.objective}|${pn?.decision ?? '-'}|${pn?.ready ? 1 : 0}${pn?.affordable ? 1 : 0}|`
-      + `${danger.map((a) => a.rule).join(',')}|${mods.map((x) => x.id).join(',')}`;
+      + `${danger.map((a) => a.rule).join(',')}|${mods.map((x) => x.id).join(',')}|${+plain}`;
     if (sig !== this.sig && !below && !this.hold.holds()) {
       this.sig = sig;
       this.build(m, pn, danger, mods);
@@ -110,7 +113,7 @@ export class Objective {
       if (m.hint) this.root.append(h('div', { class: 'obj-hint' }, m.hint));
       this.root.append(h('div', { class: 'meter obj-meter' }, fill));
       const un = m.unlocks.map(unlockLabel);
-      if (un.length) this.root.append(h('div', { class: 'obj-unlocks' }, h('span', { class: 'obj-unlocks-k' }, 'Unlocks: '), un.join(' · ')));
+      if (un.length && !introRunning(s)) this.root.append(h('div', { class: 'obj-unlocks' }, h('span', { class: 'obj-unlocks-k' }, 'Unlocks: '), un.join(' · ')));
       this.up.push(() => {
         const [a, b] = m.progress(g.state);
         prog.textContent = b > 1 ? `${fmt(Math.min(a, b))} / ${fmt(b)}` : '';

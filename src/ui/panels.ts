@@ -10,6 +10,7 @@ import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
 import { clear, h, img, tip } from './dom';
 import { tabShown } from './intro';
+import { notePractice } from '../game/actions';
 import { ControlHold, ScrollAnchor } from './steady';
 import { B } from '../game/balance';
 import { panel as edicta } from './tabs/edicta';
@@ -110,6 +111,8 @@ export class SidePanel {
   open(tab: TabId, anchor?: string): void {
     if (anchor === 'choice' && this.onChoiceAnchor?.()) return;
     this.forced = tabShown(this.g.state, tab) ? null : tab;
+    if (tab === 'advisors') notePractice(this.g.state, 'advisors');   // the lessons' jobs (§11.13)
+    if (tab === 'people') notePractice(this.g.state, 'people');
     this.cur = tab;
     this.fresh.delete(tab);
     this.toggle(true);

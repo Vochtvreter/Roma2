@@ -146,7 +146,7 @@ function startBlocks(blocks: Block[], viaDir: 'E' | 'W'): { upper: Block; lower:
 }
 
 /** A new colony on `seed` at Kal. Apr. AUC DCCC (DESIGN §18.1); `now` is the wall clock in ms. */
-export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: number; name?: string; now: number }): GameState {
+export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: number; name?: string; now: number; intro?: boolean }): GameState {
   const seed = opts.seed;
   const day = B.time.START_DAY;
   const map = getMap(seed);
@@ -172,7 +172,8 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
     decisions: defaultDecisions(), ordo: defaultOrdo(),
     trade: { market, contracts: [], caravans: [], merchant: null, lastMerchant: NEVER, hubsTraded: [], debt: 0 },
     choice: null, gate: null, eventDays: {}, modifiers: [],
-    guidance: { advisories: {}, muted: [], appointed: START_ADVISORS.slice(), tips: [], tipDay: NEVER, objective: 0, milestoneDays: {} },
+    guidance: { advisories: {}, muted: [], appointed: START_ADVISORS.slice(), tips: [], tipDay: NEVER, tipAt: 0, objective: 0, milestoneDays: {},
+      intro: { lesson: -1, done: false, at: 0, practice: [], ordoHeld: false } },
     counters: {
       fedStreak: 0, stabStreak: 0, ironMade: 0, tilesMade: 0, caravansReturned: 0,
       festivalsKept: {}, robigaliaYear: -1, lastArrivalBlocked: NEVER, lastBirthBlocked: NEVER, immCall: 0,
@@ -241,6 +242,12 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
   if (track.length > 0) s.roads = [...new Set([...s.roads, ...track])].sort((a, c) => a - c);
   invalidate(s);
 
+  // the opening lessons (intro.ts, DESIGN §11.13): the first works are the player's own; the Ordo builds once introduced
+  if (opts.intro) {
+    s.guidance.intro = { lesson: 0, done: false, at: 0, practice: [], ordoHeld: true };
+    s.guidance.tips.push('welcome');   // the welcome lesson greets instead; the urgent tips, which follow it, may speak
+    s.ordo.on.build = false;
+  }
   log(s, 'info', `${s.people.length} souls of ${s.families.length} families pitch their tents at ${name}.`, ['highlight']);
   return s;
 }

@@ -4,11 +4,12 @@
 import { B } from './balance';
 import {
   ADVISORS, BUILDER, BUILDINGS, EDICTS, EVENTS, FOCUSES, HOUSE_TIERS, HUBS, LABOR_CATS, MILESTONE_IDS, PATH_DECISIONS, RESOURCES, RULES, SETTINGS,
-  PATH_OPTIONS, SKILLS, SWITCHES, TIPS, TRADE_RES,
+  PATH_OPTIONS, PRACTICE, SKILLS, SWITCHES, TIPS, TRADE_RES,
 } from './types';
 import type { Building, FastiEntry, GameState, PathDecisionId, PathOptionId, Person, Prefs, RankIndex, Speed } from './types';
 import { NEVER, newGame } from './state';
 import { MILESTONES } from './objectives';
+import { LESSONS } from './intro';
 import { H, W } from './map';
 import { EDICT_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from './data/decisions';
 import { RANK_DEFS } from './data/ranks';
@@ -209,6 +210,13 @@ function sanitise(s: GameState): void {
   g.muted = g.muted.filter((r) => RULES.includes(r));
   g.tips = g.tips.filter((r) => TIPS.includes(r));
   g.tipDay = clamp(finite(g.tipDay, NEVER), NEVER, s.day);   // a read in the future would hold every tip back
+  g.tipAt = clamp(finite(g.tipAt), 0, Math.max(0, finite(s.stats.playMs)));
+  const it = g.intro;
+  it.lesson = clamp(Math.round(finite(it.lesson, -1)), -1, LESSONS.length - 1);
+  it.done = it.done === true;
+  it.ordoHeld = it.ordoHeld === true;
+  it.at = clamp(finite(it.at), 0, Math.max(0, finite(s.stats.playMs)));   // a lesson begun in the future would never end
+  it.practice = Array.isArray(it.practice) ? it.practice.filter((p) => PRACTICE.includes(p)) : [];
   g.appointed = g.appointed.filter((a) => ADVISORS.includes(a));
   finiteRec(g.milestoneDays as Obj, (k) => (MILESTONE_IDS as readonly string[]).includes(k));
   g.objective = clamp(Math.round(finite(g.objective)), 0, MILESTONES.length);

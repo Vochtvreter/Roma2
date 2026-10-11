@@ -1,12 +1,13 @@
 // src/ui/tabs/edicta.ts — Edicta / Decisions: the Crossroads card, your story, focus, edicts, settings, switches, the
 // next-unlock teaser and "Who decides the details?" (DESIGN §9.1–9.2, §10.2, §10.8–10.10, §15.3). Owner: WP-I.
 import { EDICTS, FOCUSES, ORDO_AREAS, PATH_DECISIONS, SETTINGS, SWITCHES } from '../../game/types';
-import type { EdictId, GameState, LaborCat, OrdoArea, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
+import type { ActionResult, EdictId, GameState, LaborCat, OrdoArea, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
 import { costEl, fmt, fmtCost, h, img, sentence, tip } from '../dom';
 import * as A from '../../game/actions';
 import { edictOption, edictWindow, isUnlocked, petitionNeeds, settingValue, switchOn } from '../../game/decisions';
 import { nextTeaser, sectionRevealed } from '../../game/reveal';
+import { introduced } from '../../game/intro';
 import { councilReport } from '../../game/ordo/index';
 import { reasonText } from '../../game/ordo/reasons';
 import { view } from '../../game/sim';
@@ -145,7 +146,7 @@ function focusSec(g: Game, up: Updater[]): HTMLElement {
   const cur = s.decisions.focus;
   const sec = section('Propositum', 'Council focus', { anchor: 'focus', note: 'Steers what the Ordo builds and where spare hands go. Free to change at any time.' });
   sec.append(seg(g, FOCUSES.map((f) => ({ id: f, label: FOCUS_DEFS[f].latin, tip: `${FOCUS_DEFS[f].latin} · ${FOCUS_DEFS[f].name}\n${FOCUS_DEFS[f].desc}` })),
-    cur, (f) => A.setFocus(g.state, f)));
+    cur, (f) => noted(g, A.setFocus(g.state, f))));
   sec.append(h('div', { class: 'ed-desc' }, h('b', null, FOCUS_DEFS[cur].name), ': ', FOCUS_DEFS[cur].desc));
   const line = h('div', { class: 'ed-ordo-line' });
   let shown = '';
@@ -187,7 +188,7 @@ function edictsSec(g: Game, up: Updater[]): HTMLElement | null {
         id: o.id, label: o.name, reason: locked,
         tip: () => [`${o.name}${o.id === def.initial ? ' · the default' : ''}`, o.desc, impact(g, id, o.id), o.id !== def.initial ? `When: ${def.situational}` : '']
           .filter((x) => x).join('\n'),
-      })), cur, (o) => A.setEdict(g.state, id, o)),
+      })), cur, (o) => noted(g, A.setEdict(g.state, id, o))),
       h('div', { class: 'ed-desc' }, def.options.find((o) => o.id === cur)?.desc ?? ''));
     if (id === 'rationes' && s.ordo.emergency.rations !== 'none') {
       box.append(h('div', { class: 'ed-warn' }, `Lex de annona: rations are cut to ${s.ordo.emergency.rations === 'arctae' ? 'Arctae' : 'Parcae'} until grain recovers.`));
@@ -217,11 +218,11 @@ function settingsSec(g: Game): HTMLElement | null {
       'aria-label': `${def.latin}, ${def.name}`,
     });
     input.addEventListener('input', () => {
-      const r = A.setSetting(g.state, id, Number(input.value));
+      const r = noted(g, A.setSetting(g.state, id, Number(input.value)));
       if (!r.ok) g.act(r);
       val.textContent = settingText(id, settingValue(g.state, id));
     });
-    input.addEventListener('change', () => { g.act(A.setSetting(g.state, id, Number(input.value)), { okSfx: 'click' }); });
+    input.addEventListener('change', () => { g.act(noted(g, A.setSetting(g.state, id, Number(input.value))), { okSfx: 'click' }); });
     const box = h('div', { class: 'ed-box ed-setting', 'data-anchor': `setting-${id}` },
       h('div', { class: 'ed-box-head' }, h('b', null, def.latin), h('span', { class: 'ed-en' }, def.name),
         fresh(s, s.guidance.milestoneDays[def.unlock]) ? newMark() : null, val),
@@ -239,7 +240,7 @@ function switchesSec(g: Game): HTMLElement | null {
   for (const id of open as SwitchId[]) {
     const def = SWITCH_DEFS[id];
     sec.append(h('div', { class: 'ed-row' }, h('div', { class: 'ed-row-main' }, h('b', null, def.name), h('div', { class: 'ed-q' }, def.desc)),
-      toggle(g, switchOn(s, id), ['On', 'Off'], (on) => A.setSwitch(g.state, id, on))));
+      toggle(g, switchOn(s, id), ['On', 'Off'], (on) => noted(g, A.setSwitch(g.state, id, on)))));
   }
   return sec;
 }
@@ -278,6 +279,12 @@ function manualSec(g: Game, up: Updater[]): HTMLElement {
 }
 
 /** The Decisions tab. */
+/** An order the player gave: the last opening lesson's job (§11.13). */
+function noted(g: Game, r: ActionResult): ActionResult {
+  if (r.ok) A.notePractice(g.state, 'edict');
+  return r;
+}
+
 export const panel: Panel = {
   id: 'council', label: 'Edicta', sub: 'Decisions', icon: 'i_tab_council', hotkey: 'E',
   signature(g: Game): string {
@@ -294,11 +301,17 @@ export const panel: Panel = {
       SECTIONS.map((x) => +sectionRevealed(s, x)).join(''),
       ORDO_AREAS.map((a) => +s.ordo.on[a]).join(''),
       `${+Object.values(would.labour).some((n) => (n ?? 0) > 0)}${+!!would.build}${+!!would.trade}`,
-      s.ordo.emergency.rations, nextTeaser(s)?.label ?? '', +s.victory,
+      s.ordo.emergency.rations, nextTeaser(s)?.label ?? '', +s.victory, +introduced(s, 'edicts'),
     ].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;
+    // while the lessons run, Edicta is the founding charter alone (§11.13); its other orders come with their own lesson
+    if (!introduced(s, 'edicts')) {
+      if (!s.decisions.paths.charter) body.append(crossroads(g, up));
+      else { const st = story(s); if (st) body.append(st); }
+      return;
+    }
     body.append(crossroads(g, up));
     if (sectionRevealed(s, 'story')) { const st = story(s); if (st) body.append(st); }
     if (sectionRevealed(s, 'focus')) body.append(focusSec(g, up));

@@ -827,7 +827,7 @@ R = *runs out in* = stock / −(3-day average net) when net < 0. DoH = stock / d
 **Named-remedy helpers** (render-time): idle adults sorted by best skill for the target job; understaffed buildings; unstaffed sites; `bestSlot` covering the most affected houses; the cheapest open hub for a good.
 
 ### 11.7 Mentor tips (*Decimus Cassius*) — list order is priority; each shown once
-GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; buttons **Understood**, **Show me** (switches tab, glows the target), **Hide tips** (pref; it also skips the rest of the introduction, §11.13). Text is filled from state. A tip that is not urgent waits **6 days** (`B.intro.GAP`) after the last tip read, so new things never come all at once. Tips 6–15 are the paced introduction (§11.13): each brings a part of the interface with it. An unseen tip whose *Until* already holds is dropped unread — except an urgent one, which only waits (its *Until* means "not now", not "never").
+GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; buttons **Understood**, **Show me** (switches tab, glows the target), **Hide tips** (pref; it also skips the opening lessons, §11.13). While the opening lessons run only the urgent tips speak, and a tip that is not urgent waits **6 days** (`B.intro.GAP`) after the last tip read, so tips never come all at once. Tips 1 and 6–11 teach what the lessons teach: a colony that has had the lessons counts them as read. Text is filled from state. An unseen tip whose *Until* already holds is dropped unread — except an urgent one, which only waits (its *Until* means "not now", not "never").
 
 | # | id | Title | When | After | Until | Target | Gist |
 |---|---|---|---|---|---|---|---|
@@ -837,24 +837,20 @@ GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; but
 | 4 | `event` ★urgent | A dispatch arrives | a choice is pending | welcome | — | `#choice` | *"Decide before the timer ends, or the Ordo takes the cautious path."* |
 | 5 | `petition` ★urgent | Petition to Rome | petition ready | welcome | rank rose | `.path-card` (Edicta) | *"Every requirement is met. The path you choose is permanent and shapes the town."* |
 | 6 | `vitals` | Two numbers keep us alive | elapsed ≥ 2 | welcome | — | `#vital-grain` | *"Grain and Water, counted in days. The strip beneath each shows the year ahead: Aestas is our thirsty season, Hiems our hungry one."* |
-| 7 | `ordo` | The Ordo explains itself | elapsed ≥ 5 | vitals | — | `#ticker` | *"This line says what the Ordo does and why. It staffs the fields and wells and raises what we lack, so you need not."* Brings the ticker. |
-| 8 | `counsel` | Your advisors | an advisory ≥ Monitum | vitals | — | `#counsel` | *"Each advisor keeps one part of the ledger and speaks only when something needs you. Every warning comes with a remedy."* Brings the portrait strip and *Consiliarii*. |
-| 9 | `speed` | Time | elapsed ≥ 20 | ordo | — | `#speed` | *"One day passes each heartbeat. Speed it up, or pause to think: Space, 1–4."* |
-| 10 | `people` | The roll of souls | Populus revealed (elapsed ≥ 10) | speed | the introduction is over | `.hud-souls` (Populus) | *"24 souls sleep in 30 beds. Rome sends families only to free beds, and the face beside them shows our spirits, 65 today: content people work and settle gladly. Populus keeps the roll."* Brings the souls and spirits chips and *Populus*. |
-| 11 | `build` | Build with your own hands | Aedificia revealed | people | player placed a building by hand (not a site the Ordo raised for a request or the pin, nor the Capitolium) | Aedificia | *"Works cost denarii, timber and stone: the purse and the stores now show above. Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo's choice. Your works are raised first."* Brings the coin chip, the materials strip and *Aedificia*. |
-| 12 | `goals` | Res Gestae | M1 done | build | the introduction is over | `#objective` | *"Our first work stands, and Rome counts it among our deeds. Rome reads our deeds one at a time: the panel above names the next and what it opens. The Annales keep the record of all that passed."* Brings the Res Gestae panel and *Annales*. |
-| 13 | `charter` | Your first decision | elapsed ≥ 10 | goals | charter chosen | `.path-card` (Edicta) | *"By what law is this colony founded? The charter is permanent. Edicta is where you set the council's course."* Brings *Edicta*. |
-| 14 | `dignitas` | Dignitas | charter chosen | charter | the introduction is over | `.hud-dignitas` | *"The laurel above is Rome's regard for the colony. Public works, good homes, paved roads and deeds raise it, and it is never spent. To become a Vicus, Rome asks for 12; we stand at 7."* Brings the dignitas chip. |
-| 15 | `overlays` | Maps of the colony | Terra revealed (elapsed ≥ 30) | goals | the introduction is over | `#overlay-bar` | *"The buttons by the minimap lay a map over the land: Aqua, where the water reaches, Terra, the good soil, timber and stone, … Placing a work picks the right one by itself."* Brings the overlay bar. |
-| 16 | `aestas` | The thirsty season | Aestas, or the Aestas forecast ≥ Cave | welcome | — | `#vital-water` | *"Cisterns catch little rain in Aestas and wells draw less. Fill the cisterns in Ver."* |
-| 17 | `wants` | What a house wants | a house blocked ≥ 5 days | overlays | Domus overlay opened | `#overlay-bar` | *"Hover a house to see what it needs next, or open the Domus overlay."* (+ *"A shrine within five steps is often all it takes."* when the first house wants a shrine) |
-| 18 | `autumn` | Hiems is coming | Autumnus, or the Hiems forecast ≥ Monitum | welcome | a horreum exists and the forecast is clear | `#vital-grain` | *"In Hiems our fields give a third. Open sheds hold weeks and rot; a Horreum keeps grain for months. If grain runs low the Ordo cuts rations before anyone starves."* |
-| 19 | `edicts` | Your first edict | M3 done | charter | — | `[data-guide=edicts]` | *"Edicts trade one good for another. Each may change once a season; the window opens on the season's Kalends."* |
-| 20 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"You may take labour, building or trade from the Ordo. Leaving it all to them works just as well."* |
-| 21 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract of the player's exists (the Ordo's do not count) | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
-| 22 | `fork` | Insula or domus? | rank ≥ III and a T3 house exists | wants | — | Dignitas loci overlay | *"A stone house rises two ways: near shops and noise it becomes an insula, many hands for work; near gardens, temples and fountains a domus, few hands but rich taxes and prestige. Each house has a preference in its inspector."* |
-| 23 | `aqueduct` | Water from the hills | rank ≥ IV | trade | castellum placed | Aedificia | *"Place a castellum in town; the arches find their own way from the spring."* |
-| 24 | `away` | The years passed | after the first away report | welcome | — | Annales | *"Time away passes at half speed, up to five years. The Ordo kept the city and wrote you this."* |
+| 7 | `ordo` | The Ordo explains itself | elapsed ≥ 5 | vitals | — | `#ticker` | *"This line says what the Ordo does and why. Disagree? Steer it in Edicta, or build yourself."* |
+| 8 | `charter` | Your first decision | elapsed ≥ 10 | ordo | charter chosen | `.path-card` (Edicta) | *"By what law is this colony founded? The charter is permanent."* |
+| 9 | `counsel` | Your advisors | an advisory ≥ Monitum | vitals | — | `#counsel` | *"Each advisor keeps one part of the ledger and speaks only when something needs you. Every warning comes with a remedy."* |
+| 10 | `speed` | Time | elapsed ≥ 20 | charter | — | `#speed` | *"One day passes each heartbeat. Speed it up, or pause to think: Space, 1–4."* |
+| 11 | `build` | Build with your own hands | Aedificia revealed | speed | player placed a building by hand (not a site the Ordo raised for a request or the pin, nor the Capitolium) | Aedificia | *"Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo's choice. Your works are raised first."* |
+| 12 | `aestas` | The thirsty season | Aestas, or the Aestas forecast ≥ Cave | welcome | — | `#vital-water` | *"Cisterns catch little rain in Aestas and wells draw less. Fill the cisterns in Ver."* |
+| 13 | `wants` | What a house wants | a house blocked ≥ 5 days | build | Domus overlay opened | `#overlay-bar` | *"Hover a house to see what it needs next, or open the Domus overlay."* (+ *"A shrine within five steps is often all it takes."* when the first house wants a shrine) |
+| 14 | `autumn` | Hiems is coming | Autumnus, or the Hiems forecast ≥ Monitum | welcome | a horreum exists and the forecast is clear | `#vital-grain` | *"In Hiems our fields give a third. Open sheds hold weeks and rot; a Horreum keeps grain for months. If grain runs low the Ordo cuts rations before anyone starves."* |
+| 15 | `edicts` | Your first edict | M3 done | charter | — | `[data-guide=edicts]` | *"Edicts trade one good for another. Each may change once a season; the window opens on the season's Kalends."* |
+| 16 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"You may take labour, building or trade from the Ordo. Leaving it all to them works just as well."* |
+| 17 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract of the player's exists (the Ordo's do not count) | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
+| 18 | `fork` | Insula or domus? | rank ≥ III and a T3 house exists | wants | — | Dignitas loci overlay | *"A stone house rises two ways: near shops and noise it becomes an insula, many hands for work; near gardens, temples and fountains a domus, few hands but rich taxes and prestige. Each house has a preference in its inspector."* |
+| 19 | `aqueduct` | Water from the hills | rank ≥ IV | trade | castellum placed | Aedificia | *"Place a castellum in town; the arches find their own way from the spring."* |
+| 20 | `away` | The years passed | after the first away report | welcome | — | Annales | *"Time away passes at half speed, up to five years. The Ordo kept the city and wrote you this."* |
 
 ### 11.8 Res Gestae panel (top-left)
 Kicker `RES GESTAE · VII / XX` and progress (*"pop 41 / 50"*); goal text, one-line hint, meter (terracotta → gold); *"Unlocks: Hospites edict"*; a pulsing **CTA** — *"Charter: choose the founding law"*, *"Petition Rome: Oppidum"*; **danger chips generated only from Periculum advisories** (one source of truth: *Grain 6 d*, *Water 4 d*, *Unpaid works*, *3 homes declining*) plus active timed modifiers (*Robigo: one field idle, 21 d*).
@@ -882,16 +878,16 @@ Placement auto-selects the matching overlay and restores the previous one afterw
 - Beneath each, **12 month cells** starting with the current month, coloured by the lowest projected days on hand that month: green ≥ 30, gold 15–30, orange 7–15, red < 7, black empty; season initials beneath. Hover shows the 12-month line with cap and season bands. A Periculum in the domain pulses the tablet.
 - The forecast is pure and computed once per day from the same formula module as the tick: for each month, projected production = (Ordo labour on) `min(maxPotential(month's season), need × 1.35)` for grain / `need × 1.10` for water, plus the industry draws (the Ordo mans the wells for them too), except the crunch season which uses `maxPotential`; (Ordo labour off) current staffing. Consumption = current need + industry draws; caps, shed rot and evaporation applied month by month.
 
-### 11.12 The first ten minutes at 1× (target; asserted by the guide test with seed 42 and the decision bot)
+### 11.12 The first ten minutes at 1× without the lessons (target; asserted by the guide test with seed 42 and the decision bot, which have none; a new colony's first minutes are §11.13)
 
 | Real time | Elapsed / date | What happens | Guidance |
 |---|---|---|---|
 | 0:00 | Kal. Apr. DCCC (paused) | **Founding Dispatch** on parchment: *"To the Praefectus castrorum at Castra Valeria. Twenty-four souls of six families. Grain for 24 days, one well, one field. Hiems comes on the Kalends of December, 244 days hence: have the horrea full. Aestas comes sooner, and it is thirsty."* → **Raise the standard** | — |
 | 0:01 | day 1 | The Ordo staffs the field and the well; ticker: *"Staffed the fields: grain need 20.4/day."* | tip `welcome` |
-| 0:02 | day 2 | **First advisory** (Curator Aquarum, Monitum): the well gives ≈ 24/day in Ver but ≈ 19 in Aestas against 20.4 needed — *"Aestas in 59 days: our lowest would be 7 days of water."* The Ordo stakes a **Cisterna** (*aestasWater*). | — (a breather after `welcome`) |
-| ≈ 0:20 | day ≈ 20 | The cistern is finished; the forecast recovers; the advisory clears (≤ day 45). | tips `vitals`, `ordo`, `counsel` (§11.13: one at a time, each read) |
-| 0:20–1:30 | days 20–90 | Lumber camp, lararium, new plots; first casae near the well; M1, M3. | `speed`, `people`, `build`, `goals`, `charter`, `dignitas`, `overlays` |
-| 1:01 | Kal. Iun. | **Aestas**: cisterns ×0.3; the water strip turns gold. | `aestas`, `edicts` |
+| 0:02 | day 2 | **First advisory** (Curator Aquarum, Monitum): the well gives ≈ 24/day in Ver but ≈ 19 in Aestas against 20.4 needed — *"Aestas in 59 days: our lowest would be 7 days of water."* The Ordo stakes a **Cisterna** (*aestasWater*). | tips `vitals`, `ordo` |
+| ≈ 0:20 | day ≈ 20 | The cistern is finished; the forecast recovers; the advisory clears (≤ day 45). | tips `charter`, `counsel` |
+| 0:20–1:00 | days 20–60 | Lumber camp, lararium, new plots; first casae near the well; M1, M3. | `speed`, `build`, `edicts` |
+| 1:01 | Kal. Iun. | **Aestas**: cisterns ×0.3; the water strip turns gold. | `aestas` |
 | 2:04 | day 124 | **Hiems forecast** opens (Annona): stores too small → the Ordo stakes a **Horreum**. | `autumn` |
 | 2:33 | Kal. Sept. | Autumnus; the Augur is appointed; forage ×1.8; the Ordo stockpiles. | — |
 | < 4:04 | before Kal. Dec. | Horreum finished (test). M4. | — |
@@ -900,35 +896,64 @@ Placement auto-selects the matching overlay and restores the previous one afterw
 | 5:35 | Kal. Mart. DCCCI | M5 *Weather the first Hiems*. | — |
 | 7:00–12:00 | days 420–720 | Pop 50, Stabilitas, charter → **Vicus petition** (band). Quaestor and Aedilis appointed; Commercium opens. | `petition`, `reins`, `trade` |
 
+### 11.13 The opening lessons (*Disciplina*) — one system at a time, learned by doing
+A new colony opens on the map, the two vital tablets, the date, pause and 1×, and the first lesson. Each lesson is
+**one reason and one imperative** (about a dozen words), a **job the player does by hand**, and the parts of the
+interface that job needs (at most three). When the job concludes the card shows the **payoff** and the next lesson's
+name; the next lesson comes after a **breather of real play time** (`stats.playMs`, never game days, so speeding up
+cannot rush it), or at once with **Begin now**. The card names what comes next, and the lesson's tab opens on the work
+it asks for — the right action is the one in front of the player.
 
-### 11.13 The paced introduction — one system at a time
-A new colony opens on the map, the two vital tablets, the date and the clock; the mentor's card is the only other thing
-on screen. Every other part of the interface arrives **with the tip that explains it** (`intro.ts`): it shows once that
-tip is on the card or has been read, and fades in with a gold glow. The next tip waits until the player presses
-**Understood** and 6 more days pass (§11.7), so a player who reads each tip sees a new system about every ten days
-(≈ 10 s at 1×) over the first ~90 days, instead of everything within the first half-minute.
+| # | Lesson | Card | Job (concludes when) | Brings | Breather |
+|---|---|---|---|---|---|
+| I | Water for the dry season | *"Our one well will not last the summer. Raise a cistern."* | a cistern the player placed **stands** (live "Rising · 41%") | Aedificia (the cistern only), coin, timber and stone | 45 s |
+| II | Beds for newcomers | *"Rome sends families only to free beds. Lay out a house plot."* | the player's house plot stands | souls and spirits | 45 s |
+| III | The Ordo takes up the work | *"The Ordo keeps the colony alive, even while you sleep. Watch it build."* → *"It plays safe. Where the colony lags, your own hand does better."* | the Ordo stakes its first work | the ticker; **the Ordo begins to build** | 45 s |
+| IV | The founding law | *"Rome awaits our founding law. Choose it in Edicta: it is for good."* | the charter proclaimed | Res Gestae (goal and meter), Edicta (the charter alone); **dignitas as the reward** | 45 s |
+| V | Your advisors | *"Advisors warn of trouble, each with a remedy. Hear them out."* | the player opens Consiliarii (its button glows; it does not open by itself) | portraits, Consiliarii | 40 s |
+| VI | Time is yours | *"The Ordo keeps the colony now. Hurry the days, or pause to think."* | a faster speed chosen | 2× – 10× | 40 s |
+| VII | Every work is yours | *"All of Rome's works are open to you now. Raise one of your choosing."* | the player places a work not yet taught | the full Aedificia: every work, tools, categories, the Ordo's agenda and buttons | 40 s |
+| VIII | The roll of souls | *"Every soul has a name, an age and a trade. Open Populus."* | the player opens Populus | Populus | 40 s |
+| IX | Maps of the land | *"Lay a map over the land: water, soil, what houses lack."* | an overlay opened | the overlay bar | 40 s |
+| X | The council's course | *"The council takes standing orders from you. Change one in Edicta."* | an edict, focus, setting or switch changed | the rest of Edicta; **the Annales as the closing reward** | 8 s |
 
-| Tip | Brings in |
-|---|---|
-| `ordo` | the ticker |
-| `counsel` | the advisors' portrait strip · *Consiliarii* |
-| `people` | the souls and spirits chips · *Populus* |
-| `build` | the coin chip and the materials strip · *Aedificia* |
-| `goals` (or `away`) | the Res Gestae panel · *Annales* |
-| `charter` (or `petition`, `edicts`, `reins`) | *Edicta* (the founding charter waits here) |
-| `dignitas` (or `petition`) | the dignitas chip |
-| `overlays` (or `wants`) | the overlay bar (and the `O` key) |
+- **Only what has been taught, plus the one new thing.** While the lessons run, every panel shows only what the lessons
+  have brought: Aedificia offers the works they asked for as plain cards (name, what it does in words, cost, Place: no
+  numbers, no tools, no categories, the queue only while something rises); Edicta is the charter alone; the Res Gestae
+  is the goal and its meter (no unlock list, no seasonal chips); the HUD shows timber and stone only; a deed's toast
+  names no unlocks. Nothing waits to be dumped at the end: each remaining system is its own lesson.
+- **Hand first, then the Ordo as the reward.** Until lesson III the Ordo staffs the fields and wells (nobody starves)
+  but builds nothing: the first works are the player's. With lesson III it takes over the very chore the player has
+  just done. A colony left alone gets its Ordo anyway by elapsed day **150** (`B.intro.ORDO_BY`, a game-day safety net
+  checked in the sim tick); the lessons themselves still wait.
+- **Speed is earned.** Pause and 1× only until lesson VI, so the first works are raised at the pace of reading.
+- **Nothing blocks, nothing traps, nothing floods.** The colony runs throughout; a Periculum advisory and the urgent
+  tips still take the card (the other tips wait for the end of the lessons, then come at most one per **40 s of real
+  play**, `TIP_GAP_S`). A job that waits 45 s (`NUDGE_S`) and has not been started pulses its target; after 120 s
+  (`STUCK_S`) *Skip this step* appears. Deeds done in one tick make one toast. *Skip the lessons* (two clicks) is on
+  every card; *Hide tips*, mentor tips off, or *"I know the camp: skip the introduction"* on the Founding Dispatch skip
+  them too.
+- **A job done before it is asked counts** (a cistern raised through an advisor's remedy ends lesson I at once).
+- Measured in a real-time browser run (an eager player who reads each card ≈ 5 s, acts at once, never presses Begin
+  now, and presses 10× whenever it is offered): the Ordo arrives at 1:52, a new system every 45–55 s, the lessons end
+  at 7:36; a player who reads and explores takes longer. Colonies from before the lessons, and the bots, have none
+  (`intro.lesson = −1`).
 
-- This gates only what is **shown**, never what the colony does: reveal predicates (§15.3, §11.9) are unchanged, the
-  Ordo, advisors and remedies run from day 1, and a warning always reaches the counsel card. A tab a button opens (a
-  remedy, the Res Gestae call to action) opens even before its tip.
-- The side panel is hidden until its first tab arrives, and opens on it. Milestone toasts wait for the Res Gestae.
-- On a phone the counsel card unfolds for a new tip and folds again once it is read.
-- **Skipping**: *Hide tips*, mentor tips off in the menu (also on entering a colony), or *"I know the camp: skip the
-  introduction"* on the Founding Dispatch read every introduction tip at once: the whole interface shows, as before.
-- **Backstop**: by elapsed day **200** (`B.intro.END`, before Hiems) everything shows whether or not its tip was read;
-  the four tips that only introduce (`people`, `goals`, `dignitas`, `overlays`) are then dropped unread, which also
-  covers saves from before the introduction existed.
+**Why (sources).**
+- *Learn by doing, not by reading.* Fan, GDC 2012 (*Plants vs. Zombies*): "do rather than read", ~8 words on screen,
+  one thing at a time. Hodent, *The Gamer's Brain*: text alone is processed shallowly; ≤ 3 new items at once.
+- *Teaching pays off in complex games, in context, and must not block.* Andersen et al., CHI 2012 (~45,000 players):
+  tutorials helped only the most complex game, in-context hints beat a manual, blocking tutorials showed no benefit.
+- *One skill, practised, then the next; a job concludes with its result.* Hayashida's *kishōtenketsu* (Mario 3D Land);
+  Valve's *Portal* commentary ("overwhelmed players tend not to digest new information"); Cook, *The Chemistry of
+  Game Design* (action → simulation → feedback → mastery).
+- *Problem first, then the tool.* Caesar III's tutorial missions open a building when its problem first bites.
+- *Automate what is mastered, and not too late.* Koster, *A Theory of Fun* (a grasped pattern bores); idle games
+  (Pecorella, Kongregate; AdVenture Capitalist's managers) automate a chore the player has done by hand; Factorio
+  FFF #241 warns against a long manual phase.
+- *A breather is practice, never an empty wait; show what comes next.* L4D's AI Director relax phases; A Dark Room's
+  timers run beside actions; Hodent: "show the locks before giving the keys"; Alharthi et al., CHI 2018 (idle games).
+- *Veterans skip.* The expertise-reversal effect (Kalyuga et al. 2003); NN/g: a highly visible Skip.
 
 ---
 
@@ -1092,7 +1117,7 @@ Awaiting You lists the ready petition first, then the top 3 advisories with thei
 8. **Speed** ❚❚ 1× 2× 5× 10×; **menu** ☰ (Esc).
 
 ### 15.3 Side panel tabs (Latin label, English sub-label; progressive reveal with a NEW sticker; badges)
-A revealed tab shows once the paced introduction has brought it (§11.13); before the first one the panel is hidden.
+While the opening lessons run (§11.13), a tab a lesson brings shows from that lesson on; before the first one the panel is hidden.
 
 | Tab id | Label | Hotkey | Revealed | Badge | Content |
 |---|---|---|---|---|---|

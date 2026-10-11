@@ -12,7 +12,10 @@ import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
 import { activeAdvisories, advisorMood, renderAdvisory } from '../game/advisors/engine';
 import { checkRemedy } from '../game/advisors/remedies';
-import { dismissTip, hush, mute } from '../game/actions';
+import { beginNextLesson, dismissTip, hush, mute, skipIntro, skipLesson } from '../game/actions';
+import { LESSONS, currentLesson, lessonAge, lessonPointer } from '../game/intro';
+import type { Lesson } from '../game/intro';
+import { toRoman } from '../game/calendar';
 import { mentorKicker, nextTip } from '../game/guide';
 import { currentMilestone } from '../game/objectives';
 import { forecast } from '../game/forecast';
@@ -24,7 +27,8 @@ import { portrait } from '../render/art/index';
 import { shows } from './intro';
 
 /** The one item the card shows. */
-export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep } | { kind: 'calm' };
+export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
+  | { kind: 'lesson'; l: Lesson; index: number; done: boolean; nudge: boolean; stuck: boolean } | { kind: 'calm' };
 
 const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
 const OPPORTUNITAS = 'augur.petition';
@@ -44,9 +48,18 @@ export function pickCounsel(g: Game): CounselItem {
   const peril = bySev(3);
   if (peril) return { kind: 'advisory', a: peril };
   if (tipStep?.urgent) return { kind: 'tip', t: tipStep };
+  // an opening lesson (§11.13) holds the card until its job is done, then shows its payoff for a few seconds
+  const cur = currentLesson(s);
+  const age = cur ? lessonAge(s) : 0;
+  const waited = cur && !cur.done && !cur.lesson.progress?.(s) ? age : 0;   // a work already rising needs no nudge
+  const lesson = (): CounselItem => ({ kind: 'lesson', l: cur!.lesson, index: cur!.index, done: cur!.done,
+    nudge: waited >= B.intro.NUDGE_S * 1000, stuck: waited >= B.intro.STUCK_S * 1000 });
+  if (cur && !cur.done) return lesson();
   const cave = bySev(2);
   if (cave) return { kind: 'advisory', a: cave };
-  if (tipStep && g.prefs.tips) return { kind: 'tip', t: tipStep };
+  if (cur) return lesson();   // the breather: the payoff, the next lesson's name, and Begin now
+  const spaced = s.stats.playMs - s.guidance.tipAt >= B.intro.TIP_GAP_S * 1000;   // tips spaced in real time, whatever the speed
+  if (tipStep && g.prefs.tips && spaced) return { kind: 'tip', t: tipStep };
   const low = adv.find((a) => a.memo.sev >= 1);   // Monitum or Opportunitas (ranks as Monitum, never above Cave)
   if (low) return { kind: 'advisory', a: low };
   return { kind: 'calm' };
@@ -59,6 +72,7 @@ export function counselSig(g: Game, item: CounselItem): string {
   const strip = shows(g, 'portraits') ? ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',') : 'x';
   let key = 'c';
   if (item.kind === 'tip') key = `t:${item.t.id}`;
+  if (item.kind === 'lesson') key = `l:${item.index}:${item.done ? 1 : 0}:${item.nudge ? 1 : 0}${item.stuck ? 1 : 0}:${item.l.progress?.(s) ?? ''}`;
   if (item.kind === 'advisory') {
     const r = renderAdvisory(s, view(s), item.a);
     key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
@@ -87,6 +101,8 @@ export class Counsel {
   private shownKey = '';                      // the shown item (not its remedies): a new one slides in, a refresh does not
   private refresh: (() => void) | null = null;
   private open = false;                       // mobile: the card is expanded from its portrait chip
+  private autoOpen = false;                   // … and it was a tip or lesson that unfolded it
+  private skipArmed = false;                  // "Skip the lessons" asks once more before it skips
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.hold = new PointerHold(root);
@@ -116,17 +132,19 @@ export class Counsel {
   private build(item: CounselItem): void {
     clear(this.root);
     this.refresh = null;
-    const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}` : 'c';
+    const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}`
+      : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : 'c';
     const enter = key !== this.shownKey;
     this.shownKey = key;
-    // a phone shows the card folded to its title: a new tip unfolds it (each brings part of the interface with it, and
-    // the next waits until it is read), and reading it folds the card again
-    if (enter && item.kind === 'tip') this.open = true;
+    // a phone shows the card folded to its title: a new tip or lesson unfolds it (the next waits on it), and once it is
+    // read or its payoff has shown the card folds again
+    if (enter && (item.kind === 'tip' || item.kind === 'lesson')) { this.open = true; this.autoOpen = true; }
+    else if (enter && this.autoOpen) { this.open = false; this.autoOpen = false; }
     this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
     // the portraits come with the advisors' tip (the paced introduction); until then the card stands alone
     if (shows(this.g, 'portraits')) this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
     if (item.kind === 'calm') { this.root.appendChild(this.calm()); return; }
-    const card = item.kind === 'tip' ? this.tipCard(item.t) : this.advisoryCard(item.a);
+    const card = item.kind === 'tip' ? this.tipCard(item.t) : item.kind === 'lesson' ? this.lessonCard(item) : this.advisoryCard(item.a);
     if (enter) card.classList.add('enter');
     const toggle = h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾');
     card.prepend(toggle);
@@ -163,7 +181,10 @@ export class Counsel {
     const set = (): void => {
       const f = forecast(g.state);
       const m = currentMilestone(g.state);
-      line.textContent = `All is well: grain ${fmtDays(f.grain.doh)}, water ${fmtDays(f.water.doh)}.${m ? ` Next: ${m.text}.` : ' The council is content.'}`;
+      const cur = currentLesson(g.state);
+      const lesson = cur ? LESSONS[cur.index + 1] : undefined;   // in a breather between lessons: what comes next
+      const next = lesson ? ` Next lesson: ${lesson.title}.` : m ? ` Next: ${m.text}.` : ' The council is content.';
+      line.textContent = `All is well: grain ${fmtDays(f.grain.doh)}, water ${fmtDays(f.water.doh)}.${next}`;
     };
     set();
     this.refresh = set;
@@ -189,6 +210,49 @@ export class Counsel {
         h('div', { class: 'counsel-actions' },
           h('button', { class: 'btn small primary', onclick: done }, 'Understood'), showMe,
           t.urgent ? null : h('button', { class: 'counsel-link', onclick: () => { g.setPref('tips', false); } }, 'Hide tips'))));
+  }
+
+  /** An opening lesson (§11.13): the reason and the job (with its progress), and what comes after; once done, the
+   *  payoff, the next lesson's name and "Begin now", so the breather is never an empty wait. */
+  private lessonCard(x: Extract<CounselItem, { kind: 'lesson' }>): HTMLElement {
+    const g = this.g;
+    const s = g.state;
+    const l = x.l;
+    const next = LESSONS[x.index + 1];
+    const text = h('p', { class: 'counsel-text' }, x.done ? l.reward : l.text(s));
+    const prog = !x.done ? l.progress?.(s) ?? null : null;
+    const job = h('div', { class: `lesson-job${x.done ? ' done' : ''}` }, h('span', { class: 'lesson-box', 'aria-hidden': 'true' }, x.done ? '✓' : ''),
+      h('span', null, l.job), prog ? h('span', { class: 'lesson-prog' }, prog) : null);
+    const show = (): void => {
+      g.sfx('click');
+      const ptr = lessonPointer(l);
+      if (ptr.open) g.openTab(ptr.open, ptr.anchor);
+      if (ptr.glow) pulseTarget(ptr.glow);
+    };
+    const skip = h('button', { class: 'counsel-link', onclick: () => {
+      if (!this.skipArmed) { this.skipArmed = true; skip.textContent = 'Skip every lesson?'; return; }
+      this.skipArmed = false;
+      g.act(skipIntro(g.state), { okSfx: 'click' });
+    } }, 'Skip the lessons');
+    let acts: HTMLElement;
+    if (x.done) {
+      acts = h('div', { class: 'counsel-actions' },
+        next ? h('button', { class: 'btn small primary', onclick: () => { g.act(beginNextLesson(g.state)); } }, 'Begin now') : null,
+        h('span', { class: 'lesson-next' }, next ? `Next: ${next.title}` : 'The lessons are done.'));
+    } else {
+      acts = h('div', { class: 'counsel-actions' },
+        l.tab || l.target ? h('button', { class: 'btn small primary', onclick: show }, 'Show me') : null,
+        x.stuck ? h('button', { class: 'counsel-link', onclick: () => { g.act(skipLesson(g.state), { okSfx: 'click' }); } }, 'Skip this step') : null,
+        skip);
+    }
+    const then = !x.done && next ? h('div', { class: 'lesson-then' }, `Then: ${next.title}`) : null;
+    if (x.nudge && !x.done) { const glow = lessonPointer(l).glow ?? (l.tab ? `#tab-${l.tab}` : null); if (glow) pulseTarget(glow); }
+    const notes = s.counters.mentorDiedDay !== null;
+    return h('div', { class: `counsel-card tip lesson${x.done ? ' done' : ''}${x.nudge ? ' nudge' : ''}`, role: 'note' },
+      h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
+        h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, `DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`),
+          h('span', { class: 'counsel-title' }, l.title))),
+      h('div', { class: 'counsel-body' }, text, job, acts, then));
   }
 
   private advisoryCard(a: ActiveAdvisory): HTMLElement {

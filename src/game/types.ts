@@ -80,9 +80,8 @@ export const RULES = [
 ] as const;
 export type RuleId = (typeof RULES)[number];
 export const TIPS = [
-  'welcome', 'starving', 'thirst', 'event', 'petition', 'vitals', 'ordo', 'counsel', 'speed', 'people',
-  'build', 'goals', 'charter', 'dignitas', 'overlays', 'aestas', 'wants', 'autumn', 'edicts', 'reins',
-  'trade', 'fork', 'aqueduct', 'away',
+  'welcome', 'starving', 'thirst', 'event', 'petition', 'vitals', 'ordo', 'charter', 'counsel', 'speed',
+  'build', 'aestas', 'wants', 'autumn', 'edicts', 'reins', 'trade', 'fork', 'aqueduct', 'away',
 ] as const;
 export type TipId = (typeof TIPS)[number];
 export const MILESTONE_IDS = [
@@ -315,13 +314,26 @@ export interface AdvisoryMemo {
   snoozeUntil?: number; flips: number[];             // days it was raised or cleared (last 60 days)
   snoozeSev?: Severity;                               // severity when hushed: the hush outlives a clear, and only a graver one breaks it
 }
+/** Jobs of the opening lessons the UI notes (a speed chosen, an overlay opened, the advisors heard, Populus opened, an edict set). */
+export const PRACTICE = ['speed', 'overlay', 'advisors', 'people', 'edict'] as const;
+export type PracticeId = (typeof PRACTICE)[number];
+/** The opening lessons (intro.ts, DESIGN §11.13). Paced in real play time (stats.playMs), never in game days. */
+export interface IntroState {
+  lesson: number;                                     // index into LESSONS; -1 when none runs (finished, skipped, or an older colony)
+  done: boolean;                                      // the lesson's job is done: its breather runs
+  at: number;                                         // stats.playMs when the lesson began or, once done, when its job was done
+  practice: PracticeId[];                             // jobs the UI noted during this lesson
+  ordoHeld: boolean;                                  // the Ordo does not build yet: the first works are the player's own
+}
 export interface GuidanceState {
   advisories: Partial<Record<RuleId, AdvisoryMemo>>;
   muted: RuleId[]; appointed: AdvisorId[];
   tips: TipId[];                                      // seen tip ids
   tipDay: number;                                     // the day a tip was last read ("Understood"); NEVER before the first
+  tipAt: number;                                      // stats.playMs then (or when the lessons ended): tips are spaced in real time too
   objective: number;                                  // index into MILESTONES
   milestoneDays: Partial<Record<MilestoneId, number>>;
+  intro: IntroState;
 }
 
 // ───────────────────────────── trade, events ─────────────────────────────

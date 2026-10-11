@@ -6,6 +6,7 @@ import type { Game, PlacingState } from './types';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
 import { overlayRevealed } from '../game/reveal';
+import { notePractice } from '../game/actions';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
 
@@ -55,7 +56,13 @@ export class MapTools {
     this.key = key;
     const bar = this.bar;
     clear(bar);
-    const set = (o: OverlayId, layer?: CoverageLayerId): void => { g.sfx('click'); g.view.setOverlay(o, layer); this.key = ''; this.update(); };
+    const set = (o: OverlayId, layer?: CoverageLayerId): void => {
+      g.sfx('click');
+      g.view.setOverlay(o, layer);
+      if (o !== 'none') notePractice(g.state, 'overlay');   // the overlays lesson's job (§11.13)
+      this.key = '';
+      this.update();
+    };
     const row = h('div', { class: 'map-ov-row', role: 'group', 'aria-label': 'Overlays (O)' });
     for (const o of list) {
       const on = o === cur;
