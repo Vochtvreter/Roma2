@@ -34,6 +34,17 @@
 .ins-chain { display: flex; flex-direction: column; padding: 2px 6px; background: var(--well); border: 1px solid var(--well-line); border-radius: var(--r1); }
 .ins-demolish { color: var(--muted); }
 
+/* A clicked target's card: a popup pinned beside it on the map (placed by Inspector each frame), its tail pointing at it.
+   data-tail names the popup edge the tail sits on; --tail is its offset along that edge. */
+.ins-popup { position: absolute; left: 0; top: 0; z-index: var(--z-popup); width: min(300px, calc(100% - 16px)); display: flex; flex-direction: column; pointer-events: auto; }
+.ins-popup[hidden], #app.placing .ins-popup { display: none; }
+.ins-popup > .ins-card { position: relative; z-index: 1; min-height: 0; overscroll-behavior: contain; }
+.ins-popup::before { content: ''; position: absolute; width: 12px; height: 12px; background: var(--panel); border: 0 solid var(--line); transform: rotate(45deg); }
+.ins-popup[data-tail='l']::before { left: -6px; top: calc(var(--tail, 20px) - 6px); border-left-width: var(--border-w); border-bottom-width: var(--border-w); }
+.ins-popup[data-tail='r']::before { right: -6px; top: calc(var(--tail, 20px) - 6px); border-right-width: var(--border-w); border-top-width: var(--border-w); }
+.ins-popup[data-tail='t']::before { top: -6px; left: calc(var(--tail, 20px) - 6px); border-left-width: var(--border-w); border-top-width: var(--border-w); }
+.ins-popup[data-tail='b']::before { bottom: -6px; left: calc(var(--tail, 20px) - 6px); border-right-width: var(--border-w); border-bottom-width: var(--border-w); }
+
 /* ───────── event card ───────── */
 /* #choice reaches down to the bottom edge (it lets clicks through) so a tall card can scroll inside it instead of running
    off the screen (a landscape phone, the veterans' families). */

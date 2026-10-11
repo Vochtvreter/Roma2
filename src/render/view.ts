@@ -318,6 +318,20 @@ export class MapView {
     return x < 0 || y < 0 || x > this.cssW || y > this.cssH ? null : { x, y };
   }
 
+  /** The CSS-px box of a w×h tile rectangle whose top-left tile is (x, y), for anchoring DOM; it may lie off screen. */
+  screenRect(x: number, y: number, w: number, h: number): { left: number; top: number; right: number; bottom: number } {
+    const a = worldToScreen(this.cam, x * TILE, y * TILE), b = worldToScreen(this.cam, (x + w) * TILE, (y + h) * TILE);
+    return { left: a.sx / this.ratio, top: a.sy / this.ratio, right: b.sx / this.ratio, bottom: b.sy / this.ratio };
+  }
+
+  /** The CSS-px box of a building's footprint, or null when it is gone. */
+  buildingRect(id: number): { left: number; top: number; right: number; bottom: number } | null {
+    const b = this.s ? getBuilding(this.s, id) : undefined;
+    if (!this.s || !b) return null;
+    const r = footprintRect(this.s, b);
+    return this.screenRect(r.x, r.y, r.w, r.h);
+  }
+
   /** The slow drift behind the title screen: a wide, lazy ellipse around the forum. */
   titleDrift(dtMs: number, s: GameState): void {
     this.s = s;

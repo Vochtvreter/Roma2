@@ -192,11 +192,19 @@ function offerRow(g: Game, o: MerchantOffer): HTMLElement {
   const s = g.state;
   const total = o.price * o.qty;
   const weBuy = o.kind === 'buy';
-  const reason = o.taken ? 'Already struck.' : weBuy && s.res.denarii < total ? `We hold only ${fmt(s.res.denarii)} den.` : !weBuy && s.res[o.res] < o.qty ? `We hold only ${fmt(s.res[o.res])} ${resName(o.res)}.` : null;
+  const reason = o.declined ? 'Declined.' : o.taken ? 'Already struck.' : weBuy && s.res.denarii < total ? `We hold only ${fmt(s.res.denarii)} den.` : !weBuy && s.res[o.res] < o.qty ? `We hold only ${fmt(s.res[o.res])} ${resName(o.res)}.` : null;
+  let decline: HTMLButtonElement | null = null;
+  if (!o.taken) {
+    decline = h('button', { class: 'btn small ghost', type: 'button' }, 'Decline');
+    tip(decline, 'Turn the offer down: it is gone for good.');
+    confirm2(decline, 'Decline?', () => { g.act(A.declineOffer(g.state, o.id), { okSfx: 'click' }); });
+  }
   return h('div', { class: `tr-row${o.taken ? ' taken' : ''}`, 'data-key': `offer-${o.id}` }, img(resIcon(o.res), 2),
     h('div', { class: 'tr-row-main' }, `${weBuy ? 'Buy' : 'Sell'} ${o.qty} ${resName(o.res)} at ${fmt(o.price)} each`,
       h('div', { class: 'tr-sub' }, `${weBuy ? '−' : '+'}${fmt(total)} den · base ${TRADE_BASE[o.res]}`)),
-    btn(g, o.taken ? 'Struck' : 'Strike the deal', () => A.takeOffer(g.state, o.id), { cls: 'primary', reason, sfx: false }));
+    h('div', { class: 'tr-btns' },
+      btn(g, o.declined ? 'Declined' : o.taken ? 'Struck' : 'Strike the deal', () => A.takeOffer(g.state, o.id), { cls: 'primary', reason, sfx: false }),
+      decline));
 }
 
 function hubCard(g: Game, hub: HubId): HTMLElement {
@@ -218,7 +226,7 @@ export const panel: TabPanel = {
     const s = g.state;
     const t = s.trade;
     return [HUBS.map((x) => +hubOpen(s, x)).join(''), t.contracts.map((c) => `${c.id}:${c.status}:${c.pause ?? ''}`).join(','),
-      t.caravans.map((c) => c.id).join(','), t.merchant ? `${t.merchant.name}:${t.merchant.offers.map((o) => +o.taken).join('')}` : '',
+      t.caravans.map((c) => c.id).join(','), t.merchant ? `${t.merchant.name}:${t.merchant.offers.map((o) => (o.declined ? 2 : +o.taken)).join('')}` : '',
       formVersion, replaceId ?? '', caravanSlots(s), HUBS.map((x) => tripDays(s, x, 1)).join(',')].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {

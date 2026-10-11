@@ -1,6 +1,6 @@
 // src/ui/inspector.ts — the house / building / block / tile inspector (ARCHITECTURE §13.3, DESIGN §15.4, §11.10). Owner: WP-I.
-// Hover = transient, click = sticky; signature-diffed like the panels (rebuild on discrete change, else updaters). The same
-// target is not rebuilt while the mouse rests on the card, unless to answer a click there (steady.ts): its buttons stay put.
+// Hover = a transient card bottom left, click = a closable popup pinned beside the target; signature-diffed like the panels (rebuild on discrete change, else updaters).
+// The same target is not rebuilt while the mouse rests on its card, unless to answer a click there (steady.ts): its buttons stay put.
 import { BUILDER, F, T } from '../game/types';
 import type { Building, GameState, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
@@ -79,44 +79,135 @@ function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
   return `t${t.tile}|${derived(s).buildingAt[t.tile]}|${+sticky}|${s.rank}|${s.buildings.length}`;
 }
 
-/** The inspector in #inspector. */
+const same = (a: InspectTarget | null, b: InspectTarget | null): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/** The inspector: hover cards in #inspector (bottom left); a clicked target opens a closable popup beside it on the map. */
 export class Inspector {
-  private sticky: InspectTarget | null = null;
+  private readonly hoverCard: InspectorCard;
+  private readonly popup: InspectorCard;
   private hover: InspectTarget | null = null;
+
+  constructor(g: Game, root: HTMLElement) {
+    this.hoverCard = new InspectorCard(g, root, false);
+    const pop = h('div', { class: 'ins-popup', role: 'dialog', 'aria-label': 'Selection' });
+    (root.closest('#app') ?? document.body).appendChild(pop);
+    this.popup = new InspectorCard(g, pop, true);
+  }
+
+  /** True while a clicked (sticky) card is pinned: Esc closes it before opening the menu. */
+  get pinned(): boolean { return this.popup.target !== null; }
+
+  /** Shows a target: a sticky one (click) opens the popup until closed or replaced; a transient one (hover) shows bottom left. */
+  show(t: InspectTarget | null, sticky: boolean): void {
+    if (sticky) this.popup.set(t); else this.hover = t;
+    this.hoverCard.set(same(this.hover, this.popup.target) ? null : this.hover);   // no second card for what the popup shows
+  }
+
+  /** Every frame: throttled card refreshes; the popup follows its target on the map. */
+  frame(now: number): void {
+    this.hoverCard.frame(now);
+    this.popup.frame(now);
+  }
+}
+
+/** One card slot: the hover card in #inspector, or the popup pinned to a clicked target. */
+class InspectorCard {
+  target: InspectTarget | null = null;
   private sig = '';
   private last = -Infinity;
   private readonly hold: PointerHold;
   private ups: Updater[] = [];
   private collapsed = false;
+  private placed = '';
 
-  constructor(private readonly g: Game, private readonly root: HTMLElement) {
+  constructor(private readonly g: Game, private readonly root: HTMLElement, private readonly sticky: boolean) {
     root.hidden = true;
     root.setAttribute('aria-live', 'polite');
     this.hold = new PointerHold(root);
   }
 
-  /** True while a clicked (sticky) card is pinned: Esc closes it before opening the menu. */
-  get pinned(): boolean { return this.sticky !== null; }
-
-  /** Shows a target: a sticky one (click) stays until replaced or cleared; a transient one (hover) shows over it. */
-  show(t: InspectTarget | null, sticky: boolean): void {
-    const before = JSON.stringify([this.hover ?? this.sticky, !this.hover]);
-    if (sticky) { this.sticky = t; this.hover = null; } else this.hover = t;
-    if (JSON.stringify([this.hover ?? this.sticky, !this.hover]) !== before) this.last = -Infinity;   // hover moves re-render at once, not every frame
+  set(t: InspectTarget | null): void {
+    if (same(t, this.target)) return;
+    this.target = t;
+    this.last = -Infinity;   // a new target re-renders at once, not at the next throttled frame
   }
 
   /** Throttled refresh: rebuild on a changed signature (not under a fresh click), else run the updaters. */
   frame(now: number): void {
-    if (now - this.last < B.time.UI_THROTTLE_MS) return;
-    this.last = now;
-    const s = this.g.state;
-    if (this.sticky?.kind === 'building' && !getBuilding(s, this.sticky.id)) this.sticky = null;
-    const t = this.hover ?? this.sticky;
-    const sticky = !this.hover;
-    const sig = t ? `${t.kind}|${targetSig(s, t, sticky)}|${+this.collapsed}|${+sticky}` : '';
-    const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
-    if (sig !== this.sig && (!sameTarget || !this.hold.holds(now))) this.rebuild(t, sig, sticky);
-    else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
+    if (now - this.last >= B.time.UI_THROTTLE_MS) {
+      this.last = now;
+      const s = this.g.state;
+      if (this.target?.kind === 'building' && !getBuilding(s, this.target.id)) this.target = null;
+      const t = this.target;
+      const sig = t ? `${t.kind}|${targetSig(s, t, this.sticky)}|${+this.collapsed}` : '';
+      const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
+      if (sig !== this.sig && (!sameTarget || !this.hold.holds(now))) this.rebuild(t, sig, this.sticky);
+      else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
+    }
+    if (this.sticky) this.place();
+  }
+
+  /** Pins the popup beside its target, inside the free map (below the HUD, clear of the side panel or sheet). */
+  private place(): void {
+    const t = this.target, pop = this.root;
+    if (!t || pop.hidden) return;
+    const view = this.g.view;
+    const r = t.kind === 'building' ? view.buildingRect(t.id)
+      : t.kind === 'block' ? (() => { const k = getMap(this.g.state.seed).survey.blocks[t.block]; return k ? view.screenRect(k.x, k.y, 4, 4) : null; })()
+      : view.screenRect(tx(t.tile), ty(t.tile), 1, 1);
+    const app = (pop.offsetParent ?? document.body).getBoundingClientRect();
+    const hud = document.getElementById('hud')?.getBoundingClientRect();
+    const panel = document.getElementById('side')?.getBoundingClientRect();
+    const column = document.getElementById('left')?.getBoundingClientRect();
+    const M = 8, GAP = 10, MAX_H = 560, MIN_H = 180;
+    let bx0 = M, bx1 = app.width - M, by1 = app.height - M;
+    const by0 = (hud && hud.height ? hud.bottom - app.top : 0) + M;
+    if (panel && panel.width && panel.height && panel.left < app.right && panel.top < app.bottom) {
+      if (panel.left - app.left > app.width / 2) bx1 = Math.min(bx1, panel.left - app.left - M);   // a panel or drawer on the right
+      else if (panel.top - app.top > app.height / 2) by1 = Math.min(by1, panel.top - app.top - M);   // a bottom sheet
+    }
+    const off = !r || r.right < 0 || r.left > bx1 || r.bottom < by0 || r.top > by1;
+    if (column && column.width && column.width < app.width / 2) bx0 = column.right - app.left + M;   // the left column of a wide screen
+    const card = pop.firstElementChild as HTMLElement | null;
+    if (off || !r || !card) { this.apply('hidden', () => { pop.style.visibility = 'hidden'; }); return; }
+    const w = pop.offsetWidth;
+    const natural = card.scrollHeight + card.offsetHeight - card.clientHeight;
+    const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+    const fullH = Math.min(MAX_H, by1 - by0), need = Math.min(natural, fullH);
+    const below = by1 - (r.bottom + GAP), above = r.top - GAP - by0;
+    // beside the target (right first), else below or above it where the whole card fits, else where there is more room;
+    // a target too big for any of these (the forum close up) gets the card over its emptier edge, with no tail
+    const side: 'l' | 'r' | 't' | 'b' | '' = r.right + GAP + w <= bx1 ? 'l' : r.left - GAP - w >= bx0 ? 'r'
+      : need <= below ? 't' : need <= above ? 'b' : Math.max(below, above) >= MIN_H ? (below >= above ? 't' : 'b') : '';
+    let left: number, top: number, maxH: number;
+    if (side === 't' || side === 'b') {
+      maxH = Math.min(MAX_H, side === 't' ? below : above);
+      top = side === 't' ? r.bottom + GAP : r.top - GAP - Math.min(natural, maxH);
+      left = clamp(cx - w / 2, bx0, Math.max(bx0, bx1 - w));
+    } else {
+      maxH = fullH;
+      top = clamp(cy - need / 2, by0, by1 - need);
+      left = side === 'l' ? r.right + GAP : side === 'r' ? r.left - GAP - w : bx1 - r.right >= r.left - bx0 ? Math.max(bx0, bx1 - w) : bx0;
+    }
+    const hh = Math.min(natural, maxH);
+    const tail = side === 't' || side === 'b' ? clamp(cx - left, 14, w - 14) : clamp(cy - top, 14, hh - 14);
+    const key = `${Math.round(left)},${Math.round(top)},${Math.round(maxH)},${side},${Math.round(tail)}`;
+    this.apply(key, () => {
+      pop.style.visibility = '';
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
+      pop.style.maxHeight = `${Math.round(maxH)}px`;
+      pop.dataset.tail = side;
+      pop.style.setProperty('--tail', `${Math.round(tail)}px`);
+    });
+  }
+
+  /** Writes the popup's style only when its placement changed. */
+  private apply(key: string, write: () => void): void {
+    if (key === this.placed) return;
+    this.placed = key;
+    write();
   }
 
   private rebuild(t: InspectTarget | null, sig: string, sticky: boolean): void {
@@ -124,6 +215,7 @@ export class Inspector {
     this.ups = [];
     clear(this.root);
     this.root.hidden = !t;
+    this.placed = '';
     if (!t) return;
     const card = h('div', { class: `card ins-card${sticky ? ' sticky' : ''}${this.collapsed ? ' collapsed' : ''}` });
     try { this.render(t, card, sticky); } catch (e) { console.error('[inspector] render', e); }
