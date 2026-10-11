@@ -5,7 +5,7 @@ import { B as B$ } from '../balance';
 import { F as F$ } from '../types';
 import type { GameState } from '../types';
 import { getMap as getMap$, woodAt as woodAt$ } from '../map';
-import { derived as derived$, inCamp as inCamp$ } from '../derived';
+import { campRect as campRect$, derived as derived$ } from '../derived';
 import { WALL_RING as WALL_RING$, blockStreets as blockStreets$, isFutureBlock as isFutureBlock$, isRazed as isRazed$ } from '../survey';
 import { layoutEpoch as layoutEpoch$, memo as memo$ } from '../memo';
 import { GN as GN$, GW as GW$, forN4 as forN4$, onGrid as onGrid$ } from './grid';
@@ -14,7 +14,7 @@ import type { CostField, StepField } from './search';
 import { aqueductCostT as aqueductCostT$, roadCostT as roadCostT$ } from './rules';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
-const B = B$, F = F$, getMap = getMap$, woodAt = woodAt$, derived = derived$, inCamp = inCamp$, WALL_RING = WALL_RING$,
+const B = B$, F = F$, getMap = getMap$, woodAt = woodAt$, derived = derived$, campRect = campRect$, WALL_RING = WALL_RING$,
   blockStreets = blockStreets$, isFutureBlock = isFutureBlock$, isRazed = isRazed$, layoutEpoch = layoutEpoch$, memo = memo$, GN = GN$, GW = GW$, forN4 = forN4$,
   onGrid = onGrid$, bfsField = bfsField$, costField = costField$, walkBack = walkBack$, aqueductCostT = aqueductCostT$,
   roadCostT = roadCostT$;
@@ -37,10 +37,13 @@ function roadSteps(s: GameState): Float64Array {
   const sv = map.survey;
   const d = derived(s);
   const razed = isRazed(s);
+  const c = campRect(s);
   const step = new Float64Array(GN);
   for (let i = 0; i < GN; i++) {
     const b = sv.blockAt[i];
-    if (d.buildingAt[i] !== 0 || isSacredTile(map.feature, i) || (inCamp(s, i) && d.road[i] === 0) || d.wall[i] === 1
+    const x = i % GW, y = (i - x) / GW;
+    const camp = x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h;
+    if (d.buildingAt[i] !== 0 || isSacredTile(map.feature, i) || (camp && d.road[i] === 0) || d.wall[i] === 1
       || (d.pomerium[i] === 1 && sv.street[i] === 0)) step[i] = Infinity;
     else if (sv.street[i] === 1) step[i] = M.ROAD_COST.street;
     else if (b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank, razed)) step[i] = M.ROAD_COST.futureBlock;

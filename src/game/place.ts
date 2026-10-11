@@ -7,7 +7,7 @@ import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId, WorldMap } from './types';
 import { getMap as getMap$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
 import { WALL_RING as WALL_RING$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, isRazed as isRazed$, plotOrigin as plotOrigin$, ringsOf as ringsOf$ } from './survey';
-import { blockOfTile as blockOfTile$, classAt as classAt$, derived as derived$, inCamp as inCamp$, sizeOf as sizeOf$ } from './derived';
+import { blockOfTile as blockOfTile$, campRect as campRect$, classAt as classAt$, derived as derived$, inCamp as inCamp$, sizeOf as sizeOf$ } from './derived';
 import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layoutEpoch$, memo as memo$, touchPeople as touchPeople$ } from './memo';
 import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
@@ -28,7 +28,7 @@ import { RULE_REASON as RULE_REASON$, ruleFail as ruleFail$, ruleTester as ruleT
 const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
   WALL_RING = WALL_RING$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$, isFutureBlock = isFutureBlock$,
   isRazed = isRazed$, ringsOf = ringsOf$, plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$,
-  derived = derived$, inCamp = inCamp$, sizeOf = sizeOf$,
+  derived = derived$, campRect = campRect$, inCamp = inCamp$, sizeOf = sizeOf$,
   dayLayout = dayLayout$, invalidate = invalidate$, layoutEpoch = layoutEpoch$, memo = memo$,
   touchPeople = touchPeople$, seasonOf = seasonOf$, fx = fx$, reasonText = reasonText$, BUILDING_DEFS = BUILDING_DEFS$,
   RANK_DEFS = RANK_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$, GN = GN$, anySide = anySide$, rectTiles = rectTiles$,
@@ -300,10 +300,12 @@ function ruralBase(s: GameState, owner: Owner): Uint8Array {
     const sv = getMap(s.seed).survey;
     const d = derived(s);
     const razed = isRazed(s);
+    const c = campRect(s);
     const m = new Uint8Array(GN);
     for (let i = 0; i < GN; i++) {
       const b = sv.blockAt[i];
-      m[i] = d.territory[i] !== 1 || inCamp(s, i) || sv.street[i] === 1 || d.wall[i] > 0
+      const x = tx(i), y = ty(i);
+      m[i] = d.territory[i] !== 1 || (x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h) || sv.street[i] === 1 || d.wall[i] > 0
         || d.road[i] > 0 || d.pomerium[i] === 1 || d.reservedTile[i] === 1 || d.buildingAt[i] !== 0
         || (owner === 'ordo' && b >= 0 && isFutureBlock(sv, sv.blocks[b], s.rank, razed)) ? 1 : 0;
     }

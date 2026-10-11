@@ -10,11 +10,11 @@ import type { ActionResult, Building, BuildingId, Cost, GameState, NeedId, Perso
 import { getMap, idx } from './map';
 import { classAt, derived, footprintOf, sizeOf } from './derived';
 import { WALL_RING, isActiveBlock, isRazed } from './survey';
-import { invalidate, pushActionFx, touchPeople } from './memo';
+import { homesEpoch, invalidate, memo, pushActionFx, structEpoch, touchPeople } from './memo';
 import { log } from './state';
 import { getBuilding } from './lookup';
-import { houseBeds, peopleIndex } from './census';
-import { houseDesir, houseHas, previewCovered, previewDesir } from './coverage';
+import { census, houseBeds, peopleIndex } from './census';
+import { houseDesir, houseHas, previewCovered } from './coverage';
 import { rehouseGroups } from './people';
 import { savingFor, treasuryFloor } from './ordo/saving';
 import { settingValue } from './decisions';
@@ -50,16 +50,20 @@ function roadSides(s: GameState, b: Building, road: Uint8Array): number[] {
   return sideTiles(b.x, b.y, w, h).filter((i) => road[i] > 0);
 }
 
-// Scratch for the census's breadth-first walks (reused; a stamp marks the tiles each walk reached).
+// Scratch for the census's breadth-first walks (reused; a stamp marks the tiles each walk reached, another the side
+// tiles of the homes it looks for).
 const stamp = new Int32Array(GN);
 const dist = new Int32Array(GN);
 const prev = new Int32Array(GN);
 const queue = new Int32Array(GN);
+const goal = new Int32Array(GN);
 let gen = 0;
 
 /** The month's footfall census (on the Kalends): every worker walks from home to work along the roads (the shortest
  *  way), every household runs its errands to the forum, and carts come and go on the via. Each road tile keeps the
- *  monthly average of the walkers it carried (ALPHA of this month's count). */
+ *  monthly average of the walkers it carried (ALPHA of this month's count). One breadth-first walk outward from each
+ *  staffed work finds its workers' homes; it stops once the last of them is found (the rest of that ring of steps
+ *  included, so the shortest way and its ties are the same as a walk over the whole network). */
 export function countFootfall(s: GameState): void {
   const d = derived(s), road = d.road;
   const flow = new Float64Array(GN);
@@ -70,6 +74,7 @@ export function countFootfall(s: GameState): void {
     if (!out) { out = roadSides(s, b, road); sides.set(b.id, out); }
     return out;
   };
+  const maxSteps = TR.MAX_STEPS;
   // commutes: one walk outward from each staffed work, then each of its workers follows it back from home
   for (const b of s.buildings) {
     const workers = ix.byWork.get(b.id);
@@ -77,21 +82,42 @@ export function countFootfall(s: GameState): void {
     const src = roadSides(s, b, road);
     if (src.length === 0) continue;
     const g = ++gen;
-    let head = 0, tail = 0;
-    for (const t of src) if (stamp[t] !== g) { stamp[t] = g; dist[t] = 0; prev[t] = -1; queue[tail++] = t; }
+    // the homes to find: their road sides, and how many homes are not yet reached
+    const homes: Building[] = [];
+    for (const p of workers) {
+      const h = p.home !== null ? getBuilding(s, p.home) : undefined;
+      if (h && !homes.includes(h)) homes.push(h);
+    }
+    let left = 0;
+    const found = new Uint8Array(homes.length);
+    for (let k = 0; k < homes.length; k++) {
+      const hs = sidesOf(homes[k]);
+      if (hs.length === 0) continue;
+      left++;
+      for (const t of hs) goal[t] = g;
+    }
+    const reach = (t: number): void => {           // a home side reached: the homes it serves are found
+      for (let k = 0; k < homes.length; k++) if (!found[k] && sidesOf(homes[k]).includes(t)) { found[k] = 1; left--; }
+    };
+    let head = 0, tail = 0, stop: number = maxSteps;
+    for (const t of src) {
+      if (stamp[t] === g) continue;
+      stamp[t] = g; dist[t] = 0; prev[t] = -1; queue[tail++] = t;
+      if (goal[t] === g) reach(t);
+    }
+    if (left === 0) stop = 0;
     while (head < tail) {
       const i = queue[head++];
-      const nd = dist[i] + 1;
-      if (nd > TR.MAX_STEPS) continue;
+      const di = dist[i];
+      if (di >= stop) break;                       // every tile one ring further is beyond the last home found
+      const nd = di + 1;
       const x = i % GW;
-      const visit = (j: number): void => {
-        if (road[j] === 0 || stamp[j] === g) return;
+      for (let n = 0; n < 4; n++) {
+        const j = n === 0 ? (i >= GW ? i - GW : -1) : n === 1 ? (x < GW - 1 ? i + 1 : -1) : n === 2 ? (i < GN - GW ? i + GW : -1) : (x > 0 ? i - 1 : -1);
+        if (j < 0 || road[j] === 0 || stamp[j] === g) continue;
         stamp[j] = g; dist[j] = nd; prev[j] = i; queue[tail++] = j;
-      };
-      if (i >= GW) visit(i - GW);
-      if (x < GW - 1) visit(i + 1);
-      if (i < GN - GW) visit(i + GW);
-      if (x > 0) visit(i - 1);
+        if (goal[j] === g) { reach(j); if (left === 0 && stop > nd) stop = nd; }
+      }
     }
     for (const p of workers) {
       const h = p.home !== null ? getBuilding(s, p.home) : undefined;
@@ -379,9 +405,18 @@ function holds(s: GameState, d: 'water' | 'services' | 'plan'): boolean {
  *  would fall within WELL_MARGIN of its tier's desirability for want of it. */
 export function wellNeedless(s: GameState, b: Building): boolean {
   for (const p of previewCovered(s, 'puteus', b.x, b.y)) for (const id of p.houses) if (!houseHas(s, id, 'fountain')) return false;
+  // what the well adds to its street (coverage.addInfluence, read only around the well)
+  const [v, r] = BUILDING_DEFS.puteus.desir;
+  if (v === 0) return true;
+  const [w, h] = sizeOf('puteus', classAt(s, 'puteus', b.x, b.y));
   const delta = new Map<number, number>();
-  for (const e of previewDesir(s, 'puteus', b.x, b.y)) delta.set(e.tile, e.v);
-  if (delta.size === 0) return true;
+  for (let ty = Math.max(0, b.y - r); ty <= Math.min(GH - 1, b.y + h - 1 + r); ty++) {
+    const dy = Math.max(b.y - ty, 0, ty - (b.y + h - 1));
+    for (let tx = Math.max(0, b.x - r); tx <= Math.min(GW - 1, b.x + w - 1 + r); tx++) {
+      const dd = Math.max(dy, Math.max(b.x - tx, 0, tx - (b.x + w - 1)));
+      delta.set(ty * GW + tx, Math.fround(v * (1 - dd / (r + 1))));
+    }
+  }
   const at = derived(s).buildingAt;
   const seen = new Set<number>([b.id]);
   for (const tile of delta.keys()) {
@@ -433,18 +468,32 @@ const BLOCK_LAYER: Partial<Record<NeedId, string>> = { temple: 'temple', baths: 
  *  of tier ≤ COTTAGE_LEVEL (none renovating) and nothing else, from which the service would reach at least EVOLVE_MIN_BLOCK
  *  of the waiting houses, and whose families the colony's other homes can take (SPARE beds kept). The most houses
  *  reached, then the fewest souls moved, then the lowest tile. Null when none, or within GAP days of the last renewal. */
-export function cottageBlock(s: GameState, type: BuildingId, need: NeedId, waiting: readonly number[], skip?: (blockId: number) => boolean):
+export function cottageBlock(s: GameState, type: BuildingId, need: NeedId, waiting: readonly number[]):
   { block: number; tile: number; houses: number[]; souls: number; reach: number } | null {
   const layer = BLOCK_LAYER[need];
   if (!layer || !BUILDING_DEFS[type].place.includes('block') || s.day - s.urbs.renewed < U.RENEW.GAP || waiting.length === 0) return null;
+  // the same works, homes, tiers, residents, reservations and waiting houses give the same answer (memo)
+  const key = `${structEpoch(s)}|${homesEpoch(s)}|${s.ordo.reserved.join(',')}|${need}|${waiting.join(',')}`;
+  return memo(s, `urbs.cottages.${type}`, key, () => findCottages(s, type, layer, waiting));
+}
+
+function findCottages(s: GameState, type: BuildingId, layer: string, waiting: readonly number[]):
+  { block: number; tile: number; houses: number[]; souls: number; reach: number } | null {
   const sv = getMap(s.seed).survey, d = derived(s), ix = peopleIndex(s);
   const razed = isRazed(s);
   const want = new Set(waiting);
-  let freeBeds = 0;
-  for (const id of d.houses) { const b = getBuilding(s, id); if (b) freeBeds += Math.max(0, houseBeds(s, b) - (ix.byHome.get(id)?.length ?? 0)); }
+  const freeBeds = census(s).freeBeds;
+  const humble = (id: number): boolean => {          // a plot's work: one of the Ordo's (or the founders') humble homes
+    const b = getBuilding(s, id);
+    const h = b?.house;
+    return !!b && !!h && b.type === 'area' && b.status === 'done' && b.owner !== 'player' && !h.renovating && TIER_DEFS[h.tier].level <= U.RENEW.COTTAGE_LEVEL;
+  };
   let best: { block: number; tile: number; houses: number[]; souls: number; reach: number } | null = null;
   for (const blk of sv.blocks) {
-    if (!isActiveBlock(sv, blk, s.rank, razed) || s.ordo.reserved.includes(blk.id) || skip?.(blk.id)) continue;
+    if (!isActiveBlock(sv, blk, s.rank, razed) || s.ordo.reserved.includes(blk.id)) continue;
+    let homes = 0;
+    for (let k = 0; k < 4; k++) { const id = d.plotOwner[blk.id * 4 + k]; if (id !== 0) { if (!humble(id)) { homes = -1; break; } homes++; } }
+    if (homes <= 0) continue;                         // a free block (another row's), or one holding anything but humble homes
     const ids = new Set<number>();
     let ok = true;
     for (let y = blk.y; ok && y < blk.y + 4; y++) for (let x = blk.x; x < blk.x + 4; x++) {

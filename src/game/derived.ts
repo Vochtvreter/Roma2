@@ -3,7 +3,7 @@
 // streets and the forum. Reserved tiles = the Area Capitolina and every aqueduct route (while it is built and after:
 // the arches stand there for good).
 import { B as B$ } from './balance';
-import type { Block, Building, BuildingId, Derived, GameState, PlaceClass } from './types';
+import type { Block, Building, BuildingId, Derived, GameState, PlaceClass, Rect } from './types';
 import { getMap as getMap$, H as H$, W as W$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
 import { isActiveBlock as isActiveBlock$, isRazed as isRazed$, ringsOf as ringsOf$ } from './survey';
 import { layoutEpoch as layoutEpoch$, memo as memo$ } from './memo';
@@ -66,10 +66,15 @@ export function classAt(s: GameState, type: BuildingId, x: number, y: number): P
 /** True on the camp: the castrum interior always (only surveyed plots and streets there), and its wall and ditch while
  *  they stand. Once the castrum is razed its old wall line is surveyed blocks and streets like any other. */
 export function inCamp(s: GameState, i: number): boolean {
-  const sv = getMap(s.seed).survey;
+  const r = campRect(s);
   const x = tx(i), y = ty(i);
-  const r = isRazed(s) ? sv.interior : sv.castrum;
   return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+/** The camp's rect (inCamp): the castrum with its wall and ditch while they stand, the interior once razed. */
+export function campRect(s: GameState): Rect {
+  const sv = getMap(s.seed).survey;
+  return isRazed(s) ? sv.interior : sv.castrum;
 }
 
 /** The ring of tiles just outside a w×h rect at (x, y), clockwise from its top-left corner; off-map tiles skipped. */
