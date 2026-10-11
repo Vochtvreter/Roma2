@@ -8,10 +8,15 @@ html, body {
   margin: 0; height: 100%; overflow: hidden;
   background: var(--bg); color: var(--text);
   font-family: var(--font-body); font-size: var(--fs-base); line-height: 1.35;
+  /* Pixelify Sans ships liga fi/fl/ff/ffi/ffl glyphs that read as "A" ("Aelds", "AediAcia"); Silkscreen has none */
+  font-variant-ligatures: no-common-ligatures; font-feature-settings: "liga" 0, "clig" 0;
   -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; font-smooth: never;
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
 }
-button, input, select, textarea { font: inherit; color: inherit; }
+button, input, select, textarea {
+  font: inherit; color: inherit;
+  font-variant-ligatures: no-common-ligatures; font-feature-settings: "liga" 0, "clig" 0;
+}
 button { cursor: pointer; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
