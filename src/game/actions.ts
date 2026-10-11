@@ -7,6 +7,6 @@ export { setHousePref } from './housing';
 export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority } from './ordo/actions';
 export { setFocus, setEdict, setSetting, setSwitch, choosePath, renameColony } from './decisions';
 export { chooseOption } from './events';
-export { createContract, cancelContract, resumeContract, takeOffer, buyNow } from './trade';
+export { createContract, cancelContract, resumeContract, takeOffer, declineOffer, buyNow } from './trade';
 export { hush, mute, unmute } from './advisors/engine';
 export { dismissTip } from './guide';

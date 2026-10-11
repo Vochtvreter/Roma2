@@ -335,7 +335,7 @@ export interface Caravan {
   depart: number; arrive: number;                    // arrive = return day
   kind: 'contract' | 'emergency' | 'relief';
 }
-export interface MerchantOffer { id: number; kind: 'buy' | 'sell'; res: TradeRes; qty: number; price: number; taken: boolean }
+export interface MerchantOffer { id: number; kind: 'buy' | 'sell'; res: TradeRes; qty: number; price: number; taken: boolean; declined?: boolean }   // taken: closed (struck, or declined when declined is set)
 export interface Merchant { name: string; arrived: number; until: number; offers: MerchantOffer[] }
 export interface TradeState {
   market: Record<TradeRes, number>; contracts: Contract[]; caravans: Caravan[];

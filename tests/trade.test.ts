@@ -9,7 +9,7 @@ import { invalidate } from '../src/game/memo';
 import { nextSeasonStart } from '../src/game/calendar';
 import { view } from '../src/game/sim';
 import {
-  buyNow, cancelContract, caravanSlots, cheapestHub, checkDispatch, contractPreview, createContract, emergencyImport, hubOpen, price,
+  buyNow, cancelContract, caravanSlots, cheapestHub, checkDispatch, contractPreview, createContract, declineOffer, emergencyImport, hubOpen, price,
   regionalPrice, resumeContract, slotsInUse, spawnMerchant, takeOffer, tradeDay, tradeOpen, tripDays,
 } from '../src/game/trade';
 import { HUB_DEFS, TRADE_BASE } from '../src/game/data/hubs';
@@ -361,5 +361,27 @@ describe('the visiting merchant', () => {
     expect(takeOffer(s, 901).ok).toBe(true);
     expect(s.res.denarii).toBe(den + 120);
     expect(s.trade.merchant).not.toBeNull();
+  });
+
+  it('a declined offer closes for good, moves nothing, and the last closed offer sends him on', () => {
+    const s = vicus();
+    s.trade.merchant = { name: 'Greek wine factors', arrived: s.day, until: s.day + 30, offers: [
+      { id: 900, kind: 'buy', res: 'wine', qty: 20, price: 5, taken: false },
+      { id: 901, kind: 'sell', res: 'iron', qty: 10, price: 12, taken: false },
+    ] };
+    s.res.iron = 10;
+    const den = s.res.denarii;
+    const wine = s.res.wine;
+    expect(declineOffer(s, 900).ok).toBe(true);
+    expect(s.trade.merchant!.offers[0]).toMatchObject({ taken: true, declined: true });
+    expect(s.res.denarii).toBe(den);
+    expect(s.res.wine).toBe(wine);
+    expect(takeOffer(s, 900)).toMatchObject({ ok: false, code: 'notFound' });
+    expect(declineOffer(s, 900)).toMatchObject({ ok: false, code: 'notFound' });
+    expect(s.trade.merchant).not.toBeNull();
+    expect(takeOffer(s, 901).ok).toBe(true);
+    expect(s.trade.merchant).toBeNull();
+    expect(s.trade.lastMerchant).toBe(s.day);
+    expect(s.log.at(-1)?.text).toMatch(/no more business here/);
   });
 });

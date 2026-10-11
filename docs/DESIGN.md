@@ -989,7 +989,7 @@ So: buy grain in Autumnus, sell it in Hiems; buy wine after the vintage.
 - The form (hub → mode → good → qty → repeat) previews trip days and value live.
 
 ### 13.6 Visiting merchant
-Names from rome: *Caravan from Lutetia, Syrian spice traders, Gallic cattle merchants, Pannonian iron peddlers, Greek wine factors*. 2–4 instant offers: **we buy** 10–60 at 0.85 × the regional price, **we sell** 10–80 at 1.15 ×; quantities scale with population. The Quaestor announces it. With trade automation on, the Ordo takes clearly good offers on the last day (§10.7).
+Names from rome: *Caravan from Lutetia, Syrian spice traders, Gallic cattle merchants, Pannonian iron peddlers, Greek wine factors*. 2–4 instant offers: **we buy** 10–60 at 0.85 × the regional price, **we sell** 10–80 at 1.15 ×; quantities scale with population. Each offer can be struck or declined; a declined offer is closed for good, and once every offer is closed the merchant departs. The Quaestor announces it. With trade automation on, the Ordo takes clearly good offers on the last day (§10.7).
 
 ---
 

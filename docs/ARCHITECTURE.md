@@ -619,7 +619,7 @@ export interface Caravan {
   depart: number; arrive: number;                    // arrive = return day
   kind: 'contract' | 'emergency' | 'relief';
 }
-export interface MerchantOffer { id: number; kind: 'buy' | 'sell'; res: TradeRes; qty: number; price: number; taken: boolean }
+export interface MerchantOffer { id: number; kind: 'buy' | 'sell'; res: TradeRes; qty: number; price: number; taken: boolean; declined?: boolean }   // taken: closed (struck, or declined when declined is set)
 export interface Merchant { name: string; arrived: number; until: number; offers: MerchantOffer[] }
 export interface TradeState {
   market: Record<TradeRes, number>; contracts: Contract[]; caravans: Caravan[];
@@ -1260,6 +1260,7 @@ export function cancelContract(s: GameState, id: number): ActionResult;
 export function resumeContract(s: GameState, id: number): ActionResult;
 export function checkDispatch(s: GameState, c: ContractSpec, v: SimView): ActionResult;   // typed pause codes
 export function takeOffer(s: GameState, offerId: number): ActionResult;
+export function declineOffer(s: GameState, offerId: number): ActionResult;   // turns an offer down: closed for good, as if struck
 export function buyNow(s: GameState, res: TradeRes, qty: number): ActionResult;   // emergency purchase from the cheapest open hub, arrives after its one-way days
 export function emergencyImport(s: GameState, ctx: TickContext, qty: number): boolean;
 // save.ts
@@ -1326,7 +1327,7 @@ export { setHousePref } from './housing';
 export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority } from './ordo/actions';
 export { setFocus, setEdict, setSetting, setSwitch, choosePath, renameColony } from './decisions';
 export { chooseOption } from './events';
-export { createContract, cancelContract, resumeContract, takeOffer, buyNow } from './trade';
+export { createContract, cancelContract, resumeContract, takeOffer, declineOffer, buyNow } from './trade';
 export { hush, mute, unmute } from './advisors/engine';
 export { dismissTip } from './guide';
 ```
