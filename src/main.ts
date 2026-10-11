@@ -34,6 +34,7 @@ import type { PlacingState } from './render/view';
 import { registerAllArt } from './render/art/index';
 import { footprintRect } from './render/buildings';
 import { UI } from './ui/index';
+import { openPlacing } from './ui/mapbar';
 import { initTooltips } from './ui/dom';
 import { initKeys } from './ui/keys';
 import { setTitleNotice } from './ui/title';
@@ -155,8 +156,7 @@ class App implements Game {
   startPlacing(p: PlacingState): void {
     if (this.mode !== 'game') return;
     this.sfx('click');
-    this.view.startPlacing(p, this.state);
-    this.ui.showPlaceBanner(p, null);
+    openPlacing(this.view, (q, check) => this.ui.showPlaceBanner(q, check), p, this.state);
   }
 
   cancelPlacing(): void {
