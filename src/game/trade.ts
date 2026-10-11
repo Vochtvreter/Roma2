@@ -380,8 +380,26 @@ export function takeOffer(s: GameState, offerId: number): ActionResult {
   o.taken = true;
   const verb = o.kind === 'buy' ? 'bought' : 'sold';
   log(s, 'trade', `${m.name}: ${verb} ${o.qty} ${resName(o.res)} for ${Math.round(total)} denarii.`);
-  if (m.offers.every((x) => x.taken)) merchantLeaves(s, 'sold out and depart');
+  offerClosed(s, m);
   return { ok: true, id: offerId };
+}
+
+/** Turns down one of the visiting merchant's offers: it is closed for good (taken, declined), nothing changes hands. */
+export function declineOffer(s: GameState, offerId: number): ActionResult {
+  const m = s.trade.merchant;
+  const o = m?.offers.find((x) => x.id === offerId && !x.taken);
+  if (!m || !o) return fail('notFound', 'No such offer.');
+  o.taken = true;
+  o.declined = true;
+  log(s, 'trade', `${m.name}: we decline to ${o.kind === 'buy' ? 'buy' : 'sell'} ${o.qty} ${resName(o.res)}.`);
+  offerClosed(s, m);
+  return { ok: true, id: offerId };
+}
+
+/** Once every offer is struck or declined the merchant moves on. */
+function offerClosed(s: GameState, m: Merchant): void {
+  if (!m.offers.every((x) => x.taken)) return;
+  merchantLeaves(s, m.offers.every((x) => !x.declined) ? 'sold out and depart' : 'have no more business here and depart');
 }
 
 /** An emergency purchase outside the caravan slots: pays now, arrives after the hub's one-way days. */
