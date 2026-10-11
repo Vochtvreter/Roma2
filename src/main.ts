@@ -15,6 +15,7 @@ import { B } from './game/balance';
 import { newGame } from './game/state';
 import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { nextColonyLegacy } from './game/decisions';
+import { introStep, introduced } from './game/intro';
 import {
   KEYS, addFasti, claimSave, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, ownsSave, saveGame, savePrefs,
 } from './game/save';
@@ -116,6 +117,8 @@ class App implements Game {
   }
 
   setSpeed(sp: Speed): void {
+    if (!introduced(this.state, 'speed')) sp = 1;   // the faster speeds come with their lesson (§11.13)
+    else if (sp > 1) actions.notePractice(this.state, 'speed');
     this.speed = sp;
     this.paused = false;
     this.prefs.speed = sp;
@@ -230,7 +233,7 @@ class App implements Game {
     const prev = hasSave() ? loadGame() : null;
     const { legacy, legacyBonus } = prev ? nextColonyLegacy(prev) : { legacy: 0, legacyBonus: 0 };
     const now = Date.now();
-    const s = newGame({ seed: hashStr(String(now)), legacy, legacyBonus, now });
+    const s = newGame({ seed: hashStr(String(now)), legacy, legacyBonus, now, intro: true });   // the opening lessons (§11.13)
     this.enter(s);
     this.paused = true;
     this.write(false);
@@ -518,6 +521,8 @@ class App implements Game {
     this.ui.frame(t);
     if (this.mode === 'game') {
       if (!document.hidden) s.stats.playMs += dt * 1000;
+      const lesson = introStep(s);   // the opening lessons are paced in real play time, whatever the speed
+      if (lesson) this.ui.onLesson(lesson);
       const paths = Object.keys(s.decisions.paths).length;   // autosave right after a path choice (§11.4)
       if (paths !== this.pathCount) { this.pathCount = paths; this.write(false); }
       this.saveTimer += dt;

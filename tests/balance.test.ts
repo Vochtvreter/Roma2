@@ -9,13 +9,14 @@ import { simulateOffline } from '../src/game/offline';
 import { settingValue } from '../src/game/decisions';
 import { chooseOption } from '../src/game/events';
 import { newCtx, tick } from '../src/game/sim';
-import { BANDS, SEEDS, median, play, summary, worstYear } from './autoplayer';
+import { BANDS, ORDO_RATIO, SEEDS, median, play, summary, worstYear } from './autoplayer';
 import type { BotKind, Run } from './autoplayer';
 import { INTEGRATED, forceEvent, noNaN } from './util';
 
 const FULL = !!process.env.BAL_FULL;
 const OPENING = 4000, UNDECIDED = 3000, NEGLECT = 20 * 365;
 const HORIZON = FULL ? BANDS.victory[1] + 1 : OPENING;
+const ORDO_HORIZON = FULL ? ORDO_RATIO[1] * BANDS.victory[1] + 1 : OPENING;   // the Ordo alone, three times as long
 const T = { timeout: 3_600_000 };
 const ABSENCE_MS = (B.time.OFFLINE_MAX_DAYS / B.time.OFFLINE_RATE) * 1000;   // a capped absence
 const HUNGER_MAX = 0.05, OFFLINE_POP = 0.9, DEADLOCK = 120, ZERO_DAYS = 60, FOLLOW_SLACK = 1.1, BUILDER_GAIN = 0.9;
@@ -26,8 +27,9 @@ function get(kind: BotKind, seed: number): Run {
   const key = `${kind}:${seed}`;
   let r = cache.get(key);
   if (!r) {
-    r = kind === 'decision' ? play(seed, kind, { days: HORIZON, snapshots: true, guidanceDays: 2 * 365 })
-      : kind === 'follower' ? play(seed, kind, { days: HORIZON })
+    r = kind === 'decision' ? play(seed, kind, { days: ORDO_HORIZON, snapshots: true, guidanceDays: 2 * 365 })
+      : kind === 'active' ? play(seed, kind, { days: HORIZON })
+      : kind === 'follower' ? play(seed, kind, { days: OPENING })
       : kind === 'builder' ? play(seed, kind, { days: OPENING, stop: (s) => s.rank >= 2 })
       : play(seed, kind, { days: kind === 'neglect' ? NEGLECT : UNDECIDED });
     console.log(summary(r));
@@ -46,7 +48,7 @@ function expectBand(day: number | null | undefined, band: readonly [number, numb
 
 describe('bots (always: stubs or the real sim)', () => {
   it('every bot plays a year without throwing or NaN', T, () => {
-    for (const kind of ['decision', 'undecided', 'follower', 'builder', 'neglect'] as BotKind[]) {
+    for (const kind of ['decision', 'undecided', 'follower', 'builder', 'active', 'neglect'] as BotKind[]) {
       const r = play(42, kind, { days: 365, snapshots: true, guidanceDays: 365 });
       expect(r.nan, kind).toEqual([]);
       expect(r.remedyIssues, kind).toEqual([]);
@@ -64,10 +66,10 @@ describe('bots (always: stubs or the real sim)', () => {
 });
 
 describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
-  describe('opening: the decision bot over 4,000 days', () => {
+  describe('opening: the attentive player over 4,000 days (the pace of DESIGN §18.4)', () => {
     for (const seed of SEEDS) {
       it(`seed ${seed}: min pop ≥ 20 after day 30; Vicus and Oppidum inside their bands`, T, () => {
-        const r = get('decision', seed);
+        const r = get('active', seed);
         expect(r.nan).toEqual([]);
         expect(r.minPop).toBeGreaterThanOrEqual(20);
         expectBand(r.rankDay[1], BANDS.vicus, `seed ${seed} Vicus`);
@@ -76,10 +78,47 @@ describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
     }
   });
 
-  describe.runIf(FULL)('full: the decision bot to the dedication', () => {
+  describe('opening: the Ordo alone (the decisions only) over 4,000 days — the idle floor', () => {
+    for (const seed of SEEDS) {
+      it(`seed ${seed}: min pop ≥ 20 after day 30, never a NaN, and the Vicus all the same`, T, () => {
+        const r = get('decision', seed);
+        expect(r.nan).toEqual([]);
+        expect(r.minPop).toBeGreaterThanOrEqual(20);
+        expect(r.rankDay[1], `seed ${seed}: the Ordo alone never reached the Vicus`).toBeDefined();
+      });
+    }
+  });
+
+  it('idle floor: the Ordo alone reaches each rank 2½–3 times later than the attentive player (median)', T, () => {
+    const ordo = runs(['decision']), active = runs(['active']);
+    let n = 0;
+    for (let rank = 1; rank < 5; rank++) {
+      const o = median(ordo.map((r) => r.rankDay[rank] ?? Infinity));
+      const a = median(active.map((r) => r.rankDay[rank] ?? Infinity));
+      if (!Number.isFinite(o) || !Number.isFinite(a)) continue;
+      const ratio = o / a;
+      expect(ratio, `rank ${rank}: the Ordo alone ${o} vs attentive ${a} (×${ratio.toFixed(2)})`).toBeGreaterThanOrEqual(ORDO_RATIO[0]);
+      expect(ratio, `rank ${rank}: the Ordo alone ${o} vs attentive ${a} (×${ratio.toFixed(2)})`).toBeLessThanOrEqual(ORDO_RATIO[1]);
+      n++;
+    }
+    expect(n, 'no rank reached by both').toBeGreaterThan(0);
+  });
+
+  describe.runIf(FULL)('full: the Ordo alone to the dedication, slow but steady', () => {
+    for (const seed of SEEDS) {
+      it(`seed ${seed}: every rank and the Capitolium, and never fewer than 20 souls`, T, () => {
+        const r = get('decision', seed);
+        for (let rank = 1; rank < 5; rank++) expect(r.rankDay[rank], `seed ${seed} rank ${rank}`).toBeDefined();
+        expect(r.victoryDay, `seed ${seed} victory`).not.toBeNull();
+        expect(r.minPop).toBeGreaterThanOrEqual(20);
+      });
+    }
+  });
+
+  describe.runIf(FULL)('full: the attentive player to the dedication', () => {
     for (const seed of SEEDS) {
       it(`seed ${seed}: Municipium, Colonia, victory, Capitolium phase and stages inside their bands`, T, () => {
-        const r = get('decision', seed);
+        const r = get('active', seed);
         expectBand(r.rankDay[3], BANDS.municipium, `seed ${seed} Municipium`);
         expectBand(r.rankDay[4], BANDS.colonia, `seed ${seed} Colonia`);
         expectBand(r.victoryDay, BANDS.victory, `seed ${seed} victory`);
@@ -100,7 +139,7 @@ describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
   });
 
   it('hunger: in every Ordo-only run, hunger + thirst deaths ≤ 5% of the average population in every 365-day window', T, () => {
-    for (const r of runs(['decision', 'undecided', 'follower'])) {
+    for (const r of runs(['decision', 'undecided', 'follower', 'active'])) {
       const w = worstYear(r);
       expect(w.share, `${r.kind} seed ${r.seed}: ${(w.share * 100).toFixed(1)}% in the year to day ${w.day}`).toBeLessThanOrEqual(HUNGER_MAX);
     }
@@ -116,11 +155,11 @@ describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
     }
   });
 
-  it('builder: placing the Aedilis/Fabrum remedies reaches Oppidum ≥ 10% sooner (median)', T, () => {
-    const d = median(runs(['decision']).map((r) => r.rankDay[2] ?? Infinity));
-    const b = median(runs(['builder']).map((r) => r.rankDay[2] ?? Infinity));
-    expect(Number.isFinite(d), 'the decision bot never reached Oppidum').toBe(true);
-    expect(b, `builder ${b} vs decision ${d}`).toBeLessThanOrEqual(d * BUILDER_GAIN);
+  it('builder: placing the Aedilis/Fabrum remedies by hand reaches the Vicus well before the Ordo alone (median)', T, () => {
+    const d = median(runs(['decision']).map((r) => r.rankDay[1] ?? Infinity));
+    const b = median(runs(['builder']).map((r) => r.rankDay[1] ?? Infinity));
+    expect(Number.isFinite(d), 'the Ordo alone never reached the Vicus').toBe(true);
+    expect(b, `builder ${b} vs the Ordo alone ${d}`).toBeLessThanOrEqual(d * BUILDER_GAIN);
   });
 
   it('neglect: all three Ordo toggles off, no input, 20 years → no crash, no NaN', T, () => {
@@ -150,14 +189,14 @@ describe.runIf(INTEGRATED)('balance (DESIGN §18.5)', () => {
   });
 
   it('no deadlock: renovation and construction each progress at least once in every 120-day window while both have work', T, () => {
-    for (const r of runs(['decision', 'undecided', 'follower', 'builder', 'neglect'])) {
+    for (const r of runs(['decision', 'undecided', 'follower', 'builder', 'active', 'neglect'])) {
       expect(r.stall.construction, `${r.kind} seed ${r.seed}: construction`).toBeLessThanOrEqual(DEADLOCK);
       expect(r.stall.renovation, `${r.kind} seed ${r.seed}: renovation`).toBeLessThanOrEqual(DEADLOCK);
     }
   });
 
   it('guardrails: the treasury is never negative, and never at 0 for > 60 consecutive days with the Ordo on', T, () => {
-    for (const r of runs(['decision', 'undecided', 'follower', 'builder'])) {
+    for (const r of runs(['decision', 'undecided', 'follower', 'builder', 'active'])) {
       expect(r.minCoin, `${r.kind} seed ${r.seed}`).toBeGreaterThanOrEqual(-CLAMP_EPS);
       expect(r.zeroStreak, `${r.kind} seed ${r.seed}`).toBeLessThanOrEqual(ZERO_DAYS);
     }

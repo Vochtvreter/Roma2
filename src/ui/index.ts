@@ -1,13 +1,13 @@
 // src/ui/index.ts — the UI root (ARCHITECTURE §13.3, §13.7): builds every widget in its DOM id, runs the throttled update
 // loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
 // mapbar.ts; the side panel, inspector and event card are WP-I's classes. Owner: WP-H.
-import type { AwayReport, FxEvent, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
+import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
 import { caps, installMeander } from './tipkit';
 import { Hud } from './hud';
 import { Objective, milestoneToast } from './objective';
-import { Counsel } from './counsel';
+import { Counsel, pulseTarget } from './counsel';
 import { Ticker } from './ticker';
 import { TitleScreen } from './title';
 import { toast, toastBatch } from './toasts';
@@ -28,6 +28,7 @@ import { PATH_DEFS } from '../game/data/decisions';
 import { PATH_DECISIONS } from '../game/types';
 import { B } from '../game/balance';
 import { present, shows } from './intro';
+import { currentLesson, introRunning, lessonPointer } from '../game/intro';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
@@ -53,6 +54,7 @@ export class UI {
   private lifeAt = -Infinity;
   private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement; date: HTMLElement } | null = null;
   private tools!: MapTools;
+  private lessonShown: { s: GameState; i: number } | null = null;
 
   constructor(private readonly g: Game) {}
 
@@ -99,6 +101,7 @@ export class UI {
     const g = this.g;
     // the 'wants' tip asks the player to open the Domus overlay; seeing it (by any route: bar, key, remedy) reads it
     if (this.g.view.overlay === 'domus' && !this.g.state.guidance.tips.includes('wants')) this.g.act(dismissTip(this.g.state, 'wants'));
+    this.showLesson();
     present(g, el('objective'), shows(g, 'goals'));
     present(g, el('ticker'), shows(g, 'ticker'));
     present(g, el('overlay-bar'), shows(g, 'overlays'));
@@ -109,11 +112,32 @@ export class UI {
     this.tools.update();
   }
 
+  /** An opening lesson's job was done (a lyre), the next lesson began (a tink), or the lessons ended (the cornu). */
+  onLesson(step: 'done' | 'next' | 'end'): void {
+    this.g.sfx(step === 'done' ? 'lyre' : step === 'next' ? 'tink' : 'cornu');
+    this.changed();
+  }
+
+  /** Show, don't tell: when a lesson begins (or a colony mid-lesson is entered), its tab opens on the work it asks for
+   *  and its target glows, so the right action is the one in front of the player. */
+  private showLesson(): void {
+    const s = this.g.state;
+    const cur = currentLesson(s);
+    const key = cur && !cur.done ? cur.index : -1;
+    if (this.lessonShown?.s === s && this.lessonShown.i === key) return;
+    this.lessonShown = { s, i: key };
+    if (!cur || cur.done) return;
+    const ptr = lessonPointer(cur.lesson);
+    if (ptr.open) this.g.openTab(ptr.open, ptr.anchor);
+    if (ptr.glow) pulseTarget(ptr.glow);
+  }
+
   /** FxEvents → toasts, sounds, banners and dispatches (§13.7). */
   onFx(events: FxEvent[]): void {
     const g = this.g;
     const s = g.state;
     const now = performance.now();
+    this.deeds(events.filter((e): e is Extract<FxEvent, { kind: 'milestone' }> => e.kind === 'milestone').map((e) => e.id));
     for (const e of events) {
       switch (e.kind) {
         case 'built': {
@@ -127,13 +151,7 @@ export class UI {
           toastBatch('evolved', (n) => (n === 1 ? `A home became a ${TIER_DEFS[e.tier].latin.toLowerCase()}` : `${n} homes improved`), 'good', 'i_beds');
           g.sfx('tink');
           break;
-        case 'milestone': {
-          if (!shows(g, 'goals')) break;   // the Res Gestae are not introduced yet: their tip tells of the first deed
-          const m = milestoneToast(e.id);
-          toast(m.text, 'gold', 'i_laurel', 6000, m.unlock || undefined);
-          g.sfx('lyre');
-          break;
-        }
+        case 'milestone': break;   // after the loop: deeds done together make one toast
         case 'rank': this.rankBanner(e.rank); g.sfx('cornu'); break;
         case 'stage':
           showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))} · CAPITOLIVM`, title: `Capitolium: ${STAGE_NAMES[e.stage] ?? `stage ${e.stage}`}`,
@@ -164,6 +182,17 @@ export class UI {
         default: break;
       }
     }
+  }
+
+  /** Res Gestae done: one toast and one lyre, however many deeds a tick completed (a long-met deed waits behind the
+   *  one before it, so several can fall together), and none before the lessons bring the Res Gestae panel. */
+  private deeds(ids: string[]): void {
+    if (ids.length === 0 || !shows(this.g, 'goals')) return;
+    const m = milestoneToast(ids[ids.length - 1]);
+    const quiet = introRunning(this.g.state);   // while the lessons run, no list of things they have not brought yet
+    if (ids.length === 1) toast(m.text, 'gold', 'i_laurel', 6000, quiet ? undefined : m.unlock || undefined);
+    else toast(`Res Gestae: ${ids.length} deeds done`, 'gold', 'i_laurel', 6000, quiet ? undefined : `Latest: ${m.text.replace(/^Res Gestae: /, '')}. New things wait in Edicta.`);
+    this.g.sfx('lyre');
   }
 
   private rankBanner(rank: RankIndex): void {

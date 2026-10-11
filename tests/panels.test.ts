@@ -14,6 +14,7 @@ import { placeBuilding } from '../src/game/place';
 import { B } from '../src/game/balance';
 import { counselSig } from '../src/ui/counsel';
 import { remedyKey, savingLine } from '../src/ui/tabs/common';
+import { labourKey } from '../src/ui/tabs/labour';
 import { fresh, run } from './util';
 
 function fakeGame(s: GameState): Game {
@@ -30,6 +31,8 @@ function discrete(s: GameState): string {
     Object.keys(s.guidance.milestoneDays), s.choice?.created, s.gate?.until,
     // the council's agenda (made in runOrdo before startStaked, so it trails a stake's status change by one tick)
     councilReport(s).agenda.map((w) => `${w.type}:${w.state}`),
+    // which labour lines show (the builders' line goes the day after the last site stands, when its hands are released)
+    labourKey(s),
     // NEW stickers expire NEW_DAYS after the milestone or rank that revealed them
     [...Object.values(s.guidance.milestoneDays), ...Object.values(s.decisions.pathDays)].map((d) => s.day - (d ?? 0) < B.ui.NEW_DAYS),
   ]);

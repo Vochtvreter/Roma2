@@ -21,6 +21,7 @@ import { B } from '../game/balance';
 import { faceIcon, resIcon } from '../render/art/index';
 import { spriteURL } from '../render/sprites';
 import { present, shows } from './intro';
+import { introRunning } from '../game/intro';
 
 const DEV = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search);
 const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DEV ? [B.time.DEV_SPEED as Speed] : [])];
@@ -204,7 +205,8 @@ export class Hud {
   private updateStrip(): void {
     const g = this.g;
     const s = g.state;
-    const shown = STRIP_RES.filter((r) => resourceRevealed(s, r) || s.res[r] > 0);
+    // while the lessons run (§11.13), only what the taught works cost: timber and stone
+    const shown = STRIP_RES.filter((r) => (resourceRevealed(s, r) || s.res[r] > 0) && (!introRunning(s) || r === 'timber' || r === 'stone'));
     const key = shown.join(',');
     if (key !== this.stripKey) {
       this.stripKey = key;
@@ -270,6 +272,9 @@ export class Hud {
     }, `${sp}×`));
     tip(pause, 'Pause or resume (Space). Open dialogs pause the colony too.');
     this.up.push(() => {
+      // until their lesson only pause and 1× show (§11.13): the first works are raised at the pace of reading
+      const fast = shows(g, 'speed');
+      btns.forEach((b, i) => { if (i > 0) present(g, b, fast); });
       pause.classList.toggle('on', g.paused);
       pause.setAttribute('aria-pressed', String(g.paused));
       btns.forEach((b, i) => {

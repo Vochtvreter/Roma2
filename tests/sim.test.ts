@@ -7,13 +7,15 @@ import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
 import { census, canWork, houseBeds, residents } from '../src/game/census';
 import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
-import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor } from '../src/game/people';
+import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor, splendour } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
 import { forecast } from '../src/game/forecast';
 import { newCtx, tick, view } from '../src/game/sim';
 import { bestSlot } from '../src/game/site';
 import { invalidate, touchPeople } from '../src/game/memo';
+import { BUILDING_DEFS } from '../src/game/data/buildings';
+import { derived } from '../src/game/derived';
 import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
@@ -301,7 +303,7 @@ describe('people (DESIGN §6)', () => {
     s.morale = 100;
     fillBeds(s);
     expect(census(s).freeBeds).toBe(0);
-    for (let d = 0; d < 400; d++) { s.day++; immigrationDay(s, ctx(), new Rng(d + 1)); }
+    for (let d = 0; d < 1200; d++) { s.day++; immigrationDay(s, ctx(), new Rng(d + 1)); }   // Rome's call fills at ×1 favour
     expect(s.stats.immigrants).toBe(0);
     expect(s.counters.lastArrivalBlocked).toBeGreaterThan(B.time.START_DAY);
 
@@ -333,7 +335,7 @@ describe('people (DESIGN §6)', () => {
   it('no births past the hard cap of 1,500 souls, and the cap is no blocked birth (R43)', () => {
     const s = fresh();
     for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
-    s.modifiers.push({ id: 'test.fertile', label: 'fertile', until: 1e9, fx: { mul: { births: 5000 } }, benign: true, source: 'stage' });
+    s.modifiers.push({ id: 'test.fertile', label: 'fertile', until: 1e9, fx: { mul: { births: 20000 } }, benign: true, source: 'stage' });
     const mothers = s.people.filter((w) => w.female && w.spouse !== null).length;
     expect(mothers).toBeGreaterThanOrEqual(2);
     const extra = B.people.POP_CAP - 1 - s.people.length;
@@ -352,35 +354,34 @@ describe('people (DESIGN §6)', () => {
     expect(s.counters.lastBirthBlocked).toBe(blocked);
   });
 
-  it('Rome\'s favour: a Vicus above the Oppidum\'s dignitas draws colonists faster, capped; ×1 at the other ranks', () => {
+  it('Rome\'s favour: gardens and paved streets among the homes draw colonists faster, capped; the Ordo alone has ×1', () => {
     const s = fresh();
     s.morale = 70;
-    const fame = (v: number): void => {
-      s.modifiers = s.modifiers.filter((m) => m.id !== 'test.fama');
-      s.modifiers.push({ id: 'test.fama', label: 'fama', until: 1e9, fx: { add: { fama: v } }, benign: true, source: 'stage' });
-    };
-    const at = (rank: number, dig: number): number => {
-      s.rank = rank as GameState['rank'];
-      fame(0);
-      fame(dig - dignitas(s).value);
-      expect(dignitas(s).value).toBeCloseTo(dig, 6);
-      return renownFactor(s);
-    };
     const R = B.people.RENOWN;
-    expect([R.FROM, R.TO]).toEqual([1, 1]);
-    expect(at(0, 60)).toBe(1);                                   // the camp: Rome's roll alone
-    expect(at(1, 40)).toBe(1);                                   // a Vicus at the Oppidum bar
-    expect(at(1, 44)).toBeCloseTo(1 + R.K * 0.1, 9);              // a tenth above it
-    expect(at(1, 400)).toBe(R.MAX);
-    for (const rank of [2, 3, 4]) expect(at(rank, 1000)).toBe(1);
-    const base = (at(1, 30), immigrationChance(s));
-    expect(at(1, 60)).toBeCloseTo(1 + R.K * 0.5, 9);
-    expect(immigrationChance(s) / base).toBeCloseTo(1 + R.K * 0.5, 9);
+    expect(splendour(s)).toBe(0);
+    expect(renownFactor(s)).toBe(1);                              // the Ordo raises neither gardens nor paving (but under Urbs)
+    const base = immigrationChance(s);
+    const garden = s.buildings.find((b) => b.type === 'area')!;
+    const gardens = (n: number): void => {
+      s.buildings = s.buildings.filter((b) => b.type !== 'hortus');
+      for (let k = 0; k < n; k++) s.buildings.push({ ...garden, id: s.nextId++, type: 'hortus', house: undefined, status: 'done', x: 2 + 3 * k, y: 70 });
+      invalidate(s);
+    };
+    gardens(2);
+    const want = 1 + (R.K * 2 * BUILDING_DEFS.hortus.dignitas) / derived(s).houses.length;   // per home
+    expect(renownFactor(s)).toBeCloseTo(want, 9);
+    expect(immigrationChance(s) / base).toBeCloseTo(want, 9);
+    s.paved = [...s.roads.slice(0, 20)];
+    expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas + 20 * B.dignitas.ROADS, 9);
+    gardens(400);
+    expect(renownFactor(s)).toBe(R.MAX);
   });
 
   it('marries, bears children and buries over the years without NaN', () => {
     const s = fresh();
     for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
+    // the families of a splendid town (Rome's favour at its height, §6.6): the births this test watches for
+    s.modifiers.push({ id: 'test.favour', label: 'favour', until: 1e9, fx: { mul: { births: B.people.RENOWN.MAX } }, benign: true, source: 'stage' });
     touchPeople(s);
     const rng = new Rng(5);
     for (let d = 0; d < 3000; d++) { s.day++; peopleDay(s, newCtx(), rng); }
@@ -608,9 +609,9 @@ describe.runIf(INTEGRATED)("the away report's \"decided in your name\" (R18)", (
 });
 
 describe.runIf(INTEGRATED)('re-housing the crowd of a full home (R29)', () => {
-  it('the decision bot to elapsed 2,000: no house stays over its beds while the colony has the beds for its overflow', { timeout: 120_000 }, () => {
+  it('the attentive player to elapsed 2,000: no house stays over its beds while the colony has the beds for its overflow', { timeout: 120_000 }, () => {
     let worst = 0, violations = 0, births = 0;
-    const r = play(1, 'decision', {
+    const r = play(1, 'active', {
       days: 2000, onDay: (s) => {
         births = s.stats.births;
         let free = 0;

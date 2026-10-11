@@ -66,13 +66,13 @@ export const B = {
 
   // ───────── people (DESIGN §6) ─────────
   people: {
-    NEED: [0.6, 0.85, 1, 0.75], YOUTH: 12, ADULT: 16, ELDER: 55, RETIRE: 65, BIRTH_RATE: 0.09, FERTILE: [16, 42],   // tuned 0.2 → 0.09: growth comes mainly from Rome's roll (DESIGN §2.2)
+    NEED: [0.6, 0.85, 1, 0.75], YOUTH: 12, ADULT: 16, ELDER: 55, RETIRE: 65, BIRTH_RATE: 0.036, FERTILE: [16, 42],   // tuned 0.2 → 0.09 → 0.036 × Rome's favour (§6.6): a splendid town's families thrive
     MARRY_P: 1 / 400, MARRY_MAX: 2, MARRY_M: [18, 50], MARRY_F: [16, 45], REMARRY_DAYS: 180, POP_CAP: 1500,
     HOMELESS_LEAVE: 20, EMIGRATE_MORALE: 25, EMIGRATE_P: 0.02,
     HAZARD: { infant: 0.04, child: 0.006, adult: 0.004, a: 0.01, mid: 55, scale: 7.5, care: 0.35 },
     STARVE_P: 0.012, THIRST_P: 0.015, OFFLINE_STARVE: 0.4, SKILL_XP: 0.004, SKILL_BONUS: 0.04, SKILL_MAX: 10,
     SKILL_LIFETIME: 20, ELDER_OUT: 0.7, HOUSEHOLD_MIX: [0.7, 0.2, 0.1],
-    IMM_RATE: [0.014, 0.011, 0.0075, 0.003, 0.04],   // mirror of RANK_DEFS[].immRate (households/day; tuned to the §18.4 curve)
+    IMM_RATE: [0.0046, 0.0036, 0.002, 0.0025, 0.04],   // mirror of RANK_DEFS[].immRate (households/day; × Rome's favour up to ×3; the Municipium keeps most of its old rate: an old town kept by the Ordo alone cannot outgrow its deaths by births)
     CEILING: [100, 260, 560, 900, 1500],              // mirror of RANK_DEFS[].ceiling (Rome's roll)
     DEATH_AT: 75,                                     // hunger/thirst above this kill (§6.5)
     FOOD_F: [[20, 1], [10, 0.5], [0, 0.1]],           // grain DoH ≥ x → factor (births, immigration)
@@ -81,7 +81,9 @@ export const B = {
     BIRTH_BEDS: [[2, 1], [1, 0.5], [0, 0]],           // free beds ≥ x → factor
     ATTRACT: { MORALE: 30, SPAN: 40, MAX: 1.25 },     // clamp((morale − 30) / 40, 0, 1.25)
     CALL: { SOULS: 3, FROM: 1.5, TO: 4.5 },           // Rome's call: households of ~3 souls; a daily roll past 1.5 souls, certain at 4.5
-    RENOWN: { K: 1.25, MAX: 2, FROM: 1, TO: 1 },     // Rome's favour (§6.6), ranks FROM..TO: immigration × min(MAX, 1 + K × max(0, dignitas / next charter's − 1))
+    // Rome's favour (§6.6): immigration (and, × BIRTHS, births) × min(MAX, 1 + K × splendour per home); splendour is the
+    // dignitas of the works the Ordo leaves to the player (gardens, paved streets), so a colony kept by the Ordo alone has ×1
+    RENOWN: { K: 4, MAX: 3, BIRTHS: 1 },
     COUPLE_KIDS: [0, 3], KID_AGE: [0, 14], CRAFT_SKILL: [1, 3], WIDOW_KIDS: [1, 3],
     // household shapes (§6.6) and the veterans at the gate (§12.2)
     AGES: { coupleHead: [20, 40], coupleWife: [18, 36], craftsman: [18, 40], widow: [24, 45],
@@ -166,7 +168,7 @@ export const B = {
 
   // ───────── the Ordo (DESIGN §10) ─────────
   ordo: {
-    BUILD_EVERY: 2, TRADE_EVERY: 10, TRADE_OFFSET: 5, SITES_PER: 40, SITES_MAX: 4, FOOD_CAP: 0.75, FOOD_CAP_HUNGRY: 0.9,
+    BUILD_EVERY: 2, GROWTH_EVERY: 6, TRADE_EVERY: 10, TRADE_OFFSET: 5, SITES_PER: 40, SITES_MAX: 4, FOOD_CAP: 0.75, FOOD_CAP_HUNGRY: 0.9,
     BUILDERS_MIN: 2, BUILDERS_MAX: 0.3, WATER_BASE: 1.05, WATER_LOW: 1.2, WATER_THIRST: 1.5, WATER_PREFILL: 1.3,
     FOOD_BASE: 1, FOOD_LOW: 1.2, FOOD_HUNGRY: 2, FOOD_HIEMS: 1.4, FOOD_FULL: 0.85, WINTER_FILL: 1.35, REQUESTS_MAX: 3,
     REQUEST_DAYS: 180, TOOLS_PER: 0.5, LUXURY: 1.2, EVOLVE_MIN: 2, EVOLVE_MIN_BLOCK: 3,
@@ -274,7 +276,7 @@ export const B = {
       STALLED: [20, 40], CAP_ETA: 365,
       COIN_RUNOUT: [15, 45, 120], COIN_WINDOW: 30,
       EVOLVE_HOUSES: 3, DECLINING_P: 0.1,
-      BEDS_FREE: 2, BEDS_WINDOW: 30,
+      BEDS_FREE: 2, BEDS_WINDOW: 30, FAVOUR_LOW: 1.5,
       MORALE: [50, 35, 25], MORALE_FALL: 0.3, MORALE_FALL_DAYS: 10,
       CHOICE_SOON: 7, REMEDY_DAYS: 30, BUY_DAYS: 20,
       // remedy steps: Spare beds +4 · Builder share +5 points · Trade reserve −10 · Ask/Place house plots ×2
@@ -286,9 +288,11 @@ export const B = {
 
   // ───────── mentor tips and reveal (DESIGN §11.7, §11.9, §15.3) ─────────
   guide: { VITALS: 2, ORDO: 5, CHARTER: 10, SPEED: 20, STARVING: 50, STARVING_UNTIL: 20, THIRST_R: 6, THIRST_UNTIL: 12, WANTS_BLOCKED: 5 },
-  // the paced introduction (DESIGN §11.13): a read tip leaves GAP days before the next one; by INTRO_END elapsed days
-  // every part of the interface shows, whether or not its tip was read
-  intro: { GAP: 6, END: 200 },
+  // the opening lessons (DESIGN §11.13), paced in real seconds of play; a tip read leaves GAP days before the next tip;
+  // the Ordo builds by ORDO_BY elapsed days even if its lesson has not come; a job not done after NUDGE_S seconds is
+  // pointed out again, and after STUCK_S the player may skip it; the card shows a tip that is not urgent only TIP_GAP_S
+  // real seconds after the last one read (or the lessons' end): at 10× six game days are 0.6 s
+  intro: { GAP: 6, ORDO_BY: 150, NUDGE_S: 45, STUCK_S: 120, TIP_GAP_S: 40 },
   reveal: { BUILD_ELAPSED: 20, PEOPLE_ELAPSED: 10, TERRA_ELAPSED: 30 },
 
   // ───────── milestones and petitions (DESIGN §9.1, §9.4) ─────────

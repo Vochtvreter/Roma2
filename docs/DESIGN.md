@@ -44,8 +44,8 @@ You lay out blocks, wells, granaries, shrines and fields yourself — or leave i
 ### 1.4 The idle contract (enforced by tests, §18.5)
 - **Survival**: with the Ordo fully on and *zero* decisions, the colony survives indefinitely and never loses more than 5% of its people per year to hunger or thirst.
 - **Progress needs decisions**: rank never advances without a petition (a path choice). A no-decision run stays *Castra* and its population stays at or below Rome's roll (§6.6) plus births.
-- **Decisions alone suffice**: a bot that only decides (never places, never assigns) reaches every rank inside the pacing bands (§18.4).
-- **Building pays**: a bot that also places what the Aedilis and Fabrum suggest reaches Oppidum at least 10% sooner.
+- **Decisions alone suffice, slowly** (the idle floor): a bot that only decides (never places, never assigns) reaches every rank and the Capitolium, never collapsing, about **2½–3 times later** than an attentive player (§18.4).
+- **Playing pays**: the attentive player (§18.5: acts on every advisor's works, raises the Ordo's paced works by hand, a garden for every home) keeps the pacing bands (§18.4), 2½–3 times faster than the Ordo alone; even one who only places what the Aedilis and Fabrum suggest reaches the Vicus at least 10% sooner. The advisors say what to fix and how to progress; spotting it and acting on it is the game.
 
 ---
 
@@ -67,17 +67,16 @@ You lay out blocks, wells, granaries, shrines and fields yourself — or leave i
 - **Edict windows**: a changed edict stays fixed until the next season's Kalends (Kal. Mart. / Iun. / Sept. / Dec.). Locked edicts read *"Settled. Next window: Kal. Sept. (in 47 days)."*
 - **Taxes** accrue daily and are paid into the aerarium on every **Kalends** (coin sound, gold particles over the forum, one ledger line in the Annales).
 
-### 2.3 Pacing targets (1×, decision-only bot, medians; bands in §18.4)
+### 2.3 Pacing targets (1×, medians; bands and the Ordo alone in §18.4)
 
-| Milestone | Elapsed day | AUC (≈) | Real time 1× | Pop |
-|---|---|---|---|---|
-| Founding | 0 | DCCC | 0:00 | 24 |
-| First Hiems weathered | 335 | DCCCI | 5:35 | 42 |
-| **Vicus** | 600 | DCCCII | 10 min | 55 |
-| **Oppidum** | 2,700 | DCCCVII | 45 min | 190 |
-| **Municipium** | 6,300 | DCCCXVII | 1 h 45 | 410 |
-| **Colonia** (Capitolium begun) | 11,900 | DCCCXXXII | 3 h 18 | 720 |
-| **Capitolium dedicated** (victory) | 14,300 | DCCCXXXIX | 3 h 58 | 1,050 |
+| Milestone | Attentive player: elapsed | Real time 1× | The Ordo alone |
+|---|---|---|---|
+| Founding | 0 | 0:00 | 0:00 |
+| **Vicus** | 573 | 9.5 min | 30 min |
+| **Oppidum** | 2,840 | 47 min | 2 h 28 |
+| **Municipium** | 7,003 | 1 h 57 | 4 h 50 |
+| **Colonia** (Capitolium begun) | 10,116 | 2 h 49 | 7 h 17 |
+| **Capitolium dedicated** (victory) | 12,276 | 3 h 25 | 7 h 54 |
 
 Anything that asks the player to react lasts **≥ 25 days** (event cards 30, veterans 30, merchants 30, Declining grace 20 + 60).
 
@@ -331,13 +330,21 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 
 ### 6.5 Marriage, births, deaths
 - **Marriage**: each day, unmarried men aged 18–50 (in id order) each have a 1/400 chance to seek a wife; the first unmarried woman aged 16–45 of a *different gens* passing the kinship check (no parent, child, sibling, or shared parent/grandparent) marries him. At most 2 marriages per day. Widowed people may remarry 180 days after the death. The search uses per-gens buckets (O(n)).
-- **Births**: each married woman aged 16–42 with a living husband: annual rate **0.09** × foodF × moraleF × bedsF × fx(`births`), applied daily as /365. foodF = 1 if grain DoH ≥ 20, 0.5 if ≥ 10, else 0.1; moraleF = clamp(morale/55, 0.3, 1.3); bedsF = 1 if free beds ≥ 2, 0.5 if 1, else 0. The child joins the father's family and home.
+- **Births**: each married woman aged 16–42 with a living husband: annual rate **0.036** × foodF × moraleF × bedsF × Rome's favour (§6.6, ×1–×3) × fx(`births`), applied daily as /365. foodF = 1 if grain DoH ≥ 20, 0.5 if ≥ 10, else 0.1; moraleF = clamp(morale/55, 0.3, 1.3); bedsF = 1 if free beds ≥ 2, 0.5 if 1, else 0. The child joins the father's family and home.
 - **Deaths** (daily probability): annual hazard `h = (age < 1 ? 0.04 : age < 12 ? 0.006 : 0.004) + 0.010·e^((age − 55)/7.5)`, × (1 − 0.35·care) (§8.10), /365. Plus **starvation**: 0.012/day for each person in a stage group whose hunger > 75; **thirst**: 0.015/day when thirst > 75 (both ×0.4 offline). Plus event deaths (clamped, §12). Causes are logged; old age is the largest-term default.
 
 ### 6.6 Immigration and Rome's roll
 - **Rome's roll** (*numerus coloniae*): immigration never takes the population above `CEILING[rank] = [100, 260, 560, 900, 1500]` (Castra … Colonia). Births and veterans are not blocked but veterans need `pop < ceiling` to appear. At the ceiling the Aedilis says *"Rome's roll is full (100/100 souls). Petition for Vicus to open the canabae to new colonists."* This is the no-decision stall; it never blocks building.
-- **Rate** (households per day): `IMM_RATE[rank] = [0.014, 0.011, 0.0075, 0.003, 0.04]` (tune) × attract, where attract = clamp((morale − 30)/40, 0, 1.25) × foodF (grain DoH ≥ 20 → 1, ≥ 10 → 0.5, else 0.1) × waterF (water DoH ≥ 10 → 1, else 0.5) × renown × fx(`immigration`). Rome sends many colonists to found the camp and the vicus, fewer once the town grows by its own births, and a new wave to the Colonia.
-- **Renown** (*Rome's favour*): Rome sends colonists faster to a town of renown. A Vicus is measured against the dignitas (§8.11) the Oppidum petition asks (40): renown = min(2, 1 + 1.25 × max(0, dignitas / 40 − 1)) — ×1 at or below the bar, ×1.125 at a tenth above it, ×2 at four-fifths above. At every other rank it is ×1 (`RENOWN.FROM`/`TO` in `balance.ts` set the ranks). The Ordo raises what the vicus needs, which carries it to about the bar by the end of the rank; what lifts it beyond is the player's own building — above all gardens, which the Ordo leaves to the player (§10.3: a hortus only under *Urbs*), and extra shrines and works — so building pays in colonists (§1.4).
+- **Rate** (households per day): `IMM_RATE[rank] = [0.0046, 0.0036, 0.002, 0.0025, 0.04]` (a third of the old rates to the Oppidum: Rome's favour brings an attentive player's colony back to them; the Municipium keeps its old rate, for an old town kept by the Ordo alone cannot outgrow its deaths by births) × attract, where attract = clamp((morale − 30)/40, 0, 1.25) × foodF (grain DoH ≥ 20 → 1, ≥ 10 → 0.5, else 0.1) × waterF (water DoH ≥ 10 → 1, else 0.5) × Rome's favour × fx(`immigration`). Rome sends many colonists to found the camp and the vicus, fewer once the town grows by its own births, and a new wave to the Colonia.
+- **Rome's favour** (*splendour*): Rome sends colonists faster to a splendid town, and its families thrive: favour =
+  min(3, 1 + 4 × splendour per home) multiplies immigration and births, where **splendour** is the dignitas of the works
+  the Ordo leaves to the player (§10.3): gardens (*hortus*, 0.5 each) and paved streets (0.05 a tile). A garden for every
+  home is ×3, from tents to insulae. The Ordo raises neither unless the player sets the *Urbs* focus, so a
+  colony kept by the Ordo alone has ×1 and grows slowly but steadily; a Praefectus who beautifies it draws colonists up
+  to ×MAX (`RENOWN` in `balance.ts`). Gardens and homes share the plots, so splendour is a real choice, not a free
+  bonus. The souls tooltip shows the favour, and the Aedilis says so while it is low and the gates are open
+  (`aedilis.favour`, §11.6), with a garden to place and the *Urbs* focus as remedies. This is the main lever of the
+  idle floor (§18.4): the Ordo alone reaches each rank 2½–3 times later than an attentive player.
 - **Rome's call** (steady arrivals): each day the rate × 3 souls accrues on the call (`immCall`); once the call passes 1.5 souls, one roll a day — its chance rising linearly to certainty at 4.5 souls — sends a household, and the household's souls leave the call. The call is capped at 4.5, so days the gates were shut (no beds, the roll full) are not owed. Arrivals come at the drawn rate without Bernoulli clumps, so the first rank-up no longer swings by a year between seeds.
 - A household arrives only if **free beds ≥ its size** and the roll allows. Mix: 70% a couple with 0–3 children (0–14); 20% a single craftsman with one skill at 1–3; 10% a widow with 1–3 children. Nomen from the immigrant pool (prefer gentes not yet present). The family walks in along the via behind an ox-cart and moves into the house with the most free beds nearest the forum (ties by id).
 - **Emigration**: while morale < 25, one household leaves with p = 0.02/day. Homeless people re-house when beds free up; after 20 days homeless they leave. Both are reported by the Aedilis with the cause.
@@ -627,6 +634,12 @@ All paths, edicts, timed modifiers (events, festivals), emergency rations and le
 
 ### 10.3 Division of labour: what the Ordo will and will not do
 - **Modest cadence**: one wish every 2 days; concurrent Ordo sites ≤ 1 + floor(workforce / 40), max 4 (the Capitolium is extra).
+- **Keeps, then grows** (the idle floor, §18.4): what keeps the colony (survival food and water, the Aestas cistern, the
+  Hiems and full stores) goes on the cadence above; what grows it (beds, water access, services, the petition's works,
+  materials, luxuries, the focus plan, beauty) only one work every `GROWTH_EVERY` days. The Agenda shows such a wish as
+  *Later — the Ordo raises it in N d: raise it yourself for sooner*, and the Praefectus Fabrum names it in the counsel
+  card (`fabrum.agenda`, §11.6) with *Place it myself* at the Ordo's own slot. A colony left to the Ordo never starves,
+  and still reaches the Capitolium, only 2½–3 times later than one whose Praefectus acts on the advice.
 - **Stakes**: Ordo sites sit staked for 5 days (cancel 100% / move) before builders start. Player sites go first in the queue.
 - **Never**: demolishes, moves, converts or "renews" any building; changes a house preference; builds in reserved blocks or blocks holding a player plan or unfinished player site; places rural buildings on future-ring blocks; builds a *hortus* or paves streets (except under the *Urbs* focus or on request); chooses a path.
 - **Counts the player's work**: coverage, storage and slots from player buildings count fully before the Ordo plans its own.
@@ -796,7 +809,7 @@ Remedy kinds: `ask` (Ask the Ordo), `place` (placement mode with the ghost pre-p
 - Building remedies render as **two buttons** — **Ask the Ordo** and **Place it myself** — when construction automation is on; only *Place it myself* when it is off.
 - The advisor-follower bot executes remedy 0 of the top advisory every 10 days (a `place` remedy executes as `ask`).
 
-### 11.6 Rule catalogue (22 rules)
+### 11.6 Rule catalogue (24 rules)
 R = *runs out in* = stock / −(3-day average net) when net < 0. DoH = stock / daily need.
 
 | # | id | Adv | Trigger / metric | Severity (clear) | Title / text | Remedies (1–3) |
@@ -814,6 +827,7 @@ R = *runs out in* = stock / −(3-day average net) when net < 0. DoH = stock / d
 | 11 | `fabrum.labour` | fabrum | (a) idle ≥ max(3, 8% of workforce) for 5 days with no open slots (Ordo) or with open slots (manual); (b) open slots > 10% while water runs out within 30 days or grain within 60 (R, as rules 1 and 7) with posts open at the wells or in the fields, or a required service stands unmanned | (a) M · (b) C | (a) **"{n} hands idle and no work for them."** *"A {suggest} would employ {k}."* (b) **"We lack {n} hands: {cats}."** *"Every able hand is at work, and grain lasts {R} days at this rate."* | (a) Ask/Place {suggest} · Give labour to the Ordo · Apply once; (b) Ordo on: {Wells/Food/Services} first 30 d · manual: Open Populus: labour · Ask/Place house plots (when beds are short) · Edict *Hospites Patentes* (at Rome's roll: Open Edicta: petition) |
 | 12 | `fabrum.stalled` | fabrum | a site waiting > 20 days for materials or builders | M; C if a petition needs it or > 40 days | **"The {site} has waited {d} days for {lacking}."** | Prioritise ↑ · Builder share +5 · Contract: import {res} |
 | 13 | `fabrum.capitolium` | fabrum | Capitolium active and the stage ETA at current flow > 365 days | M | **"At this flow the {stage} rises in {eta} days; {res} is the bottleneck ({supply}/day of {demand})."** (the material coming in a day against what the crew would use) | Ask/Place {producer} · Contract: import {res} · Edict *Opera Magna* |
+| 13b | `fabrum.agenda` | fabrum | the Ordo builds and its next growth work waits on its pace (`GROWTH_EVERY`, §10.3) | M | **"The Ordo will raise {a work} in {d} days."** *"{its reason}. The council raises one such work at a time; raise it yourself and it starts today."* | Ask/Place it at the Ordo's slot |
 | 14 | `quaestor.coin` | quaestor | 30-day average net denarii < 0 (R), or upkeep unpaid | P < 15 or unpaid · C < 45 · M < 120 | **"The aerarium empties in {R} days."** *"Upkeep {u} a day against taxes {t}."* / **"{n} works go unpaid and labour at half pace."** | Edict *Tributum Grave* · Contract: export {surplus} · Close {costliest optional} |
 | 15 | `quaestor.contract` | quaestor | a contract auto-paused | M; N for an import waiting for room while the stores hold a caravan's worth (it sets out on its own) | by code — reserve: **"Our {res} caravan to {hub} stands idle: we keep {X} days in reserve."** · stock · denarii · storage · refused | Trade reserve −10 · (storage: a store, only when the stores could never take a full caravan) · Open contract (no Resume: a paused contract resumes by itself on the first day it can) |
 | 16 | `quaestor.merchant` | quaestor | merchant present | N; M if an offer answers an active ≥ C advisory | **"{caravan} camps at the forum for {d} more days."** | Open Commercium: merchant |
@@ -821,13 +835,14 @@ R = *runs out in* = stock / −(3-day average net) when net < 0. DoH = stock / d
 | 18 | `aedilis.declining` | aedilis | any house Declining | C; P if ≥ 10% of houses | **"{n} homes are declining: {need} lapsed."** *"The first falls back in {d} days."* | the remedy for that need · Overlay Domus |
 | 19 | `aedilis.beds` | aedilis | (a) free beds < 2 and an arrival or birth blocked in 30 days, or anyone homeless; (b) pop ≥ roll | (a) M, C if homeless · (b) M | (a) **"No free beds: newcomers turn back at the gate."** (b) **"Rome's roll is full ({pop}/{roll} souls)."** *"Petition for {rank} to open the gates to new colonists."* | (a) Ask/Place house plots ×2 · Spare beds +4; (b) Open Edicta: petition |
 | 20 | `aedilis.morale` | aedilis | morale < 50 / < 35 / < 25, or falling > 0.3/day for 10 days | M / C / P | **"Spirits are {label} ({m}): {term1}, {term2}."** | by the top negative term: Edict *Rationes Plenae/Largae* (while the *Lex de annona*'s emergency cut sets the portion, Ask/Place the best food work instead: the edict changes nothing until the cut lifts) · Edict *Feriae Frequentes* · Edict *Tributum Leve* · Ask/Place Lararium |
+| 20b | `aedilis.favour` | aedilis | pop < roll and Rome's favour (§6.6) < 1.5 (clear ≥ 1.875) | M | **"Colonists come slowly: Rome's favour stands at ×{f}."** *"Rome sends settlers faster to a splendid town, up to ×{max}. Gardens and paved streets among the homes draw them; the Ordo raises neither unless you set the Urbs focus."* | Ask/Place Hortus · Focus *Urbs* (once revealed) |
 | 21 | `augur.choice` | augur | a choice is pending | N; M when ≤ 7 days left | **"{title}: {d} days to decide."** *"If we are silent: {default}."* | Open the dispatch |
 | 22 | `augur.petition` | augur | petition requirements met | *Opportunitas* (gold) | **"Rome would hear our petition for {rank}."** (+ *"The Ordo saves {lacking} (≈ {eta} days)."*) | Open Edicta: petition |
 
 **Named-remedy helpers** (render-time): idle adults sorted by best skill for the target job; understaffed buildings; unstaffed sites; `bestSlot` covering the most affected houses; the cheapest open hub for a good.
 
 ### 11.7 Mentor tips (*Decimus Cassius*) — list order is priority; each shown once
-GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; buttons **Understood**, **Show me** (switches tab, glows the target), **Hide tips** (pref; it also skips the rest of the introduction, §11.13). Text is filled from state. A tip that is not urgent waits **6 days** (`B.intro.GAP`) after the last tip read, so new things never come all at once. Tips 6–15 are the paced introduction (§11.13): each brings a part of the interface with it. An unseen tip whose *Until* already holds is dropped unread — except an urgent one, which only waits (its *Until* means "not now", not "never").
+GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; buttons **Understood**, **Show me** (switches tab, glows the target), **Hide tips** (pref; it also skips the opening lessons, §11.13). While the opening lessons run only the urgent tips speak, and a tip that is not urgent waits **6 days** (`B.intro.GAP`) after the last tip read, so tips never come all at once. Tips 1 and 6–11 teach what the lessons teach: a colony that has had the lessons counts them as read. Text is filled from state. An unseen tip whose *Until* already holds is dropped unread — except an urgent one, which only waits (its *Until* means "not now", not "never").
 
 | # | id | Title | When | After | Until | Target | Gist |
 |---|---|---|---|---|---|---|---|
@@ -837,24 +852,20 @@ GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; but
 | 4 | `event` ★urgent | A dispatch arrives | a choice is pending | welcome | — | `#choice` | *"Decide before the timer ends, or the Ordo takes the cautious path."* |
 | 5 | `petition` ★urgent | Petition to Rome | petition ready | welcome | rank rose | `.path-card` (Edicta) | *"Every requirement is met. The path you choose is permanent and shapes the town."* |
 | 6 | `vitals` | Two numbers keep us alive | elapsed ≥ 2 | welcome | — | `#vital-grain` | *"Grain and Water, counted in days. The strip beneath each shows the year ahead: Aestas is our thirsty season, Hiems our hungry one."* |
-| 7 | `ordo` | The Ordo explains itself | elapsed ≥ 5 | vitals | — | `#ticker` | *"This line says what the Ordo does and why. It staffs the fields and wells and raises what we lack, so you need not."* Brings the ticker. |
-| 8 | `counsel` | Your advisors | an advisory ≥ Monitum | vitals | — | `#counsel` | *"Each advisor keeps one part of the ledger and speaks only when something needs you. Every warning comes with a remedy."* Brings the portrait strip and *Consiliarii*. |
-| 9 | `speed` | Time | elapsed ≥ 20 | ordo | — | `#speed` | *"One day passes each heartbeat. Speed it up, or pause to think: Space, 1–4."* |
-| 10 | `people` | The roll of souls | Populus revealed (elapsed ≥ 10) | speed | the introduction is over | `.hud-souls` (Populus) | *"24 souls sleep in 30 beds. Rome sends families only to free beds, and the face beside them shows our spirits, 65 today: content people work and settle gladly. Populus keeps the roll."* Brings the souls and spirits chips and *Populus*. |
-| 11 | `build` | Build with your own hands | Aedificia revealed | people | player placed a building by hand (not a site the Ordo raised for a request or the pin, nor the Capitolium) | Aedificia | *"Works cost denarii, timber and stone: the purse and the stores now show above. Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo's choice. Your works are raised first."* Brings the coin chip, the materials strip and *Aedificia*. |
-| 12 | `goals` | Res Gestae | M1 done | build | the introduction is over | `#objective` | *"Our first work stands, and Rome counts it among our deeds. Rome reads our deeds one at a time: the panel above names the next and what it opens. The Annales keep the record of all that passed."* Brings the Res Gestae panel and *Annales*. |
-| 13 | `charter` | Your first decision | elapsed ≥ 10 | goals | charter chosen | `.path-card` (Edicta) | *"By what law is this colony founded? The charter is permanent. Edicta is where you set the council's course."* Brings *Edicta*. |
-| 14 | `dignitas` | Dignitas | charter chosen | charter | the introduction is over | `.hud-dignitas` | *"The laurel above is Rome's regard for the colony. Public works, good homes, paved roads and deeds raise it, and it is never spent. To become a Vicus, Rome asks for 12; we stand at 7."* Brings the dignitas chip. |
-| 15 | `overlays` | Maps of the colony | Terra revealed (elapsed ≥ 30) | goals | the introduction is over | `#overlay-bar` | *"The buttons by the minimap lay a map over the land: Aqua, where the water reaches, Terra, the good soil, timber and stone, … Placing a work picks the right one by itself."* Brings the overlay bar. |
-| 16 | `aestas` | The thirsty season | Aestas, or the Aestas forecast ≥ Cave | welcome | — | `#vital-water` | *"Cisterns catch little rain in Aestas and wells draw less. Fill the cisterns in Ver."* |
-| 17 | `wants` | What a house wants | a house blocked ≥ 5 days | overlays | Domus overlay opened | `#overlay-bar` | *"Hover a house to see what it needs next, or open the Domus overlay."* (+ *"A shrine within five steps is often all it takes."* when the first house wants a shrine) |
-| 18 | `autumn` | Hiems is coming | Autumnus, or the Hiems forecast ≥ Monitum | welcome | a horreum exists and the forecast is clear | `#vital-grain` | *"In Hiems our fields give a third. Open sheds hold weeks and rot; a Horreum keeps grain for months. If grain runs low the Ordo cuts rations before anyone starves."* |
-| 19 | `edicts` | Your first edict | M3 done | charter | — | `[data-guide=edicts]` | *"Edicts trade one good for another. Each may change once a season; the window opens on the season's Kalends."* |
-| 20 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"You may take labour, building or trade from the Ordo. Leaving it all to them works just as well."* |
-| 21 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract of the player's exists (the Ordo's do not count) | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
-| 22 | `fork` | Insula or domus? | rank ≥ III and a T3 house exists | wants | — | Dignitas loci overlay | *"A stone house rises two ways: near shops and noise it becomes an insula, many hands for work; near gardens, temples and fountains a domus, few hands but rich taxes and prestige. Each house has a preference in its inspector."* |
-| 23 | `aqueduct` | Water from the hills | rank ≥ IV | trade | castellum placed | Aedificia | *"Place a castellum in town; the arches find their own way from the spring."* |
-| 24 | `away` | The years passed | after the first away report | welcome | — | Annales | *"Time away passes at half speed, up to five years. The Ordo kept the city and wrote you this."* |
+| 7 | `ordo` | The Ordo explains itself | elapsed ≥ 5 | vitals | — | `#ticker` | *"This line says what the Ordo does and why. Disagree? Steer it in Edicta, or build yourself."* |
+| 8 | `charter` | Your first decision | elapsed ≥ 10 | ordo | charter chosen | `.path-card` (Edicta) | *"By what law is this colony founded? The charter is permanent."* |
+| 9 | `counsel` | Your advisors | an advisory ≥ Monitum | vitals | — | `#counsel` | *"Each advisor keeps one part of the ledger and speaks only when something needs you. Every warning comes with a remedy."* |
+| 10 | `speed` | Time | elapsed ≥ 20 | charter | — | `#speed` | *"One day passes each heartbeat. Speed it up, or pause to think: Space, 1–4."* |
+| 11 | `build` | Build with your own hands | Aedificia revealed | speed | player placed a building by hand (not a site the Ordo raised for a request or the pin, nor the Capitolium) | Aedificia | *"Pick a work and a plot. Gold means a bonus; the laurel marks the Ordo's choice. Your works are raised first."* |
+| 12 | `aestas` | The thirsty season | Aestas, or the Aestas forecast ≥ Cave | welcome | — | `#vital-water` | *"Cisterns catch little rain in Aestas and wells draw less. Fill the cisterns in Ver."* |
+| 13 | `wants` | What a house wants | a house blocked ≥ 5 days | build | Domus overlay opened | `#overlay-bar` | *"Hover a house to see what it needs next, or open the Domus overlay."* (+ *"A shrine within five steps is often all it takes."* when the first house wants a shrine) |
+| 14 | `autumn` | Hiems is coming | Autumnus, or the Hiems forecast ≥ Monitum | welcome | a horreum exists and the forecast is clear | `#vital-grain` | *"In Hiems our fields give a third. Open sheds hold weeks and rot; a Horreum keeps grain for months. If grain runs low the Ordo cuts rations before anyone starves."* |
+| 15 | `edicts` | Your first edict | M3 done | charter | — | `[data-guide=edicts]` | *"Edicts trade one good for another. Each may change once a season; the window opens on the season's Kalends."* |
+| 16 | `reins` | Taking the reins | manual section revealed | edicts | — | `[data-guide=manual]` | *"You may take labour, building or trade from the Ordo. Leaving it all to them works just as well."* |
+| 17 | `trade` | Caravans and contracts | Commercium revealed | edicts | a contract of the player's exists (the Ordo's do not count) | Commercium | *"Far markets pay more and sell cheaper, but take longer. A standing contract repeats on its own and pauses itself if it would hurt us."* |
+| 18 | `fork` | Insula or domus? | rank ≥ III and a T3 house exists | wants | — | Dignitas loci overlay | *"A stone house rises two ways: near shops and noise it becomes an insula, many hands for work; near gardens, temples and fountains a domus, few hands but rich taxes and prestige. Each house has a preference in its inspector."* |
+| 19 | `aqueduct` | Water from the hills | rank ≥ IV | trade | castellum placed | Aedificia | *"Place a castellum in town; the arches find their own way from the spring."* |
+| 20 | `away` | The years passed | after the first away report | welcome | — | Annales | *"Time away passes at half speed, up to five years. The Ordo kept the city and wrote you this."* |
 
 ### 11.8 Res Gestae panel (top-left)
 Kicker `RES GESTAE · VII / XX` and progress (*"pop 41 / 50"*); goal text, one-line hint, meter (terracotta → gold); *"Unlocks: Hospites edict"*; a pulsing **CTA** — *"Charter: choose the founding law"*, *"Petition Rome: Oppidum"*; **danger chips generated only from Periculum advisories** (one source of truth: *Grain 6 d*, *Water 4 d*, *Unpaid works*, *3 homes declining*) plus active timed modifiers (*Robigo: one field idle, 21 d*).
@@ -882,16 +893,16 @@ Placement auto-selects the matching overlay and restores the previous one afterw
 - Beneath each, **12 month cells** starting with the current month, coloured by the lowest projected days on hand that month: green ≥ 30, gold 15–30, orange 7–15, red < 7, black empty; season initials beneath. Hover shows the 12-month line with cap and season bands. A Periculum in the domain pulses the tablet.
 - The forecast is pure and computed once per day from the same formula module as the tick: for each month, projected production = (Ordo labour on) `min(maxPotential(month's season), need × 1.35)` for grain / `need × 1.10` for water, plus the industry draws (the Ordo mans the wells for them too), except the crunch season which uses `maxPotential`; (Ordo labour off) current staffing. Consumption = current need + industry draws; caps, shed rot and evaporation applied month by month.
 
-### 11.12 The first ten minutes at 1× (target; asserted by the guide test with seed 42 and the decision bot)
+### 11.12 The first ten minutes at 1× without the lessons (target; asserted by the guide test with seed 42 and the decision bot, which have none; a new colony's first minutes are §11.13)
 
 | Real time | Elapsed / date | What happens | Guidance |
 |---|---|---|---|
 | 0:00 | Kal. Apr. DCCC (paused) | **Founding Dispatch** on parchment: *"To the Praefectus castrorum at Castra Valeria. Twenty-four souls of six families. Grain for 24 days, one well, one field. Hiems comes on the Kalends of December, 244 days hence: have the horrea full. Aestas comes sooner, and it is thirsty."* → **Raise the standard** | — |
 | 0:01 | day 1 | The Ordo staffs the field and the well; ticker: *"Staffed the fields: grain need 20.4/day."* | tip `welcome` |
-| 0:02 | day 2 | **First advisory** (Curator Aquarum, Monitum): the well gives ≈ 24/day in Ver but ≈ 19 in Aestas against 20.4 needed — *"Aestas in 59 days: our lowest would be 7 days of water."* The Ordo stakes a **Cisterna** (*aestasWater*). | — (a breather after `welcome`) |
-| ≈ 0:20 | day ≈ 20 | The cistern is finished; the forecast recovers; the advisory clears (≤ day 45). | tips `vitals`, `ordo`, `counsel` (§11.13: one at a time, each read) |
-| 0:20–1:30 | days 20–90 | Lumber camp, lararium, new plots; first casae near the well; M1, M3. | `speed`, `people`, `build`, `goals`, `charter`, `dignitas`, `overlays` |
-| 1:01 | Kal. Iun. | **Aestas**: cisterns ×0.3; the water strip turns gold. | `aestas`, `edicts` |
+| 0:02 | day 2 | **First advisory** (Curator Aquarum, Monitum): the well gives ≈ 24/day in Ver but ≈ 19 in Aestas against 20.4 needed — *"Aestas in 59 days: our lowest would be 7 days of water."* The Ordo stakes a **Cisterna** (*aestasWater*). | tips `vitals`, `ordo` |
+| ≈ 0:20 | day ≈ 20 | The cistern is finished; the forecast recovers; the advisory clears (≤ day 45). | tips `charter`, `counsel` |
+| 0:20–1:00 | days 20–60 | Lumber camp, lararium, new plots; first casae near the well; M1, M3. | `speed`, `build`, `edicts` |
+| 1:01 | Kal. Iun. | **Aestas**: cisterns ×0.3; the water strip turns gold. | `aestas` |
 | 2:04 | day 124 | **Hiems forecast** opens (Annona): stores too small → the Ordo stakes a **Horreum**. | `autumn` |
 | 2:33 | Kal. Sept. | Autumnus; the Augur is appointed; forage ×1.8; the Ordo stockpiles. | — |
 | < 4:04 | before Kal. Dec. | Horreum finished (test). M4. | — |
@@ -900,35 +911,64 @@ Placement auto-selects the matching overlay and restores the previous one afterw
 | 5:35 | Kal. Mart. DCCCI | M5 *Weather the first Hiems*. | — |
 | 7:00–12:00 | days 420–720 | Pop 50, Stabilitas, charter → **Vicus petition** (band). Quaestor and Aedilis appointed; Commercium opens. | `petition`, `reins`, `trade` |
 
+### 11.13 The opening lessons (*Disciplina*) — one system at a time, learned by doing
+A new colony opens on the map, the two vital tablets, the date, pause and 1×, and the first lesson. Each lesson is
+**one reason and one imperative** (about a dozen words), a **job the player does by hand**, and the parts of the
+interface that job needs (at most three). When the job concludes the card shows the **payoff** and the next lesson's
+name; the next lesson comes after a **breather of real play time** (`stats.playMs`, never game days, so speeding up
+cannot rush it), or at once with **Begin now**. The card names what comes next, and the lesson's tab opens on the work
+it asks for — the right action is the one in front of the player.
 
-### 11.13 The paced introduction — one system at a time
-A new colony opens on the map, the two vital tablets, the date and the clock; the mentor's card is the only other thing
-on screen. Every other part of the interface arrives **with the tip that explains it** (`intro.ts`): it shows once that
-tip is on the card or has been read, and fades in with a gold glow. The next tip waits until the player presses
-**Understood** and 6 more days pass (§11.7), so a player who reads each tip sees a new system about every ten days
-(≈ 10 s at 1×) over the first ~90 days, instead of everything within the first half-minute.
+| # | Lesson | Card | Job (concludes when) | Brings | Breather |
+|---|---|---|---|---|---|
+| I | Water for the dry season | *"Our one well will not last the summer. Raise a cistern."* | a cistern the player placed **stands** (live "Rising · 41%") | Aedificia (the cistern only), coin, timber and stone | 45 s |
+| II | Beds for newcomers | *"Rome sends families only to free beds. Lay out a house plot."* | the player's house plot stands | souls and spirits | 45 s |
+| III | The Ordo takes up the work | *"The Ordo keeps the colony alive, even while you sleep. Watch it build."* → *"It plays safe. Where the colony lags, your own hand does better."* | the Ordo stakes its first work | the ticker; **the Ordo begins to build** | 45 s |
+| IV | The founding law | *"Rome awaits our founding law. Choose it in Edicta: it is for good."* | the charter proclaimed | Res Gestae (goal and meter), Edicta (the charter alone); **dignitas as the reward** | 45 s |
+| V | Your advisors | *"Advisors warn of trouble, each with a remedy. Hear them out."* | the player opens Consiliarii (its button glows; it does not open by itself) | portraits, Consiliarii | 40 s |
+| VI | Time is yours | *"The Ordo keeps the colony now. Hurry the days, or pause to think."* | a faster speed chosen | 2× – 10× | 40 s |
+| VII | Every work is yours | *"All of Rome's works are open to you now. Raise one of your choosing."* | the player places a work not yet taught | the full Aedificia: every work, tools, categories, the Ordo's agenda and buttons | 40 s |
+| VIII | The roll of souls | *"Every soul has a name, an age and a trade. Open Populus."* | the player opens Populus | Populus | 40 s |
+| IX | Maps of the land | *"Lay a map over the land: water, soil, what houses lack."* | an overlay opened | the overlay bar | 40 s |
+| X | The council's course | *"The council takes standing orders from you. Change one in Edicta."* | an edict, focus, setting or switch changed | the rest of Edicta; **the Annales as the closing reward** | 8 s |
 
-| Tip | Brings in |
-|---|---|
-| `ordo` | the ticker |
-| `counsel` | the advisors' portrait strip · *Consiliarii* |
-| `people` | the souls and spirits chips · *Populus* |
-| `build` | the coin chip and the materials strip · *Aedificia* |
-| `goals` (or `away`) | the Res Gestae panel · *Annales* |
-| `charter` (or `petition`, `edicts`, `reins`) | *Edicta* (the founding charter waits here) |
-| `dignitas` (or `petition`) | the dignitas chip |
-| `overlays` (or `wants`) | the overlay bar (and the `O` key) |
+- **Only what has been taught, plus the one new thing.** While the lessons run, every panel shows only what the lessons
+  have brought: Aedificia offers the works they asked for as plain cards (name, what it does in words, cost, Place: no
+  numbers, no tools, no categories, the queue only while something rises); Edicta is the charter alone; the Res Gestae
+  is the goal and its meter (no unlock list, no seasonal chips); the HUD shows timber and stone only; a deed's toast
+  names no unlocks. Nothing waits to be dumped at the end: each remaining system is its own lesson.
+- **Hand first, then the Ordo as the reward.** Until lesson III the Ordo staffs the fields and wells (nobody starves)
+  but builds nothing: the first works are the player's. With lesson III it takes over the very chore the player has
+  just done. A colony left alone gets its Ordo anyway by elapsed day **150** (`B.intro.ORDO_BY`, a game-day safety net
+  checked in the sim tick); the lessons themselves still wait.
+- **Speed is earned.** Pause and 1× only until lesson VI, so the first works are raised at the pace of reading.
+- **Nothing blocks, nothing traps, nothing floods.** The colony runs throughout; a Periculum advisory and the urgent
+  tips still take the card (the other tips wait for the end of the lessons, then come at most one per **40 s of real
+  play**, `TIP_GAP_S`). A job that waits 45 s (`NUDGE_S`) and has not been started pulses its target; after 120 s
+  (`STUCK_S`) *Skip this step* appears. Deeds done in one tick make one toast. *Skip the lessons* (two clicks) is on
+  every card; *Hide tips*, mentor tips off, or *"I know the camp: skip the introduction"* on the Founding Dispatch skip
+  them too.
+- **A job done before it is asked counts** (a cistern raised through an advisor's remedy ends lesson I at once).
+- Measured in a real-time browser run (an eager player who reads each card ≈ 5 s, acts at once, never presses Begin
+  now, and presses 10× whenever it is offered): the Ordo arrives at 1:52, a new system every 45–55 s, the lessons end
+  at 7:36; a player who reads and explores takes longer. Colonies from before the lessons, and the bots, have none
+  (`intro.lesson = −1`).
 
-- This gates only what is **shown**, never what the colony does: reveal predicates (§15.3, §11.9) are unchanged, the
-  Ordo, advisors and remedies run from day 1, and a warning always reaches the counsel card. A tab a button opens (a
-  remedy, the Res Gestae call to action) opens even before its tip.
-- The side panel is hidden until its first tab arrives, and opens on it. Milestone toasts wait for the Res Gestae.
-- On a phone the counsel card unfolds for a new tip and folds again once it is read.
-- **Skipping**: *Hide tips*, mentor tips off in the menu (also on entering a colony), or *"I know the camp: skip the
-  introduction"* on the Founding Dispatch read every introduction tip at once: the whole interface shows, as before.
-- **Backstop**: by elapsed day **200** (`B.intro.END`, before Hiems) everything shows whether or not its tip was read;
-  the four tips that only introduce (`people`, `goals`, `dignitas`, `overlays`) are then dropped unread, which also
-  covers saves from before the introduction existed.
+**Why (sources).**
+- *Learn by doing, not by reading.* Fan, GDC 2012 (*Plants vs. Zombies*): "do rather than read", ~8 words on screen,
+  one thing at a time. Hodent, *The Gamer's Brain*: text alone is processed shallowly; ≤ 3 new items at once.
+- *Teaching pays off in complex games, in context, and must not block.* Andersen et al., CHI 2012 (~45,000 players):
+  tutorials helped only the most complex game, in-context hints beat a manual, blocking tutorials showed no benefit.
+- *One skill, practised, then the next; a job concludes with its result.* Hayashida's *kishōtenketsu* (Mario 3D Land);
+  Valve's *Portal* commentary ("overwhelmed players tend not to digest new information"); Cook, *The Chemistry of
+  Game Design* (action → simulation → feedback → mastery).
+- *Problem first, then the tool.* Caesar III's tutorial missions open a building when its problem first bites.
+- *Automate what is mastered, and not too late.* Koster, *A Theory of Fun* (a grasped pattern bores); idle games
+  (Pecorella, Kongregate; AdVenture Capitalist's managers) automate a chore the player has done by hand; Factorio
+  FFF #241 warns against a long manual phase.
+- *A breather is practice, never an empty wait; show what comes next.* L4D's AI Director relax phases; A Dark Room's
+  timers run beside actions; Hodent: "show the locks before giving the keys"; Alharthi et al., CHI 2018 (idle games).
+- *Veterans skip.* The expertise-reversal effect (Kalyuga et al. 2003); NN/g: a highly visible Skip.
 
 ---
 
@@ -1092,7 +1132,7 @@ Awaiting You lists the ready petition first, then the top 3 advisories with thei
 8. **Speed** ❚❚ 1× 2× 5× 10×; **menu** ☰ (Esc).
 
 ### 15.3 Side panel tabs (Latin label, English sub-label; progressive reveal with a NEW sticker; badges)
-A revealed tab shows once the paced introduction has brought it (§11.13); before the first one the panel is hidden.
+While the opening lessons run (§11.13), a tab a lesson brings shows from that lesson on; before the first one the panel is hidden.
 
 | Tab id | Label | Hotkey | Revealed | Badge | Content |
 |---|---|---|---|---|---|
@@ -1227,42 +1267,57 @@ Other: cypress and umbrella pine `#24402c` / `#3d6b3a`; dirt road `#9b7a52` edge
 ### 18.3 Key constants (`balance.ts` names in ARCHITECTURE §7; every number in this file is mirrored there)
 Time: SPEEDS [1,2,5,10] · START_DAY 90 · OFFLINE_RATE 0.5 · OFFLINE_MAX_DAYS 1,825 · OFFLINE_MIN_MS 60,000 · AUTOSAVE_S 20 · STAKE_DAYS 5 · EVENT_START 300 · EVENT_CHANCE 1/40 · CHOICE_GAP 200 · HARMFUL_GAP 120 · CHOICE_DAYS 30.
 Map: W 112 · H 84 · TILE 16 · PITCH 5 · CASTRUM 31×21 · TERRITORY [20,26,34,44,999] · rings by rank [0],[0,1],[0,1,2]…
-People: NEED child .6 youth .85 adult 1 elder .75 · BIRTH 0.09/yr · MARRY 1/400 · IMM_RATE [0.014,0.011,0.0075,0.003,0.04] · RENOWN Vicus 1 + 1.25 × (dignitas / 40 − 1), ≤ ×2 · CEILING [100,260,560,900,1500] · POP_CAP 1500 · SKILL_XP 0.004 · SKILL_BONUS 0.04 · ELDER_OUT 0.7 · RETIRE 65.
+People: NEED child .6 youth .85 adult 1 elder .75 · BIRTH 0.036/yr × favour · MARRY 1/400 · IMM_RATE [0.0046,0.0036,0.002,0.0025,0.04] · RENOWN 1 + 4 × splendour per home, ≤ ×3 · CEILING [100,260,560,900,1500] · POP_CAP 1500 · SKILL_XP 0.004 · SKILL_BONUS 0.04 · ELDER_OUT 0.7 · RETIRE 65.
 Economy: MULT_CAP 2.5 · PRODUCTIVITY 0.85 + 0.30·m · TOOL 1.2 × 120 d · IDLE_FORAGE 0.3 · IDLE_BUILD 0.3 · SHED_ROT 0.003 (×2 Aestas) · EVAPORATION 0.002 · HORREUM 4,000.
 Housing: OK_DAYS 15 · RENOVATE_DAYS 8 · DECLINE_AFTER 20 · DROP_AFTER 60 · OFFLINE_DECLINE_STOP 55 · THROTTLE 1 + houses/8 per 10 d · DESIR_DOMUS 10.
 Ordo: BUILD_EVERY 2 · TRADE_DAY 10/5 · SITES 1 + workforce/40 (max 4) · FOOD_CAP .75/.90 · BUILDERS_MAX .30 · CAP_CREW 64 · LUXURY_RUNWAY 60 · GOODS_FLOOR 15.
 Advisors: CLEAR ×1.25 · DOWNGRADE 3 d · MIN_LIFE 3 d · HUSH 30 d · BELL 30 s · GOODS_DAYS 30 · GOODS_LEAD 90.
 
-### 18.4 Target curves (decision-only bot, medians over seeds [1, 2, 3, 42, 1337])
+### 18.4 Target curves (medians over seeds [1, 2, 3, 42, 1337])
+
+The **attentive player** (`active`, §18.5) sets the reference pace; the **Ordo alone** (`decision`) is the idle floor: it never collapses and reaches every rank, about three times later in the town's first hour and two and a half times later after (measured, bands asserted 2.2–3.6×).
+
+| Milestone | Attentive: elapsed | Real 1× | Ordo alone: elapsed | Real 1× | Ratio | Notable |
+|---|---|---|---|---|---|---|
+| Founding | 0 | 0:00 | 0 | 0:00 | — | 24 souls, 6 tents |
+| **Vicus** | 573 | 9.5 min | 1,826 | 30 min | ×3.2 | cistern, lumber, lararium, horreum, gardens |
+| **Oppidum** | 2,840 | 47 min | 8,891 | 2 h 28 | ×3.1 | figlina, tabernae, caravans |
+| **Municipium** | 7,003 | 1 h 57 | 17,420 | 4 h 50 | ×2.5 | templum, macellum, balneum, iron |
+| **Colonia** (Capitolium begun) | 10,116 | 2 h 49 | 26,196 | 7 h 17 | ×2.6 | aqueduct, thermae |
+| **Capitolium dedicated** (victory) | 12,276 | 3 h 25 | 28,461 | 7 h 54 | ×2.3 | ≈ 940 souls (attentive), ≈ 1,200 (Ordo alone) |
+
+The attentive player's curve (`npm run trace`; houses by tier are medians per column):
 
 | Real 1× | Elapsed | AUC | Pop | Houses T0/T1/T2/T3/T4i/T4d | Notable |
 |---|---|---|---|---|---|
 | 0 | 0 | DCCC | 24 | 6/0/0/0/0/0 | founding |
-| 2 min | 120 | DCCC | 30 | 4/3/0/0/0/0 | cistern, lumber, lararium |
-| 5.5 min | 335 | DCCCI | 42 | 2/5/0/0/0/0 | horreum, first Hiems weathered |
-| 10 min | 600 | DCCCII | 55 | 1/7/0/0/0/0 | **Vicus** |
-| 25 min | 1,500 | DCCCIV | 120 | 1/8/6/0/0/0 | figlina, tabernae, caravans |
-| 45 min | 2,700 | DCCCVII | 190 | 1/7/13/0/0/0 | **Oppidum** |
-| 1 h 15 | 4,500 | DCCCXII | 300 | 0/4/12/8/1/1 | templum, macellum, balneum, iron |
-| 1 h 45 | 6,300 | DCCCXVII | 410 | 0/3/10/12/4/2 | **Municipium** |
-| 2 h 30 | 9,000 | DCCCXXIV | 580 | 0/2/10/15/9/5 | aqueduct, thermae |
-| 3 h 18 | 11,900 | DCCCXXXII | 720 | 0/2/10/18/13/7 | **Colonia**; Capitolium begun |
-| 3 h 58 | 14,300 | DCCCXXXIX | 1,050 | 0/3/10/20/22/12 | **Capitolium dedicated** |
+| 2 min | 120 | DCCC | 28 | 0/6/0/0/0/0 | cistern, lumber, lararium, the first gardens |
+| 5.5 min | 330 | DCCCI | 35 | 0/6/0/0/0/0 | horreum, first Hiems weathered |
+| 9.5 min | 570 | DCCCI | 48 | 0/7/0/0/0/0 | **Vicus** |
+| 25 min | 1,500 | DCCCIV | 104 | 0/0/11/0/0/0 | figlina, tabernae, caravans |
+| 47.5 min | 2,850 | DCCCVIII | 180 | 0/3/16/0/0/0 | **Oppidum** |
+| 1 h 15 | 4,500 | DCCCXII | 266 | 1/3/12/6/1/0 | templum, macellum, balneum, iron |
+| 1 h 57 | 7,020 | DCCCXIX | 407 | 1/3/12/7/8/1 | **Municipium** |
+| 2 h 30 | 9,000 | DCCCXXIV | 573 | 1/3/12/6/13/1 | aqueduct, thermae |
+| 2 h 48 | 10,110 | DCCCXXVII | 695 | 1/3/12/10/17/1 | **Colonia**; Capitolium begun |
+| 3 h 11 | 11,460 | DCCCXXXI | 944 | 1/4/13/10/18/1 | the Capitolium near its dedication |
 
 Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Municipium +30–50 · Colonia +40–80.
 
-**Bands** (assertions): Vicus 420–780 · Oppidum 2,100–3,400 · Municipium 5,000–7,600 · Colonia 9,800–14,000 · victory 12,000–17,500 · Capitolium phase 1,800–3,000 days, each stage 350–900 · pop at victory 900–1,400.
+**Bands** (assertions, the attentive player): Vicus 420–780 · Oppidum 2,100–3,400 · Municipium 5,000–7,600 · Colonia 8,800–14,000 · victory 11,000–17,500 · Capitolium phase 1,800–3,000 days, each stage 350–900 · pop at victory 700–1,400. **Idle floor**: the Ordo alone reaches each rank 2.2–3.6× later (median), and the Capitolium.
 
 ### 18.5 Balance-bot and contract assertions (headless vitest)
 
 | Test | Assertion |
 |---|---|
-| **opening** (always) | 5 seeds × 4,000 days: min pop ≥ 20 after day 30; Vicus and Oppidum inside their bands |
-| **full** (`BAL_FULL=1`) | Municipium, Colonia, victory, Capitolium phase and stage bands |
+| **opening** (always) | 5 seeds × 4,000 days: the **attentive player** (`active`) keeps min pop ≥ 20 after day 30 with Vicus and Oppidum inside their bands; the **Ordo alone** (`decision`) keeps min pop ≥ 20 and still reaches the Vicus |
+| **idle floor** (always) | the Ordo alone reaches each rank both reach **2.2–3.6×** later than the attentive player (median over the seeds) |
+| **full** (`BAL_FULL=1`) | the attentive player: Municipium, Colonia, victory, Capitolium phase and stage bands; the Ordo alone: every rank and the Capitolium, never below 20 souls |
 | **undecided** | no decisions at all, Ordo on, 3,000 days: pop ≥ 20, rank Castra, pop ≤ 125 |
 | **hunger** | in every Ordo-only run, hunger + thirst deaths ≤ 5% of the average population in every 365-day window |
 | **advisor-follower** | decision bot + every 10 days applies remedy 0 of the top advisory: each rank no later than decision-only + 10% |
-| **builder** | decision bot + every 5 days places every Aedilis/Fabrum build remedy at its best slot as a player site: Oppidum ≥ 10% sooner (median) |
+| **builder** | decision bot + every 5 days places every Aedilis/Fabrum build remedy at its best slot as a player site: the Vicus ≥ 10% sooner than the Ordo alone (median) |
+| **active** (the attentive player) | decision bot + every 5 days places every advisor's build remedy and the Ordo's paced works (*Later*) by hand, a garden for every home from the camp on (never on the last 6 free house plots), and every 10 days the top remedy: the reference pace of §18.4 |
 | **neglect** | all three Ordo toggles off, no input, 20 years: no crash, no NaN |
 | **offline safety** | from the bot's snapshot at each rank: a capped offline run keeps pop ≥ 90% of the start, 0 tier drops, treasury ≥ min(start, floor) |
 | **no deadlock** | over every bot run, renovation and construction each progress at least once in every 120-day window while both have work |
@@ -1281,7 +1336,7 @@ Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Munici
 
 **If over budget, cut from the top**: theatrum (Colonia then needs thermae only) → pabulatio (idle foraging gets the Autumnus ×1.8) → lacus (castellum fountain radius 6) → mansio (slots from ranks only) → olivetum (oil import-only) → forest depletion (static wood density) → the aquae variant → the paving brush.
 
-**Never cut**: the survey grid with plots and blocks; houses T0–T4 with the fork and want icons; road-BFS coverage; grain and water in days with horrea and the two crunches; vital tablets with the forecast strip; the Ordo with stakes, reasons and three toggles; six advisors with the 22 rules and typed remedies; mentor tips; Res Gestae; nine edicts; charter + four paths; offline replay with *Litterae Ordinis*; the five overlays; ≥ 10 events including the veterans; six hubs with contracts; `rise()` construction; the Capitolium set piece.
+**Never cut**: the survey grid with plots and blocks; houses T0–T4 with the fork and want icons; road-BFS coverage; grain and water in days with horrea and the two crunches; vital tablets with the forecast strip; the Ordo with stakes, reasons and three toggles; six advisors with the 24 rules and typed remedies; mentor tips; Res Gestae; nine edicts; charter + four paths; offline replay with *Litterae Ordinis*; the five overlays; ≥ 10 events including the veterans; six hubs with contracts; `rise()` construction; the Capitolium set piece.
 
 ---
 
@@ -1292,7 +1347,7 @@ Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Munici
 | Base | *Builder* proposal, with the steward's guidance layer and the idle proposal's contract tests grafted in. |
 | Player vs Ordo | Ordo stakes (5 days, cancel 100% / move); player sites first in the queue; Ordo counts all coverage, never demolishes/moves/converts; modest cadence; beautification, fork and extra culture left to the player; builder-persona test (§10.3, §18.5). |
 | Calendar | real Julian 365-day calendar, aging on it, edict windows on season Kalends (§2). |
-| Arc and scale | ≈ 4 h at 1×, ≈ 1,050 people at victory, cap 1,500 (§2.3, §18.4). |
+| Arc and scale | ≈ 3½ h at 1× for the attentive player (≈ 8 h with the Ordo alone), ≈ 950 people at victory, cap 1,500 (§2.3, §18.4). |
 | Finale | Capitolium crew cap 64 + gradual materials; 30–45 min; stage bands asserted (§9.5). |
 | First rank-up | Vicus at 7–13 min with pop 50, first Hiems, horreum, Stabilitas (§9.1). |
 | Devolution | Declining after 20 days, one-tier drop after 60 more, never offline (§7.3). |
@@ -1302,7 +1357,7 @@ Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Munici
 | Event cadence | no events before day 300; ≥ 200 days between cards; ≥ 120 between harmful events; slow for news; explicit defaults (§12.1). |
 | Names | unique ids for tabs, toggles, focuses, edicts, advisors and hubs (ARCHITECTURE §4). |
 | UI density | one counsel card, one ticker, chips from Periculum only, toasts for completions/milestones (§15.1). |
-| Guidance volume | 22 rules, 20 tips, no Mandata (§11). |
+| Guidance volume | 24 rules, 20 tips, 10 opening lessons, no Mandata (§11). |
 | Storage | fixed units shown as days; sheds rot (§4, §8.6). |
 | Relief | one ladder: rations → industry pause → emergency import → Legate's relief; ≤ 5%/year test (§8.12). |
 | Rank verbs | one new system per rank (§9.1). |

@@ -9,6 +9,7 @@ import { invalidate, touchPeople } from '../src/game/memo';
 import { goodsPlan } from '../src/game/ordo/goods';
 import { luxuryCaravans, tradeMoves } from '../src/game/ordo/trade';
 import { keptBlocks } from '../src/game/ordo/build';
+import { unmetNeeds } from '../src/game/housing';
 import { caravanSlots, checkDispatch } from '../src/game/trade';
 import { houseWants, liftSlot, serveSlot, serviceFor } from '../src/game/advisors/util';
 import { rectGap } from '../src/game/world/grid';
@@ -94,12 +95,36 @@ describe('wine for the atrium houses (DESIGN §7.6, §10.7)', () => {
   });
 });
 
+/** Rome's favour at its height (DESIGN §6.6) as a standing modifier: a colony the Ordo alone keeps then grows at the
+ *  attentive player's pace (§18.4), while every work, trade and siting decision these tests watch stays the Ordo's. */
+function favoured(s: GameState): void {
+  if (s.modifiers.some((m) => m.id === 'test.favour')) return;
+  const max = B.people.RENOWN.MAX;
+  s.modifiers.push({ id: 'test.favour', label: 'favour', until: 1e9, fx: { mul: { immigration: max, births: max } }, benign: true, source: 'stage' });
+}
+
 describe.runIf(INTEGRATED)('the Ordo late in the game (decision and follower bots)', () => {
   it('seed 2: never sells oil the insulae need through the lean season, and no house lapses for want of oil', T, () => {
     let sold = 0, below = 0, lapsed = 0;
+    const cause = new Map<number, NeedId[]>(), dropped: string[] = [];
+    let devolved = 0;
     const r = play(2, 'decision', {
       days: 17_500,
       onDay: (s) => {
+        favoured(s);
+        // what each declining house first lacked: a fall for want of anything but desirability (a neighbour grown into an
+        // insula lowers it: the housing rules, not the Ordo's goods) is a goods or service failure
+        for (const b of s.buildings) {
+          if (b.house?.declining && !cause.has(b.id)) cause.set(b.id, unmetNeeds(s, b, b.house.tier));
+          else if (b.house && !b.house.declining && s.stats.devolved === devolved) cause.delete(b.id);
+        }
+        if (s.stats.devolved !== devolved) {
+          for (const [id, needs] of cause) if (!s.buildings.find((b) => b.id === id)?.house?.declining) {
+            if (needs.some((n) => n !== 'desirability')) dropped.push(`#${id} day ${elapsed(s)}: ${needs.join(', ')}`);
+            cause.delete(id);
+          }
+          devolved = s.stats.devolved;
+        }
         const v = view(s);
         for (const c of s.trade.caravans) {
           if (c.mode !== 'export' || c.res !== 'oil' || c.depart !== s.day) continue;
@@ -113,7 +138,7 @@ describe.runIf(INTEGRATED)('the Ordo late in the game (decision and follower bot
     expect(sold, 'the Ordo still sells the surplus of the presses').toBeGreaterThan(0);
     expect(below, 'oil sold below the lean-season reserve').toBe(0);
     expect(lapsed, 'insula-days declining for want of oil').toBe(0);
-    expect(r.s.stats.devolved).toBe(0);
+    expect(dropped, 'houses fallen for want of goods or services').toEqual([]);
     expect(r.s.people.length, 'pop at victory').toBeGreaterThan(1000);
   });
 
@@ -155,6 +180,7 @@ describe.runIf(INTEGRATED)('the Ordo late in the game (decision and follower bot
       days: 17_500,
       stop: (s) => s.buildings.some((b) => b.type === 'thermae'),
       onDay: (s) => {
+        favoured(s);
         const cas = s.buildings.find((b) => b.type === 'castellum');
         if (!cas) return;
         const k = keptBlocks(s).find((x) => x.for === 'thermae');

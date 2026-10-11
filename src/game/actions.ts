@@ -10,4 +10,4 @@ export { chooseOption } from './events';
 export { createContract, cancelContract, resumeContract, takeOffer, declineOffer, buyNow } from './trade';
 export { hush, mute, unmute } from './advisors/engine';
 export { dismissTip } from './guide';
-export { skipIntro } from './intro';
+export { beginNextLesson, notePractice, skipIntro, skipLesson } from './intro';

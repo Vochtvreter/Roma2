@@ -6,6 +6,7 @@ import type { Game, Updater } from '../types';
 import { costEl, fmt, h, img, tip } from '../dom';
 import * as A from '../../game/actions';
 import { buildingVisible, toolRevealed } from '../../game/reveal';
+import { introduced, plainWork, taughtWorks } from '../../game/intro';
 import { capitoliumFlow, capitoliumStage, worksQueue } from '../../game/construction';
 import { derived } from '../../game/derived';
 import { idx } from '../../game/map';
@@ -104,7 +105,8 @@ function queueRow(g: Game, b: Building, first: boolean, up: Updater[]): HTMLElem
   return row;
 }
 
-function cardEl(g: Game, type: BuildingId, up: Updater[]): HTMLElement {
+/** A work's card; `plain` (while the lessons run, §11.13): its name, what it does, its cost and Place, nothing more. */
+function cardEl(g: Game, type: BuildingId, up: Updater[], plain = false): HTMLElement {
   const s = g.state;
   const def = BUILDING_DEFS[type];
   const d = derived(s);
@@ -126,13 +128,13 @@ function cardEl(g: Game, type: BuildingId, up: Updater[]): HTMLElement {
     h('div', { class: 'bld-main' },
       h('div', { class: 'bld-name' }, h('b', null, def.name), h('span', { class: 'bld-latin' }, def.latin),
         fresh(s, rankDay(s, def.rank)) ? newMark() : null),
-      h('div', { class: 'bld-meta' }, footprint(type), built || going ? ` · ${built} built${going ? `, ${going} under way` : ''}` : ''),
-      h('div', { class: 'bld-benefit' }, def.benefit),
+      plain ? null : h('div', { class: 'bld-meta' }, footprint(type), built || going ? ` · ${built} built${going ? `, ${going} under way` : ''}` : ''),
+      h('div', { class: 'bld-benefit' }, (plain && plainWork(type)) || def.benefit),
       locked ? h('div', { class: 'bld-lock' }, `Requires ${locked.replace(/^Rome grants this to (an?) /, '').replace(/\.$/, '')}`) : cost,
       locked ? null : h('div', { class: 'bld-btns' },
         btn(g, 'Place', () => { g.startPlacing({ kind: 'building', type }); }, { cls: 'primary', reason, tip: 'Choose a glowing plot or site on the map.' }),
-        s.ordo.on.build ? btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason: reason ?? full, tip: 'The Ordo places it at its best site within 2 days.' }) : null,
-        toolRevealed(s, 'pin') ? btn(g, pinned ? 'Pinned ✓' : 'Build next', () => A.pinBuild(g.state, pinned ? null : type),
+        s.ordo.on.build && !plain ? btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason: reason ?? full, tip: 'The Ordo places it at its best site within 2 days.' }) : null,
+        toolRevealed(s, 'pin') && !plain ? btn(g, pinned ? 'Pinned ✓' : 'Build next', () => A.pinBuild(g.state, pinned ? null : type),
           { cls: pinned ? 'on' : '', reason: pinned ? null : reason, tip: pinned ? 'Release the pin.' : 'The Ordo saves for it and raises it first.' }) : null)));
   tip(card.querySelector('.bld-img') as HTMLElement, () => details(g.state, type), { wide: true });
   tip(card.querySelector('.bld-name') as HTMLElement, () => details(g.state, type), { wide: true });
@@ -151,17 +153,33 @@ export const panel: TabPanel = {
       (['pin', 'road', 'pave', 'reserve', 'demolish'] as const).map((t) => +toolRevealed(s, t)).join(''),
       worksQueue(s).map((b) => `${b.id}:${b.status}:${b.owner}`).join(','),
       BUILD_ORDER.map((t) => `${d.counts[t] ?? 0}.${d.all[t] ?? 0}`).join(','),
-      +s.ordo.on.build, labourKey(s), s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
+      +s.ordo.on.build, +introduced(s, 'catalog'), taughtWorks(s).join(','), labourKey(s), s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
       placing?.kind === 'building' ? placing.type : placing?.kind ?? '',
       BUILD_ORDER.map((t) => +fresh(s, rankDay(s, BUILDING_DEFS[t].rank))).join(''),
     ].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;
-    const agenda = section('Agenda Ordinis', s.ordo.on.build ? 'What the Ordo raises next, and why' : 'What the Ordo would raise', { anchor: 'agenda' });
-    agenda.append(agendaEl(g, up));
-    body.append(agenda);
+    // while the lessons run (§11.13) Aedificia offers only the works they have asked for, plainly: no Ordo agenda, no
+    // tools, no categories; the queue shows only while something rises. Every work opens with its own lesson.
+    const all = introduced(s, 'catalog');
+    if (all) {
+      const agenda = section('Agenda Ordinis', s.ordo.on.build ? 'What the Ordo raises next, and why' : 'What the Ordo would raise', { anchor: 'agenda' });
+      agenda.append(agendaEl(g, up));
+      body.append(agenda);
+    }
     const queue = worksQueue(s);
+    if (!all) {
+      if (queue.length) {
+        const works = section('Opera', `Works queue · ${queue.length}`, { anchor: 'works' });
+        queue.forEach((b, i) => works.append(queueRow(g, b, i === 0, up)));
+        body.append(works);
+      }
+      const sec = section('Aedificia', 'Raise a work yourself', { anchor: 'cards', note: 'Pick a work, then a glowing plot on the map.' });
+      for (const t of taughtWorks(s)) sec.append(cardEl(g, t, up, true));
+      body.append(sec);
+      return;
+    }
     const works = section('Opera', queue.length ? `Works queue · ${queue.length}` : 'Works queue', { anchor: 'works',
       note: queue.length ? 'Builders work down the queue: your works first, then the Ordo\'s. Click a row to see it.' : 'Nothing is being built.' });
     queue.forEach((b, i) => works.append(queueRow(g, b, i === 0, up)));
@@ -192,6 +210,7 @@ export const panel: TabPanel = {
     return n ? { text: String(n), kind: 'info' } : null;
   },
   focus(anchor: string): void {
-    if (anchor.startsWith('b-')) cat = 'all';
+    // a card is shown among its own kind (the Aqua works for a cistern), so the work asked for is near the top
+    if (anchor.startsWith('b-')) cat = BUILDING_DEFS[anchor.slice(2) as BuildingId]?.cat ?? 'all';
   },
 };

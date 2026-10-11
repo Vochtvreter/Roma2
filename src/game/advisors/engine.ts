@@ -59,7 +59,7 @@ function advisorOf(rule: RuleId): AdvisorId {
   return rule.slice(0, rule.indexOf('.')) as AdvisorId;
 }
 
-/** Daily counsel: appoint, evaluate the 22 rules with hysteresis, supersede, flips, log new ≥ Cave or raised, fx advisory. */
+/** Daily counsel: appoint, evaluate the 24 rules with hysteresis, supersede, flips, log new ≥ Cave or raised, fx advisory. */
 export function advisorsDay(s: GameState, ctx: TickContext, v: SimView): void {
   if (ctx.offline) markAway(s);
   appointAdvisors(s);

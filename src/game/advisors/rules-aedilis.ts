@@ -6,6 +6,8 @@ import { B as B$ } from '../balance';
 import { HOUSE_TIERS as HOUSE_TIERS$, NEEDS as NEEDS$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
 import { moraleTarget } from '../civic';
+import { renownFactor } from '../people';
+import { sectionRevealed } from '../reveal';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
@@ -278,4 +280,27 @@ const morale: AdvisorRule = {
 };
 
 /** The Aedilis's rules, in RULES order. */
-export const AEDILIS_RULES: AdvisorRule[] = [evolve, declining, beds, morale];
+// ───────────────────────────── 20b · aedilis.favour ─────────────────────────────
+// Rome sends colonists faster to a splendid town (DESIGN §6.6): gardens and paved streets, the works the Ordo leaves to
+// the player. While the gates are open and the favour is low, the Aedilis says what would draw them, and how much.
+
+const favour: AdvisorRule = {
+  id: 'aedilis.favour', advisor: 'aedilis',
+  evaluate(s, v): AdvisoryEval | null {
+    if (v.c.pop >= v.c.roll) return null;                 // the roll, not the favour, keeps them out
+    const f = renownFactor(s);
+    if (f >= R.FAVOUR_LOW * (held(s, 'aedilis.favour') ? CLEAR : 1)) return null;
+    return { rule: 'aedilis.favour', severity: 1, metric: { label: 'Favour', value: Math.round(f * 100), unit: 'pct' }, params: { f } };
+  },
+  title(_s, a) {
+    return `Colonists come slowly: Rome's favour stands at ×${(Math.floor(P(a.params.f) * 10) / 10).toFixed(1)}.`;
+  },
+  text() {
+    return `Rome sends settlers faster to a splendid town, up to ×${B.people.RENOWN.MAX}. Gardens and paved streets among the homes draw them; the Ordo raises neither unless you set the Urbs focus.`;
+  },
+  remedies(s) {
+    return three({ kind: 'place', building: 'hortus' }, sectionRevealed(s, 'focus') && s.decisions.focus !== 'urbs' ? { kind: 'focus', focus: 'urbs' } : null);
+  },
+};
+
+export const AEDILIS_RULES: AdvisorRule[] = [evolve, declining, beds, morale, favour];

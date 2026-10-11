@@ -5,8 +5,11 @@ earth-and-timber rampart on a river bend at the frontier, and you are the *Praef
 
 You lay out the colony: house plots, wells, fields, granaries, shrines and markets, later baths, an aqueduct and a
 theatre, all on the surveyed Roman grid. The **Ordo Decurionum**, the town council, staffs the jobs, builds and trades
-every day, also while you are away, and the ticker says *why*. Six **advisors** count the days of grain and water, name
-what is wrong and offer one-click remedies, and the veteran **Decimus Cassius** explains each new thing as it appears.
+every day, also while you are away, and the ticker says *why*: it keeps the colony alive and growing, but plays it safe.
+Six **advisors** count the days of grain and water, name what is wrong and what would grow the town faster, and offer
+one-click remedies; a Praefectus who acts on them, raises the council's works before it gets to them and makes the town
+splendid (Rome sends settlers faster to a beautiful town) grows the colony 2½–3 times as fast as the Ordo alone.
+The veteran **Decimus Cassius** teaches the colony one system at a time, each with a small job you do yourself.
 Grow from **Castra** through Vicus, Oppidum and Municipium to **Colonia**, watch tents become *casae*, *insulae* and
 atrium *domus*, and dedicate the **Capitolium**.
 
@@ -14,9 +17,9 @@ atrium *domus*, and dedicate the **Capitolium**.
 
 ## How to play
 
-1. **Found a new colony** on the title screen, read the Legate's letter and press **Raise the standard**. The camp opens
-   on the map and two numbers; the rest of the interface arrives one system at a time, each with a word from Decimus
-   Cassius (press **Understood** to hear the next). Played before? **Skip the introduction** on the letter.
+1. **Found a new colony** on the title screen, read the Legate's letter and press **Raise the standard**. Decimus
+   Cassius then teaches the colony one system at a time, each with a small job you do yourself: raise a cistern, lay
+   out a house plot, then watch the Ordo take over. Played before? **Skip the introduction** on the letter.
 2. Watch the two tablets at the top: **Grain** and **Water** in *days on hand*, with the year ahead beneath. Aestas
    (summer) dries the wells and Hiems (winter) starves the fields: fill the cisterns in Ver and the horrea before the
    Kalends of December.

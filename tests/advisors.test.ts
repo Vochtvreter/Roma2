@@ -1,10 +1,10 @@
-// tests/advisors.test.ts — the 22 rule fixtures (raise at each severity, then clear), hysteresis, flapping, ordering,
+// tests/advisors.test.ts — the 24 rule fixtures (raise at each severity, then clear), hysteresis, flapping, ordering,
 // hush/mute, appointment, and remedies that never throw (ARCHITECTURE §14.2 WP-E, §15). Owner: WP-E.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADVISORS, BUILDINGS, EDICTS, HUBS, LABOR_CATS, ORDO_AREAS, OVERLAYS, RULES, SETTINGS, TABS, TRADE_RES } from '../src/game/types';
 import type { Census, CoverageLayerId, EssentialForecast, Forecast, GameState, HouseTierId, Remedy, RuleId, Severity, SimView, TickContext } from '../src/game/types';
 
-const ctl = vi.hoisted(() => ({ pet: null as unknown, flow: null as unknown, morale: null as unknown, covered: null as string[] | null }));
+const ctl = vi.hoisted(() => ({ pet: null as unknown, flow: null as unknown, morale: null as unknown, covered: null as string[] | null, wishes: null as unknown }));
 vi.mock('../src/game/decisions', async (orig) => {
   const m = await orig<typeof import('../src/game/decisions')>();
   return { ...m, petitionNeeds: (...a: Parameters<typeof m.petitionNeeds>) => (ctl.pet ?? m.petitionNeeds(...a)) as ReturnType<typeof m.petitionNeeds> };
@@ -16,6 +16,10 @@ vi.mock('../src/game/construction', async (orig) => {
 vi.mock('../src/game/civic', async (orig) => {
   const m = await orig<typeof import('../src/game/civic')>();
   return { ...m, moraleTarget: (...a: Parameters<typeof m.moraleTarget>) => (ctl.morale ?? m.moraleTarget(...a)) as ReturnType<typeof m.moraleTarget> };
+});
+vi.mock('../src/game/ordo/build', async (orig) => {
+  const m = await orig<typeof import('../src/game/ordo/build')>();
+  return { ...m, newWishes: (...a: Parameters<typeof m.newWishes>) => (ctl.wishes ?? m.newWishes(...a)) as ReturnType<typeof m.newWishes> };
 });
 vi.mock('../src/game/coverage', async (orig) => {
   const m = await orig<typeof import('../src/game/coverage')>();
@@ -98,6 +102,11 @@ function extraHouses(s: GameState, declining: number): void {
   }
   houses(s).forEach((b, i) => { b.house!.declining = i < declining; b.house!.declineDays = 20; });
 }
+function gardens(s: GameState, n: number): void {
+  s.buildings = s.buildings.filter((b) => b.type !== 'hortus');
+  for (let k = 0; k < n; k++) s.buildings.push({ id: s.nextId++, type: 'hortus', x: 2 + 3 * k, y: 76, owner: 'player', status: 'done', placed: 0, progress: 1, work: 6, paid: true, order: 1, open: true, prio: 1 });
+  invalidate(s);
+}
 const choice = (d: number) => (s: GameState) => {
   s.choice = { event: 'legatus', kicker: 'NUNTIUS', title: 'The Legate writes', text: '', defaultIndex: 1, created: s.day, expires: s.day + d,
     options: [{ label: 'Agree', note: '', key: 'a' }, { label: 'Decline politely', note: 'Nothing changes.', key: 'b' }] };
@@ -149,6 +158,10 @@ const FIX: Record<RuleId, Fix> = {
     clear: () => ({ c: { idle: [], catSlots: ZERO, catStaffed: ZERO } }),
   },
   'fabrum.stalled': { levels: [[1, (s) => site(s, 25)], [2, (s) => site(s, 45)]], clear: (s) => site(s, null) },
+  'fabrum.agenda': {   // the Ordo's next growth work waits on its pace: the Fabrum names it, and the player may raise it now
+    levels: [[1, () => { ctl.wishes = [{ type: 'lignarius', state: 'paced', eta: 6, tile: 1000, reason: { code: 'materials', params: { res: 'timber', qty: 40, for: 'wish' } } }]; }]],
+    clear: () => { ctl.wishes = []; },
+  },
   'fabrum.capitolium': {
     levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 }; }]],
     clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 1100, supply: 0, demand: 0 }; },
@@ -179,6 +192,10 @@ const FIX: Record<RuleId, Fix> = {
       [1, (s) => { s.morale = 60; ctl.morale = { value: 40, terms: [{ label: 'Rations', value: -6 }, { label: 'Deaths', value: -4 }] }; }, A.RULES.MORALE_FALL_DAYS]],
     clear: (s) => { s.morale = 70; ctl.morale = { value: 70, terms: [] }; },
   },
+  'aedilis.favour': {   // a camp kept by the Ordo alone has ×1; gardens among the homes lift it past the bar
+    levels: [[1, (s) => gardens(s, 0)]],
+    clear: (s) => gardens(s, 12),
+  },
   'augur.choice': { levels: [[0, choice(20)], [1, choice(5)]], clear: (s) => { s.choice = null; } },
   'augur.petition': { levels: [[1, () => { ctl.pet = pet(true); }]], clear: () => { ctl.pet = pet(false); } },
 };
@@ -188,7 +205,7 @@ const every = (id: RuleId): number => (ruleDef(id) as { every?: number }).every 
 const life = (id: RuleId): number => (A.MIN_LIFE + A.DOWNGRADE_DAYS + 2) * every(id);
 const LIFE = life('annonae.grain.runout');
 
-beforeEach(() => { ctl.pet = null; ctl.flow = null; ctl.morale = null; ctl.covered = null; });
+beforeEach(() => { ctl.pet = null; ctl.flow = null; ctl.morale = null; ctl.covered = null; ctl.wishes = null; });
 
 describe('rule fixtures', () => {
   it('has one rule per RULES id, in order, each with a fixture', () => {

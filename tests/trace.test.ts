@@ -1,7 +1,7 @@
 // tests/trace.test.ts — the tuning table (`npm run trace`, ARCHITECTURE §14.4): per seed a row every 300 days — day, AUC,
 // rank, pop, beds, houses by tier, grain/water days on hand, coin, morale, dignitas, Ordo sites, advisories ≥ Cave — then the
 // medians over the seeds against the DESIGN §18.4 target curve. Skipped by `npm test`; TRACE=1 runs it from plain vitest.
-// Knobs: TRACE_SEEDS=1,42 · TRACE_DAYS=6000 · TRACE_EVERY=300 · TRACE_BOT=decision|undecided|follower|builder|neglect · TRACE_LOG=20
+// Knobs: TRACE_SEEDS=1,42 · TRACE_DAYS=6000 · TRACE_EVERY=300 · TRACE_BOT=active|decision|undecided|follower|builder|neglect · TRACE_LOG=20
 // · TRACE_WIDE=1 adds staffed workers per labour category (water/food/materials/industry/services/builders) and the idle.
 import { describe, expect, it } from 'vitest';
 import { HOUSE_TIERS, LABOR_CATS } from '../src/game/types';
@@ -19,7 +19,7 @@ const ON = env.npm_lifecycle_event === 'trace' || !!env.TRACE;
 const TRACE_SEEDS = env.TRACE_SEEDS ? env.TRACE_SEEDS.split(',').map(Number) : SEEDS;
 const DAYS = Number(env.TRACE_DAYS ?? BANDS.victory[1]);
 const EVERY = Number(env.TRACE_EVERY ?? 300);
-const KIND = (env.TRACE_BOT ?? 'decision') as BotKind;
+const KIND = (env.TRACE_BOT ?? 'active') as BotKind;
 const LOG = Number(env.TRACE_LOG ?? 0);
 const WIDE = !!env.TRACE_WIDE;
 const T = { timeout: 3_600_000 };

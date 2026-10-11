@@ -8,6 +8,7 @@ import type { Game } from './types';
 import { closeTopModal, modalCount, openMenu } from './modals';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { shows, tabShown } from './intro';
+import { notePractice } from '../game/actions';
 import { B } from '../game/balance';
 
 const PAN_PX_S = 520;                       // CSS px per second while a pan key is held
@@ -75,7 +76,9 @@ export function initKeys(g: Game, dev: boolean): void {
       if (e.shiftKey) { g.view.setOverlay('none'); g.changed(); return; }
       const list: OverlayId[] = OVERLAYS.filter((o) => o === 'none' || overlayRevealed(g.state, o));
       const i = list.indexOf(g.view.overlay);
-      g.view.setOverlay(list[(i + 1) % list.length]);
+      const next = list[(i + 1) % list.length];
+      g.view.setOverlay(next);
+      if (next !== 'none') notePractice(g.state, 'overlay');
       g.changed();
       return;
     }

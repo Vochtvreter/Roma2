@@ -196,7 +196,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   decisions.ts                     D   focus/edicts/settings/switches/paths, petitions, rankUp     (320)
   objectives.ts                    D   MILESTONES, checkObjectives, counters                       (200)
   reveal.ts                        D   reveal predicates, teaser                                   (110)
-  intro.ts                         E   the paced introduction: which parts of the UI are brought in (60)
+  intro.ts                         E   the opening lessons: jobs, real-time pacing, Ordo hold, parts shown (180)
   events.ts                        D   EVENT_DEFS, festivals, rolls, choices, gate                 (520)
   trade.ts                         D   prices, market, caravans, contracts, merchant               (380)
   save.ts                          D   serialize, migrations, prefs, fasti, export/import          (190)
@@ -239,7 +239,7 @@ src/ui/
   dom.ts                           S   h, img, fmt*, costEl, tip, initTooltips (long-press), esc   (200)
   types.ts                         S   Game, Panel, Prefs re-export, PlacingState re-export        (80)
   index.ts                         H   UI root: builds widgets, update loop, log→toast, fx        (230)
-  intro.ts                         H   shows/hides the parts the introduction brings; arrival glow (40)
+  intro.ts                         H   shows/hides the parts the lessons bring; arrival glow       (40)
   hud.ts                           H   brand, chips, resource strip, date, speed, menu button      (240)
   vitals.ts                        H   grain/water tablets + 12-month strip                        (150)
   objective.ts                     H   Res Gestae panel, CTA, danger chips                         (130)
@@ -605,8 +605,17 @@ export interface GuidanceState {
   muted: RuleId[]; appointed: AdvisorId[];
   tips: TipId[];                                      // seen tip ids
   tipDay: number;                                     // the day a tip was last read ("Understood"); NEVER before the first
+  tipAt: number;                                      // stats.playMs then, or when the lessons ended: the card spaces tips B.intro.TIP_GAP_S real seconds apart
   objective: number;                                  // index into MILESTONES
   milestoneDays: Partial<Record<MilestoneId, number>>;
+  intro: IntroState;                                  // the opening lessons (DESIGN §11.13)
+}
+export interface IntroState {
+  lesson: number;                                     // index into LESSONS; -1 when none runs (finished, skipped, older colonies, bots)
+  done: boolean;                                      // the lesson's job is done: its breather runs
+  at: number;                                         // stats.playMs when the lesson began or, once done, when its job was done
+  practice: PracticeId[];                             // UI-noted jobs this lesson ('speed' | 'overlay' | 'advisors' | 'people' | 'edict')
+  ordoHeld: boolean;                                  // the Ordo does not build yet (ordo.on.build false until its lesson)
 }
 
 // ───────────────────────────── trade, events ─────────────────────────────
@@ -1119,6 +1128,8 @@ export function personName(p: Person): string;                   // 'Marcus II V
 export function assignJobs(s: GameState, plan: LabourPlan): void; // sticky; fill empty slots with the best-skilled idle; builders = plan.builders; touchPeople
 export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void;   // stage-change logs, deaths (hazard, starvation, thirst, fever), widowing, marriages (gens buckets), births, homeless timers, emigration, mentor death
 export function immigrationDay(s: GameState, ctx: TickContext, rng: Rng): void;   // one Bernoulli roll; roll and beds respected
+export function splendour(s: GameState): number;                     // dignitas of the works the Ordo leaves to the player: gardens, paved streets (DESIGN §6.6)
+export function renownFactor(s: GameState): number;                  // Rome's favour: min(RENOWN.MAX, 1 + RENOWN.K × splendour per home); ×1 for a colony kept by the Ordo alone
 export function makeFamily(s: GameState, rng: Rng, kind: 'couple' | 'craftsman' | 'widow' | 'veteran', gentes: readonly string[]): { family: Family; people: Person[] };
 export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Family; people: Person[] }): boolean;   // house in the most free beds nearest the forum; fx arrive
 export function rehouse(s: GameState): void;
@@ -1313,13 +1324,20 @@ export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly n
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
 export function nextTip(s: GameState): GuideStep | null;            // a tip not urgent also waits B.intro.GAP days after the last one read
-export function dismissTip(s: GameState, id: TipId): ActionResult;  // records guidance.tipDay
+export function dismissTip(s: GameState, id: TipId): ActionResult;  // records guidance.tipDay and tipAt
 export function mentorKicker(s: GameState): string;                   // 'DECIMVS CASSIVS ADVISES' / 'FROM THE NOTES OF DECIMVS CASSIVS'
-// intro.ts (DESIGN §11.13; what the player is shown, never what the colony may do: that stays with reveal.ts)
-export type IntroPart = 'ticker' | 'portraits' | 'souls' | 'coin' | 'materials' | 'goals' | 'dignitas' | 'overlays' | TabId;
-export const INTRO_TIPS: readonly TipId[];                            // read at once by skipIntro
-export function introduced(s: GameState, part: IntroPart): boolean;  // a tip of the part is on the card or read, or elapsed ≥ B.intro.END
-export function skipIntro(s: GameState): ActionResult;               // Hide tips, prefs.tips off on entering, the founding letter's skip link
+// intro.ts (DESIGN §11.13; what the player is shown and when the Ordo begins to build; reveal.ts is unchanged)
+export const LESSONS: readonly Lesson[];                              // { id, title, text, job, done, progress?, brings, rewardBrings?, reward, breather, tab?, anchor?, target? }
+export const INTRO_TIPS: readonly TipId[];                            // the tips the lessons teach: read when they end or are skipped
+export function introRunning(s: GameState): boolean;                 // guidance.intro.lesson ≥ 0 (newGame({ intro: true }) only)
+export function introduced(s: GameState, part: IntroPart): boolean;  // the current or an earlier lesson brought it (a reward part once its job is done)
+export function currentLesson(s: GameState): { lesson: Lesson; index: number; done: boolean } | null;
+export function introStep(s: GameState): 'done' | 'next' | 'end' | null;   // every frame (main.ts): job → done; breather of stats.playMs → next
+export function introDay(s: GameState): void;                         // sim tick: the Ordo builds once elapsed ≥ B.intro.ORDO_BY
+export function notePractice(s: GameState, p: PracticeId): ActionResult;   // UI-noted jobs: a speed chosen, an overlay opened, the advisors heard
+export function beginNextLesson(s: GameState): ActionResult;         // "Begin now"
+export function skipLesson(s: GameState): ActionResult;              // "Skip this step" (after B.intro.STUCK_S)
+export function skipIntro(s: GameState): ActionResult;               // every lesson: Skip the lessons, Hide tips, tips off on entering, the Founding Dispatch link
 // hints.ts
 export function howToGetMore(s: GameState, res: ResId, v: SimView): string[];   // generated from BUILDING_DEFS and HUB_DEFS + a live line
 export function benefitLine(type: BuildingId): string;
@@ -1338,7 +1356,7 @@ export { chooseOption } from './events';
 export { createContract, cancelContract, resumeContract, takeOffer, declineOffer, buyNow } from './trade';
 export { hush, mute, unmute } from './advisors/engine';
 export { dismissTip } from './guide';
-export { skipIntro } from './intro';
+export { beginNextLesson, notePractice, skipIntro, skipLesson } from './intro';
 ```
 
 ---
@@ -1385,7 +1403,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   // 9 · bookkeeping and counsel
   updateCounters(s, v);
   checkObjectives(s, ctx);
-  advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 22 rules with hysteresis
+  advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 24 rules with hysteresis
   pruneGuide(s);
   s.stats.peakPop = Math.max(s.stats.peakPop, s.people.length);
   s.counters.coinEma += B.economy.COIN_ALPHA * ((s.res.denarii + s.taxAccrued - coin0) - s.counters.coinEma);
@@ -1814,7 +1832,7 @@ export function toastBatch(key: string, text: (n: number) => string, kind?: 'inf
 ```
 
 ### 13.5 Counsel card (`counsel.ts`, H)
-Exactly one item, by priority: Periculum advisory › urgent tip (`nextTip(s)?.urgent`) › Cave advisory › tip (if `prefs.tips`) › Monitum / Opportunitas advisory › calm line (*"The council is content. Next: {current milestone}"*). Above it (once the paced introduction has brought it, `introduced(s, 'portraits')`) the portrait strip of appointed advisors (`portrait(id, advisorMood)`, severity pip; click → `openTab('advisors', id)`). An advisory renders `renderAdvisory()` lazily (only when it is the shown item or the signature changed): kicker (advisor office), title, metric chip, text, up to 3 remedy buttons (disabled with `check.reason` when not ok), **Hush 30 d** (not Periculum), **Mute** (Nota only). Building remedies show **Ask the Ordo** + **Place it myself** when Ordo construction is on, else only the latter. A tip shows the mentor portrait, `mentorKicker(s)`, title, text, **Understood** (`dismissTip`) and **Show me** when `target`/`tab` is set (opens the tab and pulses the target selector for 3 s).
+Exactly one item, by priority: Periculum advisory › urgent tip (`nextTip(s)?.urgent`) › an opening lesson whose job is not done (DESIGN §11.13) › Cave advisory › a lesson in its breather (payoff, *Begin now*) › tip (if `prefs.tips`) › Monitum / Opportunitas advisory › calm line (*"The council is content. Next: {current milestone}"*). Above it (once a lesson has brought it, `introduced(s, 'portraits')`) the portrait strip of appointed advisors (`portrait(id, advisorMood)`, severity pip; click → `openTab('advisors', id)`). An advisory renders `renderAdvisory()` lazily (only when it is the shown item or the signature changed): kicker (advisor office), title, metric chip, text, up to 3 remedy buttons (disabled with `check.reason` when not ok), **Hush 30 d** (not Periculum), **Mute** (Nota only). Building remedies show **Ask the Ordo** + **Place it myself** when Ordo construction is on, else only the latter. A tip shows the mentor portrait, `mentorKicker(s)`, title, text, **Understood** (`dismissTip`) and **Show me** when `target`/`tab` is set (opens the tab and pulses the target selector for 3 s).
 
 ### 13.6 Remedy execution (`App.applyRemedy`, H)
 ```
@@ -1921,7 +1939,7 @@ keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/a
 - Acceptance: petition readiness per rank; an edict cannot change twice inside one season window (reason names the next Kalends); every path option's effect appears in `fx`; milestones fire in order and each unlock becomes visible through `reveal`; no event before day 300, ≥ 200 days between cards, ≥ 120 between harmful events, none harmful offline; property test over 2,000 forced events: ≤ 30% of a stock, ≤ 5% of pop; asymmetric prices and trip-day formula; contracts pause with the right code; save round trip and sanitiser fixtures (NaN, unknown ids, missing keys); `offlineRun` = N ticks; report fields filled.
 
 **WP-E · Guidance** — owns `advisors/*`, `guide.ts`, `hints.ts`; tests `advisors`, `guide`.
-- Implement DESIGN §11.3–11.7: the 22 rules (one file per advisor), engine with hysteresis (raise, clear ×1.25, 3-day downgrade, 3-day minimum life, flap limit, supersede), ordering and appointment, render-time titles/texts/remedies, `checkRemedy`/`applyRemedy`/`remedyLabel`, Hush/Mute, the 24 mentor tips with `after`/`until`, `mentorKicker`, `howToGetMore`, `benefitLine`, `outputChain`.
+- Implement DESIGN §11.3–11.7: the 24 rules (one file per advisor), engine with hysteresis (raise, clear ×1.25, 3-day downgrade, 3-day minimum life, flap limit, supersede), ordering and appointment, render-time titles/texts/remedies, `checkRemedy`/`applyRemedy`/`remedyLabel`, Hush/Mute, the 20 mentor tips with `after`/`until`, `mentorKicker`, `howToGetMore`, `benefitLine`, `outputChain`.
 - Acceptance: each rule has a fixture that raises it at each severity and clears it; no rule flaps > 2 times in 60 days on a sawtooth fixture; every rule returns 1–3 remedies; `checkRemedy` never throws over random states; tips: ids unique, every `after` exists, `welcome` first, `vitals` before day 10 (with the bot under `INTEGRATED`).
 
 **WP-F · Render core** — owns `camera.ts`, `input.ts`, `terrain.ts`, `view.ts`, `buildings.ts`, `linear.ts`, `placement.ts`, `overlays.ts`, `minimap.ts`, `actors.ts`, `particles.ts`.

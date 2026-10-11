@@ -418,7 +418,7 @@ describe('offline catch-up', () => {
   });
 
   it('awaiting you: the ready petition is listed once, never again as the Augur\'s advisory (R17)', () => {
-    const r = play(1, 'decision', { days: 1500, stop: (x) => { const pn = petitionNeeds(x, view(x)); return !!pn && pn.ready && pn.rank !== null; } });
+    const r = play(1, 'active', { days: 1500, stop: (x) => { const pn = petitionNeeds(x, view(x)); return !!pn && pn.ready && pn.rank !== null; } });
     const s = r.s;
     expect(petitionNeeds(s, view(s))?.ready).toBe(true);
     const rep = simulateOffline(s, 60_000)!;

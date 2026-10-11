@@ -56,7 +56,7 @@ describe('id arrays', () => {
   it('every rule id prefix is an AdvisorId and every advisor owns a rule', () => {
     for (const r of RULES) expect(ADVISORS as readonly string[]).toContain(r.split('.')[0]);
     for (const a of ADVISORS) expect(RULES.some(r => r.startsWith(a + '.'))).toBe(true);
-    expect(RULES.length).toBe(22);
+    expect(RULES.length).toBe(24);
   });
 });
 
@@ -136,7 +136,7 @@ describe('ranks (DESIGN §9.1)', () => {
     RANK_DEFS.forEach((r, i) => { expect(r.index).toBe(i); expect(r.forumStage).toBe(i); expectCost(r.fee); });
     expect(RANK_DEFS.map(r => r.ceiling)).toEqual([100, 260, 560, 900, 1500]);
     expect(RANK_DEFS.map(r => r.territory)).toEqual([20, 26, 34, 44, 999]);
-    expect(RANK_DEFS.map(r => r.immRate)).toEqual([0.014, 0.011, 0.0075, 0.003, 0.04]);
+    expect(RANK_DEFS.map(r => r.immRate)).toEqual([0.0046, 0.0036, 0.002, 0.0025, 0.04]);
     expect(RANK_DEFS.map(r => r.dignitas)).toEqual([0, 12, 40, 100, 190]);
     expect(RANK_DEFS.map(r => r.subsidy)).toEqual([3, 1.5, 0, 0, 0]);
   });

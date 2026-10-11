@@ -9,11 +9,12 @@ import { petitionNeeds, settingValue } from '../src/game/decisions';
 import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
 import { applyRemedy } from '../src/game/advisors/remedies';
 import { reserved } from '../src/game/ordo/saving';
+import { newWishes } from '../src/game/ordo/build';
 import { nextTip } from '../src/game/guide';
 import { tabRevealed } from '../src/game/reveal';
 import { dignitas } from '../src/game/civic';
 import { capitoliumStage } from '../src/game/construction';
-import { canPlace } from '../src/game/place';
+import { canPlace, validSlots } from '../src/game/place';
 import { bestSlot } from '../src/game/site';
 import { canAfford } from '../src/game/state';
 import { serialize } from '../src/game/save';
@@ -24,30 +25,34 @@ import { RANK_DEFS } from '../src/game/data/ranks';
 import { fresh, noNaN } from './util';
 
 /** The five bots of DESIGN §18.5. */
-export type BotKind = 'decision' | 'undecided' | 'follower' | 'builder' | 'neglect';
+export type BotKind = 'decision' | 'undecided' | 'follower' | 'builder' | 'active' | 'neglect';
 /** The balance seeds (DESIGN §18.4); BAL_SEEDS=1,2 overrides. */
 export const SEEDS: readonly number[] = process.env.BAL_SEEDS ? process.env.BAL_SEEDS.split(',').map(Number) : [1, 2, 3, 42, 1337];
 /** DESIGN §18.4 pacing bands (elapsed days; pop at victory). */
 export const BANDS = {
-  vicus: [420, 780], oppidum: [2100, 3400], municipium: [5000, 7600], colonia: [9800, 14000], victory: [12000, 17500],
-  capPhase: [1800, 3000], capStage: [350, 900], victoryPop: [900, 1400],
+  vicus: [420, 780], oppidum: [2100, 3400], municipium: [5000, 7600], colonia: [8800, 14000], victory: [11000, 17500],
+  capPhase: [1800, 3000], capStage: [350, 900], victoryPop: [700, 1400],
 } as const;
+/** The idle floor (DESIGN §18.4): the Ordo alone reaches each rank this many times later than the attentive player. */
+export const ORDO_RATIO = [2.2, 3.6] as const;
 /** The band of each rank by index (Castra has none). */
 export const RANK_BANDS = [null, BANDS.vicus, BANDS.oppidum, BANDS.municipium, BANDS.colonia] as const;
 /** DESIGN §18.4 target curve: elapsed day, population, houses T0/T1/T2/T3/T4i/T4d. */
 export const TARGETS: readonly { day: number; pop: number; tiers: readonly number[] }[] = [
-  [0, 24, 6, 0, 0, 0, 0, 0], [120, 30, 4, 3, 0, 0, 0, 0], [335, 42, 2, 5, 0, 0, 0, 0], [600, 55, 1, 7, 0, 0, 0, 0],
-  [1500, 120, 1, 8, 6, 0, 0, 0], [2700, 190, 1, 7, 13, 0, 0, 0], [4500, 300, 0, 4, 12, 8, 1, 1], [6300, 410, 0, 3, 10, 12, 4, 2],
-  [9000, 580, 0, 2, 10, 15, 9, 5], [11900, 720, 0, 2, 10, 18, 13, 7], [14300, 1050, 0, 3, 10, 20, 22, 12],
+  [0, 24, 6, 0, 0, 0, 0, 0], [120, 28, 0, 6, 0, 0, 0, 0], [330, 35, 0, 6, 0, 0, 0, 0], [570, 48, 0, 7, 0, 0, 0, 0],
+  [1500, 104, 0, 0, 11, 0, 0, 0], [2850, 180, 0, 3, 16, 0, 0, 0], [4500, 266, 1, 3, 12, 6, 1, 0], [7020, 407, 1, 3, 12, 7, 8, 1],
+  [9000, 573, 1, 3, 12, 6, 13, 1], [10110, 695, 1, 3, 12, 10, 17, 1], [11460, 944, 1, 4, 13, 10, 18, 1],
 ].map(([day, pop, ...tiers]) => ({ day, pop, tiers }));
 /** DESIGN §18.4 treasury net per rank (den/day, [low, high]). */
 export const COIN_NET: readonly (readonly [number, number])[] = [[3, 3], [6, 10], [12, 25], [30, 50], [40, 80]];
 
 const FOLLOW_EVERY = 10;      // advisor-follower: remedy 0 of the top advisory every 10 days (DESIGN §11.5)
 const BUILD_EVERY = 5;        // builder: places the Aedilis/Fabrum build remedies every 5 days (DESIGN §18.5)
+const ACTIVE_GARDENS = 1;        // the attentive player: a garden for every house, from the camp on (Rome's favour, §6.6)
+const PLOTS_KEPT = 6;            // …but never on the last free house plots: gardens and homes share the plots
 const GARDENS_PER_HOUSE = 2;     // builder: from Vicus on, two gardens for every house (beautification, DESIGN §10.3)
 const TIP_READ_DAYS = 3;      // a tip stays on the card this long before the bot clicks "Understood"
-const CHARTER_LATE = 100;     // proclaim the charter by this elapsed day even if its tip never showed (it comes ≈ day 65)
+const CHARTER_LATE = 60;      // proclaim the charter by this elapsed day even if its tip never showed
 const FULL_SUMMER = 0.9;      // Largae when the sheds are this full in Aestas
 const DIGNITAS_NEAR = 0.85;   // Feriae Frequentes when dignitas is this close to the next threshold
 const BOOM_SITES = 3, TIMBER_LOW = 0.3;   // Silvae Caedua: a building boom short of timber
@@ -107,6 +112,9 @@ export function makeBot(kind: BotKind, seed: number): Bot {
       const e = elapsed(s);
       if (kind === 'follower' && e % FOLLOW_EVERY === 0) follow(s);
       if (kind === 'builder' && e % BUILD_EVERY === 0) { buildRemedies(s); beautify(s); }
+      // the attentive player (DESIGN §18.5): every advisor's works and the Ordo's paced ones by hand, gardens, and the top remedy
+      if (kind === 'active' && e % BUILD_EVERY === 0) { buildRemedies(s, true); raiseAgenda(s); beautify(s, 0, ACTIVE_GARDENS); }
+      if (kind === 'active' && e % FOLLOW_EVERY === 0) follow(s);
     },
   };
 }
@@ -139,11 +147,11 @@ function follow(s: GameState): void {
 }
 
 /** Every Aedilis/Fabrum build remedy, placed by hand at its best slot as a player site (affordable above the Ordo's reserve). */
-function buildRemedies(s: GameState): void {
+function buildRemedies(s: GameState, every = false): void {
   const v = view(s);
   const done = new Set<BuildingId>();
   for (const a of activeAdvisories(s)) {
-    if (a.advisor !== 'aedilis' && a.advisor !== 'fabrum') continue;
+    if (!every && a.advisor !== 'aedilis' && a.advisor !== 'fabrum') continue;
     for (const { remedy: r } of renderAdvisory(s, v, a).remedies) {
       if (r.kind !== 'place' && r.kind !== 'ask') continue;
       const t = r.building;
@@ -156,12 +164,23 @@ function buildRemedies(s: GameState): void {
   }
 }
 
+/** The attentive player reads the Agenda: a growth work the Ordo would raise only later ("raise it yourself for sooner")
+ *  is placed by hand at the Ordo's own slot, from stock above the Ordo's reserve. */
+function raiseAgenda(s: GameState): void {
+  const v = view(s);
+  for (const w of newWishes(s, v, 3)) {
+    if (w.state !== 'paced' || w.tile === undefined) continue;
+    const chk = canPlace(s, w.type, w.tile, { owner: 'player' });
+    if (chk.ok && canAfford(s, chk.cost, reserved(s, v))) act.place(s, w.type, w.tile, { owner: 'player' });
+  }
+}
+
 /** The builder also beautifies, which the Ordo leaves to the player (DESIGN §10.3): from Vicus on (the camp's plots are
  *  for wells and homes), a hortus among the houses, one site at a time, up to GARDENS_PER_HOUSE for every house, at its
  *  best slot from stock above the Ordo's reserve. Gardens add dignitas, and a town of renown draws Rome's colonists
  *  faster (DESIGN §6.6), so this is the building that pays beyond what the Ordo raises anyway. */
-function beautify(s: GameState): void {
-  if (s.rank < 1) return;
+function beautify(s: GameState, from = 1, perHouse = GARDENS_PER_HOUSE): void {
+  if (s.rank < from) return;
   const v = view(s);
   let gardens = 0;
   for (const b of s.buildings) {
@@ -169,7 +188,8 @@ function beautify(s: GameState): void {
     if (b.status !== 'done') return;
     gardens++;
   }
-  if (gardens >= Math.floor(v.c.houses * GARDENS_PER_HOUSE)) return;
+  if (gardens >= Math.floor(v.c.houses * perHouse)) return;
+  if (perHouse !== GARDENS_PER_HOUSE && validSlots(s, 'area', 'player').size <= PLOTS_KEPT) return;   // homes first
   const slot = bestSlot(s, 'hortus', { owner: 'player' });
   if (!slot) return;
   const chk = canPlace(s, 'hortus', slot.tile, { owner: 'player' });

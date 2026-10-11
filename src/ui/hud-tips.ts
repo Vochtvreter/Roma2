@@ -6,6 +6,8 @@ import type { Game } from './types';
 import { fmt, fmtDays, fmtRate, h, plural, realTime, sentence } from './dom';
 import { caps, tipCard, tipHead, tipKicker, tipNote, tipRow, tipSep } from './tipkit';
 import { census } from '../game/census';
+import { renownFactor } from '../game/people';
+import { B } from '../game/balance';
 import { forecast } from '../game/forecast';
 import { ONE_OFF_SOURCES, steadyNet, view } from '../game/sim';
 import { fxBreakdown } from '../game/fx';
@@ -159,8 +161,10 @@ export function soulsTip(g: Game): Node {
     tipSep(),
     tipRow('Able to work', String(c.workforce)), tipRow('Idle hands', String(c.idle.length), c.idle.length ? 'neg' : ''),
     tipRow("Rome's roll", `${c.pop} / ${c.roll}`, c.pop >= c.roll ? 'neg' : ''),
+    tipRow("Rome's favour", `×${(Math.floor(renownFactor(g.state) * 10) / 10).toFixed(1)} of ×${B.people.RENOWN.MAX}`),
     tipNote(c.pop >= c.roll ? "The roll is full: petition Rome for a higher rank to admit new colonists."
-      : c.freeBeds < 2 ? 'No free beds: newcomers turn back at the gate. Raise house plots.' : 'Families settle where beds are free.'),
+      : c.freeBeds < 2 ? 'No free beds: newcomers turn back at the gate. Raise house plots.'
+        : 'Families settle where beds are free. Gardens and paved streets win Rome\'s favour: settlers come faster.'),
   );
 }
 
