@@ -1,6 +1,6 @@
 // src/game/state.ts — the new game, the founding roster, the log and cost helpers (ARCHITECTURE §8.1, DESIGN §6.2, §18.1).
 import { B as B$ } from './balance';
-import { ADVISORS as ADVISORS$, EDICTS as EDICTS$, LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, SETTINGS as SETTINGS$, SWITCHES as SWITCHES$, TRADE_RES as TRADE_RES$ } from './types';
+import { ADVISORS as ADVISORS$, EDICTS as EDICTS$, LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, SETTINGS as SETTINGS$, SWITCHES as SWITCHES$, TRADE_RES as TRADE_RES$, DUTIES, WORK_DUTIES } from './types';
 import type {
   AdvisorId, Block, Building, BuildingId, Cost, DecisionState, EdictId, Family, GameState, HouseState, LaborCat,
   LogKind, LogTag, OrdoState, Person, Res, SettingId, SkillId, SwitchId, TradeRes,
@@ -129,7 +129,9 @@ function defaultOrdo(): OrdoState {
   for (const c of LABOR_CATS) manual[c] = 0;
   return {
     on: { labour: true, build: true, trade: true }, manual, requests: [], pin: null, reserved: [], priorities: [],
-    emergency: { rations: 'none', waterPause: false, lastImport: NEVER, lastRelief: NEVER, freeReliefYear: -1 },
+    emergency: { rations: 'none', waterPause: false, lastImport: NEVER, lastRelief: NEVER, freeReliefYear: -1, hands: false },
+    works: { water: true, food: true, homes: true, services: true, materials: true, plan: true },
+    learned: DUTIES.slice(), answered: [],
   };
 }
 
@@ -173,7 +175,7 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
     trade: { market, contracts: [], caravans: [], merchant: null, lastMerchant: NEVER, hubsTraded: [], debt: 0 },
     choice: null, gate: null, eventDays: {}, modifiers: [],
     guidance: { advisories: {}, muted: [], appointed: START_ADVISORS.slice(), tips: [], tipDay: NEVER, tipAt: 0, objective: 0, milestoneDays: {},
-      intro: { lesson: -1, done: false, at: 0, practice: [], ordoHeld: false } },
+      intro: { lesson: -1, done: false, at: 0, practice: [] } },
     counters: {
       fedStreak: 0, stabStreak: 0, ironMade: 0, tilesMade: 0, caravansReturned: 0,
       festivalsKept: {}, robigaliaYear: -1, lastArrivalBlocked: NEVER, lastBirthBlocked: NEVER, immCall: 0,
@@ -242,11 +244,23 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
   if (track.length > 0) s.roads = [...new Set([...s.roads, ...track])].sort((a, c) => a - c);
   invalidate(s);
 
-  // the opening lessons (intro.ts, DESIGN §11.13): the first works are the player's own; the Ordo builds once introduced
+  // a new colony with the opening lessons (intro.ts, DESIGN §11.13) is run by hand: every duty is the player's until
+  // they have done it themselves, then theirs to hand to the Ordo (ordo/duties.ts, DESIGN §10.2). The hands stay where
+  // the founders stand, and two build.
   if (opts.intro) {
-    s.guidance.intro = { lesson: 0, done: false, at: 0, practice: [], ordoHeld: true };
+    s.guidance.intro = { lesson: 0, done: false, at: 0, practice: [] };
     s.guidance.tips.push('welcome');   // the welcome lesson greets instead; the urgent tips, which follow it, may speak
-    s.ordo.on.build = false;
+    const o = s.ordo;
+    o.on = { labour: false, build: false, trade: false };
+    for (const d of WORK_DUTIES) o.works[d] = false;
+    o.learned = [];
+    for (const c of LABOR_CATS) o.manual[c] = 0;
+    for (const p of s.people) {
+      const b = p.work !== null ? s.buildings.find((x) => x.id === p.work) : undefined;
+      const cat = b ? BUILDING_DEFS[b.type].labor : undefined;
+      if (cat) o.manual[cat]++;
+    }
+    o.manual.builders = B.duties.START_BUILDERS;
   }
   log(s, 'info', `${s.people.length} souls of ${s.families.length} families pitch their tents at ${name}.`, ['highlight']);
   return s;

@@ -1,10 +1,10 @@
 // src/ui/counsel.ts — the portrait strip and the ONE counsel card (ARCHITECTURE §13.5, DESIGN §15.1, §11.1–11.7). Owner: WP-H.
-// Exactly one item by priority: Periculum advisory › urgent tip › Cave advisory › tip (prefs.tips) › Monitum / Opportunitas
-// advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; the card is never rebuilt
+// Exactly one item by priority: Periculum advisory › urgent tip › lesson › Cave advisory › duties to hand over › tip
+// (prefs.tips) › Monitum / Opportunitas advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; the card is never rebuilt
 // under the pointer within B.ui.CLICK_GUARD_MS of a click, nor while the mouse rests on it (unless to answer a click
 // there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
 import { ADVISORS } from '../game/types';
-import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, GuideStep, Remedy } from '../game/types';
+import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GuideStep, Remedy } from '../game/types';
 import type { Game } from './types';
 import { clear, fmtDays, h, img, tip } from './dom';
 import { caps } from './tipkit';
@@ -12,7 +12,8 @@ import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
 import { activeAdvisories, advisorMood, renderAdvisory } from '../game/advisors/engine';
 import { checkRemedy } from '../game/advisors/remedies';
-import { beginNextLesson, dismissTip, hush, mute, skipIntro, skipLesson } from '../game/actions';
+import { beginNextLesson, dismissTip, handOverAll, hush, keepDuties, mute, setDuty, skipIntro, skipLesson } from '../game/actions';
+import { DUTY_DEFS, pendingOffers } from '../game/ordo/duties';
 import { LESSONS, currentLesson, lessonAge, lessonPointer } from '../game/intro';
 import type { Lesson } from '../game/intro';
 import { toRoman } from '../game/calendar';
@@ -28,7 +29,8 @@ import { shows } from './intro';
 
 /** The one item the card shows. */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
-  | { kind: 'lesson'; l: Lesson; index: number; done: boolean; nudge: boolean; stuck: boolean } | { kind: 'calm' };
+  | { kind: 'lesson'; l: Lesson; index: number; done: boolean; nudge: boolean; stuck: boolean }
+  | { kind: 'offer'; duties: DutyId[] } | { kind: 'calm' };
 
 const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
 const OPPORTUNITAS = 'augur.petition';
@@ -58,6 +60,8 @@ export function pickCounsel(g: Game): CounselItem {
   const cave = bySev(2);
   if (cave) return { kind: 'advisory', a: cave };
   if (cur) return lesson();   // the breather: the payoff, the next lesson's name, and Begin now
+  const offers = pendingOffers(s);   // duties the player has learned: theirs to hand to the Ordo or keep (§10.2)
+  if (offers.length) return { kind: 'offer', duties: offers };
   const spaced = s.stats.playMs - s.guidance.tipAt >= B.intro.TIP_GAP_S * 1000;   // tips spaced in real time, whatever the speed
   if (tipStep && g.prefs.tips && spaced) return { kind: 'tip', t: tipStep };
   const low = adv.find((a) => a.memo.sev >= 1);   // Monitum or Opportunitas (ranks as Monitum, never above Cave)
@@ -72,7 +76,8 @@ export function counselSig(g: Game, item: CounselItem): string {
   const strip = shows(g, 'portraits') ? ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',') : 'x';
   let key = 'c';
   if (item.kind === 'tip') key = `t:${item.t.id}`;
-  if (item.kind === 'lesson') key = `l:${item.index}:${item.done ? 1 : 0}:${item.nudge ? 1 : 0}${item.stuck ? 1 : 0}:${item.l.progress?.(s) ?? ''}`;
+  if (item.kind === 'lesson') key = `l:${item.index}:${item.done ? 1 : 0}:${item.nudge ? 1 : 0}${item.stuck ? 1 : 0}:${item.l.progress?.(s) ?? ''}:${item.l.id === 'ordo' ? pendingOffers(s).join(',') : ''}`;
+  if (item.kind === 'offer') key = `o:${item.duties.join(',')}`;
   if (item.kind === 'advisory') {
     const r = renderAdvisory(s, view(s), item.a);
     key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
@@ -133,18 +138,19 @@ export class Counsel {
     clear(this.root);
     this.refresh = null;
     const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}`
-      : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : 'c';
+      : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : item.kind === 'offer' ? `o:${item.duties[0]}` : 'c';
     const enter = key !== this.shownKey;
     this.shownKey = key;
     // a phone shows the card folded to its title: a new tip or lesson unfolds it (the next waits on it), and once it is
     // read or its payoff has shown the card folds again
-    if (enter && (item.kind === 'tip' || item.kind === 'lesson')) { this.open = true; this.autoOpen = true; }
+    if (enter && (item.kind === 'tip' || item.kind === 'lesson' || item.kind === 'offer')) { this.open = true; this.autoOpen = true; }
     else if (enter && this.autoOpen) { this.open = false; this.autoOpen = false; }
     this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
     // the portraits come with the advisors' tip (the paced introduction); until then the card stands alone
     if (shows(this.g, 'portraits')) this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
     if (item.kind === 'calm') { this.root.appendChild(this.calm()); return; }
-    const card = item.kind === 'tip' ? this.tipCard(item.t) : item.kind === 'lesson' ? this.lessonCard(item) : this.advisoryCard(item.a);
+    const card = item.kind === 'tip' ? this.tipCard(item.t) : item.kind === 'lesson' ? this.lessonCard(item)
+      : item.kind === 'offer' ? this.offerCard(item.duties) : this.advisoryCard(item.a);
     if (enter) card.classList.add('enter');
     const toggle = h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾');
     card.prepend(toggle);
@@ -239,6 +245,13 @@ export class Counsel {
       acts = h('div', { class: 'counsel-actions' },
         next ? h('button', { class: 'btn small primary', onclick: () => { g.act(beginNextLesson(g.state)); } }, 'Begin now') : null,
         h('span', { class: 'lesson-next' }, next ? `Next: ${next.title}` : 'The lessons are done.'));
+    } else if (l.id === 'ordo' && pendingOffers(s).length) {
+      // the Ordo's lesson: the duties learned so far, each to hand over here; or keep them all (Edicta can later)
+      acts = h('div', { class: 'counsel-actions' },
+        pendingOffers(s).map((d) => h('button', { class: 'btn small primary', onclick: () => { g.act(setDuty(g.state, d, true), { okSfx: 'click' }); } },
+          `Hand over: ${DUTY_DEFS[d].name}`)),
+        h('button', { class: 'counsel-link', onclick: () => { g.act(keepDuties(g.state), { okSfx: 'click' }); } }, 'Keep them all mine'),
+        skip);
     } else {
       acts = h('div', { class: 'counsel-actions' },
         l.tab || l.target ? h('button', { class: 'btn small primary', onclick: show }, 'Show me') : null,
@@ -253,6 +266,30 @@ export class Counsel {
         h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, `DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`),
           h('span', { class: 'counsel-title' }, l.title))),
       h('div', { class: 'counsel-body' }, text, job, acts, then));
+  }
+
+  /** Duties the player has learned (§10.2): each to hand to the Ordo or keep; Edicta's Mandata can change it later. */
+  private offerCard(duties: DutyId[]): HTMLElement {
+    const g = this.g;
+    const s = g.state;
+    const one = duties.length === 1 ? DUTY_DEFS[duties[0]] : null;
+    const text = one ? `${one.done} From now on the Ordo can see to ${one.does} for you, even while you sleep.`
+      : 'You have learned these chores by your own hand. The Ordo can carry any of them for you, even while you sleep.';
+    const rows = duties.map((d) => h('div', { class: 'counsel-rem duty' },
+      h('div', { class: 'counsel-rem-main' }, h('span', { class: 'counsel-rem-name' }, DUTY_DEFS[d].name),
+        h('div', { class: 'counsel-rem-btns' },
+          h('button', { class: 'btn small primary', onclick: () => { g.act(setDuty(g.state, d, true), { okSfx: 'click' }); } }, 'Hand to the Ordo'),
+          h('button', { class: 'btn small', onclick: () => { g.act(keepDuties(g.state, [d]), { okSfx: 'click' }); } }, 'Keep it mine')))));
+    const notes = s.counters.mentorDiedDay !== null;
+    return h('div', { class: 'counsel-card tip offer', role: 'note' },
+      h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
+        h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, 'MANDATA'),
+          h('span', { class: 'counsel-title' }, one ? `The Ordo can take up ${one.name.toLowerCase()}` : 'The Ordo can take up your chores'))),
+      h('div', { class: 'counsel-body' }, h('p', { class: 'counsel-text' }, text), h('div', { class: 'counsel-remedies' }, rows),
+        h('div', { class: 'counsel-foot' },
+          h('span', { class: 'counsel-name' }, 'Edicta · Mandata keeps them all'),
+          duties.length > 1 ? h('button', { class: 'counsel-link', onclick: () => { g.act(handOverAll(g.state, duties), { okSfx: 'click' }); } }, 'Hand over all') : null,
+          duties.length > 1 ? h('button', { class: 'counsel-link', onclick: () => { g.act(keepDuties(g.state), { okSfx: 'click' }); } }, 'Keep them all') : null)));
   }
 
   private advisoryCard(a: ActiveAdvisory): HTMLElement {

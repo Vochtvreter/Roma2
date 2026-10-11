@@ -29,6 +29,7 @@ import { PATH_DECISIONS } from '../game/types';
 import { B } from '../game/balance';
 import { present, shows } from './intro';
 import { currentLesson, introRunning, lessonPointer } from '../game/intro';
+import { DUTY_DEFS } from '../game/ordo/duties';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
@@ -152,6 +153,9 @@ export class UI {
           g.sfx('tink');
           break;
         case 'milestone': break;   // after the loop: deeds done together make one toast
+        case 'learned':
+          toast(`Learned: ${DUTY_DEFS[e.duty].name}`, 'good', 'i_seal', 5000, 'The Ordo can take it up for you whenever you choose.');
+          break;
         case 'rank': this.rankBanner(e.rank); g.sfx('cornu'); break;
         case 'stage':
           showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))} · CAPITOLIVM`, title: `Capitolium: ${STAGE_NAMES[e.stage] ?? `stage ${e.stage}`}`,

@@ -68,6 +68,7 @@ const TEXT: Record<ReasonCode, string> = {
   merchantDeal: '{why} {qty} {res} at {price} denarii each with the visiting merchant.',
   emergencyRations: 'Lex de annona: grain would run out in {days} days; rations are cut to {level}.',
   emergencyWater: 'Lex de annona: water would run out in {days} days; the concrete works and baths stop drawing.',
+  emergencyHands: 'Lex de annona: our stores hold only {days} days; {n} more hands go to the fields and wells.',
   emergencyImport: 'Lex de annona: {qty} grain bought from {hub}, arriving in {days} days.',
   relief: 'Lex de annona: grain runs out in {days} days and our coin cannot buy more; we ask the Legate for the legion\'s grain.',
   saving: 'Saving {qty} {res} for the {for}[ (≈ {eta} days)].',
@@ -93,7 +94,8 @@ const SHORT: Record<ReasonCode, string> = {
   deficitImport: 'Buying {qty} {res} from {hub}', luxuryImport: 'Buying {qty} {res} from {hub} for the great houses',
   wishImport: 'Buying {qty} {res} from {hub} for the {for}', surplusExport: 'Selling {qty} {res} to {hub}',
   merchantDeal: '{why} {qty} {res} with the merchant', emergencyRations: 'Lex de annona: rations cut to {level}',
-  emergencyWater: 'Lex de annona: concrete works and baths paused', emergencyImport: 'Lex de annona: {qty} grain from {hub}',
+  emergencyWater: 'Lex de annona: concrete works and baths paused', emergencyHands: 'Lex de annona: {n} more hands to the fields and wells',
+  emergencyImport: 'Lex de annona: {qty} grain from {hub}',
   relief: 'Lex de annona: the Legate\'s relief', saving: 'Saving: {qty} {res}[ (≈ {eta} d)]',
 };
 
@@ -101,6 +103,7 @@ const SHORT: Record<ReasonCode, string> = {
 const FLIPPED: Partial<Record<ReasonCode, [string, string]>> = {
   emergencyRations: ['Lex de annona: grain is back to {doh} days; full rations are restored.', 'Lex de annona: full rations restored'],
   emergencyWater: ['Lex de annona: water is back to {doh} days; the works draw again.', 'Lex de annona: the works draw water again'],
+  emergencyHands: ['Lex de annona: the stores hold {doh} days again; the hands go back to your orders.', 'Lex de annona: the hands back to your orders'],
   priority: ['By your hand: {n} on {cat}.', '{Cat}: {n} by your hand'],
 };
 

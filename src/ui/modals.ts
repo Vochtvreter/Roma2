@@ -217,7 +217,7 @@ export function openHowTo(_g: Game): void {
       h('li', null, kbd('W'), kbd('A'), kbd('S'), kbd('D'), ' pan · ', kbd('+'), kbd('−'), ' zoom · ', kbd('H'), ' the forum'),
       h('li', null, kbd('Esc'), ' close · cancel · menu · touch: hold for a tooltip'));
   openModal(h('div', { class: 'modal-howto' },
-    sec('You decide, the Ordo acts', h('p', null, 'The Ordo Decurionum staffs, builds and trades every day, even while you are away, and always says why on the ticker. You set its course with the charter, the paths, the focus and the edicts, and you may build anything yourself: your works are raised first.')),
+    sec('By your hand, then the Ordo\'s', h('p', null, 'You run a new camp by hand: who works where, what is raised, what is traded. Each chore you have done yourself becomes a duty you may hand to the Ordo Decurionum (Edicta → Mandata), or keep; it then does it every day, even while you are away, and says why on the ticker. Take a duty back whenever you like. You set its course with the charter, the paths, the focus and the edicts, and your own works are always raised first.')),
     sec('Grain and water in days', h('p', null, 'The two tablets count days on hand, with the year ahead beneath: green is safe, gold is thin, red is danger. Every warning comes with a remedy.')),
     sec('Build where you like', h('p', null, build)),
     sec('Seasons and the two crunches', h('p', null, 'Aestas dries the wells; Hiems starves the fields. Fill the cisterns in Ver and the horrea before the Kalends of December.')),

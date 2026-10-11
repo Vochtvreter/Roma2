@@ -4,7 +4,7 @@
 export { placeBuilding as place, demolish, buildRoad, pave, toggleReserveBlock } from './place';
 export { cancelSite, prioritise, setOpen, setPrio } from './construction';
 export { setHousePref } from './housing';
-export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority } from './ordo/actions';
+export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority, setDuty, handOverAll, keepDuties } from './ordo/actions';
 export { setFocus, setEdict, setSetting, setSwitch, choosePath, renameColony } from './decisions';
 export { chooseOption } from './events';
 export { createContract, cancelContract, resumeContract, takeOffer, declineOffer, buyNow } from './trade';

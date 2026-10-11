@@ -5,14 +5,14 @@
 // the cut portion cannot end its own measure early.
 import { B as B$ } from '../balance';
 import { HUBS as HUBS$ } from '../types';
-import type { EssentialForecast, GameState, HubId, SimView, TickContext } from '../types';
+import type { EssentialForecast, GameState, HubId, LaborCat, LabourPlan, SimView, TickContext } from '../types';
 import { edictOption, switchOn } from '../decisions';
 import { emergencyImport, hubOpen, price, tripDays } from '../trade';
 import { triggerRelief } from '../events';
 import { portion } from '../economy';
 import { touchPeople as touchPeople$ } from '../memo';
 import { chronicle } from './chronicle';
-import { WATER_PAUSED } from './labour';
+import { WATER_PAUSED, planLabour } from './labour';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HUBS = HUBS$, touchPeople = touchPeople$;
@@ -95,4 +95,41 @@ export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void {
       chronicle(s, 'emergency', { code: 'relief', params: { days: Math.floor(Math.min(gR, g.doh)) } }, decided);
     }
   }
+}
+
+/** The Lex de annona's hands (DESIGN §8.12, §10.2): while the player staffs the colony by hand, and the grain or the
+ *  water on hand falls below HANDS_AT days, or any group hungers or thirsts, the fields and wells get at least the hands
+ *  the Ordo would give them, until both stores hold HANDS_LIFT days again (or are full). Logged once when it starts and
+ *  once when it lifts; returns the day's floor for those categories, or null. */
+export function emergencyHands(s: GameState, v: SimView): Partial<Record<LaborCat, number>> | null {
+  const em = s.ordo.emergency;
+  const D = B.duties;
+  const g = v.f.grain, w = v.f.water;
+  const on = switchOn(s, 'emergency') && !s.ordo.on.labour;
+  const low = (fc: EssentialForecast): boolean => fc.doh < D.HANDS_AT && fc.net < 0;
+  const safe = (fc: EssentialForecast): boolean => fc.doh > D.HANDS_LIFT || fc.stock >= STORE_SAFE * fc.cap;
+  const want = Math.max(...s.needs.hunger, ...s.needs.thirst) > D.NEED_AT;
+  if (on && !em.hands && (low(g) || low(w) || want)) {
+    const floor = handsFloor(s, v);
+    const more = (['food', 'water'] as const).reduce((n, c) => n + Math.max(0, (floor[c] ?? 0) - s.ordo.manual[c]), 0);
+    if (more <= 0) return null;
+    em.hands = true;
+    chronicle(s, 'emergency', { code: 'emergencyHands', params: { days: Math.floor(Math.min(g.doh, w.doh, 999)), n: more, paused: 1 } }, { decided: true });
+    return floor;
+  }
+  if (em.hands && (!on || (safe(g) && safe(w) && !want))) {
+    em.hands = false;
+    chronicle(s, 'emergency', { code: 'emergencyHands', params: { doh: Math.floor(Math.min(g.doh, w.doh, 9999)), paused: 0 } }, { decided: true });
+    return null;
+  }
+  return em.hands ? handsFloor(s, v) : null;
+}
+const STORE_SAFE = 0.9;   // a store this full is safe whatever its days on hand (the founders' 300 water hold 15 days)
+
+/** The hands the Ordo would set to the fields and wells today. */
+function handsFloor(s: GameState, v: SimView): Partial<Record<LaborCat, number>> {
+  const plan: LabourPlan = planLabour(s, v);
+  const out: Partial<Record<LaborCat, number>> = {};
+  for (const l of plan.lines) if (l.cat === 'food' || l.cat === 'water') out[l.cat] = l.target;
+  return out;
 }

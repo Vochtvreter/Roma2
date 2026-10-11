@@ -21,7 +21,7 @@ import { eventsDay } from './events';
 import { checkObjectives, updateCounters } from './objectives';
 import { advisorsDay } from './advisors/engine';
 import { pruneGuide } from './guide';
-import { introDay } from './intro';
+import { dutiesDay } from './ordo/duties';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, isKalends = isKalends$, seasonOf = seasonOf$, seasonStartOf = seasonStartOf$,
@@ -68,7 +68,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   checkObjectives(s, ctx);
   advisorsDay(s, ctx, v);        // appoints advisors, evaluates the 24 rules with hysteresis
   pruneGuide(s);
-  introDay(s);                   // the Ordo builds once the colony is old enough, even before its lesson (§11.13)
+  dutiesDay(s, (e) => ctx.fx.push(e));   // the player's finished works teach their duties (§10.2); the council's day ends
   s.stats.peakPop = Math.max(s.stats.peakPop, s.people.length);
   s.counters.coinEma += B.economy.COIN_ALPHA * ((s.res.denarii + s.taxAccrued - coin0) - s.counters.coinEma);
   s.rng = rng.state;

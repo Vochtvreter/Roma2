@@ -1,7 +1,7 @@
 // tests/guide.test.ts — the mentor's tip graph and engine, the first days with seed 42, the DESIGN §11.12 beat sheet
 // with WP-J's decision bot (INTEGRATED), and the hints (ARCHITECTURE §14.2 WP-E, §15). Owner: WP-E.
 import { describe, expect, it } from 'vitest';
-import { TIPS } from '../src/game/types';
+import { DUTIES, TIPS } from '../src/game/types';
 import type { GameState, TipId } from '../src/game/types';
 import { INTEGRATED, fresh, run } from './util';
 import { elapsed } from '../src/game/calendar';
@@ -11,7 +11,8 @@ import { anOrdinal, benefitLine, howToGetMore, outputChain } from '../src/game/h
 import { B } from '../src/game/balance';
 import { newGame } from '../src/game/state';
 import { bestSlot } from '../src/game/site';
-import { place } from '../src/game/actions';
+import { handOverAll, keepDuties, place, setDuty, setManualTarget } from '../src/game/actions';
+import { granted, learned, pendingOffers } from '../src/game/ordo/duties';
 import { deserialize, serialize } from '../src/game/save';
 import { INTRO_TIPS, LESSONS, beginNextLesson, currentLesson, introRunning, introStep, introduced, notePractice, plainWork, skipIntro, skipLesson, taughtWorks } from '../src/game/intro';
 import type { IntroPart, IntroStep } from '../src/game/intro';
@@ -148,11 +149,15 @@ describe.runIf(INTEGRATED)('the first ten minutes (DESIGN §11.12, seed 42, deci
 
 describe('the opening lessons (DESIGN §11.13)', () => {
   const PARTS: IntroPart[] = ['ticker', 'portraits', 'souls', 'coin', 'materials', 'goals', 'dignitas', 'overlays', 'speed',
-    'catalog', 'edicts', 'council', 'advisors', 'build', 'people', 'annals'];
+    'catalog', 'mandates', 'edicts', 'council', 'advisors', 'build', 'people', 'annals'];
   const lessoned = (seed = 42): GameState => newGame({ seed, now: 0, intro: true });
   /** Plays `ms` of real time in one go (the UI loop calls introStep every frame) and returns what changed. */
   const play = (s: GameState, ms: number): IntroStep => { s.stats.playMs += ms; return introStep(s); };
   const breather = (s: GameState): number => LESSONS[s.guidance.intro.lesson].breather * 1000;
+  /** Skips lessons until `id` is the current one. */
+  const toLesson = (s: GameState, id: string): void => {
+    while (currentLesson(s)?.lesson.id !== id) { skipLesson(s); play(s, breather(s)); }
+  };
   /** Places a work by the player's hand on the best plot and plays days until it stands. */
   const raise = (s: GameState, type: 'cisterna' | 'area'): void => {
     const slot = bestSlot(s, type, { owner: 'player' })!;
@@ -160,32 +165,46 @@ describe('the opening lessons (DESIGN §11.13)', () => {
     for (let i = 0; i < 120 && !s.buildings.some((b) => b.type === type && b.owner === 'player' && b.status === 'done'); i++) run(s, 1);
   };
 
-  it('leaves a colony without lessons as it was: every part shows and the Ordo builds', () => {
+  it('leaves a colony without lessons as it was: every part shows and the Ordo holds every duty', () => {
     const s = fresh(42);
     expect(introRunning(s)).toBe(false);
     for (const p of PARTS) expect(introduced(s, p), p).toBe(true);
     expect(s.ordo.on.build).toBe(true);
+    for (const d of DUTIES) { expect(granted(s, d), d).toBe(true); expect(learned(s, d), d).toBe(true); }
   });
-  it('founds a colony on the map, the vitals, the date, pause and 1×, with the first job\'s tools; the Ordo does not build', () => {
+  it('founds a colony run by hand on the map, the vitals, the date, pause and 1×, with the roll of souls for the first job', () => {
     const s = lessoned();
-    expect(currentLesson(s)?.lesson.id).toBe('water');
-    for (const p of PARTS) expect(introduced(s, p), p).toBe(['build', 'coin', 'materials'].includes(p));
+    expect(currentLesson(s)?.lesson.id).toBe('fields');
+    for (const p of PARTS) expect(introduced(s, p), p).toBe(p === 'people');
     expect(introduced(s, 'trade')).toBe(true);                       // not a lesson's: Vicus reveals it
-    expect(s.ordo.on.build).toBe(false);
-    expect(s.guidance.intro.ordoHeld).toBe(true);
+    for (const d of DUTIES) expect(granted(s, d), d).toBe(false);
+    expect(s.ordo.learned).toEqual([]);
+    expect(s.ordo.manual).toMatchObject({ water: 2, food: 1, builders: B.duties.START_BUILDERS });   // the founders stay at their posts
+  });
+  it('ends the first job when the player has put hands on the fields, and that teaches staffing', () => {
+    const s = lessoned();
+    expect(LESSONS[0].progress!(s)).toBe(`Hands on the fields: 1 of ${B.intro.FIELD_HANDS}`);
+    expect(setManualTarget(s, 'food', B.intro.FIELD_HANDS).ok).toBe(true);
+    expect(learned(s, 'labour')).toBe(true);
+    expect(introStep(s)).toBeNull();                                 // the hands go to the fields with the next day
+    run(s, 1);
+    expect(introStep(s)).toBe('done');
   });
   it('ends a building job when the work stands, not when it is staked, and shows how far it has come', () => {
     const s = lessoned();
+    toLesson(s, 'water');
     const slot = bestSlot(s, 'cisterna', { owner: 'player' })!;
     place(s, 'cisterna', slot.tile);
     expect(introStep(s)).toBeNull();
-    expect(LESSONS[0].progress!(s)).toMatch(/^(Staked|Planned|Rising · \d+%)/);
+    expect(currentLesson(s)!.lesson.progress!(s)).toMatch(/^(Staked|Planned|Rising · \d+%)/);
     run(s, 3);
     raise(s, 'cisterna');
     expect(introStep(s)).toBe('done');
+    expect(learned(s, 'water')).toBe(true);
   });
   it('waits a breather of real time after a job, never game days; "Begin now" skips the wait', () => {
     const s = lessoned();
+    toLesson(s, 'water');
     raise(s, 'cisterna');
     expect(introStep(s)).toBe('done');
     run(s, 400);                                                     // a year of game days at any speed brings nothing
@@ -202,11 +221,13 @@ describe('the opening lessons (DESIGN §11.13)', () => {
   });
   it('counts a job only when the player does it: not a cistern the Ordo raises, nor one it raised on request', () => {
     const s = lessoned();
+    toLesson(s, 'water');
     const slot = bestSlot(s, 'cisterna', { owner: 'ordo' })!;
     expect(place(s, 'cisterna', slot.tile, { owner: 'ordo' }).ok).toBe(true);
     run(s, 60);
     expect(s.buildings.some((b) => b.type === 'cisterna' && b.owner === 'ordo' && b.status === 'done')).toBe(true);
     expect(introStep(s)).toBeNull();
+    expect(learned(s, 'water')).toBe(false);
     raise(s, 'cisterna');
     expect(introStep(s)).toBe('done');
   });
@@ -215,30 +236,39 @@ describe('the opening lessons (DESIGN §11.13)', () => {
     expect(skipLesson(s).ok).toBe(true);
     expect(introStep(s)).toBeNull();                                 // the breather starts now
     play(s, breather(s));
-    expect(currentLesson(s)?.lesson.id).toBe('homes');
+    expect(currentLesson(s)?.lesson.id).toBe('water');
     expect(s.ordo.on.build).toBe(false);
+    expect(s.ordo.learned).toEqual([]);
   });
-  it('raises nothing by the Ordo before its lesson; with its lesson the Ordo builds, and its first stake is the job', () => {
+  it('raises nothing the Ordo does not hold; its lesson offers the duties learned, and one handed over is the job', () => {
     const s = lessoned();
     run(s, 100, () => { introStep(s); });
-    expect(s.buildings.filter((b) => b.owner === 'ordo').length).toBe(0);
-    expect(s.ordo.on.build).toBe(false);
-    const ordo = LESSONS.findIndex((l) => l.id === 'ordo');
-    s.guidance.intro.lesson = ordo - 1;
-    s.guidance.intro.done = true;
-    play(s, breather(s));
-    expect(currentLesson(s)?.lesson.id).toBe('ordo');
-    expect(s.ordo.on.build).toBe(true);
-    for (let i = 0; i < 30 && !s.buildings.some((b) => b.owner === 'ordo'); i++) run(s, 1);
+    // only what the Lex de annona raises against famine or drought (a well when Aestas dries a well too few)
+    for (const b of s.buildings.filter((x) => x.owner === 'ordo')) expect(['survivalFood', 'survivalWater']).toContain(b.reason?.code);
+    expect(s.stats.deathsBy.hunger + s.stats.deathsBy.thirst).toBe(0);   // the Lex de annona sends hands to the fields
+    expect(s.log.some((e) => /Lex de annona: our stores hold only/.test(e.text))).toBe(true);
+    toLesson(s, 'water');
+    raise(s, 'cisterna');
+    toLesson(s, 'ordo');
+    expect(introduced(s, 'mandates')).toBe(true);
+    expect(pendingOffers(s)).toEqual(['water']);
+    expect(introStep(s)).toBeNull();
+    expect(setDuty(s, 'food', true).ok).toBe(false);                 // not learned: nothing to hand over
+    expect(setDuty(s, 'water', true).ok).toBe(true);
     expect(introStep(s)).toBe('done');
-  });
-  it('lets the Ordo build by ORDO_BY days even if its lesson never came, so a colony left alone does not starve', () => {
-    const s = lessoned();
-    run(s, B.intro.ORDO_BY - 1);
-    expect(s.ordo.on.build).toBe(false);
-    run(s, 1);
     expect(s.ordo.on.build).toBe(true);
-    expect(currentLesson(s)?.lesson.id).toBe('water');              // the lessons themselves still wait for the player
+    expect(granted(s, 'water')).toBe(true);
+    expect(granted(s, 'food')).toBe(false);
+  });
+  it('ends the Ordo\'s lesson as well when the player keeps every duty', () => {
+    const s = lessoned();
+    setManualTarget(s, 'food', 4);
+    toLesson(s, 'ordo');
+    expect(pendingOffers(s)).toEqual(['labour']);
+    expect(keepDuties(s).ok).toBe(true);
+    expect(introStep(s)).toBe('done');
+    expect(granted(s, 'labour')).toBe(false);
+    expect(pendingOffers(s)).toEqual([]);
   });
   it('brings every part, at most three a lesson, one lesson at a time; the reward\'s part once the job is done', () => {
     const s = lessoned();
@@ -259,12 +289,14 @@ describe('the opening lessons (DESIGN §11.13)', () => {
   });
   it('offers in Aedificia only the works the lessons have asked for, until the full list opens with its lesson', () => {
     const s = lessoned();
+    expect(taughtWorks(s)).toEqual([]);
+    toLesson(s, 'water');
     expect(taughtWorks(s)).toEqual(['cisterna']);
     expect(introduced(s, 'catalog')).toBe(false);
     skipLesson(s); play(s, breather(s));
     expect(taughtWorks(s)).toEqual(['cisterna', 'area']);
     for (const id of ['cisterna', 'area'] as const) expect(plainWork(id)).toBeTruthy();
-    while (currentLesson(s)?.lesson.id !== 'works') { skipLesson(s); play(s, breather(s)); }
+    toLesson(s, 'works');
     expect(introduced(s, 'catalog')).toBe(true);
     expect(introStep(s)).toBeNull();
     raise(s, 'cisterna');                                            // a work already taught does not end it
@@ -273,11 +305,15 @@ describe('the opening lessons (DESIGN §11.13)', () => {
     expect(place(s, 'puteus', slot.tile).ok).toBe(true);
     expect(introStep(s)).toBe('done');
   });
-  it('skips at once: every part shows, the Ordo builds, the tips the lessons teach are read and the later ones wait', () => {
+  it('skips at once: every part shows, every duty is learned and offered, the tips the lessons teach are read', () => {
     const s = lessoned();
     expect(skipIntro(s).ok).toBe(true);
     expect(introRunning(s)).toBe(false);
-    expect(s.ordo.on.build).toBe(true);
+    expect(s.ordo.on.build).toBe(false);                             // the player knows the camp: theirs to hand over
+    expect(s.ordo.learned).toEqual([...DUTIES]);
+    expect(pendingOffers(s)).toEqual([...DUTIES]);
+    expect(handOverAll(s).ok).toBe(true);
+    for (const d of DUTIES) expect(granted(s, d), d).toBe(true);
     for (const p of PARTS) expect(introduced(s, p), p).toBe(true);
     for (const t of INTRO_TIPS) expect(s.guidance.tips).toContain(t);
     expect(s.guidance.tips).not.toContain('aestas');
@@ -289,16 +325,18 @@ describe('the opening lessons (DESIGN §11.13)', () => {
     s.choice = { event: 'legatus', kicker: '', title: 'The Legate writes', text: '', defaultIndex: 0, created: s.day, expires: s.day + 30, options: [{ label: 'Agree', note: '', key: 'a' }] };
     expect(nextTip(s)?.id).toBe('event');
   });
-  it('keeps the lessons through a save, and never trusts a lesson begun in the future', () => {
+  it('keeps the lessons and the duties through a save, and never trusts a lesson begun in the future', () => {
     const s = lessoned();
     notePractice(s, 'speed');
+    setManualTarget(s, 'food', 3);
     s.guidance.intro.at = s.stats.playMs + 1e9;
     const back = deserialize(serialize(s))!;
     expect(back.guidance.intro.lesson).toBe(0);
     expect(back.guidance.intro.practice).toEqual(['speed']);
-    expect(back.guidance.intro.ordoHeld).toBe(true);
     expect(back.guidance.intro.at).toBeLessThanOrEqual(back.stats.playMs);
     expect(back.ordo.on.build).toBe(false);
+    expect(back.ordo.learned).toEqual(['labour']);
+    expect(back.ordo.works).toEqual(s.ordo.works);
   });
   it('says each lesson in a few words: a reason and an imperative, a short job, a short payoff', () => {
     const s = lessoned();

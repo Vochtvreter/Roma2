@@ -34,7 +34,7 @@ function viaMilestone(s: GameState, ref: UnlockRef): boolean {
 
 /** Some Ordo toggle is off (the player took the reins somewhere). */
 function anyToggleOff(s: GameState): boolean {
-  return !s.ordo.on.labour || !s.ordo.on.build || !s.ordo.on.trade;
+  return !s.ordo.on.labour || !s.ordo.on.build || !s.ordo.on.trade || !Object.values(s.ordo.works).every(Boolean);
 }
 
 /** The emergency ladder has acted at least once (its traces in the Ordo state or the Annales). */

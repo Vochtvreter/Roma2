@@ -317,8 +317,9 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   return { perBuilding: perRecord(s, all, hands), builders, lines: out };
 }
 
-/** Manual labour: the player's category targets → buildings (prioritised categories first; High first, then nearest the forum). */
-export function manualPlan(s: GameState, v: SimView): LabourPlan {
+/** Manual labour: the player's category targets → buildings (prioritised categories first; High first, then nearest the
+ *  forum). `floor` raises a category's target for the day (the Lex de annona's hands to the fields and wells). */
+export function manualPlan(s: GameState, v: SimView, floor?: Partial<Record<LaborCat, number>>): LabourPlan {
   const { c, d } = v;
   const steps = (b: Building): number => {
     let m = FAR;
@@ -332,7 +333,7 @@ export function manualPlan(s: GameState, v: SimView): LabourPlan {
   const lines: LabourLine[] = [];
   let free = c.workforce, builders = 0;
   for (const cat of order) {
-    const want = Math.max(0, Math.floor(s.ordo.manual[cat] ?? 0));
+    const want = Math.max(0, Math.floor(s.ordo.manual[cat] ?? 0), floor?.[cat] ?? 0);
     if (want <= 0) continue;
     let got = 0;
     if (cat === 'builders') got = builders = Math.min(want, free);

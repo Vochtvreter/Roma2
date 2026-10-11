@@ -496,6 +496,7 @@ describe('forecast (DESIGN §11.11)', () => {
     s.ordo.on = { labour: false, build: false, trade: false };
     s.ordo.manual.water = 2;
     s.ordo.manual.food = 5;
+    s.decisions.switches.emergency = false;   // the Lex de annona would send hands to the fields and raise a famine's field
     fillBeds(s);
     // houses evolve on the real map (more beds), so arrivals and births are switched off rather than crowded out
     s.modifiers.push({ id: 'test.freeze', label: 'frozen', until: 1e9, fx: { mul: { immigration: 0, births: 0 } }, benign: true, source: 'stage' });

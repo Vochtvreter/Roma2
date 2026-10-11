@@ -175,7 +175,7 @@ export const GUIDE: GuideStep[] = [
   },
   {
     id: 'reins', title: 'Taking the reins', after: 'edicts', target: '[data-guide=manual]', tab: 'council',
-    text: () => 'You may take labour, building or trade from the Ordo. Leaving it all to them works just as well.',
+    text: () => 'Every duty you have learned is yours to hand to the Ordo, or keep. Change it any day in the Mandata.',
     when: (s) => sectionRevealed(s, 'manual'),
   },
   {
