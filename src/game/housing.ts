@@ -5,7 +5,7 @@ import { HOUSE_TIERS as HOUSE_TIERS$, RESOURCES as RESOURCES$ } from './types';
 import type {
   ActionResult, Building, BuildingId, CoverageLayerId, Cost, GameState, HousePref, HouseTierId, NeedId, SimView, TickContext,
 } from './types';
-import { houseDesir, houseHas, previewCoverage, previewDesir } from './coverage';
+import { desirability, houseDesir, houseHas, previewCoverage, previewDesir, tierShiftDesir } from './coverage';
 import { derived as derived$, footprintOf as footprintOf$ } from './derived';
 import { fx as fx$ } from './fx';
 import { dayEpoch as dayEpoch$, dayStruct, invalidateTiers as invalidateTiers$, memo as memo$, touchPeople as touchPeople$ } from './memo';
@@ -89,7 +89,10 @@ export function unmetNeeds(s: GameState, b: Building, tier: HouseTierId): NeedId
       case 'religion': met = houseHas(s, b.id, 'shrine') || houseHas(s, b.id, 'temple'); break;
       case 'market': met = houseHas(s, b.id, 'market') || houseHas(s, b.id, 'macellum'); break;
       case 'temple': met = houseHas(s, b.id, 'temple'); break;
-      case 'desirability': met = t.desirMin === null || houseDesir(s, b.id) >= t.desirMin; break;
+      case 'desirability':
+        met = t.desirMin === null || houseDesir(s, b.id) >= t.desirMin;
+        if (met && h && tier !== h.tier && crowds(s, b, tier).length > 0) met = false;   // a rise that would crowd a neighbour waits
+        break;
       case 'baths': met = houseHas(s, b.id, 'baths'); break;
       case 'macellum': met = houseHas(s, b.id, 'macellum'); break;
       case 'oil': met = (h?.oil ?? 0) >= H.SUPPLIED; break;
@@ -99,6 +102,66 @@ export function unmetNeeds(s: GameState, b: Building, tier: HouseTierId): NeedId
     }
     if (!met) out.push(n);
   }
+  return out;
+}
+
+/** The renovations under way, as one key: a rise started in today's housing pass is seen by the houses checked after it. */
+function renovKey(s: GameState): string {
+  const w = s.counters.renovWindow;
+  return `${dayEpoch(s)}|${w.start}|${w.count}`;
+}
+
+/** What the renovations under way will add to their streets once they finish, per tile (coverage.tierShiftDesir). */
+function pendingShift(s: GameState): Map<number, number> {
+  return memo(s, 'housing.pendingShift', renovKey(s), () => {
+    const out = new Map<number, number>();
+    for (const id of derived(s).houses) {
+      const b = getBuilding(s, id);
+      const r = b?.house?.renovating;
+      if (!b || !r) continue;
+      for (const [i, v] of tierShiftDesir(s, b, b.house!.tier, r.to)) out.set(i, (out.get(i) ?? 0) + v);
+    }
+    return out;
+  });
+}
+
+/** The neighbours a house rising into `to` would push below their tier's desirability (DESIGN §7.2): each holds it now,
+ *  counting the renovations under way, and would fall `short` of it after (its tier: the one it renovates into, if any).
+ *  An insula is −1/r2 to its street; a stone house beside it at a thin margin would decline and fall a tier, so the rise
+ *  waits until a garden or a fountain lifts that street. Empty when `to` gives its street what the house gives it now. */
+export function crowds(s: GameState, b: Building, to: HouseTierId): { id: number; short: number }[] {
+  const h = b.house;
+  if (!h) return [];
+  const [fv, fr] = TIER_DEFS[h.tier].desir, [tv, tr] = TIER_DEFS[to].desir;
+  if (fv === tv && fr === tr) return [];
+  const cache = memo(s, 'housing.crowds', renovKey(s), () => new Map<string, { id: number; short: number }[]>());
+  const key = `${b.id}|${h.tier}|${to}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const out: { id: number; short: number }[] = [];
+  const shift = tierShiftDesir(s, b, h.tier, to);
+  const field = desirability(s), pend = pendingShift(s), at = derived(s).buildingAt;
+  const [lo, hi] = H.DESIR_CLAMP;
+  const seen = new Set<number>([b.id]);
+  for (const tile of shift.keys()) {
+    const nb = at[tile] ? getBuilding(s, at[tile]) : undefined;
+    const nh = nb?.house;
+    if (!nb || !nh || nb.status !== 'done' || seen.has(nb.id)) continue;
+    seen.add(nb.id);
+    const min = TIER_DEFS[nh.renovating?.to ?? nh.tier].desirMin;
+    if (min === null) continue;
+    const tiles = footprintOf(nb, s);
+    let before = 0, after = 0;
+    for (const i of tiles) {
+      const v = field[i] + (pend.get(i) ?? 0);
+      before += Math.min(hi, Math.max(lo, v));
+      after += Math.min(hi, Math.max(lo, v + (shift.get(i) ?? 0)));
+    }
+    before /= tiles.length;
+    after /= tiles.length;
+    if (before >= min && after < min) out.push({ id: nb.id, short: min - after });
+  }
+  cache.set(key, out);
   return out;
 }
 
@@ -140,14 +203,19 @@ export function housesUnlockedBy(s: GameState, type: BuildingId, x: number, y: n
     const delta = new Map<number, number>();
     for (const d of previewDesir(s, type, x, y)) delta.set(d.tile, d.v);
     if (delta.size > 0) {
+      const lift = (b: Building): number => {
+        const tiles = footprintOf(b, s);
+        let add = 0;
+        for (const i of tiles) add += delta.get(i) ?? 0;
+        return add / Math.max(1, tiles.length);
+      };
       for (const id of derived(s).houses) {
         const b = getBuilding(s, id);
         const next = b ? targetTier(s, b) : null;
         if (!b || !next || firstWant(s, b) !== 'desirability') continue;
-        const tiles = footprintOf(b, s);
-        let add = 0;
-        for (const i of tiles) add += delta.get(i) ?? 0;
-        if (houseDesir(s, id) + add / Math.max(1, tiles.length) >= (TIER_DEFS[next].desirMin ?? 0)) out.add(id);
+        if (houseDesir(s, id) + lift(b) < (TIER_DEFS[next].desirMin ?? 0)) continue;
+        // a rise that waits for its neighbours' street (crowds) is let go once the garden lifts each of them clear
+        if (crowds(s, b, next).every((c) => { const nb = getBuilding(s, c.id); return !!nb && lift(nb) >= c.short; })) out.add(id);
       }
     }
   }

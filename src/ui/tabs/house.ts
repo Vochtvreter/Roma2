@@ -1,20 +1,22 @@
 // src/ui/tabs/house.ts — the house part of the inspector: tier, household, beds and tax, the next tier's needs with
 // icons (✔/○) and how to fix each ○, renovation, decline countdown, the insula/domus preference (DESIGN §7, §15.4). Owner: WP-I.
 import { HOUSE_TIERS, HUBS, TRADE_RES } from '../../game/types';
-import type { Building, BuildingId, HousePref, HubId, NeedId, TradeRes } from '../../game/types';
+import type { Building, BuildingId, HousePref, HouseTierId, HubId, NeedId, TradeRes } from '../../game/types';
 import type { Game, Updater } from '../types';
 import { costEl, fmt, h, img, plural } from '../dom';
 import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { houseBeds, residents } from '../../game/census';
-import { houseTax, nextTier, unmetNeeds, firstWant } from '../../game/housing';
+import { crowds, houseTax, nextTier, unmetNeeds, firstWant } from '../../game/housing';
+import { getBuilding } from '../../game/lookup';
+import { houseDesir } from '../../game/coverage';
 import { derived } from '../../game/derived';
 import { hubOpen, price } from '../../game/trade';
 import { personName } from '../../game/people';
 import { overlayRevealed } from '../../game/reveal';
 import { B } from '../../game/balance';
 import { BUILDING_DEFS } from '../../game/data/buildings';
-import { NEED_META, TIER_DEFS } from '../../game/data/housing';
+import { NEED_META, TIER_DEFS, aTier } from '../../game/data/housing';
 import { RANK_DEFS } from '../../game/data/ranks';
 import { feminine } from '../../game/data/names';
 import { article, btn, rankReason, seg } from './common';
@@ -44,6 +46,17 @@ function cheapestHub(g: Game, res: TradeRes): HubId | null {
     if (p !== null && (!best || p < best.p)) best = { id, p };
   }
   return best?.id ?? null;
+}
+
+/** The hint of a rise that waits for its neighbours' street (housing.crowds, DESIGN §7.2), or null when it waits for its own. */
+function crowdHint(g: Game, b: Building, next: HouseTierId): string | null {
+  const s = g.state;
+  if (houseDesir(s, b.id) < (TIER_DEFS[next].desirMin ?? -Infinity)) return null;
+  const c = crowds(s, b, next);
+  if (c.length === 0) return null;
+  const nb = getBuilding(s, c[0].id)?.house;
+  const who = c.length > 1 ? `${c.length} houses beside it` : `the ${TIER_DEFS[nb?.tier ?? 'domusParva'].name.toLowerCase()} beside it`;
+  return `Its own street suffices, but ${aTier(next)} here would push ${who} below the desirability ${c.length > 1 ? 'they need' : 'it needs'}: it waits until a garden or a fountain lifts ${c.length > 1 ? 'their' : 'that'} street.`;
 }
 
 /** How to fix one unmet need: a hint and the buttons that do it. */
@@ -123,7 +136,8 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
       const met = !unmet.includes(n);
       return h('li', { class: met ? 'met' : 'unmet' }, h('span', { class: 'ins-mark' }, met ? '✔' : '○'), img(NEED_META[n].icon, 1, 'ins-want'),
         h('span', { class: 'ins-need' }, n === 'rank' ? `A ${RANK_DEFS[nt.rank].name} charter` : NEED_META[n].label,
-          met ? null : h('div', { class: 'ins-hint' }, HINT[n]), met ? null : h('div', { class: 'ins-fix' }, fix(g, n))));
+          met ? null : h('div', { class: 'ins-hint' }, (n === 'desirability' ? crowdHint(g, b, next) : null) ?? HINT[n]),
+          met ? null : h('div', { class: 'ins-fix' }, fix(g, n))));
     }));
     if (want === 'materials') list.append(h('li', { class: 'unmet' }, h('span', { class: 'ins-mark' }, '○'), img(NEED_META.materials.icon, 1, 'ins-want'),
       h('span', { class: 'ins-need' }, NEED_META.materials.label, h('div', { class: 'ins-hint' }, HINT.materials))));

@@ -13,7 +13,7 @@ import { distToRect as distToRect$, getMap as getMap$, tx as tx$, ty as ty$ } fr
 import { memo as memo$, structEpoch as structEpoch$ } from '../memo';
 import { personName } from '../people';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup';
-import { nextTier, shownWant, unmetNeeds } from '../housing';
+import { crowds, nextTier, shownWant, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { validSlots } from '../place';
 import { houseDesir, previewCovered, previewDesir } from '../coverage';
@@ -282,7 +282,8 @@ export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly n
   if (ids.length === 0) return null;
   const key = `${layoutEpoch(s)}|${s.rank}|${ids.join(',')}|${skipKey(skip)}`;
   return memo(s, `adv.lift.${owner}`, key, () => {
-    const houses: { rect: { x: number; y: number; w: number; h: number }; short: number }[] = [];
+    // one entry per street to lift: the waiting house's own, or each neighbour its rise would crowd (`of`: the house)
+    const houses: { of: number; rect: { x: number; y: number; w: number; h: number }; short: number }[] = [];
     for (const id of ids) {
       const b = getBuilding(s, id);
       const next = b ? nextTier(s, b) : null;
@@ -290,7 +291,16 @@ export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly n
       if (!b || min === null) continue;
       const short = min - houseDesir(s, id);
       const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
-      if (short > 0) houses.push({ rect: { x: b.x, y: b.y, w, h }, short });
+      if (short > 0) houses.push({ of: id, rect: { x: b.x, y: b.y, w, h }, short });
+      else {
+        // its own street suffices, but the rise would crowd a neighbour below its tier (housing.crowds): lift theirs
+        for (const c of crowds(s, b, next!)) {
+          const nb = getBuilding(s, c.id);
+          if (!nb) continue;
+          const [nw, nh] = sizeOf(nb.type, classAt(s, nb.type, nb.x, nb.y));
+          houses.push({ of: id, rect: { x: nb.x, y: nb.y, w: nw, h: nh }, short: c.short });
+        }
+      }
     }
     const reach = BUILDING_DEFS.hortus.desir[1];
     let best: { tile: number; k: number; lift: number } | null = null;
@@ -303,14 +313,20 @@ export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly n
       if (near.length === 0) continue;
       const delta = new Map<number, number>();
       for (const d of previewDesir(s, 'hortus', x, y)) delta.set(d.tile, d.v);
-      let k = 0, lift = 0;
-      for (const hh of near) {
-        let sum = 0;
-        for (let yy = hh.rect.y; yy < hh.rect.y + hh.rect.h; yy++) for (let xx = hh.rect.x; xx < hh.rect.x + hh.rect.w; xx++) sum += delta.get(yy * getMap(s.seed).W + xx) ?? 0;
-        const avg = sum / (hh.rect.w * hh.rect.h);
-        if (avg >= hh.short) k++;
+      let lift = 0;
+      const short = new Set<number>();   // houses with a street this garden leaves short
+      for (const hh of houses) {
+        let avg = 0;
+        if (rectGap(r, hh.rect) <= reach) {
+          let sum = 0;
+          for (let yy = hh.rect.y; yy < hh.rect.y + hh.rect.h; yy++) for (let xx = hh.rect.x; xx < hh.rect.x + hh.rect.w; xx++) sum += delta.get(yy * getMap(s.seed).W + xx) ?? 0;
+          avg = sum / (hh.rect.w * hh.rect.h);
+        }
+        if (avg < hh.short) short.add(hh.of);
         lift += Math.min(avg, hh.short);
       }
+      let k = 0;
+      for (const hh of near) if (!short.has(hh.of)) { k++; short.add(hh.of); }   // each house lifted clear counts once
       if (lift <= 1e-9) continue;
       if (!best || k > best.k || (k === best.k && lift > best.lift + 1e-9)) best = { tile, k, lift };
     }
