@@ -241,10 +241,11 @@ src/ui/
   types.ts                         S   Game, Panel, Prefs re-export, PlacingState re-export        (80)
   index.ts                         H   UI root: builds widgets, update loop, log→toast, fx        (230)
   intro.ts                         H   shows/hides the parts the lessons bring; arrival glow       (40)
-  hud.ts                           H   brand, chips, resource strip, date, speed, menu button      (240)
-  vitals.ts                        H   grain/water tablets + 12-month strip                        (150)
+  hud.ts                           H   brand, chips, resource strip, date, speed (phone pair + popover), menu; figures → tray (290)
+  vitals.ts                        H   grain/water tablets + 12-month strip; strip, card and chart helpers the tray shares (200)
+  tray.ts                          H   the Breviarium: Awaiting you, Res Gestae, essentials, ledgers, materials, the Ordo (420)
   objective.ts                     H   Res Gestae panel, CTA, danger chips                         (130)
-  counsel.ts                       H   portrait strip + one counsel card (advisory / tip / calm)   (230)
+  counsel.ts                       H   portrait strip + one counsel card; awaitingItems, voiceAction (pure) (430)
   ticker.ts                        H   merged Ordo/Acta ticker                                     (80)
   toasts.ts                        H   toasts                                                      (60)
   banner.ts                        H   rank / stage banners                                        (60)
@@ -1714,6 +1715,7 @@ Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walker
   <div id="app">
     <canvas id="map" aria-label="Map of the colony"></canvas>
     <header id="hud"></header>
+    <div id="tray"></div>
     <aside id="left">
       <section id="objective"></section>
       <section id="counsel"></section>
@@ -1743,7 +1745,9 @@ Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walker
 </body>
 </html>
 ```
-DOM ownership: **H** fills `#hud`, `#objective`, `#counsel`, `#toasts`, `#banner`, `#place-banner`, `#ticker`, `#map-tools` (overlay bar and zoom buttons; the minimap canvas is drawn by F), `#title-screen`, `#modal-root`, `#tooltip`, `#veil`. **I** fills `#side` (toggle, tabs, body), `#inspector`, `#choice`. Z-order is DESIGN §15.1 (set in CSS by the owner of each element).
+Ids are only ever added: `#tray` (the Breviarium, tray.ts) came with the phone HUD; on the SHEET host the `#objective`
+node itself moves into it and back to `#left` on any other host (one instance of every widget).
+DOM ownership: **H** fills `#hud`, `#tray`, `#objective`, `#counsel`, `#toasts`, `#banner`, `#place-banner`, `#ticker`, `#map-tools` (overlay bar and zoom buttons; the minimap canvas is drawn by F), `#title-screen`, `#modal-root`, `#tooltip`, `#veil`. **I** fills `#side` (toggle, tabs, body), `#inspector`, `#choice`. Z-order is DESIGN §15.1 (set in CSS by the owner of each element).
 
 ### 13.2 `Game` (`src/ui/types.ts`, scaffold; implemented by `App` in `src/main.ts`, H)
 ```ts
@@ -1796,6 +1800,19 @@ export class UI {
   showDispatch(kind: 'founding' | 'away' | 'victory', report?: AwayReport): void;
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void;
   readonly layout: Layout;                        // §13.10, created in build() right after the SidePanel
+  readonly tray: Tray;                            // the Breviarium (below)
+}
+// src/ui/tray.ts (H) — the Breviarium, the accounts every HUD figure opens (DESIGN §15.2); UI-only, not a TabId
+export class Tray {
+  constructor(g: Game, root: HTMLElement, objective: HTMLElement);   // root = #tray; objective = #objective (re-hosted on SHEET)
+  readonly open: boolean;
+  covers(el: HTMLElement): boolean;               // open beneath that HUD figure: its hover card holds back (Hud.quiet)
+  toggle(fig: string, from: HTMLElement | null, viaKey?: boolean): void;   // a HUD figure (data-fig): open there, or close on a second tap of it
+  show(section?: string, from?: HTMLElement | null): void;                // 'awaiting' | 'gestae' | 'grain' | 'water' | 'coin' | … | 'ordo'
+  close(): void;                                  // also a history.ts layer (BACK_RANK.tray): Back and Esc
+  mount(host: Host): void;                        // layout 'classes': #objective in (sheet) or back to #left
+  update(now: number): void;                      // throttled by UI.frame; does nothing while closed
+  onRead: (() => boolean) | null;                 // 'Read' on a waiting dispatch → ChoiceCard.reveal
 }
 // src/ui/panels.ts (I)
 export class SidePanel {
@@ -1866,6 +1883,7 @@ export function toastBatch(key: string, text: (n: number) => string, kind?: 'inf
 
 ### 13.5 Counsel card (`counsel.ts`, H)
 Exactly one item, by priority: Periculum advisory › urgent tip (`nextTip(s)?.urgent`) › an opening lesson whose job is not done (DESIGN §11.13) › Cave advisory › a lesson in its breather (payoff, *Begin now*) › tip (if `prefs.tips`) › Monitum / Opportunitas advisory › calm line (*"The council is content. Next: {current milestone}"*). Above it (once a lesson has brought it, `introduced(s, 'portraits')`) the portrait strip of appointed advisors (`portrait(id, advisorMood)`, severity pip; click → `openTab('advisors', id)`). An advisory renders `renderAdvisory()` lazily (only when it is the shown item or the signature changed): kicker (advisor office), title, metric chip, text, up to 3 remedy buttons (disabled with `check.reason` when not ok), **Hush 30 d** (not Periculum), **Mute** (Nota only). Building remedies show **Ask the Ordo** + **Place it myself** when Ordo construction is on, else only the latter. A tip shows the mentor portrait, `mentorKicker(s)`, title, text, **Understood** (`dismissTip`) and **Show me** when `target`/`tab` is set (opens the tab and pulses the target selector for 3 s).
+What waits on the player, pure (tests/voice.test.ts): `awaitingItems(s)` lists, most pressing first, each Periculum advisory, a dispatch (`s.choice`), each Cave advisory, the chores learned and not yet answered (`pendingOffers`, once the lessons have brought Edicta's Mandata), and a ready petition while Edicta is on the bar (the Breviarium's *Awaiting you*; the phone voice line's '+n'). `voiceAction(item, s)` gives an item's one chip: a Periculum or Cave with a building remedy → **Place** (that remedy, checked), offers → **Review** (Edicta at `mandates`), a lesson under way with a pointer → **Show me**, a dispatch → **Read**, a petition → **Petition**; else none (the line shows ▾). `awaitAction` is a row's: an advisory's first remedy (a building one as Place), else the chip. `remedyChip(list, first, s)` is the shared core.
 
 ### 13.6 Remedy execution (`App.applyRemedy`, H)
 ```
@@ -1909,9 +1927,9 @@ frame(t): dt = min(DT_CLAMP, (t − last) / 1000)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
 keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → placing → selection → the panel above its host's default detent → menu); ignored inside inputs
-back (history.ts): initBack(app) registers the layers of the Esc chain (modal 100 › placing 50 › selection 40; the layout
-      adds the panel above its host's default detent at 30, stepping full → half → closed; later layers
-      registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;
+back (history.ts): initBack(app) registers the layers of the Esc chain (modal 100 › placing 50 › selection 40; the phone's
+      speed popover (hud.ts) adds 70 and the Breviarium (tray.ts) 60; the layout adds the panel above its host's default
+      detent at 30, stepping full → half → closed; later layers registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;
       popstate closes the top open layer (a letter that must be answered goes to the title) and re-arms; with none open the
       first Back saves and toasts 'Back again to leave · the colony is saved', a second within LEAVE_MS leaves
 startPlacing(p): the place banner first (it refreshes the layout: a phone's sheet drops while placing), then view.startPlacing
@@ -1926,9 +1944,9 @@ enter(s): the title comes down first (UI.hideTitle syncs the tab bar and refresh
 ### 13.9 CSS ownership and conventions
 - `tokens.css` (S) defines every DESIGN §16.1 token plus `--font-body: 'Pixelify Sans'`, `--font-caps: 'Silkscreen'`, spacing `--s1..--s5` (4/8/12/16/24 px), radii, z-index tokens (`--z-map` 0 … `--z-veil` 200 from DESIGN §15.1). Fonts are imported in `main.ts` (`@fontsource/pixelify-sans/400.css`, `600.css`, `@fontsource/silkscreen/400.css`).
 - `base.css` (H) owns the shared components every UI file uses and nobody redefines: `.btn` (`.primary .legate .good .danger .ghost .small`), `.chip` (`.bad .good .gold`), `.well`, `.card`, `.kicker`, `.meter`, `.pip`, `.sev-0…3`, `.badge`, `.new`, `.seal`, `.num`, `.muted`, `.meander` (border-image from `f_meander`, injected as a CSS variable by `ui/index.ts`).
-- New class names are prefixed by area: `hud- left- obj- counsel- tick- toast- banner- place- map- modal- disp- title- veil-` (H); `side- tab- ed- adv- bld- pop- tr- ann- ins- choice-` (I).
+- New class names are prefixed by area: `hud- left- obj- counsel- tick- toast- banner- place- map- modal- disp- title- veil- tray-` (H); `side- tab- ed- adv- bld- pop- tr- ann- ins- choice-` (I).
 - Size classes (§13.10): `#app[data-w=compact|medium|expanded|large][data-h=short|regular|tall][data-input=touch|mixed|mouse][data-host=sheet|drawer|dock|columns][data-detent=closed|half|full]` and `[data-tiny]`, written by `ui/layout.ts`. New CSS keys on these attributes only (plus `@container` queries inside panels); the width-only `@media` breakpoints below are migrated to them as each host lands, and keep working until then.
-- Breakpoints (today's CSS, until the hosts replace them): desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows); compact < 560. Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width (a touch screen under 1,280 px gets the two-row HUD for them); `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- Breakpoints (today's CSS, until the hosts replace them): desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows; the SHEET host's own one-row HUD is `#app[data-host='sheet']` in hud.css, and the old phone HUD and Res Gestae rules of mobile.css stand under `:where(#app:not([data-host='sheet']))`, which keeps their specificity); compact < 560. Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width (a touch screen under 1,280 px gets the two-row HUD for them); `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
 - Page hygiene (base.css): `#app { overflow: clip }` (script can never scroll the frame; only `#tab-body` scrolls, through `dom.scrollWithin`, never `scrollIntoView`); `touch-action: pan-x pan-y` on `#app > :not(#map)`, `#modal-root`, `#title-screen`, `#veil` (never `#app *`, which would override `#map { touch-action: none }`); a `gesturestart` preventDefault (main.ts); `overscroll-behavior: none` and `text-size-adjust: 100%` on html, body; `-webkit-touch-callout: none` on img; fields of 16 px on touch; ligatures off everywhere (`font-variant-ligatures: no-common-ligatures`: Pixelify Sans draws 'fi' as one glyph that reads as 'A'). The canvas draws text in Silkscreen only, which has no ligatures.
 
 ### 13.10 Layout engine (`src/ui/layout.ts`, H)
@@ -2028,7 +2046,7 @@ export class Layout {
 - Implement every name of §12.3 with the sizes of DESIGN §16.3, the palette of §16.2 (only `PAL` keys), 2 variants per house tier, seasonal variants for fields, olive rows and oaks, forum stages 0–4, Capitolium stages 1–4 and the three crowns, portraits with 3 moods (palette/mouth-row swaps), meander/seal/aquila.
 - Acceptance: `art.test.ts` — every `REQUIRED_SPRITES` name registered, `validateArt()` returns `[]`, sizes as declared; visual sheet `?dev&sheet` (rendered by `view.ts` debug hook) reviewed in the PR with a screenshot. Readability rule: every building identifiable at level 1 by silhouette alone.
 
-**WP-H · UI shell** — owns `src/main.ts`, `ui/index.ts`, `hud.ts`, `vitals.ts`, `objective.ts`, `counsel.ts`, `ticker.ts`, `toasts.ts`, `banner.ts`, `modals.ts`, `dispatch.ts`, `title.ts`, `audio.ts`, `keys.ts`, and `base.css hud.css left.css map-ui.css modals.css title.css mobile.css`.
+**WP-H · UI shell** — owns `src/main.ts`, `ui/index.ts`, `hud.ts`, `vitals.ts`, `tray.ts`, `objective.ts`, `counsel.ts`, `ticker.ts`, `toasts.ts`, `banner.ts`, `modals.ts`, `dispatch.ts`, `title.ts`, `audio.ts`, `keys.ts`, and `base.css hud.css left.css map-ui.css modals.css title.css tray.css mobile.css`.
 - Implement §13.2–13.9 and DESIGN §15.1–15.2, §15.4 (place banner, overlay bar, zoom), §15.5–15.8, §11.8, §11.10 (resource/date/morale/dignitas tooltips), §11.11 (vital tablets + 12-month strip), §17 (all 17 sfx), the catch-up veil, the three parchment dispatches, autosave and offline flow (§11.4–11.5).
 - Acceptance: layouts at 1,280 × 800, 1,000 × 700, 390 × 844; the beat sheet of DESIGN §11.12 plays with the counsel card showing exactly one item by the priority rule; HUD numbers match `rates` and `forecast`; modals pause and trap focus; Esc chain; toasts ≤ 4 and batched; away report renders from `simulateOffline` fixtures; no `innerHTML` with game strings.
 
@@ -2077,6 +2095,7 @@ export class Layout {
 | `guide.test.ts` | E | always (+ `INTEGRATED` beat sheet) | tip graph, order, beat sheet with seed 42 |
 | `art.test.ts` | G | always | `REQUIRED_SPRITES` registered, `validateArt()` clean |
 | `camera.test.ts` | F | always | camera insets at DPR 1, 2, 2.625, 3: screen ↔ world round trips, free-rect centring, the clamp keeps 25% of the free rect, `ensureVisibleDelta` 0 inside and minimal outside |
+| `voice.test.ts` | H | always | `awaitingItems` order and filters, the `remedyChip` table (Place for a building remedy, a row's first remedy, none), `voiceAction` per kind of item |
 | `layout.test.ts` | H | always | `classify` over the 35 measured window sizes and the design's own (touch, mixed, mouse; tiny), the `route` table, the lessons' table covers every `LessonId`, every lesson's pointer shows on every host and detent, `keepDetent`, the inspector's `roomShift` and `dodge` |
 | `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |

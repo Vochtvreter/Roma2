@@ -1,6 +1,10 @@
 /* src/styles/mobile.css — owner H (WP-H UI shell). Breakpoints (ARCHITECTURE §13.9, DESIGN §15.7): tablet 900–1099 px
    (minimap hidden, compact HUD), mobile < 900 px (two-row HUD, everything floats above the 46vh bottom sheet of WP-I),
-   compact < 560 px. Imported last. The bottom sheet itself (#side) is WP-I's; --sheet tracks its height here. */
+   compact < 560 px. Imported last. The bottom sheet itself (#side) is WP-I's; --sheet tracks its height here.
+   The layout engine's hosts (layout.ts, #app[data-host]) take over host by host: a portrait phone (SHEET) has its one-row
+   HUD in hud.css and its Res Gestae in the Breviarium (tray.css), so the phone HUD and Res Gestae rules below stand under
+   :where(#app:not([data-host='sheet'])): the landscape phone and the small tablets keep them, at the specificity they had,
+   until their hosts land (P3, P4). */
 
 /* ───────── tablet and narrow desktop ───────── */
 /* The HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below. Also
@@ -35,35 +39,38 @@
   /* The open sheet is 46vh, but on a short phone it yields height so the Res Gestae line and the counsel chip still fit
      between the HUD and the map tools (320 px: the column, the tools and the ticker). */
   :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
+  /* A portrait phone's one-row HUD (the SHEET host, hud.css: 52 px on #app): the open sheet is worked out again with it,
+     since :root's figure above holds the two-row HUD's height (a custom property is resolved where it is declared). */
+  #app[data-host='sheet'] { --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
   #app:has(#side.collapsed) { --sheet: 56px; }
   #app:has(#side.empty) { --sheet: 0px; }
-  #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
-  .hud-brand { display: none; }
-  .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
+  :where(#app:not([data-host='sheet'])) #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
+  :where(#app:not([data-host='sheet'])) .hud-brand { display: none; }
+  :where(#app:not([data-host='sheet'])) .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
   /* row 1 sizes to its numbers (flex-basis auto) and shares out the rest, so no figure is cut while the row has room */
-  .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
-  .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
-  .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
-  .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
-  .hud-date, .hud-speed, .hud-menu { flex: none !important; }
-  .hud-speed, .hud-menu, .hud-date, .hud-strip { order: 3; }
-  .hud-speed { margin-left: 0; }
-  .vit-strip, .vit-seasons { display: none; }
-  .vit-sub, .hud-vital.falling .vit-sub { display: none; }
-  .hud-chip { height: 42px; }
-  .hud-menu { margin-left: auto; height: 40px; }
-  .hud-date { height: 38px; }
-  .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
-  .hud-res { min-width: 56px; }
-  .hud-sp { height: 36px; }
+  :where(#app:not([data-host='sheet'])) .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
+  :where(#app:not([data-host='sheet'])) .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
+  :where(#app:not([data-host='sheet'])) .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
+  :where(#app:not([data-host='sheet'])) .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
+  :where(#app:not([data-host='sheet'])) :is(.hud-date, .hud-speed, .hud-menu) { flex: none !important; }
+  :where(#app:not([data-host='sheet'])) :is(.hud-speed, .hud-menu, .hud-date, .hud-strip) { order: 3; }
+  :where(#app:not([data-host='sheet'])) .hud-speed { margin-left: 0; }
+  :where(#app:not([data-host='sheet'])) :is(.vit-strip, .vit-seasons) { display: none; }
+  :where(#app:not([data-host='sheet'])) .vit-sub, :where(#app:not([data-host='sheet'])) .hud-vital.falling .vit-sub { display: none; }
+  :where(#app:not([data-host='sheet'])) .hud-chip { height: 42px; }
+  :where(#app:not([data-host='sheet'])) .hud-menu { margin-left: auto; height: 40px; }
+  :where(#app:not([data-host='sheet'])) .hud-date { height: 38px; }
+  :where(#app:not([data-host='sheet'])) .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
+  :where(#app:not([data-host='sheet'])) .hud-res { min-width: 56px; }
+  :where(#app:not([data-host='sheet'])) .hud-sp { height: 36px; }
 
   #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
-  #objective { padding: 6px 10px; }
-  .obj-hint, .obj-unlocks, .obj-meter, .obj-laurel { display: none; }
-  .obj-goal { font-size: 14px; margin: 2px 0 0; }
-  .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
-  .obj-chip { flex: none; }
-  .obj-cta { margin-top: 5px; padding: 4px 8px; }
+  :where(#app:not([data-host='sheet'])) #objective { padding: 6px 10px; }
+  :where(#app:not([data-host='sheet'])) :is(.obj-hint, .obj-unlocks, .obj-meter, .obj-laurel) { display: none; }
+  :where(#app:not([data-host='sheet'])) .obj-goal { font-size: 14px; margin: 2px 0 0; }
+  :where(#app:not([data-host='sheet'])) .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
+  :where(#app:not([data-host='sheet'])) .obj-chip { flex: none; }
+  :where(#app:not([data-host='sheet'])) .obj-cta { margin-top: 5px; padding: 4px 8px; }
   .counsel-strip { display: none; }
   .counsel-card { padding: 6px 10px; cursor: pointer; }
   .counsel-card .counsel-body { display: none; }
@@ -122,39 +129,39 @@
 
 /* narrow tablets and large phones: dignitas steps out of row 1 so the souls keep their beds figure */
 @media (max-width: 699px) {
-  .hud-dignitas { display: none; }
+  :where(#app:not([data-host='sheet'])) .hud-dignitas { display: none; }
 }
 
 /* ───────── compact phones ───────── */
 @media (max-width: 559px) {
-  .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
-  .hud-n { font-size: 12px; }
-  .vit-label { font-size: 7px; letter-spacing: .5px; }
-  .vit-trend { display: none; }
-  .vit-days { font-size: 15px; }
-  #hud { padding: 4px; gap: 3px; }
-  .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
-  .hud-coin .hud-sub { font-size: 7px; }
-  .hud-stages { display: none; }
+  :where(#app:not([data-host='sheet'])) .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
+  :where(#app:not([data-host='sheet'])) .hud-n { font-size: 12px; }
+  :where(#app:not([data-host='sheet'])) .vit-label { font-size: 7px; letter-spacing: .5px; }
+  :where(#app:not([data-host='sheet'])) .vit-trend { display: none; }
+  :where(#app:not([data-host='sheet'])) .vit-days { font-size: 15px; }
+  :where(#app:not([data-host='sheet'])) #hud { padding: 4px; gap: 3px; }
+  :where(#app:not([data-host='sheet'])) .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
+  :where(#app:not([data-host='sheet'])) .hud-coin .hud-sub { font-size: 7px; }
+  :where(#app:not([data-host='sheet'])) .hud-stages { display: none; }
   /* Three rows: tablets, coin and souls · date, speed and menu · spirits and the materials (scrolling). No row can wrap:
      in each one item takes what is left (flex-basis 0) and the others keep their natural width; if even that runs short
      (a 360 px phone late in the game) only the souls figure or the date ellipsizes. #hud::after breaks rows 2 and 3. */
   :root { --hud-h: 136px; }
-  #hud { row-gap: 3px; }
-  #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
-  .hud-vitals, .hud-chip.hud-coin { flex: 0 1 auto !important; }
-  .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
-  .hud-break { order: 1; }
-  .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
-  .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
-  .hud-speed, .hud-menu { order: 2; }
-  .hud-menu { margin-left: 0; }
-  .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
-  .hud-strip { order: 4; flex: 1 1 0 !important; }
-  .hud-date-main { font-size: 9px; }
-  .hud-date .hud-sub { display: none; }
-  .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
-  .hud-speed { gap: 2px; }
+  :where(#app:not([data-host='sheet'])) #hud { row-gap: 3px; }
+  :where(#app:not([data-host='sheet'])) #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
+  :where(#app:not([data-host='sheet'])) .hud-vitals, :where(#app:not([data-host='sheet'])) .hud-chip.hud-coin { flex: 0 1 auto !important; }
+  :where(#app:not([data-host='sheet'])) .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
+  :where(#app:not([data-host='sheet'])) .hud-break { order: 1; }
+  :where(#app:not([data-host='sheet'])) .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
+  :where(#app:not([data-host='sheet'])) .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
+  :where(#app:not([data-host='sheet'])) :is(.hud-speed, .hud-menu) { order: 2; }
+  :where(#app:not([data-host='sheet'])) .hud-menu { margin-left: 0; }
+  :where(#app:not([data-host='sheet'])) .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
+  :where(#app:not([data-host='sheet'])) .hud-strip { order: 4; flex: 1 1 0 !important; }
+  :where(#app:not([data-host='sheet'])) .hud-date-main { font-size: 9px; }
+  :where(#app:not([data-host='sheet'])) .hud-date .hud-sub { display: none; }
+  :where(#app:not([data-host='sheet'])) .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
+  :where(#app:not([data-host='sheet'])) .hud-speed { gap: 2px; }
   .title-logo { letter-spacing: 1px; }
   .title-row { flex-direction: column; }
   .modal-title { font-size: 21px; }
@@ -211,7 +218,7 @@
    screen. Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit
    at the bottom right of the free map. */
 @media (max-width: 899px) and (max-height: 520px) {
-  :root, #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
+  :root, #app[data-host='sheet'], #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
   #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
     border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
   #side.collapsed, #app.placing #side { transform: translateX(100%); }

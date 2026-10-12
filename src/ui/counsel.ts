@@ -4,7 +4,7 @@
 // under the pointer within B.ui.CLICK_GUARD_MS of a click, nor while the mouse rests on it (unless to answer a click
 // there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
 import { ADVISORS } from '../game/types';
-import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GuideStep, Remedy } from '../game/types';
+import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GameState, GuideStep, PathDecisionId, RankIndex, Remedy, TabId } from '../game/types';
 import type { Game } from './types';
 import { clear, fmtDays, h, img, scrollWithin, tip } from './dom';
 import { caps } from './tipkit';
@@ -14,24 +14,43 @@ import { activeAdvisories, advisorMood, renderAdvisory } from '../game/advisors/
 import { checkRemedy } from '../game/advisors/remedies';
 import { beginNextLesson, dismissTip, handOverAll, hush, keepDuties, mute, setDuty, skipIntro, skipLesson } from '../game/actions';
 import { DUTY_DEFS, pendingOffers } from '../game/ordo/duties';
-import { LESSONS, currentLesson, lessonAge, lessonPointer } from '../game/intro';
-import type { Lesson } from '../game/intro';
+import { LESSONS, currentLesson, introduced, lessonAge, lessonPointer } from '../game/intro';
+import type { Lesson, LessonId } from '../game/intro';
 import { toRoman } from '../game/calendar';
 import { mentorKicker, nextTip } from '../game/guide';
 import { currentMilestone } from '../game/objectives';
 import { forecast } from '../game/forecast';
+import { petitionNeeds } from '../game/decisions';
 import { view } from '../game/sim';
 import { ADVISOR_DEFS } from '../game/data/advisors';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { portrait } from '../render/art/index';
-import { shows } from './intro';
+import { shows, tabShown } from './intro';
 import { revealTarget } from './layout';
 
 /** The one item the card shows. */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
   | { kind: 'lesson'; l: Lesson; index: number; done: boolean; nudge: boolean; stuck: boolean }
   | { kind: 'offer'; duties: DutyId[] } | { kind: 'calm' };
+
+/** One thing that waits on the player: a row of the Breviarium's "Awaiting you" (tray.ts), and what the phone's voice
+ *  line counts in its '+n' pip. A Periculum or Cave advisory, a dispatch to answer (s.choice), chores learned and not yet
+ *  answered, or a petition Rome would hear. */
+export type AwaitItem = { kind: 'advisory'; a: ActiveAdvisory }
+  | { kind: 'event'; title: string; expires: number }
+  | { kind: 'offer'; duties: DutyId[] }
+  | { kind: 'petition'; decision: PathDecisionId; rank: RankIndex | null; affordable: boolean };
+
+/** The one action an item offers (the voice line's chip, an "Awaiting you" row's button): a remedy to run ('Place' for a
+ *  building, with its check), a tab to open ('Review' the Mandata, 'Petition'), a lesson to show, the dispatch to read. */
+export type VoiceAction = { kind: 'remedy'; label: string; remedy: Remedy; ok: boolean; reason: string }
+  | { kind: 'open'; label: string; tab: TabId; anchor?: string }
+  | { kind: 'lesson'; label: string; lesson: LessonId }
+  | { kind: 'event'; label: string };
+
+/** An advisory's remedies as renderAdvisory gives them (label and check). */
+export type RenderedRemedy = { remedy: Remedy; label: string; check: ActionResult };
 
 const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
 const OPPORTUNITAS = 'augur.petition';
@@ -68,6 +87,68 @@ export function pickCounsel(g: Game): CounselItem {
   const low = adv.find((a) => a.memo.sev >= 1);   // Monitum or Opportunitas (ranks as Monitum, never above Cave)
   if (low) return { kind: 'advisory', a: low };
   return { kind: 'calm' };
+}
+
+/** What waits on the player, most pressing first (pure; tests/voice.test.ts): Periculum advisories, a dispatch to answer
+ *  (it expires), Cave advisories, the chores learned and not yet answered, and a petition Rome would hear. The chores and
+ *  the petition wait only once Edicta, where they are answered, is on the bar, and the chores once its Mandata are (the
+ *  lessons bring both: a chore learned in lesson I waits for lesson IV). Opportunitas and the gentler counsel stay on the
+ *  card alone. */
+export function awaitingItems(s: GameState): AwaitItem[] {
+  const adv = activeAdvisories(s, { forCard: true }).filter((a) => a.rule !== OPPORTUNITAS);
+  const out: AwaitItem[] = adv.filter((a) => a.memo.sev === 3).map((a) => ({ kind: 'advisory', a }));
+  if (s.choice) out.push({ kind: 'event', title: s.choice.title, expires: s.choice.expires });
+  for (const a of adv) if (a.memo.sev === 2) out.push({ kind: 'advisory', a });
+  const edicta = tabShown(s, 'council');
+  const offers = edicta && introduced(s, 'mandates') ? pendingOffers(s) : [];
+  if (offers.length) out.push({ kind: 'offer', duties: offers });
+  const pn = edicta ? petitionNeeds(s, view(s)) : null;
+  if (pn?.ready) out.push({ kind: 'petition', decision: pn.decision, rank: pn.rank, affordable: pn.affordable });
+  return out;
+}
+
+/** A building remedy (ask the Ordo or place it) as the remedy the player runs: Place, at the remedy's own tile when the
+ *  list carries one for that building (the counsel card's "Place it myself"). */
+function placeOf(list: readonly RenderedRemedy[], r: Remedy): Remedy | null {
+  if (r.kind === 'place') return r;
+  if (r.kind !== 'ask') return null;
+  return list.find((y) => y.remedy.kind === 'place' && y.remedy.building === r.building)?.remedy ?? { kind: 'place', building: r.building };
+}
+
+/** The chip an advisory's remedies give (pure; tests/voice.test.ts). `first`: the first remedy whatever it is (an
+ *  "Awaiting you" row), a building one as Place; else only a building remedy, as Place (the voice line: a spatial verb or
+ *  nothing). The check is the remedy's own, so the chip can show disabled with the reason. */
+export function remedyChip(list: readonly RenderedRemedy[], first: boolean, s: GameState): VoiceAction | null {
+  const pick = first ? list[0] : list.find((x) => x.remedy.kind === 'place' || x.remedy.kind === 'ask');
+  if (!pick) return null;
+  const place = placeOf(list, pick.remedy);
+  const remedy = place ?? pick.remedy;
+  const check = place ? checkRemedy(s, place) : pick.check;
+  return { kind: 'remedy', label: place ? 'Place' : pick.label, remedy, ok: check.ok, reason: check.ok ? '' : check.reason };
+}
+
+/** The voice line's one action chip for an item (pure; tests/voice.test.ts): a Periculum or Cave advisory with a building
+ *  remedy → Place (runs it); chores to hand over → Review (Edicta at the Mandata); a lesson under way with something to
+ *  point at → Show me; a dispatch → Read; a petition → Petition (Edicta at the petition). Anything else (a tip, the calm
+ *  line, a Monitum, an advisory whose remedies are not spatial) has none: the line shows ▾ and opens the card. */
+export function voiceAction(item: CounselItem | AwaitItem, s: GameState): VoiceAction | null {
+  switch (item.kind) {
+    case 'advisory':
+      if (item.a.memo.sev < 2 || item.a.rule === OPPORTUNITAS) return null;
+      return remedyChip(renderAdvisory(s, view(s), item.a).remedies, false, s);
+    case 'offer': return { kind: 'open', label: 'Review', tab: 'council', anchor: 'mandates' };
+    case 'lesson': return !item.done && (item.l.tab || item.l.target) ? { kind: 'lesson', label: 'Show me', lesson: item.l.id } : null;
+    case 'event': return { kind: 'event', label: 'Read' };
+    case 'petition': return { kind: 'open', label: 'Petition', tab: 'council', anchor: 'petition' };
+    default: return null;
+  }
+}
+
+/** An "Awaiting you" row's action (pure): an advisory offers its first remedy (a building one as Place); every other
+ *  item the voice line's chip. */
+export function awaitAction(item: AwaitItem, s: GameState): VoiceAction | null {
+  if (item.kind === 'advisory') return remedyChip(renderAdvisory(s, view(s), item.a).remedies, true, s);
+  return voiceAction(item, s);
 }
 
 /** The card's signature: the portrait strip, the shown item and, for an advisory, its remedies' labels and availability

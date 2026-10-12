@@ -1,7 +1,8 @@
 // src/ui/index.ts — the UI root (ARCHITECTURE §13.3, §13.7): builds every widget in its DOM id, runs the throttled update
 // loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
 // mapbar.ts; the side panel, inspector and event card are WP-I's classes; the layout engine (layout.ts) owns the panel's
-// detent, the data-* size classes on #app and the camera's insets. Owner: WP-H.
+// detent, the data-* size classes on #app and the camera's insets; the Breviarium (tray.ts) drops from any HUD figure and
+// holds the Res Gestae panel on a phone's sheet. Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -17,6 +18,7 @@ import { openDispatch } from './dispatch';
 import { MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Layout } from './layout';
+import { Tray } from './tray';
 import type { Detent } from './layout';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
@@ -55,6 +57,8 @@ export class UI {
   layout!: Layout;
   inspector!: Inspector;
   choice!: ChoiceCard;
+  /** The Breviarium, the accounts every HUD figure opens (window.cv.ui.tray in ?dev). */
+  tray!: Tray;
   private hud!: Hud;
   private objective!: Objective;
   private counsel!: Counsel;
@@ -78,6 +82,9 @@ export class UI {
     this.hud = new Hud(g, el('hud'));
     this.hud.build();
     this.objective = new Objective(g, el('objective'));
+    this.tray = new Tray(g, el('tray'), el('objective'));
+    this.hud.onFigure = (fig, from, key) => this.tray.toggle(fig, from, key);
+    this.hud.quiet = (fig) => this.tray.covers(fig);   // a hover card that would drop over the open tray (which shows it) holds back
     this.counsel = new Counsel(g, el('counsel'));
     this.ticker = new Ticker(g, el('ticker'));
     this.title = new TitleScreen(g, el('title-screen'));
@@ -85,8 +92,15 @@ export class UI {
     this.layout = new Layout(g, el('app'), this.side);   // from here SidePanel.toggle() goes through the layout
     this.inspector = new Inspector(g, el('inspector'));
     this.layout.onChange(() => this.inspector.reseek());   // the UI moved: a pinned target it now covers glides clear
+    // a new host: the Res Gestae panel moves in or out of the tray, and the phone's speed popover folds into the row
+    this.layout.onChange((why) => {
+      if (why === 'classes') { this.tray.mount(this.layout.host); this.hud.closePopover(); }
+      else this.tray.relayout();
+    });
+    this.tray.mount(this.layout.host);
     this.choice = new ChoiceCard(g, el('choice'));
     this.side.onChoiceAnchor = () => this.choice.reveal();   // "Read the dispatch" unfolds the event card itself
+    this.tray.onRead = () => this.choice.reveal();
     // a portrait phone gives an unfolded event card the sheet's room: the sheet drops to its tab bar while the card is
     // up (its text and its pinned answers both show) and comes back once it is answered or folded. A tab tapped
     // meanwhile opens the sheet again; the card then scrolls in what is left
@@ -135,6 +149,7 @@ export class UI {
     present(g, el('ticker'), shows(g, 'ticker'));
     present(g, el('overlay-bar'), shows(g, 'overlays'));
     this.hud.update();
+    this.tray.update(now);
     this.objective.update(this.counsel.held);
     this.counsel.update();
     this.ticker.update(now);
@@ -240,6 +255,7 @@ export class UI {
   /** Shows the title screen (hides the game chrome: the whole map is free behind it). */
   showTitle(): void {
     document.getElementById('app')?.classList.add('in-title');
+    this.tray.close();
     this.showPlaceBanner(null, null);
     this.title.show();
     this.layout.refresh();

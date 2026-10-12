@@ -1,6 +1,10 @@
 // src/ui/hud.ts — the HUD bar (DESIGN §15.2): brand, vital tablets, coin, souls, spirits, dignitas, resource strip, date,
 // speed and menu. Owner: WP-H. Built once; numbers are patched in place every UI tick; tooltips are lazy (hud-tips.ts).
 // The chips and material cells only grow (steady.ts Ratchet): a shorter figure or date never shuffles its neighbours.
+// Every figure (data-fig: the tablets, coin, souls, spirits, dignitas, date, a material) opens the Breviarium there on a
+// tap or click (onFigure → tray.ts); a mouse still has the hover cards, but not one that would drop over the open tray.
+// On a portrait phone (the SHEET host) the same elements make one 52 px row (hud.css): the tablets with their strips, coin
+// over souls, the speed pair [❚❚][1× ▾] whose ▾ opens the speeds as a popover (a Back and Esc layer), and the menu.
 import type { ResId, Speed, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import type { IntroPart } from '../game/intro';
@@ -8,12 +12,12 @@ import { clear, fmt, fmtRate, h, img, tip } from './dom';
 import { Vitals } from './vitals';
 import { caps } from './tipkit';
 import { Ratchet } from './steady';
-import { STRIP_RES, coinTip, dateTip, dignitasTip, moraleTip, netRate, resourceTip, seasonFrac, soulsTip } from './hud-tips';
+import { coinTip, dateTip, dignitasTip, moraleTip, netRate, resourceTip, seasonFrac, soulsTip, stripShown } from './hud-tips';
 import { openMenu, openRename } from './modals';
+import { BACK_RANK, registerBack } from './history';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
 import { dignitas } from '../game/civic';
-import { resourceRevealed } from '../game/reveal';
 import { isUnlocked } from '../game/decisions';
 import { aucYear, formatRoman, seasonOf, SEASON_NAMES, toRoman } from '../game/calendar';
 import { RANK_DEFS } from '../game/data/ranks';
@@ -21,7 +25,6 @@ import { B } from '../game/balance';
 import { faceIcon, resIcon } from '../render/art/index';
 import { spriteURL } from '../render/sprites';
 import { present, shows } from './intro';
-import { introRunning } from '../game/intro';
 
 const DEV = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search);
 const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DEV ? [B.time.DEV_SPEED as Speed] : [])];
@@ -33,6 +36,20 @@ const COIN_WARN = B.advisors.RULES.COIN_RUNOUT[2];   // "lasts N d" once the Qua
 const LAUREL_CREST: UnlockRef = { kind: 'cosmetic', id: 'laurelCrest', label: 'A laurel on the crest' };
 
 type Up = () => void;
+
+/** The HUD figure an event landed on (data-fig), if any. */
+function figureOf(t: EventTarget | null): HTMLElement | null {
+  return t instanceof Element ? t.closest<HTMLElement>('[data-fig]') : null;
+}
+
+/** Marks a HUD element as a figure that opens the Breviarium at `fig` (keyboard: focusable, Enter). */
+function figure(el: HTMLElement, fig: string): HTMLElement {
+  el.dataset.fig = fig;
+  el.tabIndex = 0;
+  el.setAttribute('aria-controls', 'tray');
+  el.setAttribute('aria-expanded', 'false');
+  return el;
+}
 
 /** Restarts an element's flash animation. */
 function flash(el: HTMLElement): void {
@@ -59,9 +76,32 @@ export class Hud {
   private readonly chips: HTMLElement[] = [];      // coin, souls, spirits, dignitas, date: widths held by the ratchet
   private readonly parts: [HTMLElement, IntroPart][] = [];   // chips the introduction brings in (ui/intro.ts)
   private readonly ratchet = new Ratchet('(max-width: 899px)');   // the phone rows share out their width themselves
+  private speedEl: HTMLElement | null = null;
+  private popOpen = false;                         // the phone's speed popover is open
+  /** A figure was tapped or clicked: the UI root opens the Breviarium there (tray.ts). */
+  onFigure: ((fig: string, el: HTMLElement, viaKey: boolean) => void) | null = null;
+  /** True for a figure whose hover card holds its tongue: the Breviarium is open beneath it (and shows the same). */
+  quiet: (el: HTMLElement) => boolean = () => false;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
-    this.vitals = new Vitals(g);
+    this.vitals = new Vitals(g, (el) => this.quiet(el));
+    root.addEventListener('click', (e) => {
+      const f = figureOf(e.target);
+      if (f) this.onFigure?.(f.dataset.fig ?? '', f, false);
+    });
+    root.addEventListener('keydown', (e) => {
+      const f = figureOf(e.target);
+      if (e.key !== 'Enter' || !f || f !== e.target) return;
+      e.preventDefault();
+      this.onFigure?.(f.dataset.fig ?? '', f, true);
+    });
+    // the speed popover is a layer: Back and Esc close it first; a press anywhere else closes it too
+    registerBack({ rank: BACK_RANK.popover, open: () => this.popOpen, close: () => this.popover(false) });
+    if (typeof document !== 'undefined') {
+      document.addEventListener('pointerdown', (e) => {
+        if (this.popOpen && !(e.target instanceof Node && this.speedEl?.contains(e.target))) this.popover(false);
+      }, true);
+    }
     const strip = this.strip;
     strip.addEventListener('wheel', (e) => {
       if (strip.scrollWidth <= strip.clientWidth) return;
@@ -97,6 +137,19 @@ export class Hud {
     for (const u of this.up) u();
     this.updateStrip();
     this.ratchet.hold([...this.chips, ...(Array.from(this.strip.children) as HTMLElement[])]);
+  }
+
+  /** Closes the phone's speed popover (a host change: the speeds lie in the row again). */
+  closePopover(): void {
+    this.popover(false);
+  }
+
+  /** Opens or closes the phone's speed popover. */
+  private popover(open: boolean): void {
+    if (this.popOpen === open) return;
+    this.popOpen = open;
+    this.speedEl?.classList.toggle('open', open);
+    this.speedEl?.querySelector('.hud-sp-cur')?.setAttribute('aria-expanded', String(open));
   }
 
   /** Flashes the coin chip (Kalends taxes, caravans). */
@@ -139,8 +192,8 @@ export class Hud {
     const g = this.g;
     const n = h('span', { class: 'hud-n num' });
     const sub = h('span', { class: 'hud-sub num' });
-    const el = h('div', { class: 'hud-chip hud-coin', role: 'group', 'aria-label': 'Coin' }, img(resIcon('denarii'), 2), h('div', { class: 'hud-stack' }, n, sub));
-    tip(el, () => coinTip(g), { wide: true });
+    const el = figure(h('div', { class: 'hud-chip hud-coin', role: 'group', 'aria-label': 'Coin' }, img(resIcon('denarii'), 2), h('div', { class: 'hud-stack' }, n, sub)), 'coin');
+    tip(el, () => (this.quiet(el) ? '' : coinTip(g)), { wide: true });
     this.coinEl = el;
     this.up.push(() => {
       const s = g.state;
@@ -159,9 +212,9 @@ export class Hud {
     const g = this.g;
     const n = h('span', { class: 'hud-n num' });
     const segs = [0, 1, 2, 3].map((i) => h('i', { class: `hud-stage st${i}` }));
-    const el = h('div', { class: 'hud-chip hud-souls', role: 'group', 'aria-label': 'Souls and beds' },
-      img('i_souls', 2), h('div', { class: 'hud-stack' }, n, h('div', { class: 'hud-stages' }, segs)));
-    tip(el, () => soulsTip(g), { wide: true });
+    const el = figure(h('div', { class: 'hud-chip hud-souls', role: 'group', 'aria-label': 'Souls and beds' },
+      img('i_souls', 2), h('div', { class: 'hud-stack' }, n, h('div', { class: 'hud-stages' }, segs))), 'souls');
+    tip(el, () => (this.quiet(el) ? '' : soulsTip(g)), { wide: true });
     this.up.push(() => {
       const c = census(g.state);
       n.textContent = `${c.pop}/${c.beds}`;
@@ -177,8 +230,8 @@ export class Hud {
     const n = h('span', { class: 'hud-n num' });
     const face = img(faceIcon(65), 2);
     const swap = spriteSwap(face, 2);
-    const el = h('div', { class: 'hud-chip hud-morale', role: 'group', 'aria-label': 'Spirits' }, face, n);
-    tip(el, () => moraleTip(g), { wide: true });
+    const el = figure(h('div', { class: 'hud-chip hud-morale', role: 'group', 'aria-label': 'Spirits' }, face, n), 'spirits');
+    tip(el, () => (this.quiet(el) ? '' : moraleTip(g)), { wide: true });
     this.up.push(() => {
       const m = g.state.morale;
       n.textContent = String(Math.round(m));
@@ -191,8 +244,8 @@ export class Hud {
   private dignitas(): HTMLElement {
     const g = this.g;
     const n = h('span', { class: 'hud-n num' });
-    const el = h('div', { class: 'hud-chip hud-dignitas', role: 'group', 'aria-label': 'Dignitas' }, img('i_laurel', 2), n);
-    tip(el, () => dignitasTip(g), { wide: true });
+    const el = figure(h('div', { class: 'hud-chip hud-dignitas', role: 'group', 'aria-label': 'Dignitas' }, img('i_laurel', 2), n), 'dignitas');
+    tip(el, () => (this.quiet(el) ? '' : dignitasTip(g)), { wide: true });
     this.up.push(() => {
       const d = Math.round(dignitas(g.state).value);
       n.textContent = String(d);
@@ -205,16 +258,15 @@ export class Hud {
   private updateStrip(): void {
     const g = this.g;
     const s = g.state;
-    // while the lessons run (§11.13), only what the taught works cost: timber and stone
-    const shown = STRIP_RES.filter((r) => (resourceRevealed(s, r) || s.res[r] > 0) && (!introRunning(s) || r === 'timber' || r === 'stone'));
+    const shown = stripShown(s);
     const key = shown.join(',');
     if (key !== this.stripKey) {
       this.stripKey = key;
       clear(this.strip);
       for (const r of shown) {
-        const el = h('div', { class: 'hud-res', role: 'listitem', dataset: { res: r } }, img(resIcon(r), 2),
-          h('div', { class: 'hud-stack' }, h('span', { class: 'hud-res-n num' }, h('b'), h('small', { class: 'hud-res-cap' })), h('span', { class: 'hud-res-r num' })));
-        tip(el, () => resourceTip(g, r), { wide: true });
+        const el = figure(h('div', { class: 'hud-res', role: 'listitem', dataset: { res: r } }, img(resIcon(r), 2),
+          h('div', { class: 'hud-stack' }, h('span', { class: 'hud-res-n num' }, h('b'), h('small', { class: 'hud-res-cap' })), h('span', { class: 'hud-res-r num' }))), 'materials');
+        tip(el, () => (this.quiet(el) ? '' : resourceTip(g, r)), { wide: true });
         this.strip.appendChild(el);
       }
     }
@@ -249,9 +301,9 @@ export class Hud {
     const bar = h('i');
     const ico = img('i_season_0', 2, 'hud-season');
     const swap = spriteSwap(ico, 2);
-    const el = h('div', { class: 'hud-date', role: 'group', 'aria-label': 'Date' }, ico,
-      h('div', { class: 'hud-stack' }, main, sub, h('div', { class: 'hud-seasonbar' }, bar)));
-    tip(el, () => dateTip(g), { wide: true });
+    const el = figure(h('div', { class: 'hud-date', role: 'group', 'aria-label': 'Date' }, ico,
+      h('div', { class: 'hud-stack' }, main, sub, h('div', { class: 'hud-seasonbar' }, bar))), 'date');
+    tip(el, () => (this.quiet(el) ? '' : dateTip(g)), { wide: true });
     this.up.push(() => {
       const d = g.state.day;
       const se = seasonOf(d);
@@ -264,17 +316,33 @@ export class Hud {
     return el;
   }
 
+  /** Pause and the speeds in #speed (lesson VII's target). In a row as they always were; on a portrait phone the pair
+   *  [❚❚][1× ▾]: pause, and the speed in use, whose ▾ opens the speeds as a popover (their box lays out in the row
+   *  elsewhere: display: contents, hud.css). One set of buttons either way: the keys and the lesson find the same ones. */
   private speed(): HTMLElement {
     const g = this.g;
-    const pause = h('button', { class: 'hud-sp', 'aria-label': 'Pause (Space)', onclick: () => { g.sfx('click'); g.togglePause(); } }, '❚❚');
+    const pause = h('button', { class: 'hud-sp hud-sp-pause', 'aria-label': 'Pause (Space)', onclick: () => { g.sfx('click'); g.togglePause(); } }, '❚❚');
     const btns = SPEEDS.map((sp, i) => h('button', {
-      class: 'hud-sp num', 'aria-label': `Speed ${sp}× (key ${i + 1})`, onclick: () => { g.sfx('click'); g.setSpeed(sp); },
+      class: 'hud-sp num', 'aria-label': `Speed ${sp}× (key ${i + 1})`, onclick: () => { g.sfx('click'); g.setSpeed(sp); this.popover(false); },
     }, `${sp}×`));
+    const pop = h('div', { class: 'hud-sp-pop', id: 'speed-pop', role: 'group', 'aria-label': 'Speeds' }, btns);
+    const curN = h('span', { class: 'num' }, '1×');
+    const caret = h('span', { class: 'hud-sp-caret', 'aria-hidden': 'true' }, '▾');
+    // before the speed lesson it is the 1× button it always was (resume at the pace of reading); after, it opens the five
+    const cur = h('button', { class: 'hud-sp hud-sp-cur', 'aria-label': 'Speed: choose one', 'aria-expanded': 'false', 'aria-controls': 'speed-pop',
+      onclick: () => {
+        g.sfx('click');
+        if (shows(g, 'speed')) this.popover(!this.popOpen);
+        else g.setSpeed(SPEEDS[0]);
+      } }, curN, caret);
     tip(pause, 'Pause or resume (Space). Open dialogs pause the colony too.');
+    tip(cur, () => (shows(g, 'speed') ? 'Choose a speed (keys 1 to 4).' : 'Resume at 1×.'));
     this.up.push(() => {
       // until their lesson only pause and 1× show (§11.13): the first works are raised at the pace of reading
       const fast = shows(g, 'speed');
       btns.forEach((b, i) => { if (i > 0) present(g, b, fast); });
+      present(g, caret, fast);
+      if (!fast && this.popOpen) this.popover(false);
       pause.classList.toggle('on', g.paused);
       pause.setAttribute('aria-pressed', String(g.paused));
       btns.forEach((b, i) => {
@@ -282,8 +350,12 @@ export class Hud {
         b.classList.toggle('on', on);
         b.setAttribute('aria-pressed', String(on));
       });
+      const now = `${g.speed}×`;
+      if (curN.textContent !== now) curN.textContent = now;
+      cur.classList.toggle('on', !g.paused);
     });
-    return h('div', { class: 'hud-speed', id: 'speed', role: 'group', 'aria-label': 'Speed' }, pause, btns);
+    this.speedEl = h('div', { class: 'hud-speed', id: 'speed', role: 'group', 'aria-label': 'Speed' }, pause, pop, cur);
+    return this.speedEl;
   }
 
   private menu(): HTMLElement {

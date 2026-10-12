@@ -73,7 +73,8 @@
   --z-hud: 20;
   --z-counsel: 21;
   --z-popup: 22;
-  --z-toasts: 24;
+  --z-toasts: 23;
+  --z-tray: 24;     /* the Breviarium the player opened stands over the toasts, which drop to the same place on a phone */
   --z-choice: 25;
   --z-banner: 30;
   --z-title: 60;

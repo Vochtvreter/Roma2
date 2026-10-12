@@ -183,11 +183,15 @@ const FRAME: readonly string[] = ['#hud', '#speed', '#objective', '#counsel', '#
 /** The map's own tools: they ride on the map, so a full panel (which covers it) hides them. */
 export const MAP_TOOLS: readonly string[] = ['#overlay-bar', '#zoom-ctl', '#ticker'];
 /** The frame targets each host shows. P1: every host still shows today's frame. P2 takes #overlay-bar, #speed's five
- *  buttons and #objective off the SHEET (and P3 off the DRAWER) and REVEAL maps them to their proxies. */
-export const VISIBLE: Readonly<Record<Host, readonly string[]>> = { sheet: FRAME, drawer: FRAME, dock: FRAME, columns: FRAME };
+ *  buttons and #objective off the SHEET (and P3 off the DRAWER) and REVEAL maps them to their proxies. P2a: on the SHEET
+ *  #speed is the [❚❚][1× ▾] pair itself (it still glows), and #objective lives in the closed Breviarium (tray.ts). */
+export const VISIBLE: Readonly<Record<Host, readonly string[]>> = {
+  sheet: FRAME.filter((x) => x !== '#objective'), drawer: FRAME, dock: FRAME, columns: FRAME,
+};
 /** Per host, a hidden target → the visible proxy that glows instead (P2/P3: '#overlay-bar' → the Mappae button, '#speed'
- *  → the speed pair, '#objective' → the Breviarium button, a tab button → its nav slot). Empty while nothing is hidden. */
-export const REVEAL: Readonly<Record<Host, Readonly<Record<string, string>>>> = { sheet: {}, drawer: {}, dock: {}, columns: {} };
+ *  → the speed pair, '#objective' → the Breviarium button, a tab button → its nav slot). P2a: the SHEET's Res Gestae
+ *  glows the HUD, whose figures open the Breviarium that holds it, until P2b's Breviarium button takes over. */
+export const REVEAL: Readonly<Record<Host, Readonly<Record<string, string>>>> = { sheet: { '#objective': '#hud' }, drawer: {}, dock: {}, columns: {} };
 
 /** The selector to glow for a target on a host: its proxy where the host hides it, else itself. */
 export function reveal(selector: string, host: Host): string {
@@ -284,7 +288,8 @@ export class Layout {
       for (const el of [this.hud, this.sideEl, this.left, this.banner]) if (el) ro.observe(el);   // the chrome growing, shown, hidden
     } else window.addEventListener('resize', () => this.update());
     // a detent above the host's default is a layer Back and Esc close, one step at a time (full → half → closed)
-    // TODO(P2): the context card, the tray and the Mappae popover register their own layers when they land
+    // TODO(P2): the context card and the Mappae popover register their own layers when they land (the Breviarium and the
+    // phone's speed popover have theirs: tray.ts, hud.ts)
     registerBack({ rank: BACK_RANK.detent, open: () => this.layerOpen(), close: () => this.setDetent(stepDown(this.det, this.cls.host, this.cls.tiny)) });
     this.update();
   }
