@@ -1,6 +1,6 @@
-// src/ui/sheet.ts — the phone hosts' own DOM (DESIGN §15.7, ARCHITECTURE §13.10): the grabber and the voice line's slot of
-// the phone panel (#side), the drag, and the slide between its detents; the portrait SHEET's and the landscape DRAWER's,
-// one set of nodes arranged two ways (sheet.css, drawer.css). Owner: WP-H.
+// src/ui/sheet.ts — the sliding panel's own DOM (DESIGN §15.7, ARCHITECTURE §13.10): the grabber and the voice line's slot
+// of the panel (#side), the drag, and the slide between its detents; the portrait SHEET's and the landscape DRAWER's, one
+// set of nodes arranged two ways (sheet.css, drawer.css), and the tablet DOCK's head and slide (dock.css). Owner: WP-H.
 // One instance of every widget: on a phone the counsel (#counsel) and the ticker (#ticker) move into the voice line's slot
 // (the counsel's folded card is the line; in calm the ticker speaks there instead), and the tab buttons become the SHEET's
 // bar or the DRAWER's spine (panels.ts mount); on any other host they go back where index.html put them, and the grip and
@@ -11,9 +11,14 @@
 // left edge (sideways; there only its handle's tap cycles); touch-action: none there (the tab body keeps its own scroll,
 // the voice line its taps). The panel follows the finger, comes to rest on the nearest detent (a fling goes on to the
 // next one: layout.snapDetent over the layout's extents: the SHEET's heights, the DRAWER's widths), its size set at rest
-// (from the layout's --sheet-* and --drawer-* properties), and only then do the camera's insets change
-// (Layout.setDetent). A tap on the grabber cycles closed → half → full → closed. The layout owns the detent and the
-// extents; this module moves the box.
+// (from the layout's --sheet-* and --drawer-* properties); the camera's insets change only once a detent is chosen,
+// never with the finger, and then to that detent's rect from the slide's start, so the camera's glide runs with the
+// slide (Layout.setDetent; on every host). A tap on the grabber cycles closed → half → full → closed. The layout owns
+// the detent and the extents; this module moves the box.
+// The DOCK is no phone (no grabber, no drag: its view control, spine and keys move it), but its pane slides sideways the
+// DRAWER's way between its widths (layout.dockWidths: the spine, docked, wide), and the same slot heads it: there it
+// holds the left column folded in, the Res Gestae panel (#objective, in its one-line form) over the counsel line, while
+// the ticker stays on the map; folded to the spine, dock.css floats the head top-right over the map.
 import type { Game } from './types';
 import type { Detent, Host, Layout, SheetHooks } from './layout';
 import { DETENT_NAMES, cycleDetent, isPhone, snapDetent } from './layout';
@@ -56,6 +61,7 @@ export class SheetHost implements SheetHooks {
   private readonly app: HTMLElement | null;
   private readonly counsel: Home;
   private readonly ticker: Home;
+  private readonly objective: Home;
   private hostNow: Host | null = null;
   private drag: { id: number; p0: number; e0: number; e: number; moved: boolean; pts: [number, number][] } | null = null;
   private swallow = false;   // the click that ends a drag is not a tap
@@ -63,9 +69,11 @@ export class SheetHost implements SheetHooks {
   private endT = 0;
   private measureAt = 0;     // a frame is booked to measure the head again (the voice line was rebuilt or reworded)
 
-  constructor(private readonly g: Game, private readonly layout: Layout, private readonly side: HTMLElement, counsel: HTMLElement, ticker: HTMLElement) {
+  constructor(private readonly g: Game, private readonly layout: Layout, private readonly side: HTMLElement, counsel: HTMLElement, ticker: HTMLElement,
+    objective: HTMLElement) {
     this.counsel = new Home(counsel);
     this.ticker = new Home(ticker);
+    this.objective = new Home(objective);
     this.app = side.parentElement;
     this.grab = h('button', { class: 'sheet-grab', id: 'sheet-grab', type: 'button' }, h('i', { 'aria-hidden': 'true' }));
     this.grip = h('div', { class: 'sheet-grip' }, this.grab);
@@ -101,23 +109,26 @@ export class SheetHost implements SheetHooks {
       + (line?.offsetHeight ?? 0));
   }
 
-  /** The DRAWER's voice line while it stands afloat on the map (the pane closed), else null. */
+  /** The DRAWER's voice line while it stands afloat on the map (the pane closed), or the DOCK's head while it floats
+   *  top-right over the map (the pane at rest on its spine, or with no tab yet: dock.css), else null. */
   floating(): HTMLElement | null {
+    if (this.hostNow === 'dock') return this.side.dataset.rest === 'closed' || this.side.classList.contains('empty') ? this.voice : null;
     return this.hostNow === 'drawer' && this.voice.parentElement === this.app ? this.voice : null;
   }
 
-  /** Slides the panel from `fromH` to `toH` (its extent: the SHEET's height, the DRAWER pane's width) and leaves it at
-   *  rest on `to`; the voice line goes where `to` wants it first (placeVoice). The box takes the larger of the two
-   *  extents for the slide and moves by a transform alone (no reflow of the tab body per frame): the sheet's part below
-   *  the bar hidden by the bar, the pane's right of the spine under the spine; at rest the inline size and transform go,
-   *  and the CSS gives the detent's own. Opening, the body shows from the start; closing, until the panel is away. A
-   *  slide under way starts from where it got. */
+  /** Slides the panel from `fromH` to `toH` (its extent: the SHEET's height, the DRAWER's or the DOCK pane's width) and
+   *  leaves it at rest on `to`; the voice line goes where `to` wants it first (placeVoice). The box takes the larger of
+   *  the two extents for the slide and moves by a transform alone (no reflow of the tab body per frame): the sheet's part
+   *  below the bar hidden by the bar, the pane's right of the spine under the spine (the DOCK's off #app's right edge); at
+   *  rest the inline size and transform go, and the CSS gives the detent's own. Opening, the body shows from the start
+   *  (data-rest names the detent it goes to); closing, until the panel is away. A slide under way starts from where it
+   *  got. */
   slide(fromH: number, toH: number, to: Detent, instant: boolean): void {
     this.placeVoice(to);
-    const st = this.side.style, x = this.hostNow === 'drawer';
+    const st = this.side.style, x = this.sideways();
     const from = this.sliding ? this.visualE() : fromH;
     window.clearTimeout(this.endT);
-    if (instant || Math.abs(from - toH) < 1 || !isPhone(this.hostNow) || matchMedia(REDUCED).matches) { this.rest(to); return; }
+    if (instant || Math.abs(from - toH) < 1 || !this.slides() || matchMedia(REDUCED).matches) { this.rest(to); return; }
     const hi = Math.max(from, toH);
     if (toH > from) this.side.dataset.rest = to;
     this.sliding = true;
@@ -131,9 +142,22 @@ export class SheetHost implements SheetHooks {
   }
 
   // ───────────────────────────── internals ─────────────────────────────
-  /** The host changed: on a phone the counsel and the ticker move into the voice line's slot; elsewhere they go home, the
-   *  slot back to the panel's head, and the panel's inline slide state is dropped (the layout then rests it on its
-   *  detent, in the new host's shape). */
+  /** The panel slides between its extents on this host: the phones' sheet and drawer, the DOCK's pane. */
+  private slides(): boolean {
+    return isPhone(this.hostNow) || this.hostNow === 'dock';
+  }
+
+  /** The panel slides sideways (its extent a width): the DRAWER's pane and the DOCK's; the SHEET goes up and down. */
+  private sideways(): boolean {
+    return this.hostNow === 'drawer' || this.hostNow === 'dock';
+  }
+
+  /** The host changed: on a phone the counsel and the ticker move into the voice line's slot; on the DOCK the Res Gestae
+   *  panel and the counsel (the left column folded into the pane's head), the ticker going home to the map; elsewhere
+   *  they go home (the counsel before the Res Gestae: each goes back before its old next sibling, the Res Gestae's being
+   *  the counsel), the slot back to the panel's head, and the panel's inline slide state is dropped (the layout then
+   *  rests it on its detent, in the new host's shape). A phone's Res Gestae is the Breviarium's (tray.ts mounts after
+   *  this): it is taken from here there. */
   private mount(host: Host): void {
     if (host === this.hostNow) return;
     this.hostNow = host;
@@ -142,8 +166,13 @@ export class SheetHost implements SheetHooks {
     if (isPhone(host)) {
       this.voice.append(this.counsel.el, this.ticker.el);
       this.placeVoice(this.layout.detent);
+    } else if (host === 'dock') {
+      this.ticker.back();
+      this.voice.append(this.objective.el, this.counsel.el);
+      this.placeVoice(null);
     } else {
       this.counsel.back();
+      if (this.objective.el.parentElement === this.voice) this.objective.back();
       this.ticker.back();
       this.placeVoice(null);
     }
@@ -158,9 +187,9 @@ export class SheetHost implements SheetHooks {
     } else if (v.parentElement !== this.side) this.side.insertBefore(v, this.body && this.body.parentElement === this.side ? this.body : null);
   }
 
-  /** The slide's transform: down for the SHEET, right for the DRAWER's pane, by `d` px. */
+  /** The slide's transform: down for the SHEET, right for the DRAWER's and the DOCK's pane, by `d` px. */
   private shift(d: number): string {
-    return this.hostNow === 'drawer' ? `translateX(${d}px)` : `translateY(${d}px)`;
+    return this.sideways() ? `translateX(${d}px)` : `translateY(${d}px)`;
   }
 
   /** The voice line on screen: the ticker's box in calm, else the counsel's folded line (its card's head, or its calm
@@ -173,10 +202,10 @@ export class SheetHost implements SheetHooks {
   }
 
   /** The panel's extent on screen now, mid-slide or mid-drag: the SHEET's height (its foot is the bar's top, whatever
-   *  its transform), the DRAWER pane's width (its right edge is the spine's left). */
+   *  its transform), the DRAWER's or the DOCK pane's width (its right edge is the spine's left, or #app's). */
   private visualE(): number {
     const s = this.side, app = s.offsetParent as HTMLElement | null, r = s.getBoundingClientRect(), a = app?.getBoundingClientRect();
-    if (this.hostNow === 'drawer') return s.offsetLeft + s.offsetWidth - (r.left - (a ? a.left : 0));
+    if (this.sideways()) return s.offsetLeft + s.offsetWidth - (r.left - (a ? a.left : 0));
     return s.offsetTop + s.offsetHeight - (r.top - (a ? a.top : 0));
   }
 

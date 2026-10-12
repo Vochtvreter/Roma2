@@ -1,10 +1,11 @@
 // src/ui/keys.ts — the global keyboard (DESIGN §15.8, ARCHITECTURE §13.8). Owner: WP-H.
-// Space pause · 1–4 speeds (5 = 20× in ?dev) · E V B P T L tabs · O / Shift+O overlays · R road · H forum ·
-// WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → the panel above its host's
-// default detent (layout.ts) → menu (the layers of history.ts, which Back walks too). Ignored inside inputs and on the
-// title (Esc still closes modals).
+// Space pause · 1–4 speeds (5 = 20× in ?dev) · E V B P T L tabs (with Shift: wide, on a tablet's dock and the desktop) ·
+// C M I the views Urbs, Mensa and Tabularium (the panel folded, docked, wide; layout.ts keyAction) · O / Shift+O overlays
+// · R road · H forum · WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → the
+// panel above its host's default detent (on the dock: the spine or the wide pane, back to docked; layout.ts) → menu (the
+// layers of history.ts, which Back walks too). Ignored inside inputs and on the title (Esc still closes modals).
 import { OVERLAYS } from '../game/types';
-import type { OverlayId, Speed, TabId } from '../game/types';
+import type { OverlayId, Speed } from '../game/types';
 import type { Game } from './types';
 import { closeTopModal, modalCount, openMenu } from './modals';
 import { closeTopLayer } from './history';
@@ -12,9 +13,9 @@ import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { shows, tabShown } from './intro';
 import { notePractice } from '../game/actions';
 import { B } from '../game/balance';
+import { currentHost, keyAction, moveDetent } from './layout';
 
 const PAN_PX_S = 520;                       // CSS px per second while a pan key is held
-const TAB_KEYS: Record<string, TabId> = { e: 'council', v: 'advisors', b: 'build', p: 'people', t: 'trade', l: 'annals' };
 const PAN: Record<string, [number, number]> = {
   w: [0, 1], arrowup: [0, 1], s: [0, -1], arrowdown: [0, -1], a: [1, 0], arrowleft: [1, 0], d: [-1, 0], arrowright: [-1, 0],
 };
@@ -71,8 +72,15 @@ export function initKeys(g: Game, dev: boolean): void {
     }
     if (k >= '1' && k <= '4') { g.setSpeed(SPEEDS[Number(k) - 1]); return; }
     if (k === '5' && dev) { g.setSpeed(B.time.DEV_SPEED as Speed); return; }
-    const tab = TAB_KEYS[k];
-    if (tab) { if (tabShown(g.state, tab)) g.openTab(tab, undefined, 'key'); return; }   // progressive reveal: no hotkey for a hidden tab
+    // a tab's letter (Shift: wide), or a view's (C, M, I: the panel folded, docked, wide on the dock and the desktop)
+    const act = keyAction(k, e.shiftKey, currentHost() ?? 'columns');
+    if (act?.kind === 'tab') { if (tabShown(g.state, act.tab)) g.openTab(act.tab, undefined, 'key', act.wide); return; }   // progressive reveal: no hotkey for a hidden tab
+    if (act?.kind === 'view') {
+      if (document.getElementById('side')?.classList.contains('empty')) return;   // no tab yet: no panel to move
+      g.sfx('click');
+      moveDetent(act.detent);
+      return;
+    }
     if (k === 'o') {
       if (!shows(g, 'overlays')) return;   // the overlay bar is not introduced yet
       if (e.shiftKey) { g.view.setOverlay('none'); g.changed(); return; }

@@ -64,22 +64,32 @@
 .btn.is-off:active { transform: none; }
 .tab-new { margin-left: 6px; padding: 0 3px; border-radius: 2px; background: var(--gold); color: #1d1410; font-size: 8px; line-height: 11px; vertical-align: middle; }
 
+/* Under 1100 and 900 px: the first phone and tablet shapes (a 46vh bottom sheet, its tab bar of six); the phones' own
+   hosts outrank these (sheet.css, drawer.css), and the tablet DOCK has none of them (dock.css): they stand off the DOCK at
+   the specificity they had. */
 @media (max-width: 1099px) {
-  #side { box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0,0,0,.35); }
+  :where(#app:not([data-host='dock'])) #side { box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0,0,0,.35); }
 }
 @media (max-width: 899px) {
-  #side { top: auto; left: 0; right: 0; width: auto; height: var(--sheet-open, 46vh); border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
-  #side.collapsed { transform: translateY(calc(100% - 52px)); }
-  #side-toggle { left: auto; right: 8px; top: -30px; width: 44px; height: 28px; border: var(--border-w) solid var(--line); border-bottom: 0; border-radius: var(--r2) var(--r2) 0 0; }
-  #side-toggle::before { content: '▾'; }
-  #side.collapsed #side-toggle::before { content: '▴'; }
-  #tabs { grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 3px; }
-  .side-tab { flex-direction: column; justify-content: center; gap: 1px; min-height: 44px; padding: 2px; text-align: center; }
-  .side-tab-sub { display: none; }
-  .side-tab-label { font-size: 10px; }
-  .side-tab-ico { width: 20px; height: 20px; }
-  .side-badge { top: -5px; right: 3px; }   /* the stacked phone tabs have room beside the icon */
+  :where(#app:not([data-host='dock'])) #side { top: auto; left: 0; right: 0; width: auto; height: var(--sheet-open, 46vh); border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
+  :where(#app:not([data-host='dock'])) #side.collapsed { transform: translateY(calc(100% - 52px)); }
+  :where(#app:not([data-host='dock'])) #side-toggle { left: auto; right: 8px; top: -30px; width: 44px; height: 28px; border: var(--border-w) solid var(--line); border-bottom: 0; border-radius: var(--r2) var(--r2) 0 0; }
+  :where(#app:not([data-host='dock'])) #side-toggle::before { content: '▾'; }
+  :where(#app:not([data-host='dock'])) #side.collapsed #side-toggle::before { content: '▴'; }
+  :where(#app:not([data-host='dock'])) #tabs { grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 3px; }
+  :where(#app:not([data-host='dock'])) .side-tab { flex-direction: column; justify-content: center; gap: 1px; min-height: 44px; padding: 2px; text-align: center; }
+  :where(#app:not([data-host='dock'])) .side-tab-sub { display: none; }
+  :where(#app:not([data-host='dock'])) .side-tab-label { font-size: 10px; }
+  :where(#app:not([data-host='dock'])) .side-tab-ico { width: 20px; height: 20px; }
+  :where(#app:not([data-host='dock'])) .side-badge { top: -5px; right: 3px; }   /* the stacked phone tabs have room beside the icon */
 }
 @media (max-width: 559px) {
   .side-tab-label { font-size: 9px; letter-spacing: -.02em; }
 }
+
+/* ───────── the desktop's wide panel (the COLUMNS host at full: Tabularium, layout.ts VIEWS) ───────── */
+/* It widens over the map, leaving the left column and a strip of live map 320 px wide (630 px from the left edge, never
+   narrower than the docked 380 px), its tabs in one row of six; the tab body flows in columns (tabs.css container
+   queries). What floats right of the map (the map tools, the toasts, the event card) follows --side-w. */
+#app[data-host='columns'][data-detent='full'] { --side-w: max(380px, calc(100% - 630px)); }
+#app[data-host='columns'][data-detent='full'] #tabs { grid-template-columns: repeat(6, 1fr); }

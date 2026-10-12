@@ -1,39 +1,40 @@
-/* src/styles/mobile.css — owner H (WP-H UI shell). Breakpoints (ARCHITECTURE §13.9, DESIGN §15.7): tablet 900–1099 px
-   (minimap hidden, compact HUD), mobile < 900 px (two-row HUD, everything floats above the 46vh bottom sheet of WP-I),
-   compact < 560 px. Imported after the rest, before sheet.css. The bottom sheet itself (#side) is WP-I's; --sheet tracks
-   its height here.
-   The layout engine's hosts (layout.ts, #app[data-host]) take over host by host: a portrait phone (SHEET) has its one-row
-   HUD in hud.css, its Res Gestae in the Breviarium (tray.css) and its sheet, bar, voice line and tool column in sheet.css
-   (imported after this file, and outranking the portrait rules here that it does not want), so the phone HUD and Res
-   Gestae rules below stand under :where(#app:not([data-host='sheet'], [data-host='drawer'])): the landscape phone and the 720–899 px tablets
-   keep all of this, at the specificity it had, until their hosts land (P3, P4). */
+/* src/styles/mobile.css — owner H (WP-H UI shell). The width breakpoints of the first phone and tablet layout
+   (ARCHITECTURE §13.9, DESIGN §15.7): under 1100 px (minimap hidden, compact HUD), under 900 px (everything floating
+   above a 46vh bottom sheet), under 560 px; and the 44 px touch targets of any coarse pointer. Imported after the rest,
+   before sheet.css, drawer.css and dock.css.
+   The layout engine's hosts (layout.ts, #app[data-host]) have their own shapes now: the portrait phone's SHEET (sheet.css),
+   the landscape phone's DRAWER (drawer.css) and the tablet's DOCK (dock.css; a desktop COLUMNS window is never under
+   1280 px). The rules that only ever served the 720–1279 px tablets are gone; what is left of the width blocks the
+   phones still lean on (the hosts' own rules outrank the rest), and it stands off the DOCK under
+   :where(#app:not([data-host='dock'])) (or #app:where(...): the same specificity it had). The modal and letter rules
+   apply to every narrow window, and the touch block to every coarse pointer, the DOCK's included. */
 
 /* ───────── tablet and narrow desktop ───────── */
 /* The HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below. Also
    on a touch screen up to 1279 px: its six 44 px speed buttons and the menu leave the one-row strip no room (1180 px). */
 @media (max-width: 1099px), (pointer: coarse) and (max-width: 1279px) {
   :root { --hud-h: 108px; }
-  #hud { flex-wrap: wrap; align-content: center; row-gap: 3px; }
-  .hud-strip { grid-template-rows: 32px; }
-  .hud-speed, .hud-menu { order: 1; }
-  .hud-speed { margin-left: auto; }
-  .hud-break { display: block; flex: 0 0 100% !important; height: 0; order: 2; }
-  .hud-date, .hud-strip { order: 3; }
+  :where(#app:not([data-host='dock'])) #hud { flex-wrap: wrap; align-content: center; row-gap: 3px; }
+  :where(#app:not([data-host='dock'])) .hud-strip { grid-template-rows: 32px; }
+  :where(#app:not([data-host='dock'])) .hud-speed, :where(#app:not([data-host='dock'])) .hud-menu { order: 1; }
+  :where(#app:not([data-host='dock'])) .hud-speed { margin-left: auto; }
+  :where(#app:not([data-host='dock'])) .hud-break { display: block; flex: 0 0 100% !important; height: 0; order: 2; }
+  :where(#app:not([data-host='dock'])) .hud-date, :where(#app:not([data-host='dock'])) .hud-strip { order: 3; }
 }
 @media (max-width: 1099px) {
-  #minimap { display: none; }
-  #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
-  #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
-  #app:has(#side.collapsed) #ticker { right: 12px; }
-  #place-banner { bottom: 104px; }
+  :where(#app:not([data-host='dock'])) #minimap { display: none; }
+  :where(#app:not([data-host='dock'])) #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
+  :where(#app:not([data-host='dock'])) #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
+  #app:where(:not([data-host='dock'])):has(#side.collapsed) #ticker { right: 12px; }
+  :where(#app:not([data-host='dock'])) #place-banner { bottom: 104px; }
 }
 
 /* Below 1200 px the placement banner would be squeezed between the left column and the overlay column into a tall strip
    over the very plots it points at: while placing, the left column steps aside and the banner centres on the free map. */
 @media (max-width: 1199px) {
-  #app.placing #left { display: none; }
-  #place-banner { left: calc((100% - var(--side-w) - 62px) / 2); max-width: calc(100% - var(--side-w) - 90px); }
-  #app:has(#side.collapsed) #place-banner { left: calc((100% - 62px) / 2); max-width: calc(100% - 90px); }
+  #app:where(:not([data-host='dock'])).placing #left { display: none; }
+  :where(#app:not([data-host='dock'])) #place-banner { left: calc((100% - var(--side-w) - 62px) / 2); max-width: calc(100% - var(--side-w) - 90px); }
+  #app:where(:not([data-host='dock'])):has(#side.collapsed) #place-banner { left: calc((100% - 62px) / 2); max-width: calc(100% - 90px); }
 }
 
 /* ───────── mobile: two-row HUD, widgets above the bottom sheet ───────── */
@@ -41,77 +42,52 @@
   /* The open sheet is 46vh, but on a short phone it yields height so the Res Gestae line and the counsel chip still fit
      between the HUD and the map tools (320 px: the column, the tools and the ticker). */
   :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
-  #app:has(#side.collapsed) { --sheet: 56px; }
-  #app:has(#side.empty) { --sheet: 0px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-brand { display: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
-  /* row 1 sizes to its numbers (flex-basis auto) and shares out the rest, so no figure is cut while the row has room */
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.hud-date, .hud-speed, .hud-menu) { flex: none !important; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.hud-speed, .hud-menu, .hud-date, .hud-strip) { order: 3; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-speed { margin-left: 0; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.vit-strip, .vit-seasons) { display: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-sub, :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vital.falling .vit-sub { display: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip { height: 42px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-menu { margin-left: auto; height: 40px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date { height: 38px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-res { min-width: 56px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-sp { height: 36px; }
+  #app:where(:not([data-host='dock'])):has(#side.collapsed) { --sheet: 56px; }
+  #app:where(:not([data-host='dock'])):has(#side.empty) { --sheet: 0px; }
 
-  #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #objective { padding: 6px 10px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.obj-hint, .obj-unlocks, .obj-meter, .obj-laurel) { display: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-goal { font-size: 14px; margin: 2px 0 0; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-chip { flex: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-cta { margin-top: 5px; padding: 4px 8px; }
-  .counsel-strip { display: none; }
-  .counsel-card { padding: 6px 10px; cursor: pointer; }
-  .counsel-card .counsel-body { display: none; }
-  #counsel.open .counsel-card .counsel-body { display: block; }
-  .counsel-face { width: 32px; height: 32px; }
-  .counsel-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #counsel.open .counsel-title { white-space: normal; }
-  .counsel-toggle { display: inline-flex; position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; align-items: center; justify-content: center;
+  :where(#app:not([data-host='dock'])) #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
+  :where(#app:not([data-host='dock'])) .counsel-strip { display: none; }
+  :where(#app:not([data-host='dock'])) .counsel-card { padding: 6px 10px; cursor: pointer; }
+  :where(#app:not([data-host='dock'])) .counsel-card .counsel-body { display: none; }
+  :where(#app:not([data-host='dock'])) #counsel.open .counsel-card .counsel-body { display: block; }
+  :where(#app:not([data-host='dock'])) .counsel-face { width: 32px; height: 32px; }
+  :where(#app:not([data-host='dock'])) .counsel-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  :where(#app:not([data-host='dock'])) #counsel.open .counsel-title { white-space: normal; }
+  :where(#app:not([data-host='dock'])) .counsel-toggle { display: inline-flex; position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); z-index: 1; }
-  #counsel.open .counsel-toggle { transform: rotate(180deg); }
-  .counsel-metric { display: none; }
-  .counsel-who { padding-right: 34px; }
+  :where(#app:not([data-host='dock'])) #counsel.open .counsel-toggle { transform: rotate(180deg); }
+  :where(#app:not([data-host='dock'])) .counsel-metric { display: none; }
+  :where(#app:not([data-host='dock'])) .counsel-who { padding-right: 34px; }
   /* the unfolded card overflows the short column on purpose (it sits above the map); a duty offer unfolds only on a tap
      (counsel.ts), and then the screen caps it */
-  #left > #counsel { flex: none; }
-  #counsel:has(> .counsel-card.offer) { max-height: none; }
-  .counsel-card.offer { max-height: 50vh; max-height: 50dvh; }
-  .counsel-calm { font-size: 11px; }
+  :where(#app:not([data-host='dock'])) #left > #counsel { flex: none; }
+  :where(#app:not([data-host='dock'])) #counsel:has(> .counsel-card.offer) { max-height: none; }
+  :where(#app:not([data-host='dock'])) .counsel-card.offer { max-height: 50vh; max-height: 50dvh; }
+  :where(#app:not([data-host='dock'])) .counsel-calm { font-size: 11px; }
 
-  #map-tools { right: 8px; bottom: calc(var(--sheet) + 52px); }
-  #app.placing #map-tools { display: none; }
+  :where(#app:not([data-host='dock'])) #map-tools { right: 8px; bottom: calc(var(--sheet) + 52px); }
+  #app:where(:not([data-host='dock'])).placing #map-tools { display: none; }
   /* while placing, the sheet drops to its tab bar and the left column steps aside: the map is the whole stage */
-  #app.placing { --sheet: 56px; }
-  #app.placing #side { transform: translateY(calc(100% - 52px)); }
-  #app.placing #left { display: none; }
-  .map-ov-row { flex-direction: row; }
-  .map-ov span, .map-legend { display: none; }
-  .map-ov { padding: 0; height: 40px; width: 40px; justify-content: center; }
-  .map-ov-row.sub { display: flex; flex-wrap: wrap; max-width: 220px; }
-  .map-ov-row.sub .map-ov { width: auto; padding: 0 6px; }
-  .map-ov-row.sub .map-ov span { display: inline; }
-  #overlay-bar { align-items: flex-end; }
-  .map-btn { width: 40px; height: 40px; }
-  #ticker { left: 8px; right: 60px; bottom: calc(var(--sheet) + 8px); justify-content: flex-start; }
-  #app:has(#side.collapsed) #ticker { right: 60px; }
-  .tick-box { height: 36px; width: 100%; }
-  #toasts { top: calc(var(--hud-h) + 8px); right: 50%; transform: translateX(50%); align-items: center; }
-  #app:has(#side.collapsed) #toasts { right: 50%; }
-  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100% - 16px); width: calc(100% - 16px); }
-  .place-box { flex-wrap: wrap; gap: 8px; }
-  .place-help { white-space: normal; }
-  .place-box .btn { min-height: 44px; }
+  #app:where(:not([data-host='dock'])).placing { --sheet: 56px; }
+  #app:where(:not([data-host='dock'])).placing #side { transform: translateY(calc(100% - 52px)); }
+  #app:where(:not([data-host='dock'])).placing #left { display: none; }
+  :where(#app:not([data-host='dock'])) .map-ov-row { flex-direction: row; }
+  :where(#app:not([data-host='dock'])) .map-ov span, :where(#app:not([data-host='dock'])) .map-legend { display: none; }
+  :where(#app:not([data-host='dock'])) .map-ov { padding: 0; height: 40px; width: 40px; justify-content: center; }
+  :where(#app:not([data-host='dock'])) .map-ov-row.sub { display: flex; flex-wrap: wrap; max-width: 220px; }
+  :where(#app:not([data-host='dock'])) .map-ov-row.sub .map-ov { width: auto; padding: 0 6px; }
+  :where(#app:not([data-host='dock'])) .map-ov-row.sub .map-ov span { display: inline; }
+  :where(#app:not([data-host='dock'])) #overlay-bar { align-items: flex-end; }
+  :where(#app:not([data-host='dock'])) .map-btn { width: 40px; height: 40px; }
+  :where(#app:not([data-host='dock'])) #ticker { left: 8px; right: 60px; bottom: calc(var(--sheet) + 8px); justify-content: flex-start; }
+  #app:where(:not([data-host='dock'])):has(#side.collapsed) #ticker { right: 60px; }
+  :where(#app:not([data-host='dock'])) .tick-box { height: 36px; width: 100%; }
+  :where(#app:not([data-host='dock'])) #toasts { top: calc(var(--hud-h) + 8px); right: 50%; transform: translateX(50%); align-items: center; }
+  #app:where(:not([data-host='dock'])):has(#side.collapsed) #toasts { right: 50%; }
+  :where(#app:not([data-host='dock'])) #place-banner, #app:where(:not([data-host='dock'])):has(#side.collapsed) #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100% - 16px); width: calc(100% - 16px); }
+  :where(#app:not([data-host='dock'])) .place-box { flex-wrap: wrap; gap: 8px; }
+  :where(#app:not([data-host='dock'])) .place-help { white-space: normal; }
+  :where(#app:not([data-host='dock'])) .place-box .btn { min-height: 44px; }
 
   .modal { padding: 14px 14px 16px; }
   .modal-menu { grid-template-columns: 1fr; }
@@ -126,41 +102,9 @@
   .modal.parchment .modal-kicker { margin: 4px 36px 0; }
 }
 
-/* narrow tablets and large phones: dignitas steps out of row 1 so the souls keep their beds figure */
-@media (max-width: 699px) {
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-dignitas { display: none; }
-}
-
 /* ───────── compact phones ───────── */
 @media (max-width: 559px) {
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-n { font-size: 12px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-label { font-size: 7px; letter-spacing: .5px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-trend { display: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-days { font-size: 15px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud { padding: 4px; gap: 3px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-coin .hud-sub { font-size: 7px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-stages { display: none; }
-  /* Three rows: tablets, coin and souls · date, speed and menu · spirits and the materials (scrolling). No row can wrap:
-     in each one item takes what is left (flex-basis 0) and the others keep their natural width; if even that runs short
-     (a 360 px phone late in the game) only the souls figure or the date ellipsizes. #hud::after breaks rows 2 and 3. */
   :root { --hud-h: 136px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud { row-gap: 3px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vitals, :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip.hud-coin { flex: 0 1 auto !important; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-break { order: 1; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.hud-speed, .hud-menu) { order: 2; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-menu { margin-left: 0; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-strip { order: 4; flex: 1 1 0 !important; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date-main { font-size: 9px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date .hud-sub { display: none; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
-  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-speed { gap: 2px; }
   .title-logo { letter-spacing: 1px; }
   .title-row { flex-direction: column; }
   .modal-title { font-size: 21px; }
@@ -199,16 +143,16 @@
   #side-toggle { left: -46px; width: 44px; }
 }
 @media (pointer: coarse) and (max-width: 1099px) {
-  .hud-sp { min-width: clamp(32px, calc((100vw - 700px) / 5), 44px); }
+  :where(#app:not([data-host='dock'])) .hud-sp { min-width: clamp(32px, calc((100vw - 700px) / 5), 44px); }
 }
 @media (pointer: coarse) and (max-width: 899px) {
   :root { --hud-h: 104px; }
-  .hud-sp { min-width: clamp(28px, calc((100vw - 460px) / 5), 44px); }
-  .map-ov { width: 44px; }
-  .counsel-toggle { top: 4px; right: 4px; width: 44px; height: 44px; }
-  .counsel-who { padding-right: 46px; }
-  #side-toggle { top: -44px; height: 44px; }
-  #left { bottom: calc(var(--sheet) + 158px); }   /* the 44 px overlay and zoom rows stand taller */
+  :where(#app:not([data-host='dock'])) .hud-sp { min-width: clamp(28px, calc((100vw - 460px) / 5), 44px); }
+  :where(#app:not([data-host='dock'])) .map-ov { width: 44px; }
+  :where(#app:not([data-host='dock'])) .counsel-toggle { top: 4px; right: 4px; width: 44px; height: 44px; }
+  :where(#app:not([data-host='dock'])) .counsel-who { padding-right: 46px; }
+  :where(#app:not([data-host='dock'])) #side-toggle { top: -44px; height: 44px; }
+  :where(#app:not([data-host='dock'])) #left { bottom: calc(var(--sheet) + 158px); }   /* the 44 px overlay and zoom rows stand taller */
 }
 @media (pointer: coarse) and (max-width: 559px) {
   :root { --hud-h: 140px; }
@@ -219,31 +163,31 @@
 /* ───────── short windows under 900 px off the phones: the sheet becomes a right-hand drawer ───────── */
 /* Every rule above assumes a portrait phone (a 46vh sheet under a two-row HUD), which leaves no map on a short window.
    Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit at the
-   bottom right of the free map. A landscape phone is the DRAWER host now (drawer.css: the spine, the pane, the floating
-   voice line); these rules stand under :where(#app:not([data-host='drawer'])) for what is left of them: a short window
-   480–520 px tall and 720–899 px wide, a DOCK until P4 styles it. */
+   bottom right of the free map. A landscape phone is the DRAWER host now (drawer.css), a 720–899 px window the DOCK
+   (dock.css): these rules stand off both, for what is left of them (a 480–520 px tall SHEET window, which sheet.css
+   outranks). */
 @media (max-width: 899px) and (max-height: 520px) {
-  #app:not([data-host='drawer']), #app:not([data-host='drawer']):has(#side.collapsed), #app.placing:not([data-host='drawer']) { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
-  :where(#app:not([data-host='drawer'])) #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
+  #app:not([data-host='drawer'], [data-host='dock']), #app:not([data-host='drawer'], [data-host='dock']):has(#side.collapsed), #app.placing:not([data-host='drawer'], [data-host='dock']) { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
     border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
-  :where(#app:not([data-host='drawer'])) #side.collapsed, #app.placing:not([data-host='drawer']) #side { transform: translateX(100%); }
-  :where(#app:not([data-host='drawer'])) #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side.collapsed, #app.placing:not([data-host='drawer'], [data-host='dock']) #side { transform: translateX(100%); }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
     border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2); }
-  :where(#app:not([data-host='drawer'])) #side-toggle::before { content: '▸'; }
-  :where(#app:not([data-host='drawer'])) #side.collapsed #side-toggle::before { content: '◂'; }
-  :where(#app:not([data-host='drawer'])) #tabs { grid-template-columns: repeat(3, 1fr); }
-  :where(#app:not([data-host='drawer'])) #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side-toggle::before { content: '▸'; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side.collapsed #side-toggle::before { content: '◂'; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #tabs { grid-template-columns: repeat(3, 1fr); }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
   /* here the column reaches the screen's foot: an unfolded card takes what it leaves and scrolls inside */
-  :where(#app:not([data-host='drawer'])) #left > #counsel { flex: 0 1 auto; }
-  :where(#app:not([data-host='drawer'])) .counsel-card.offer { max-height: none; }
-  :where(#app:not([data-host='drawer'])) #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
-  :where(#app:not([data-host='drawer'])) #map-tools { bottom: 8px; }
-  :where(#app:not([data-host='drawer'])):not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #left > #counsel { flex: 0 1 auto; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) .counsel-card.offer { max-height: none; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #map-tools { bottom: 8px; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])):not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
   /* the overlay toggles fold into rows of three so the tools fit the free map beside the left column */
-  :where(#app:not([data-host='drawer'])) .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
-  :where(#app:not([data-host='drawer'])) #ticker { display: none; }
-  :where(#app:not([data-host='drawer'])) #place-banner, #app:not([data-host='drawer']):has(#side.collapsed) #place-banner { bottom: 8px; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #ticker { display: none; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #place-banner, #app:not([data-host='drawer'], [data-host='dock']):has(#side.collapsed) #place-banner { bottom: 8px; }
 }
 @media (pointer: coarse) and (max-width: 899px) and (max-height: 520px) {
-  :where(#app:not([data-host='drawer'])) #side-toggle { left: -46px; width: 44px; }
+  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side-toggle { left: -46px; width: 44px; }
 }

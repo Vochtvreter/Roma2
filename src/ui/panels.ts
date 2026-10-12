@@ -6,7 +6,9 @@
 // caravan coming home never slides the card the player is about to click.
 // The tab buttons (#tabs) head the panel on most hosts; on the phone SHEET (layout.ts) they are its fixed bottom bar of
 // five stable slots, on the landscape DRAWER its 56 px spine of icons at the right edge (labels in the long-press tip and
-// the aria-label), re-hosted into #app either way (mount), and a tab opens where layout.go() routes it.
+// the aria-label), re-hosted into #app either way (mount), and a tab opens where layout.go() routes it. On the tablet DOCK
+// they stay in the pane, under its head: a 3×2 grid docked, one row wide, and the 56 px spine of icons when the pane is
+// folded (dock.css; their names in the aria-label there too).
 import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
@@ -78,6 +80,7 @@ export class SidePanel {
   layout: Pick<Layout, 'panelToggle' | 'go' | 'setDetent' | 'detent' | 'host'> | null = null;
   private readonly bodyHome: HTMLElement;   // where the tab buttons stand off the phones: before the body
   private vertical = false;                 // the tab buttons are the DRAWER's spine: the arrows go up and down
+  private named = false;                    // the buttons may show their icon alone (the DRAWER's and the DOCK's spine): aria-labels
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
@@ -125,9 +128,9 @@ export class SidePanel {
     safe('anchor', () => this.steady.restore(mark));   // a status line that wrapped or a line that appeared above
   }
 
-  /** Opens a tab (and the panel, where layout.go routes it: `from` says who asked, a chip opening part-way); an anchor
-   *  focuses panel state and scrolls to `[data-anchor]`. */
-  open(tab: TabId, anchor?: string, from?: OpenFrom): void {
+  /** Opens a tab (and the panel, where layout.go routes it: `from` says who asked, a chip opening part-way; `shift`
+   *  with a key: wide on the DOCK and the COLUMNS); an anchor focuses panel state and scrolls to `[data-anchor]`. */
+  open(tab: TabId, anchor?: string, from?: OpenFrom, shift = false): void {
     if (anchor === 'choice' && this.onChoiceAnchor?.()) return;
     this.forced = tabShown(this.g.state, tab) ? null : tab;
     if (tab === 'advisors') notePractice(this.g.state, 'advisors');   // the lessons' jobs (§11.13)
@@ -142,7 +145,7 @@ export class SidePanel {
     }
     this.cur = tab;
     this.fresh.delete(tab);
-    if (this.layout) this.layout.go({ kind: 'open', tab, from, anchor });
+    if (this.layout) this.layout.go({ kind: 'open', tab, from, anchor, shift });
     else this.toggle(true);
     safe('tabs', () => this.syncTabs());
     const p = PANELS[tab];
@@ -193,6 +196,7 @@ export class SidePanel {
     if (isPhone(host) && app) { if (bar.parentElement !== app) app.insertBefore(bar, this.root.nextSibling); }
     else if (bar.parentElement !== this.root) this.root.insertBefore(bar, this.bodyHome);
     this.vertical = host === 'drawer';
+    this.named = host === 'drawer' || host === 'dock';
     bar.setAttribute('aria-orientation', this.vertical ? 'vertical' : 'horizontal');
   }
 
@@ -200,9 +204,10 @@ export class SidePanel {
    *  opens the tab (at its own detent: route). A tap while placing ends the placing first: the player has moved on, and
    *  the panel they saw was closed, so the open tab's slot brings its tab back (where the end of placing restored it),
    *  never folds it. A card in the phone's slot (the context card, the event card: onSlotTap) steps aside for the tab the
-   *  same way. */
+   *  same way. On the DOCK and the COLUMNS the open tab's button on a wide pane docks it again (SPEC A §7). */
   private tap(t: TabId): void {
     const L = this.layout;
+    if (L && !isPhone(L.host) && t === this.cur && L.detent === 'full') { L.setDetent('half', { user: true }); return; }
     if (L && isPhone(L.host)) {
       const placing = this.g.view.placing !== null;
       if (placing) this.g.cancelPlacing();
@@ -240,7 +245,7 @@ export class SidePanel {
     this.root.classList.toggle('empty', shown.length === 0);
     if (shown.length === 0) this.toggle(false);
     else if (wasEmpty && !isPhone(this.layout?.host ?? null)) this.toggle(true);   // a phone's panel stays closed: the map first
-    const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}|${+this.vertical}`;
+    const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}|${+this.vertical}${+this.named}`;
     if (key === this.barKey) return;
     this.barKey = key;
     clear(this.tabsEl);
@@ -253,7 +258,7 @@ export class SidePanel {
       const btn = h('button', {
         class: `side-tab${on ? ' on' : ''}${isNew ? ' fresh' : ''}`, role: 'tab', id: `tab-${t}`, type: 'button',
         'aria-selected': String(on), 'aria-controls': 'tab-body', tabindex: on ? '0' : '-1', 'data-tab': t,
-        'aria-label': this.vertical ? `${p.label} · ${p.sub}` : null,   // the DRAWER's spine shows the icon alone
+        'aria-label': this.named ? `${p.label} · ${p.sub}` : null,   // the DRAWER's and the DOCK's spine show the icon alone
         onclick: () => { this.g.sfx('click'); this.tap(t); },
       },
       img(p.icon, 2, 'side-tab-ico'),

@@ -9,7 +9,9 @@
 // the panel, at half (Layout.lift), and a closed panel folds it again. There a dispatch (an event to answer) comes
 // through the line too, right after a Periculum: 'NVNTIVS · … · 28 d' with Read, which opens the event card in the
 // phone's slot (choice.ts); and on the SHEET lesson I's card carries the Annona labour line, so its job is done in the
-// card itself (layout.ts CARD_LESSONS).
+// card itself (layout.ts CARD_LESSONS). On a tablet (the DOCK) the card is the same line (voiceLine), heading the docked
+// pane under the Res Gestae (afloat top-right over the map while the pane is folded to its spine): it unfolds in place, at
+// most 40% of the pane, and scrolls (dock.css); dispatches keep their own card in the free map there.
 import { ADVISORS } from '../game/types';
 import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GameState, GuideStep, LaborCat, PathDecisionId, PendingChoice, RankIndex, Remedy, TabId } from '../game/types';
 import type { Game, Updater } from './types';
@@ -35,8 +37,14 @@ import { B } from '../game/balance';
 import { portrait } from '../render/art/index';
 import { shows, tabShown } from './intro';
 import { CARD_LESSONS, CARD_ROWS, bringTarget, currentHost, hostPointer, isPhone, lessonFolds, registerBringer, revealTarget, routeIntent } from './layout';
-import type { Layout } from './layout';
+import type { Host, Layout } from './layout';
 import { labourEl } from './tabs/labour';
+
+/** Whether the counsel is drawn as the voice line (pure): its folded two rows with the one action chip and the '+n' pip,
+ *  on the phones (the SHEET, the DRAWER) and the tablet's DOCK, whose pane it heads; the desktop keeps the card. */
+export function voiceLine(host: Host | null): boolean {
+  return isPhone(host) || host === 'dock';
+}
 
 /** The one item the card shows ('event': a dispatch to answer, on a phone only: elsewhere its own card floats). */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
@@ -187,10 +195,10 @@ export function counselSig(g: Game, item: CounselItem): string {
     const r = renderAdvisory(s, view(s), item.a);
     key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
   }
-  // the phone's voice line also counts what else waits ('+n'), and is built afresh for another host (the SHEET and the
-  // DRAWER draw the same line, but only the SHEET's lesson card carries a labour line)
+  // the voice line also counts what else waits ('+n'), and is built afresh for another host (the SHEET, the DRAWER and
+  // the DOCK draw the same line, but only the SHEET's lesson card carries a labour line)
   const host = currentHost();
-  const phone = isPhone(host) ? `|${host === 'sheet' ? 'S' : 'D'}${waitingBeyond(awaitingItems(s), item)}` : '';
+  const phone = voiceLine(host) ? `|${host === 'sheet' ? 'S' : host === 'drawer' ? 'D' : 'K'}${waitingBeyond(awaitingItems(s), item)}` : '';
   return `${strip}|${key}|${g.prefs.tips ? 1 : 0}${phone}`;
 }
 
@@ -306,7 +314,7 @@ export class Counsel {
     clear(this.root);
     this.refresh = null;
     this.live = [];
-    const host = currentHost(), phone = isPhone(host);
+    const host = currentHost(), phone = isPhone(host), line = voiceLine(host);
     const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}`
       : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : item.kind === 'offer' ? `o:${item.duties[0]}`
         : item.kind === 'event' ? `e:${item.c.event}:${item.c.created}` : 'c';
@@ -340,7 +348,7 @@ export class Counsel {
     const card = item.kind === 'tip' ? this.tipCard(item.t) : item.kind === 'lesson' ? this.lessonCard(item)
       : item.kind === 'offer' ? this.offerCard(item.duties) : item.kind === 'event' ? this.eventCard(item.c) : this.advisoryCard(item.a);
     if (enter) card.classList.add('enter');
-    if (phone) card.querySelector('.counsel-head')?.append(this.voiceActs(item));
+    if (line) card.querySelector('.counsel-head')?.append(this.voiceActs(item));
     else card.prepend(h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾'));
     this.root.appendChild(card);
   }
@@ -508,7 +516,7 @@ export class Counsel {
     // the phone's voice line: 'DISCIPLINA · I / X' and the job's count (1 of 4, 41%) over the title; the job line itself
     // heads the unfolded card under it
     const count = prog ? /\d+ of \d+|\d+%/.exec(prog)?.[0] : undefined;
-    const who = isPhone(currentHost())
+    const who = voiceLine(currentHost())
       ? h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, kicker, count ? h('span', { class: 'voice-prog' }, count) : x.done ? h('span', { class: 'voice-prog done' }, '✓') : null), title)
       : h('div', { class: 'counsel-who' }, kicker, title);
     return h('div', { class: `counsel-card tip lesson${x.done ? ' done' : ''}${x.nudge ? ' nudge' : ''}`, role: 'note' },
@@ -581,7 +589,7 @@ export class Counsel {
     };
     // the phone's voice line keeps its kicker to one row beside the chip: the office by its last word ('Praefectus
     // Annonae' → ANNONAE, 'Curator Aquarum' → AQVARVM); sheet.css cuts what still does not fit
-    const office = isPhone(currentHost()) ? def.office.split(' ').pop() ?? def.office : def.office;
+    const office = voiceLine(currentHost()) ? def.office.split(' ').pop() ?? def.office : def.office;
     const kicker = `${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])} · ${caps(office)}`;
     return h('div', { class: `counsel-card adv sev-${sev}${opp ? ' opp' : ''}`, role: sev >= 2 ? 'alert' : 'note' },
       h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),

@@ -46,7 +46,7 @@ import { afterPlace, keepPlacing, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 import type { OpenFrom } from './ui/layout';
-import { isPhone } from './ui/layout';
+import { isPhone, slimBanner } from './ui/layout';
 
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
@@ -186,8 +186,9 @@ class App implements Game {
     if (!p || p.kind !== 'building') return;
     const r = this.act(actions.place(this.state, p.type, tile, { owner: 'player', replaceId: p.replaceId }), { okSfx: 'place' });
     const touch = lastTouch();   // the press of this Place: a finger's Place button, or a mouse's click
-    // ⟳ is the phone banners' (mapbar.ts): elsewhere a finger's Place ends the placing, as it always did
-    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && isPhone(this.ui.layout.host), moving: p.replaceId !== undefined });
+    // ⟳ is the slim banners' (the phones' and the tablet's, mapbar.ts): on the desktop a finger's Place ends the placing,
+    // as it always did
+    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && slimBanner(this.ui.layout.host), moving: p.replaceId !== undefined });
     if (next === 'end') { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's panel stays closed (no spring back)
     else if (next === 'more' && touch) {
       // ⟳ on touch: the ghost goes on to the free plot nearest the one just taken (a mouse's ghost follows the mouse)
@@ -206,12 +207,14 @@ class App implements Game {
   }
 
   select(id: number | null): void {
+    if (id !== null) this.showOnMap();
     this.view.select(id);
     this.inspect(id === null ? null : { kind: 'building', id }, true);
   }
 
   /** Centres a tile, or the building on it (its whole footprint), in the free map, and flashes it. */
   focusTile(tile: number): void {
+    this.showOnMap();
     const id = derived(this.state).buildingAt[tile] ?? 0;
     const b = id > 0 ? getBuilding(this.state, id) : undefined;
     if (b) {
@@ -224,8 +227,17 @@ class App implements Game {
     }
   }
 
-  openTab(tab: TabId, anchor?: string, from?: OpenFrom): void {
-    this.ui.side.open(tab, anchor, from);
+  /** The map is asked to show something (a selection, a centred tile: an Annales line, a remedy's Look, a ledger row): on a
+   *  tablet or the desktop the panel makes room first (layout.route focus: the DOCK's wide pane under 960 px, which leaves
+   *  no map, docks), so the centring and the popup land in the map that shows. A phone routes its context card itself
+   *  (UI inspector.onPin), and its centring stays as it was. */
+  private showOnMap(): void {
+    const L = this.ui.layout;
+    if (L && !isPhone(L.host)) L.go({ kind: 'focus' });
+  }
+
+  openTab(tab: TabId, anchor?: string, from?: OpenFrom, shift?: boolean): void {
+    this.ui.side.open(tab, anchor, from, shift);
   }
 
   prefillContract(spec: ContractSpec): void {

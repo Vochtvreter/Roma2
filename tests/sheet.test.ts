@@ -122,9 +122,10 @@ describe('lesson I in its card on the phone (hostPointer, CARD_ROWS)', () => {
           expect(p.open, l.id).toBeNull();
           expect(p.card).toBe(true);
           expect(p.glow).toBe(base.glow);
-        } else if ((host === 'sheet' || host === 'drawer') && base.open === 'build' && base.anchor === undefined) {
+        } else if ((host === 'sheet' || host === 'drawer' || host === 'dock') && base.open === 'build' && base.anchor === undefined) {
           // VIII ("a work you choose") points the phone's build tray at its cards, every category (P3: the landscape
-          // drawer's catalogue too, which its short pane would otherwise show from the Agenda at the tab's top)
+          // drawer's catalogue too, which its short pane would otherwise show from the Agenda at the tab's top; P4: the
+          // tablet's docked pane, as narrow)
           expect(p, l.id).toEqual({ ...base, anchor: 'cards', card: false });
         } else expect(p, `${l.id} ${host}`).toEqual({ ...base, card: false });
       }

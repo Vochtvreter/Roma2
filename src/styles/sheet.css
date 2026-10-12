@@ -7,12 +7,13 @@
    The SHEET's arrangement keys on #app[data-host='sheet']; what both phone hosts share (the voice line's look, the tool
    column's buttons and popovers, the context card's brief, the event card, the banner's touch verbs, the 12 px floor of
    the tab bodies, the modal sheets) on #app:is([data-host='sheet'], [data-host='drawer']), the same specificity; the
-   landscape DRAWER arranges the same nodes its own way in drawer.css, imported after this file. The sheet's heights come
+   landscape DRAWER arranges the same nodes its own way in drawer.css, imported after this file. The tablet DOCK (dock.css)
+   shares the voice line's look (its counsel line), the tool column (under 960 px wide), the 76 px placing banner's box and
+   the tab bodies' 12 px floor: those selectors carry [data-host='dock'] too. The sheet's heights come
    from layout.ts (--sheet-closed, --sheet-half, --sheet-full on #app; --sheet-now is the detent's own): sheet.ts slides
    between them with a transform and the height is set at rest. --dock-h is what stands on the bar at rest (the sheet, a
    docked card, the banner: Layout.dockH), and #app[data-card] is set while a card stands in the slot. Imported after
-   mobile.css, so it outranks the old portrait rules there and in panels.css that still serve the 720–899 px tablets
-   (P4). Nothing under 12 px; touch targets 44 px. Prefixes sheet- voice- map-col- map-pop-. */
+   mobile.css, so it outranks the old portrait rules there and in panels.css (which stand off the DOCK). Nothing under 12 px; touch targets 44 px. Prefixes sheet- voice- map-col- map-pop-. */
 
 /* ───────── the frame ───────── */
 .sheet-grip, .sheet-voice, #map-col { display: none; }
@@ -60,75 +61,75 @@
 /* ───────── the voice line: the counsel folded ───────── */
 /* Two rows: the portrait (32) beside the kicker (12 px) over the title (14 px, two lines at most); at the right the '+n'
    pip and the one action chip (or ▾). A tap on the line unfolds the card below it, inside the sheet */
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; gap: 0; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; gap: 0; }
 /* the portraits strip and the danger metric stay out of the line on any phone width (mobile.css hides them under 900 px;
    a short window up to 959 px is a DRAWER too) */
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel :is(.counsel-strip, .counsel-metric) { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel > .counsel-card {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel :is(.counsel-strip, .counsel-metric) { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel > .counsel-card {
   flex: 0 1 auto; min-height: 0; padding: 0; cursor: default;
   background: none; border: 0; box-shadow: none; backdrop-filter: none; animation: none;
 }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-head, #app:is([data-host='sheet'], [data-host='drawer']) .counsel-calm, #app:is([data-host='sheet'], [data-host='drawer']) .tick-box {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-head, #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-calm, #app:is([data-host='sheet'], [data-host='drawer']) .tick-box {
   flex: none; min-height: 50px; padding: 1px 1px 1px 6px; color: var(--text);   /* never squeezed: a closed sheet is its height */
   background: linear-gradient(#2e221c, #231914); border: 2px solid var(--line); border-radius: var(--r2); box-shadow: var(--ring-shadow);
 }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-head {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-head {
   display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; cursor: pointer;
 }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.enter .counsel-head { animation: counselIn .35s ease-out; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.tip .counsel-head { border-color: #a8873a; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.tip.urgent .counsel-head { border-color: var(--ember); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card:is(.lesson, .offer) .counsel-head { border-color: var(--gold); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.sev-1 .counsel-head { border-color: rgba(242, 201, 76, .55); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.sev-2 .counsel-head { border-color: rgba(227, 132, 58, .8); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.sev-3 .counsel-head { border-color: var(--bad); box-shadow: var(--ring-shadow), 0 0 14px rgba(229, 85, 74, .35); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.opp .counsel-head { border-color: var(--gold); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-face { width: 32px; height: 32px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-who { gap: 1px; padding: 1px 0; padding-right: 0; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.enter .counsel-head { animation: counselIn .35s ease-out; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.tip .counsel-head { border-color: #a8873a; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.tip.urgent .counsel-head { border-color: var(--ember); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card:is(.lesson, .offer) .counsel-head { border-color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.adv.sev-1 .counsel-head { border-color: rgba(242, 201, 76, .55); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.adv.sev-2 .counsel-head { border-color: rgba(227, 132, 58, .8); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.adv.sev-3 .counsel-head { border-color: var(--bad); box-shadow: var(--ring-shadow), 0 0 14px rgba(229, 85, 74, .35); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.adv.opp .counsel-head { border-color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-face { width: 32px; height: 32px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-who { gap: 1px; padding: 1px 0; padding-right: 0; }
 /* the kicker keeps to row 1, beside the chip: one line, cut short with an ellipsis (the office's short name helps: counsel.ts) */
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-krow { flex-wrap: nowrap; min-width: 0; min-height: 14px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-krow > :not(.counsel-kicker) { flex: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-kicker {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-krow { flex-wrap: nowrap; min-width: 0; min-height: 14px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-krow > :not(.counsel-kicker) { flex: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-kicker {
   flex: 0 1 auto; min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-title {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-title {
   font-size: 14px; line-height: 16px; white-space: normal; overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 /* a lesson: 'DISCIPLINA · I / X' and the job's count over the title; the job line heads the unfolded card, and its
    Show me is the line's chip */
-#app:is([data-host='sheet'], [data-host='drawer']) .voice-prog { font-size: 12px; line-height: 14px; color: var(--muted); white-space: nowrap; }
-#app:is([data-host='sheet'], [data-host='drawer']) .voice-prog.done { color: var(--good); }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-body .lesson-show { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-body .lesson-job { margin: 0 0 6px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-prog { font-size: 12px; line-height: 14px; color: var(--muted); white-space: nowrap; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-prog.done { color: var(--good); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-body .lesson-show { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-body .lesson-job { margin: 0 0 6px; }
 
-#app:is([data-host='sheet'], [data-host='drawer']) .voice-acts { display: flex; align-items: center; gap: 2px; align-self: stretch; }
-#app:is([data-host='sheet'], [data-host='drawer']) .voice-pip { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0; background: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) .voice-pip > span {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-acts { display: flex; align-items: center; gap: 2px; align-self: stretch; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-pip { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0; background: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-pip > span {
   padding: 0 5px; border: 1px solid #4a372b; border-radius: 8px; background: rgba(0, 0, 0, .3);
   font-family: var(--font-caps); font-size: 12px; line-height: 16px; color: var(--muted);
 }
-#app:is([data-host='sheet'], [data-host='drawer']) .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: 15px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .voice-fold {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: 15px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-fold {
   display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0;
   background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 14px;
 }
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel.open .voice-fold { transform: rotate(180deg); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel.open .voice-fold { transform: rotate(180deg); }
 
 /* the unfolded card: the counsel's body under its line, scrolling inside; never on a closed sheet */
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel > .counsel-card > .counsel-body {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel > .counsel-card > .counsel-body {
   display: none; flex: 0 1 auto; min-height: 0; margin-top: 6px; padding: 6px 10px 8px; overflow-y: auto; overscroll-behavior: contain;
   background: var(--panel-2); border: var(--border-w) solid var(--line); border-radius: var(--r2);
 }
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel.open > .counsel-card > .counsel-body { display: block; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel.open > .counsel-card > .counsel-body { display: block; }
 #app[data-host='sheet'] #side[data-rest='closed']:not([data-moving]) #counsel .counsel-body { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel .counsel-text { margin: 2px 0 8px; }
-#app:is([data-host='sheet'], [data-host='drawer']) #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.offer { max-height: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel .counsel-text { margin: 2px 0 8px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.offer { max-height: none; }
 
 /* calm: the ticker speaks in the line (its ORDO, AGENDA, saving and ACTA lines); the counsel's calm line until it comes */
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-right: 8px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .counsel-calm .counsel-seal { width: 24px; height: 24px; margin: 0 4px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-right: 8px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-calm .counsel-seal { width: 24px; height: 24px; margin: 0 4px; }
 #app:is([data-host='sheet'], [data-host='drawer']) #counsel.counsel-calm:has(~ #ticker:not([hidden])) { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) #counsel:not(.counsel-calm) ~ #ticker { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) #ticker { position: static; display: block; pointer-events: auto; }
@@ -181,21 +182,21 @@
   position: absolute; right: 8px; bottom: calc(var(--bar-h) + var(--dock-h, var(--sheet-now)) + 8px); z-index: var(--z-zoom);
   display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; transition: bottom .22s ease;
 }
-#app:is([data-host='sheet'], [data-host='drawer']) #map-col > * { pointer-events: auto; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-col-group { display: flex; flex-direction: column; gap: 4px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col > * { pointer-events: auto; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-col-group { display: flex; flex-direction: column; gap: 4px; }
 /* too short a strip of map for one column (half on a short phone): Via and Mappae stand beside the zoom; shorter still,
    the zoom steps aside (fingers pinch) */
-#app:is([data-host='sheet'], [data-host='drawer']) #map-col.wrap { flex-direction: row-reverse; align-items: flex-end; }
-#app:is([data-host='sheet'], [data-host='drawer']) #map-col.tight #zoom-ctl { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) #map-col.gone { display: none; }   /* no room at all: a tall card stands in the sheet's slot */
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col.wrap { flex-direction: row-reverse; align-items: flex-end; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col.tight #zoom-ctl { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col.gone { display: none; }   /* no room at all: a tall card stands in the sheet's slot */
 #app[data-host='sheet'][data-detent='full']:not(.placing, [data-card]) #map-col { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) #map-col #zoom-ctl { display: flex; flex-direction: column; gap: 4px; }
-#app:is([data-host='sheet'], [data-host='drawer']) #map-col .map-btn { width: 44px; height: 44px; font-size: 20px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-col-btn img { width: 24px; height: 24px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-col-btn.on { background: linear-gradient(var(--ember), #e07a35); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col #zoom-ctl { display: flex; flex-direction: column; gap: 4px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col .map-btn { width: 44px; height: 44px; font-size: 20px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-col-btn img { width: 24px; height: 24px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-col-btn.on { background: linear-gradient(var(--ember), #e07a35); }
 
 /* the popovers open to the column's left, from its foot up to the HUD (mapbar.ts caps their height), and scroll */
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop {
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop {
   position: absolute; right: calc(100% + 8px); bottom: 0; width: min(264px, calc(100vw - 76px)); overflow-y: auto; overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 4px; padding: 6px;
   background: var(--panel-solid); border: var(--border-w) solid var(--line); border-radius: var(--r2);
@@ -213,13 +214,13 @@
 .map-pop-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; font-size: 15px; }
 .map-pop-s { font-size: 12px; color: var(--muted); }
 /* Mappae: the overlay bar itself, its toggles in a column with their names, the Officia layers, then the legend */
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar > .map-ov-row { order: 0; display: flex; flex-direction: column; gap: 4px; max-width: none; padding: 0; background: none; border: 0; box-shadow: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar > .map-ov-row.sub { order: 1; display: grid; grid-template-columns: 1fr 1fr; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: 14px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop .map-ov span { display: inline; }
-#app:is([data-host='sheet'], [data-host='drawer']) .map-pop .map-ov.small { padding: 0 8px; font-size: 13px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-ov-row { order: 0; display: flex; flex-direction: column; gap: 4px; max-width: none; padding: 0; background: none; border: 0; box-shadow: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-ov-row.sub { order: 1; display: grid; grid-template-columns: 1fr 1fr; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: 14px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov span { display: inline; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov.small { padding: 0 8px; font-size: 13px; }
 
 /* ───────── what floats over the map ───────── */
 /* the hover inspector (a mouse on a phone): over the map, above what stands on the bar (a click's card is the context card, docked below) */
@@ -283,38 +284,38 @@
 /* Where the voice line was, the full width less 6 px a side (the tool column rides above it). The sprite; the name and
    cost, the verdict and the reason row (the lesson job, the advisory, else the help); ⟳ keep placing, Place and ✕ */
 #app#app[data-host='sheet'] #place-banner { left: 6px; right: 6px; bottom: calc(var(--bar-h) + 4px); width: auto; max-width: none; transform: none; }
-#app[data-host='sheet'] .place-box {
+#app:is([data-host='sheet'], [data-host='dock']) .place-box {
   display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: 22px 1fr 1fr; align-items: center; column-gap: 6px; row-gap: 0;
   width: 100%; height: 76px; padding: 4px 6px; overflow: hidden;
 }
-#app[data-host='sheet'] .place-box > .place-ico { grid-row: 1 / -1; grid-column: 1; justify-self: center; max-width: 40px; max-height: 40px; }
-#app[data-host='sheet'] .place-box > .place-main { display: contents; }
-#app[data-host='sheet'] .place-name {
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-ico { grid-row: 1 / -1; grid-column: 1; justify-self: center; max-width: 40px; max-height: 40px; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main { display: contents; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-name {
   grid-row: 1; grid-column: 2 / -1; flex-wrap: nowrap; gap: 6px; min-width: 0; overflow: hidden; font-size: 15px; line-height: 20px; white-space: nowrap;
 }
-#app[data-host='sheet'] .place-name .cost { flex-wrap: nowrap; }
-#app[data-host='sheet'] .place-name .chip { font-size: 12px; line-height: 16px; }
-#app[data-host='sheet'] .place-latin { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-name .cost { flex-wrap: nowrap; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-name .chip { font-size: 12px; line-height: 16px; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-latin { font-size: 12px; }
 /* rows 2 and 3: the verdict over the reason (or the help); a refusal takes both */
-#app[data-host='sheet'] .place-box > .place-main > :not(.place-name) {
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > :not(.place-name) {
   grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 16px;
 }
-#app[data-host='sheet'] .place-box > .place-main > .place-verdict { grid-row: 2; }
-#app[data-host='sheet'] .place-box > .place-main > :is(.place-why, .place-help) { grid-row: 3; }
-#app[data-host='sheet'] .place-box.why > .place-main > .place-help { display: none; }
-#app[data-host='sheet'] .place-box.bad > .place-main > .place-verdict { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-#app[data-host='sheet'] .place-box.bad > .place-main > :is(.place-why, .place-help) { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-why { color: var(--gold); }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-why::before { content: '✦ '; }
-#app[data-host='sheet'] .place-box > .place-main > .place-help { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--muted); }
-#app[data-host='sheet'] .place-box > .place-btns { grid-column: 3; grid-row: 2 / span 2; display: flex; align-items: center; gap: 2px; }
-#app[data-host='sheet'] .place-box.tool > .place-main > .place-help { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-btns .btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-btns .place-go { min-width: 64px; font-size: 15px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-btns :is(.place-keep, .place-vert) { font-size: 20px; padding: 0; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-btns .place-x { font-size: 18px; padding: 0; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-x-t { display: none; }
-#app:is([data-host='sheet'], [data-host='drawer']) .place-x-i { display: inline; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > .place-verdict { grid-row: 2; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > :is(.place-why, .place-help) { grid-row: 3; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box.why > .place-main > .place-help { display: none; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box.bad > .place-main > .place-verdict { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box.bad > .place-main > :is(.place-why, .place-help) { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-why { color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-why::before { content: '✦ '; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > .place-help { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--muted); }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-btns { grid-column: 3; grid-row: 2 / span 2; display: flex; align-items: center; gap: 2px; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box.tool > .place-main > .place-help { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .place-go { min-width: 64px; font-size: 15px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns :is(.place-keep, .place-vert) { font-size: 20px; padding: 0; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .place-x { font-size: 18px; padding: 0; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-x-t { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-x-i { display: inline; }
 
 /* ───────── the build tray: Aedificia at half ───────── */
 /* AEDIFICIA · Build with Catalogue ⤢; the category chips (44 px, a sideways row); the works as 140 px cards in a row that
@@ -374,11 +375,11 @@
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-labour .tab-lab-ctl > .btn:not(.tab-lab-pm) { display: none; }
 
 /* ───────── the tab body's dense rows (raised to the 12 px floor where the phone shows them) ───────── */
-#app:is([data-host='sheet'], [data-host='drawer']) :is(.tab-lab-prio, .bld-q-status, .bld-latin, .bld-meta, .tab-agenda-n) { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .tab-lab-count { font-size: 13px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .tab-sec-latin { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .pop-k { font-size: 12px; letter-spacing: 0; line-height: 14px; }   /* Populus' census, under lesson I's card */
-#app:is([data-host='sheet'], [data-host='drawer']) .pop-legend { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) :is(.tab-lab-prio, .bld-q-status, .bld-latin, .bld-meta, .tab-agenda-n) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .tab-lab-count { font-size: 13px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .tab-sec-latin { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .pop-k { font-size: 12px; letter-spacing: 0; line-height: 14px; }   /* Populus' census, under lesson I's card */
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .pop-legend { font-size: 12px; }
 
 /* ───────── modals: full-screen sheets ───────── */
 /* Inset 0 within the safe areas: the head (✕, kicker, title) sticks to the top, the actions to the foot, and the body

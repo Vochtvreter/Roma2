@@ -2,15 +2,18 @@
 // classes and the host for every window size the game was measured on (platform.md §0's 35 and the design's own), the
 // route() table, the lessons' table, that every lesson's pointer shows on every host (the phones' through their proxies),
 // the phone sheet's own tables (its heights, the drag's snap, the grabber's cycle and the bar's slots) and the landscape
-// drawer's (the pane's widths and their snap, the free map beside what stands at its foot, the HUD row's priority+).
+// drawer's (the pane's widths and their snap, the free map beside what stands at its foot, the HUD row's priority+), and the
+// tablet dock's (P4: the pane's widths, the map it leaves, Back and Esc, the Breviarium column, the tool column, the view
+// control's keys, every lesson's pointer at both of its widths).
 // Headless: no DOM (the Layout class is never built here).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
 import { LESSONS } from '../src/game/intro';
 import {
-  BAR_SLOTS, DEFAULT_DETENT, DETENTS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, VISIBLE, aboveDefault, barSlot,
-  classify, clearOf, cycleDetent, detentsOf, drawerWidths, fitDetent, hostEntryDetent, inFrame, inputClass, isPhone, keepDetent, lessonTarget,
-  priorityDrops, reveal, route, sheetHeights, shownAt, slotTap, snapDetent, stepDown,
+  BAR_SLOTS, DEFAULT_DETENT, DETENTS, DOCK, DOCK_TOOLS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, TAB_KEYS, VIEWS,
+  VIEW_HOSTS, VISIBLE, aboveDefault, backDetent, barSlot, brevColumn, classify, clearOf, cycleDetent, detentsOf, dockExpanded, dockWidths, drawerWidths,
+  fitDetent, hostEntryDetent, inFrame, inputClass, isLayer, isPhone, keepDetent, keyAction, lessonTarget, priorityDrops, reveal, revealOn, route,
+  sheetHeights, shownAt, slimBanner, slotTap, snapDetent, stepDown, toolColumn, viewOf, visibleOn,
 } from '../src/ui/layout';
 import type { Box, Detent, Host, Media, RouteCtx } from '../src/ui/layout';
 import { coveredArea, dodge, roomShift } from '../src/ui/inspector';
@@ -149,7 +152,7 @@ describe('detents', () => {
 describe('route', () => {
   const ctx = (host: Host, detent: Detent, tiny = false): RouteCtx => ({ host, detent, tiny });
 
-  it('place and focus clear a phone\'s map and remember; a tablet or desktop pane stays', () => {
+  it('place and focus clear a phone\'s map and remember; a tablet or desktop pane stays (placing docks a wide one)', () => {
     for (const host of ['sheet', 'drawer'] as const) {
       for (const d of DETENTS) {
         expect(route({ kind: 'place' }, ctx(host, d))).toEqual({ detent: 'closed', remember: true, card: false });
@@ -158,7 +161,9 @@ describe('route', () => {
     }
     for (const host of ['dock', 'columns'] as const) {
       for (const d of DETENTS) {
-        expect(route({ kind: 'place' }, ctx(host, d))).toEqual({ detent: d, remember: false, card: false });
+        // P4 fix: the placing banner and the ghost want the docked layout's map; cancelling goes wide again (remember)
+        const placed = d === 'full' ? { detent: 'half', remember: true, card: false } : { detent: d, remember: false, card: false };
+        expect(route({ kind: 'place' }, ctx(host, d)), `${host} ${d}`).toEqual(placed);
         expect(route({ kind: 'focus' }, ctx(host, d))).toEqual({ detent: d, remember: false, card: false });
       }
     }
@@ -412,10 +417,30 @@ describe('hostEntryDetent (a host change: entering the SHEET closes it)', () => 
         expect(hostEntryDetent(d, false, 'columns', 'dock', false, jo), `columns→dock ${d}`).toEqual({ detent: d, forced: false });
         expect(hostEntryDetent(d, false, 'sheet', 'sheet', false, jo), `a resize on the sheet ${d}`).toEqual({ detent: d, forced: false });
         expect(hostEntryDetent(d, false, null, 'dock', false, jo), `a load on a dock ${d}`).toEqual({ detent: d, forced: false });
+        expect(hostEntryDetent(d, false, null, 'columns', false, jo), `a load on the columns ${d}`).toEqual({ detent: d, forced: false });
       }
     }
     expect(hostEntryDetent('full', true, 'sheet', 'sheet', false, false)).toEqual({ detent: 'half', forced: false });   // un-tinied
     expect(hostEntryDetent('half', false, 'sheet', 'sheet', true, false)).toEqual({ detent: 'full', forced: true });    // tinied
+  });
+
+  it('a phone\'s closed panel (its default, not a choice) docks when it unfolds or widens into the dock or the columns', () => {
+    for (const from of ['sheet', 'drawer'] as const) {
+      for (const to of ['dock', 'columns'] as const) {
+        for (const jo of [false, true]) {
+          expect(hostEntryDetent('closed', false, from, to, false, jo), `${from}→${to}`).toEqual({ detent: DEFAULT_DETENT[to], forced: false });
+          expect(hostEntryDetent('half', false, from, to, false, jo), `${from}→${to} half`).toEqual({ detent: 'half', forced: false });
+          expect(hostEntryDetent('full', false, from, to, false, jo), `${from}→${to} full`).toEqual({ detent: 'full', forced: false });
+        }
+      }
+    }
+    expect(DEFAULT_DETENT.dock).toBe('half');
+    // a foldable: the portrait phone (390 × 844, its sheet closed) unfolded to the 744 × 860 inner screen
+    const phone = classify(390, 844, TOUCH), inner = classify(744, 860, TOUCH);
+    expect([phone.host, inner.host]).toEqual(['sheet', 'dock']);
+    expect(hostEntryDetent(DEFAULT_DETENT.sheet, false, phone.host, inner.host, inner.tiny, false).detent).toBe('half');
+    // and the folded spine a player chose on the dock stays one through a rotation (keepDetent)
+    expect(hostEntryDetent('closed', false, 'dock', 'dock', false, false).detent).toBe('closed');
   });
 });
 
@@ -561,5 +586,184 @@ describe('the landscape drawer', () => {
     expect(priorityDrops(820, 400, w)).toBe(4);   // … souls and coin, Aqua and Grain still in
     expect(priorityDrops(2000, 100, w)).toBe(6);  // never more than there are
     expect(priorityDrops(500, 600, [])).toBe(0);
+  });
+});
+
+describe('the tablet dock (P4)', () => {
+  // the harness's docked windows (impl/measure.mjs): iPad mini and Air portrait, the Fold 6 inner screen, iPad Air and an
+  // Android tablet in landscape
+  const DOCKS: readonly [string, number, number, number][] = [
+    ['ipad-mini', 744, 1133, 0.5], ['ipad-air', 820, 1180, 0.5], ['fold-inner', 744, 860, 0.45], ['ipad-air-land', 1180, 820, 0.55], ['tab-land-1280', 1280, 800, 0.55],
+  ];
+  const HUD = 56;
+
+  it('the pane is clamp(300, 40%, 360) under 960 px and clamp(340, 30%, 400) from 960; the spine 56; wide the width, or all but 320', () => {
+    expect(dockWidths(820, 'medium')).toEqual({ closed: 56, half: 328, full: 820 });     // SPEC A §7: x492–820
+    expect(dockWidths(744, 'medium')).toEqual({ closed: 56, half: 300, full: 744 });     // the floor (40% is 298)
+    expect(dockWidths(959, 'medium')).toEqual({ closed: 56, half: 360, full: 959 });     // the cap
+    expect(dockWidths(1180, 'expanded')).toEqual({ closed: 56, half: 354, full: 860 });  // SPEC A §7: x826–1180, wide x320–1180
+    expect(dockWidths(1280, 'expanded')).toEqual({ closed: 56, half: 384, full: 960 });
+    expect(dockWidths(1366, 'expanded')).toEqual({ closed: 56, half: 400, full: 1046 }); // the cap
+    expect(dockWidths(960, 'expanded')).toEqual({ closed: 56, half: 340, full: 640 });   // the floor
+    expect(dockWidths(200, 'medium').half).toBe(200);                                     // never wider than #app
+    expect(DOCK).toMatchObject({ spine: 56, strip: 320 });
+    for (const w of ['medium', 'expanded'] as const) {
+      const ws = dockWidths(1000, w);
+      expect(ws.closed).toBeLessThanOrEqual(ws.half);
+      expect(ws.half).toBeLessThanOrEqual(ws.full);
+    }
+  });
+
+  it('the budget: the docked pane and the 56 px HUD leave the acceptance\'s share of map, the spine three quarters', () => {
+    for (const [id, W, H, floor] of DOCKS) {
+      const c = classify(W, H, TOUCH);
+      expect(c.host, id).toBe('dock');
+      const ws = dockWidths(W, c.w);
+      // the docked pane, less the tool column or the map tools and the ticker floating over the map (≈ 4% of it)
+      expect(((W - ws.half) * (H - HUD)) / (W * H) - 0.04, id).toBeGreaterThanOrEqual(floor);
+      expect(((W - ws.closed) * (H - HUD)) / (W * H) - 0.04, id).toBeGreaterThanOrEqual(0.74);
+      expect(W - ws.full, id).toBe(dockExpanded(c.w) ? DOCK.strip : 0);   // wide: the live strip from 960, else the whole width
+    }
+  });
+
+  it('rotating an iPad keeps the dock, and the player\'s detent', () => {
+    for (const d of DETENTS) {
+      for (const [a, b] of [[[820, 1180], [1180, 820]], [[1180, 820], [820, 1180]], [[744, 1133], [1133, 744]]] as const) {
+        const from = classify(a[0], a[1], TOUCH), to = classify(b[0], b[1], TOUCH);
+        expect([from.host, to.host]).toEqual(['dock', 'dock']);
+        expect(hostEntryDetent(d, false, from.host, to.host, to.tiny, false)).toEqual({ detent: d, forced: false });
+      }
+    }
+    expect(DEFAULT_DETENT.dock).toBe('half');
+  });
+
+  it('Back and Esc: on the dock the spine and the wide pane come back to the docked pane; elsewhere one step down', () => {
+    expect(isLayer('half', 'dock')).toBe(false);
+    expect(isLayer('closed', 'dock')).toBe(true);
+    expect(isLayer('full', 'dock')).toBe(true);
+    expect(backDetent('closed', 'dock', false)).toBe('half');
+    expect(backDetent('full', 'dock', false)).toBe('half');
+    // the desktop: only wide is a layer (its folded panel and Esc's menu as today), wide → docked
+    expect(isLayer('closed', 'columns')).toBe(false);
+    expect(isLayer('full', 'columns')).toBe(true);
+    expect(backDetent('full', 'columns', false)).toBe('half');
+    // the phones as before
+    for (const host of ['sheet', 'drawer'] as const) {
+      for (const d of DETENTS) {
+        expect(isLayer(d, host)).toBe(aboveDefault(d, host));
+        expect(backDetent(d, host, false)).toBe(stepDown(d, host, false));
+      }
+    }
+  });
+
+  it('the Breviarium is the wide pane\'s first column from 960 px; the tool column serves the dock under 960', () => {
+    expect(brevColumn('dock', 'expanded', 'full')).toBe(true);
+    expect(brevColumn('dock', 'medium', 'full')).toBe(false);
+    expect(brevColumn('dock', 'expanded', 'half')).toBe(false);
+    expect(brevColumn('columns', 'large', 'full')).toBe(false);
+    expect(toolColumn('dock', 'medium')).toBe(true);
+    expect(toolColumn('dock', 'expanded')).toBe(false);
+    expect(toolColumn('sheet', 'compact')).toBe(true);
+    expect(toolColumn('drawer', 'medium')).toBe(true);
+    expect(toolColumn('columns', 'large')).toBe(false);
+    expect(slimBanner('dock')).toBe(true);
+    expect(slimBanner('sheet')).toBe(true);
+    expect(slimBanner('columns')).toBe(false);
+    expect(slimBanner(null)).toBe(false);
+  });
+
+  it('a tab and the route on the dock: docked from the spine or a chip, wide stays wide, Shift with its key goes wide', () => {
+    const c = (detent: Detent): RouteCtx => ({ host: 'dock', detent, tiny: false });
+    expect(route({ kind: 'open', tab: 'build', from: 'tab' }, c('closed')).detent).toBe('half');
+    expect(route({ kind: 'open', tab: 'build', from: 'tab' }, c('full')).detent).toBe('full');
+    expect(route({ kind: 'open', tab: 'build', from: 'key', shift: true }, c('closed')).detent).toBe('full');
+    expect(route({ kind: 'place' }, c('half'))).toEqual({ detent: 'half', remember: false, card: false });   // the pane stays
+    expect(route({ kind: 'focus' }, c('full'))).toEqual({ detent: 'full', remember: false, card: false });   // the popup beside it
+    // placing docks a wide pane at any width, remembered (cancelling goes wide again; in the 320 px strip the banner
+    // lost its ✕); a focus docks only the wide pane under 960 px, which leaves no map, and stays docked (SPEC A §7);
+    // from 960 the strip of map serves the popup
+    const m = (detent: Detent): RouteCtx => ({ host: 'dock', detent, tiny: false, w: 'medium' });
+    const x = (detent: Detent): RouteCtx => ({ host: 'dock', detent, tiny: false, w: 'expanded' });
+    expect(route({ kind: 'place' }, m('full'))).toEqual({ detent: 'half', remember: true, card: false });
+    expect(route({ kind: 'focus' }, m('full'))).toEqual({ detent: 'half', remember: false, card: false });
+    expect(route({ kind: 'place' }, x('full'))).toEqual({ detent: 'half', remember: true, card: false });
+    expect(route({ kind: 'focus' }, x('full'))).toEqual({ detent: 'full', remember: false, card: false });
+    for (const d of ['closed', 'half'] as const) {
+      expect(route({ kind: 'place' }, m(d))).toEqual({ detent: d, remember: false, card: false });
+      expect(route({ kind: 'place' }, x(d))).toEqual({ detent: d, remember: false, card: false });
+      expect(route({ kind: 'focus' }, m(d))).toEqual({ detent: d, remember: false, card: false });
+    }
+    for (const w of ['expanded', 'large'] as const) {
+      expect(route({ kind: 'place' }, { host: 'columns', detent: 'full', tiny: false, w })).toEqual({ detent: 'half', remember: true, card: false });
+      expect(route({ kind: 'focus' }, { host: 'columns', detent: 'full', tiny: false, w })).toEqual({ detent: 'full', remember: false, card: false });
+    }
+  });
+});
+
+describe('the view control and its keys (P4)', () => {
+  it('three views: Urbs closed, Mensa half, Tabularium full, on keys C, M and I', () => {
+    expect(VIEWS.map((v) => [v.detent, v.key, v.latin, v.en])).toEqual([
+      ['closed', 'c', 'Urbs', 'City'], ['half', 'm', 'Mensa', 'Map & ledger'], ['full', 'i', 'Tabularium', 'Ledgers'],
+    ]);
+    for (const d of DETENTS) expect(viewOf(d).detent).toBe(d);
+    expect(VIEW_HOSTS).toEqual(['dock', 'columns']);
+  });
+
+  // the whole table: every letter the keys know, plain and with Shift, on every host
+  it('keyAction: the tab letters open their tab (wide with Shift on the dock and the columns); C M I move the panel there', () => {
+    const table: [string, boolean, Host, ReturnType<typeof keyAction>][] = [
+      ['c', false, 'dock', { kind: 'view', detent: 'closed' }],
+      ['m', false, 'dock', { kind: 'view', detent: 'half' }],
+      ['i', false, 'dock', { kind: 'view', detent: 'full' }],
+      ['M', true, 'columns', { kind: 'view', detent: 'half' }],   // Shift changes nothing for a view
+      ['i', false, 'columns', { kind: 'view', detent: 'full' }],
+      ['c', false, 'sheet', null], ['m', false, 'drawer', null], ['i', false, 'sheet', null],   // a phone has no view keys
+      ['B', true, 'dock', { kind: 'tab', tab: 'build', wide: true }],
+      ['b', false, 'dock', { kind: 'tab', tab: 'build', wide: false }],
+      ['E', true, 'columns', { kind: 'tab', tab: 'council', wide: true }],
+      ['B', true, 'sheet', { kind: 'tab', tab: 'build', wide: false }],   // a phone opens the tab where it opens
+      ['x', false, 'dock', null], ['o', true, 'dock', null], ['h', false, 'columns', null],
+    ];
+    for (const [k, shift, host, want] of table) expect(keyAction(k, shift, host), `${shift ? 'Shift+' : ''}${k} on ${host}`).toEqual(want);
+    for (const [k, tab] of Object.entries(TAB_KEYS)) {
+      for (const host of HOSTS) expect(keyAction(k.toUpperCase(), true, host)).toEqual({ kind: 'tab', tab, wide: VIEW_HOSTS.includes(host) });
+    }
+    expect(Object.values(TAB_KEYS).sort()).toEqual([...TABS].sort());
+    // the view keys take no key the game already uses (Space, 1–5, the tab letters, O, R, H, WASD, + and −)
+    for (const v of VIEWS) expect(['e', 'v', 'b', 'p', 't', 'l', 'o', 'r', 'h', 'w', 'a', 's', 'd', '+', '-', ' ']).not.toContain(v.key);
+  });
+});
+
+describe('every lesson\'s pointer on the dock, at both widths (P4)', () => {
+  it('under 960 px the overlay bar is in the Mappae popover (its button glows); from 960 it stands on the map', () => {
+    expect(reveal('#overlay-bar', 'dock', 'medium')).toBe('#map-mappae');
+    expect(reveal('#overlay-bar', 'dock', 'expanded')).toBe('#overlay-bar');
+    expect(reveal('#overlay-bar', 'dock')).toBe('#overlay-bar');
+    for (const w of ['medium', 'expanded'] as const) {
+      for (const [hidden, proxy] of Object.entries(revealOn('dock', w))) {
+        expect(visibleOn('dock', w)).not.toContain(hidden);
+        expect(visibleOn('dock', w)).toContain(proxy);
+      }
+      for (const sel of visibleOn('dock', w)) expect(reveal(sel, 'dock', w)).toBe(sel);
+      for (const t of TABS) expect(visibleOn('dock', w)).toContain(reveal(`#tab-${t}`, 'dock', w));   // the tab bar and the spine carry all six
+      for (const sel of ['#objective', '#counsel', '#speed', '#hud', '#hud-menu']) expect(visibleOn('dock', w)).toContain(sel);   // the pane's head
+    }
+    expect(DOCK_TOOLS.visible).toContain('#map-mappae');
+    expect(shownAt('#map-mappae', 'dock', 'half', 'medium')).toBe(true);
+    expect(shownAt('#map-mappae', 'dock', 'full', 'medium')).toBe(false);
+    expect(shownAt('#overlay-bar', 'dock', 'half', 'expanded')).toBe(true);
+  });
+
+  it('from every detent the player may have', () => {
+    for (const l of LESSONS) {
+      const target = lessonTarget(l) ?? '';
+      for (const w of ['medium', 'expanded'] as const) {
+        for (const d of DETENTS) {
+          const to = route({ kind: 'lesson', lesson: l.id }, { host: 'dock', detent: d, tiny: false }).detent;
+          const sel = reveal(target, 'dock', w);
+          expect(shownAt(sel, 'dock', to, w), `${l.id} → ${sel} on the ${w} dock at ${to} (from ${d})`).toBe(true);
+        }
+      }
+    }
   });
 });

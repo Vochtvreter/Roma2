@@ -3,6 +3,8 @@
 // Signature-diffed: rebuilt when the milestone, the CTA or the chip set changes; numbers are patched in place. A rebuild
 // changes the panel's height and so moves the counsel card below it: it waits while the mouse rests on either. The chips
 // only grow between rebuilds, so a countdown ("…, 9 d") never re-wraps the row and nudges the card either.
+// On a tablet (the DOCK host) the panel heads the docked pane in a one-line form (dock.css: the kicker over the goal, the
+// CTA): its ▾ (or a tap on the line) unfolds the rest in place (hint, meter, unlocks, chips), and folds it again.
 import type { ActiveAdvisory, Effects, MilestoneDef, Modifier, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import { clear, fmt, fmtCost, h, img, tip } from './dom';
@@ -17,6 +19,7 @@ import { toRoman } from '../game/calendar';
 import { EDICT_DEFS, SETTING_DEFS, SWITCH_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { ADVISOR_DEFS } from '../game/data/advisors';
+import { currentHost } from './layout';
 
 const TOOL_LABEL: Record<string, string> = { pin: '"Build next" pin', road: 'Road tool', pave: 'Paving brush', reserve: 'Reserve-block tool', demolish: 'Demolish' };
 const OVERLAY_LABEL: Record<string, string> = { aqua: 'Aqua overlay', domus: 'Domus overlay', officia: 'Officia overlay', desir: 'Dignitas loci overlay', terra: 'Terra overlay' };
@@ -62,9 +65,22 @@ export class Objective {
   private readonly hold: PointerHold;
   private readonly ratchet = new Ratchet();
   private chips: HTMLElement[] = [];
+  private unfolded = false;   // the DOCK's one-line form shows all of itself (its ▾)
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.hold = new PointerHold(root);
+    // the one-line form (the DOCK's pane head): a tap on the line, not on one of its buttons, unfolds or folds it
+    root.addEventListener('click', (e) => {
+      if (currentHost() !== 'dock' || (e.target instanceof Element && e.target.closest('button'))) return;
+      this.fold(!this.unfolded);
+    });
+  }
+
+  /** Unfolds (or folds) the one-line form in place (the DOCK's pane head; elsewhere the panel shows all of itself). */
+  private fold(open: boolean): void {
+    this.unfolded = open;
+    this.root.classList.toggle('obj-open', open);
+    this.root.querySelector('.obj-fold')?.setAttribute('aria-expanded', String(open));
   }
 
   /** Rebuilds when the milestone, CTA or chips change (not while the panel or, `below`, the counsel card is pointed at);
@@ -107,7 +123,11 @@ export class Objective {
     const kicker = m ? (m.postVictory ? 'RES GESTAE · POST VICTORIAM' : `RES GESTAE · ${toRoman(idx + 1)} / ${toRoman(Math.max(1, main))}`) : 'RES GESTAE';
     const prog = h('span', { class: 'obj-prog num' });
     const fill = h('i');
-    this.root.append(h('div', { class: 'obj-kicker' }, h('span', null, kicker), m ? prog : null));
+    // the ▾ of the one-line form (shown on the DOCK only: dock.css)
+    const fold = h('button', { class: 'obj-fold', type: 'button', 'aria-label': 'Show the whole Res Gestae', 'aria-expanded': String(this.unfolded),
+      onclick: () => { g.sfx('click'); this.fold(!this.unfolded); } }, '▾');
+    this.root.classList.toggle('obj-open', this.unfolded);
+    this.root.append(h('div', { class: 'obj-kicker' }, h('span', null, kicker), m ? prog : null, fold));
     if (m) {
       this.root.append(h('div', { class: 'obj-goal' }, img('i_laurel', 2, 'obj-laurel'), h('span', null, m.text)));
       if (m.hint) this.root.append(h('div', { class: 'obj-hint' }, m.hint));

@@ -39,6 +39,7 @@
 .obj-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
 .obj-chip { font-size: 9px; }
 #objective.obj-pop { animation: objPop .6s; }
+.obj-fold { display: none; }   /* the ▾ of the one-line form: the tablet DOCK's pane head only (dock.css) */
 @keyframes objPop { 30% { transform: scale(1.04); border-color: var(--gold); box-shadow: var(--ring-shadow), 0 0 22px rgba(242, 201, 76, .5); } }
 
 /* ───────── counsel: portrait strip + one card ───────── */

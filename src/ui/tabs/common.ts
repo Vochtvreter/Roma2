@@ -17,6 +17,7 @@ import { B } from '../../game/balance';
 import { steadyNet } from '../../game/sim';
 import { BUILDING_DEFS } from '../../game/data/buildings';
 import { RANK_DEFS } from '../../game/data/ranks';
+import { focusOfWish } from '../focusrow';
 
 /** A tab panel; `focus` lets openTab(tab, anchor) set panel state (a filter, a form) before the rebuild. */
 export interface TabPanel extends Panel {
@@ -221,6 +222,7 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
         h('div', { class: 'tab-why' }, reasonText(w.reason))));
     if (w.tile !== undefined) {
       const t = w.tile;
+      el.dataset.focus = focusOfWish(w.type, t);   // the focus row on a tablet (focusrow.ts)
       el.classList.add('click');
       el.addEventListener('click', () => g.focusTile(t));
     }

@@ -65,7 +65,7 @@
 /* a long timed chip wraps here: the Res Gestae's grow-only widths (objective.ts Ratchet) give way to the tray's width */
 #tray .obj-chip { white-space: normal; min-width: 0 !important; max-width: 100%; line-height: 15px; padding-top: 2px; padding-bottom: 2px; }
 .tray-gestae-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.tray-gestae-t { font-size: 14px; color: var(--text); flex: 1; min-width: 0; }
+.tray-gestae-t { font-size: 14px; color: var(--text); flex: 1 1 120px; min-width: 0; }   /* a narrow column wraps the progress under it */
 .tray-gestae-p { font-size: 12px; color: var(--muted); }
 
 /* Grain and Aqua */

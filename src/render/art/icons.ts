@@ -1,6 +1,6 @@
 // src/render/art/icons.ts — the 12×12 icons (ARCHITECTURE §12.3; DESIGN §16.3): 12 resources, 5 spirit faces, laurel,
 // 4 seasons, 13 wants, the status marks (seal, plan ⌛, stake groma, CLAVSVM plank, unpaid coin, unstaffed pip,
-// request, souls, beds), 6 tabs, 5 tools, 5 overlays and the star. Owner: WP-G (art, part 2).
+// request, souls, beds), 6 tabs, 5 tools, 5 overlays, the star and the view control's 3 views. Owner: WP-G (art, part 2).
 // Icons carry their own `k` outline and read on the dark UI panels as well as over the map (want bubbles).
 import { registerArt } from '../sprites';
 import type { Grid } from '../sprites';
@@ -405,6 +405,53 @@ const OVERLAYS: Record<string, Grid> = {
   ],
 };
 
+/** The view control's three segments (ui/hud.ts, ui/layout.ts VIEWS): Urbs, the city plan (the panel folded); Mensa,
+ *  the plan beside a ledger (docked); Tabularium, the ledger alone (wide). */
+const VIEW_ICONS: Record<string, Grid> = {
+  closed: [
+    '............',
+    'kkkkkkkkkkkk',
+    'klllltlllllk',
+    'kllLltlLlllk',
+    'klllltllllck',
+    'ktttttttttck',
+    'klllltlllcck',
+    'kllLltllcclk',
+    'klllltlcclLk',
+    'kllllltcllLk',
+    'kkkkkkkkkkkk',
+    '............',
+  ],
+  half: [
+    '............',
+    'kkkkkkkkkkkk',
+    'klllltkeeeek',
+    'kllLltkeEEek',
+    'klllltkeeeek',
+    'ktttttkeEEek',
+    'klllltkeeeek',
+    'kllcclkeEEek',
+    'klcclLkeeeek',
+    'kcclllkeEEek',
+    'kkkkkkkkkkkk',
+    '............',
+  ],
+  full: [
+    '............',
+    'kkkkkkkkkkkk',
+    'keeeeeeeeeek',
+    'keEEEEEEeeek',
+    'keeeeeeeeeek',
+    'keEEEEEEEEek',
+    'keeeeeeeeeek',
+    'keEEEEEeeeek',
+    'keeeeeeeeeek',
+    'keEEEEEEEEek',
+    'kkkkkkkkkkkk',
+    '............',
+  ],
+};
+
 /** The coverage-rings glyph tinted: the outer rings in water blue so they read on the dark overlay bar. */
 function rings(g: Grid): Grid {
   return g.map((r, y) => [...r].map((k, x) => (k === 'k' && Math.abs(x - 5.5) + Math.abs(y - 5.5) >= 4 ? 'c' : k)).join(''));
@@ -440,4 +487,5 @@ export function registerIcons(): void {
   for (const [t, g] of Object.entries(TABS)) add(`i_tab_${t}`, g);
   for (const [t, g] of Object.entries(TOOLS)) add(`i_tool_${t}`, g);
   for (const [o, g] of Object.entries(OVERLAYS)) add(`i_ov_${o}`, o === 'officia' ? rings(g) : g);
+  for (const [v, g] of Object.entries(VIEW_ICONS)) add(`i_view_${v}`, g);
 }

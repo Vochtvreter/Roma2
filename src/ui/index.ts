@@ -6,7 +6,10 @@
 // panel its grabber and voice line (the counsel and the ticker re-hosted there), the tab buttons are the SHEET's bar or
 // the DRAWER's spine, and MapColumn (mapbar.ts) is the tool column; placing, the pinned inspector, the lessons and the
 // voice line's chips route the panel (layout.go). The phone's slot holds one card at a time (here: the context card or
-// the event card, docked by Layout.dock), and closing it puts the panel back as it was. Owner: WP-H.
+// the event card, docked by Layout.dock), and closing it puts the panel back as it was. On the tablet DOCK the same
+// SheetHost heads the docked pane with the Res Gestae and the counsel line (the left column folded in) and slides it; the
+// tool column serves it under 960 px wide; from 960 its wide pane takes the Breviarium as its first column (tray.ts
+// column); the ledger rows that name a map object answer on the map (focusrow.ts). Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -21,10 +24,10 @@ import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
 import { MapColumn, MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
-import { Layout, hostPointer, isPhone, lessonFolds } from './layout';
+import { Layout, brevColumn, hostPointer, isPhone, lessonFolds } from './layout';
 import { SheetHost } from './sheet';
 import { Tray } from './tray';
-import type { Detent } from './layout';
+import { FocusRow } from './focusrow';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
 import { BACK_RANK, registerBack, syncBack } from './history';
@@ -45,9 +48,6 @@ import { DUTY_DEFS } from '../game/ordo/duties';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
-/** Off the SHEET host, today's portrait bottom sheet of mobile.css (a 720–899 px tablet until P4 docks it): the event
- *  card's step-aside covers it as it covers the SHEET. */
-const SHEET_PHONE = '(max-width: 899px) and (min-height: 521px)';
 
 function el(id: string): HTMLElement {
   const e = document.getElementById(id);
@@ -76,7 +76,6 @@ export class UI {
   private tools!: MapTools;
   private column!: MapColumn;
   private lessonShown: { s: GameState; i: number } | null = null;
-  private lowered: Detent | null = null;   // the sheet was dropped for the event card (choice.onStage): its detent, to go back to
   private placedOk = false;                // the placing that ends now ended in a work placed (placed()): a phone's panel stays closed
   private unpinning = false;               // the pinned card closed this turn: its restore waits to see whether another opens
   private swapping = false;                // one card is giving the sheet's slot to the other: no restore in between
@@ -99,16 +98,26 @@ export class UI {
     this.title = new TitleScreen(g, el('title-screen'));
     this.side = new SidePanel(g, el('side'));
     this.layout = new Layout(g, el('app'), this.side);   // from here SidePanel.toggle() goes through the layout
-    // per host, before the layout measures: the tab buttons (the SHEET's bar, the DRAWER's spine), the panel's head (the
-    // counsel and the ticker in its voice line), the Res Gestae (in the tray on a phone)
+    // per host, before the layout measures: the tab buttons (the SHEET's bar, the DRAWER's spine), the panel's head (on a
+    // phone the counsel and the ticker in its voice line; on the DOCK the Res Gestae and the counsel), the Res Gestae (in
+    // the tray on a phone)
     this.layout.onMount((host) => this.side.mount(host));
-    new SheetHost(g, this.layout, el('side'), el('counsel'), el('ticker'));
+    new SheetHost(g, this.layout, el('side'), el('counsel'), el('ticker'), el('objective'));
     this.layout.onMount((host) => this.tray.mount(host));
+    // the DOCK's wide pane from 960 px wide: the Breviarium is its first column (the tray itself, re-hosted)
+    const brev = (): void => { const L = this.layout; this.tray.column(brevColumn(L.host, L.classes.w, L.detent) ? el('side') : null); };
+    this.layout.onChange((why) => { if (why !== 'free') brev(); });
+    brev();
+    // the DOCK's focus row: the last ledger row touched that names a map object stays lit, and the map answers it
+    const focus = new FocusRow(g, el('tab-body'));
+    this.layout.onChange((why) => { if (why === 'classes') focus.paint(); });
     this.inspector = new Inspector(g, el('inspector'));
     this.layout.onChange(() => this.inspector.reseek());   // the UI moved: a pinned target it now covers glides clear
     // new classes: the phone's speed popover folds into the row; an open tray follows the layout
+    this.layout.onMount((host) => this.hud.mountView(host));   // the view control: the DOCK's HUD, the COLUMNS' map
     this.layout.onChange((why) => {
       if (why === 'classes') this.hud.closePopover();
+      if (why !== 'free') this.hud.syncView();   // the view control follows the detent (and the row refits for its label)
       this.tray.relayout();
     });
     // a phone's voice line: '+n' opens "Awaiting you", Read the dispatch; its unfolded card rides the panel (lift), and
@@ -153,8 +162,7 @@ export class UI {
       return true;
     };
     // the event card on a phone: Read docks it in the phone's slot (a focus, as above) and folding or answering it gives
-    // the slot back. Back folds it (a layer). Elsewhere a portrait sheet (a 720–899 px tablet until P4 docks it) drops to
-    // its tab bar while the card is up and comes back once it is answered or folded
+    // the slot back. Back folds it (a layer). Elsewhere it floats in the free map (the DOCK's and the COLUMNS' panel stays)
     registerBack({ rank: BACK_RANK.card, open: () => isPhone(this.layout.host) && this.choice.staged, close: () => this.choice.fold() });
     this.choice.onStage = (up) => {
       const L = this.layout;
@@ -171,17 +179,10 @@ export class UI {
         return;
       }
       if (L.docked === el('choice')) L.dock(null);   // the phone turned with the card up: it floats again here
-      if (up) {
-        if (L.detent !== 'closed' && typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches) { this.lowered = L.detent; L.setDetent('closed'); }
-      } else if (this.lowered) {
-        const d = this.lowered;
-        this.lowered = null;
-        if (L.detent === 'closed') L.setDetent(d);
-      }
     };
     this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
     this.column = new MapColumn(g, el('map-col'), el('overlay-bar'), el('zoom-ctl'), this.layout);
-    this.layout.onMount((host) => this.column.mount(host));
+    this.layout.onMount((host, c) => this.column.mount(host, c.w));   // (the DOCK's under 960 px wide: toolColumn)
     this.layout.onChange(() => this.column.fit());   // a detent, a host, the free map: the column fits its strip again
     // a new detent or host can change how a tab draws itself (Aedificia is a build tray at the SHEET's half)
     this.layout.onChange((why) => { if (why !== 'free') this.side.poke(); });
@@ -353,6 +354,7 @@ export class UI {
     this.changed();
     this.side.frame(performance.now());
     if (isPhone(this.layout.host)) this.layout.setDetent('closed', { instant: true });   // a colony entered on a phone: the map
+    else this.layout.settle();   // on a tablet or the desktop: docked, never the last colony's wide pane
     this.layout.refresh();
   }
 
@@ -390,17 +392,20 @@ export class UI {
   /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. Entering or leaving
    *  placing changes the free map on a phone: there placing routes the panel to closed (remembered; the banner stands
    *  where the voice line was), and it comes back when placing is cancelled, but not after a work was placed (placed()):
-   *  the player is on the map. The layout measures again before view.startPlacing glides a pre-positioned ghost into it. */
+   *  the player is on the map. The DOCK's and the desktop's pane stays, unless it is wide (it docks, the same way: the
+   *  banner and the ghost want the docked layout's map). The layout measures again before view.startPlacing glides a
+   *  pre-positioned ghost into it. */
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void {
     const app = document.getElementById('app'), was = app?.classList.contains('placing');
     renderPlaceBanner(this.g, el('place-banner'), p, check);
     const now = app?.classList.contains('placing');
     if (!app || was === now) return;
     const L = this.layout;
-    if (L && isPhone(L.host)) {
+    if (L) {   // (route: a docked pane stays, and nothing is kept to restore)
       if (now) L.go({ kind: 'place' });
       else if (this.placedOk) L.forget();
       else if (!this.inspector.pinned) L.restore();   // a card placing started from comes back: the sheet stays aside
+      else if (!isPhone(L.host)) L.forget();          // a popup beside its target: the pane stays docked, so it shows
     }
     this.placedOk = false;
     L?.refresh();

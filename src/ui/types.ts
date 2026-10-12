@@ -35,7 +35,7 @@ export interface Game {
   inspecting(): boolean;              // a clicked inspector card (building, block or ground) is pinned
   select(id: number | null): void;    // view.select + inspect building
   focusTile(tile: number): void;      // centre + flash
-  openTab(tab: TabId, anchor?: string, from?: OpenFrom): void;   // `from`: who asked (a chip opens part-way: layout.route)
+  openTab(tab: TabId, anchor?: string, from?: OpenFrom, shift?: boolean): void;   // `from`: who asked (a chip opens part-way: layout.route); `shift` with a key: wide
   prefillContract(spec: ContractSpec): void;   // opens 'trade' with the new-contract form filled
   applyRemedy(r: Remedy): void;       // §13.6
   newGame(opts?: { afterVictory?: boolean }): void;

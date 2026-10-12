@@ -240,6 +240,10 @@ export function openHowTo(_g: Game): void {
   const shortcuts = keys ? [
     h('li', null, kbd('Space'), ' pause · ', kbd('1'), kbd('2'), kbd('3'), kbd('4'), ' speed'),
     h('li', null, kbd('E'), kbd('V'), kbd('B'), kbd('P'), kbd('T'), kbd('L'), ' panels · ', kbd('O'), ' overlays · ', kbd('R'), ' road'),
+    // the views of a tablet and a desktop (layout.ts VIEWS, VIEW_HOSTS: read off #app, layout.ts imports this module's
+    // Back chain): the panel folded, docked or wide; Shift with a panel's key: wide
+    ...(['dock', 'columns'].includes(document.getElementById('app')?.dataset.host ?? 'columns') ? [h('li', null, kbd('C'), ' Urbs · city · ', kbd('M'), ' Mensa · map & ledger · ', kbd('I'), ' Tabularium · ledgers · ',
+      kbd('Shift'), '+', kbd('E'), '…', kbd('L'), ' a panel wide')] : []),
     h('li', null, kbd('W'), kbd('A'), kbd('S'), kbd('D'), ' pan · ', kbd('+'), kbd('−'), ' zoom · ', kbd('H'), ' the forum'),
     h('li', null, kbd('Esc'), touch ? ' close · cancel · menu' : ' close · cancel · menu · touch: hold for a tooltip')] : [];
   const controls = h('ul', { class: 'modal-keys' }, gestures, shortcuts);

@@ -70,6 +70,7 @@ function required(): string[] {
   for (const t of TOOLS) add(`i_tool_${t}`);
   for (const o of OVERLAYS) if (o !== 'none') add(`i_ov_${o}`);
   add('i_star');
+  for (const v of ['closed', 'half', 'full']) add(`i_view_${v}`);
   // portraits 24×24
   for (const a of ADVISORS) for (const m of range(0, 2)) add(`pt_${a}_${m}`);
   add('pt_mentor', 'pt_mentor_notes', 'pt_silhouette');

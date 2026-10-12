@@ -242,6 +242,11 @@
 .tab-confirm { display: block; margin-top: 3px; font-size: 12px; color: var(--gold); font-family: var(--font-caps); letter-spacing: .03em; }
 .ann-filters .btn.bld-cat { padding: 1px 5px; font-size: 11px; }
 
+/* the focus row (focusrow.ts): the last row the player touched that names a map object, while the map answers it (the
+   tablet DOCK's docked or wide pane) */
+.focus-row { position: relative; border-radius: var(--r1); box-shadow: inset 3px 0 0 var(--ember), 0 0 0 2px rgba(240,160,75,.45); background-color: rgba(240,160,75,.07); }
+#tab-body [data-focus] { cursor: pointer; }
+
 /* ───────── the page by the tab body's width (container queries) ───────── */
 #tab-body { container: tab-body / inline-size; }
 /* from 520 px the sections of a page share two columns (three from 840), each kept whole; the body's flex column becomes

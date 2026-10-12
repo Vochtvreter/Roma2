@@ -4,6 +4,8 @@
 // rather than losing its card: when it is picked, and again when the layout moves the UI over it; never after a pan.
 // The same target is not rebuilt while the mouse rests on its card, unless to answer a click there, nor while a press made in
 // it is held (steady.ts): its buttons stay put.
+// On a tablet (the DOCK) and the desktop the popup stands beside its target in the free map the layout leaves (its free
+// rect: left of the docked pane, the spine, or the wide pane's strip of map; right of the desktop's left column).
 // On a phone (the SHEET and the DRAWER: layout.ts) the popup is the context card (DESIGN §15.7): docked in the phone's slot
 // (data-docked; never placed beside its target: above the SHEET's bar, at the bottom-left of the DRAWER's map), its brief
 // first (briefParts: the head, the two or three most useful lines, the main actions) and More for the whole card; a work
@@ -37,7 +39,7 @@ import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
 import { confirm2 } from './modals';
 import { PointerHold } from './steady';
-import { currentHost, isPhone } from './layout';
+import { currentFree, currentHost, isPhone } from './layout';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
 import { labourEl } from './tabs/labour';
@@ -348,9 +350,9 @@ class InspectorCard {
     if (dg.dx || dg.dy) view.panBy(dg.dx, dg.dy);
   }
 
-  /** Pins the popup beside its target, inside the free map (below the HUD, clear of the side panel or sheet). A pinned
-   *  target the UI covers glides clear first (once when picked, and again after the layout moves: seek). On the phone
-   *  SHEET the popup is the docked context card instead (placeDocked). */
+  /** Pins the popup beside its target, inside the free map (the layout's free rect: below the HUD, clear of the panel at
+   *  its detent and of the desktop's left column). A pinned target the UI covers glides clear first (once when picked,
+   *  and again after the layout moves: seek). On a phone the popup is the docked context card instead (placeDocked). */
   private place(): void {
     const t = this.target, pop = this.root;
     if (!t || pop.hidden) return;
@@ -359,17 +361,13 @@ class InspectorCard {
     const tl = this.tiles(t), c = tl ? view.screenRect(tl.x, tl.y, tl.w, tl.h) : null, m = view.mapRect();
     const r = c && { left: c.left + m.left, right: c.right + m.left, top: c.top + m.top, bottom: c.bottom + m.top };   // canvas → #app px
     const app = (pop.offsetParent ?? document.body).getBoundingClientRect();
-    const hud = document.getElementById('hud')?.getBoundingClientRect();
-    const panel = document.getElementById('side')?.getBoundingClientRect();
     const column = document.getElementById('left')?.getBoundingClientRect();
     const M = 8, GAP = 10, MAX_H = 560, MIN_H = 180;
-    let bx0 = M, bx1 = app.width - M, by1 = app.height - M;
-    const by0 = (hud && hud.height ? hud.bottom - app.top : 0) + M;
-    if (panel && panel.width && panel.height && panel.left < app.right && panel.top < app.bottom) {
-      if (panel.left - app.left > app.width / 2) bx1 = Math.min(bx1, panel.left - app.left - M);   // a panel or drawer on the right
-      else if (panel.top - app.top > app.height / 2) by1 = Math.min(by1, panel.top - app.top - M);   // a bottom sheet
-    }
-    if (column && column.width && column.width < app.width / 2) bx0 = column.right - app.left + M;   // the left column of a wide screen
+    // the free map at rest, in #app px: the panel where it comes to rest, not mid-slide (none at all under the medium
+    // DOCK's wide pane: the card hides, as for a target panned away)
+    const vf = view.freeRect(), fr = currentFree() ?? { left: vf.left + m.left, top: vf.top + m.top, right: vf.right + m.left, bottom: vf.bottom + m.top };
+    const bx0 = Math.max(0, fr.left) + M, bx1 = Math.min(app.width, fr.right) - M;
+    const by0 = Math.max(0, fr.top) + M, by1 = Math.min(app.height, fr.bottom) - M;
     const card = pop.firstElementChild as HTMLElement | null;
     const w = pop.offsetWidth;
     const natural = card ? card.scrollHeight + card.offsetHeight - card.clientHeight : 0;
@@ -408,7 +406,7 @@ class InspectorCard {
         if (dg.dx + dx || dg.dy + dy) view.panBy(dg.dx + dx, dg.dy + dy);
       }
     }
-    const off = !r || r.right < 0 || r.left > bx1 || r.bottom < by0 || r.top > by1;
+    const off = !r || bx1 - bx0 < 1 || r.right < 0 || r.left > bx1 || r.bottom < by0 || r.top > by1;
     if (off || !r || !card) { this.apply('hidden', () => { pop.style.visibility = 'hidden'; }); return; }
     const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
     const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));

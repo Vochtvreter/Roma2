@@ -1,13 +1,14 @@
 // src/ui/mapbar.ts — the map widgets of the shell (DESIGN §15.4, §11.9): the overlay bar (five toggles, the Officia
-// layer selector and a legend), the zoom buttons, the phones' tool column (Via, Mappae, the zoom: the SHEET's and the
-// DRAWER's) and the placement banner with the touch verbs (⟳ keep placing, ↕ vertical first), and the pure rules of
+// layer selector and a legend), the zoom buttons, the phones' tool column (Via, Mappae, the zoom: the SHEET's, the
+// DRAWER's, and the tablet DOCK's under 960 px wide) and the placement banner with the touch verbs (⟳ keep placing, ↕
+// vertical first), and the pure rules of
 // placing a work: where its ghost starts (startAt), what a Place does next (afterPlace) and why the work is being placed
 // (placingWhy). Owner: WP-H (split from ui/index.ts).
 import { OVERLAYS } from '../game/types';
 import type { BuildingId, CoverageLayerId, GameState, OverlayId, PlaceCheck, ToolId } from '../game/types';
 import type { Game, PlacingState } from './types';
-import type { Host, Layout } from './layout';
-import { currentHost, isPhone, registerBringer, safeArea } from './layout';
+import type { Host, Layout, WClass } from './layout';
+import { currentHost, registerBringer, safeArea, slimBanner, toolColumn } from './layout';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
@@ -164,11 +165,12 @@ const COL_GAP = 4;
 /** The phones' tool column in #map-col (DESIGN §15.7): [Via][Mappae][+][−][⌂], 44 px each. On the SHEET at the right edge
  *  8 px above what stands on the bar (the sheet: it rides up with half, hides at full; a card in the sheet's slot; the
  *  placing banner, over which it stays in view while placing); on the DRAWER at the right edge of the free map, left of
- *  the spine or the open pane, from the foot up (it hides at full; drawer.css). Via drops the road tools it offers (Road,
- *  Pave, Reserve block, Demolish: those revealed, once the lessons open the catalogue); Mappae drops the overlay bar
- *  itself (#overlay-bar, re-hosted, its labels and legend shown); + − ⌂ are the zoom buttons (#zoom-ctl, re-hosted).
- *  Each popover is a Back and Esc layer and closes on a press outside it. Off the phones the column hides and the bar and
- *  the zoom go home to #map-tools (layout.onMount). */
+ *  the spine or the open pane, from the foot up (it hides at full; drawer.css); on the DOCK under 960 px wide the same,
+ *  left of its pane (dock.css). Via drops the road tools it offers (Road, Pave, Reserve block, Demolish: those revealed,
+ *  once the lessons open the catalogue); Mappae drops the overlay bar itself (#overlay-bar, re-hosted, its labels and
+ *  legend shown); + − ⌂ are the zoom buttons (#zoom-ctl, re-hosted). Each popover is a Back and Esc layer and closes on
+ *  a press outside it. Where the host has no tool column (layout.toolColumn: the desktop, the DOCK from 960 px) it hides
+ *  and the bar and the zoom go home to #map-tools, beside the minimap (layout.onMount). */
 export class MapColumn {
   private readonly via: HTMLButtonElement;
   private readonly mappae: HTMLButtonElement;
@@ -180,6 +182,7 @@ export class MapColumn {
   private readonly zoom: Home;
   private openNow: 'via' | 'mappae' | null = null;
   private hostNow: Host | null = null;
+  private on = false;                    // the host carries the column (toolColumn): the bar and the zoom are here
   private toolsKey = '';
 
   constructor(private readonly g: Game, private readonly root: HTMLElement, bar: HTMLElement, zoom: HTMLElement,
@@ -210,20 +213,22 @@ export class MapColumn {
     }, true);
     // "Show me" on the overlay bar (lesson IX, the wants and fork tips) opens the popover that holds it
     registerBringer('#overlay-bar', () => {
-      if (!isPhone(this.hostNow) || this.mappae.hidden) return false;
+      if (!this.on || this.mappae.hidden) return false;
       this.show('mappae');
       return true;
     });
   }
 
-  /** The host changed (layout.onMount): on a phone the overlay bar moves into the Mappae popover and the zoom buttons
-   *  into the column; elsewhere they go home and any popover closes (a popover open across a turn of the phone closes:
-   *  the column moved under it). */
-  mount(host: Host): void {
-    if (host === this.hostNow) return;
+  /** The host or its width class changed (layout.onMount): where the host carries the column (toolColumn: a phone, the
+   *  DOCK under 960 px) the overlay bar moves into the Mappae popover and the zoom buttons into the column; elsewhere they
+   *  go home and any popover closes (a popover open across a turn of the phone closes: the column moved under it). */
+  mount(host: Host, w: WClass): void {
+    const on = toolColumn(host, w);
+    if (host === this.hostNow && on === this.on) return;
     this.hostNow = host;
+    this.on = on;
     this.close();
-    if (isPhone(host)) {
+    if (on) {
       this.mapPop.append(this.bar.el);
       this.root.append(this.zoom.el);
     } else {
@@ -235,7 +240,7 @@ export class MapColumn {
   /** Throttled by the UI root: Via and Mappae come with what they hold (the catalogue's tools, the overlays lesson), the
    *  Via list follows the tools revealed, and a popover whose button went away closes. */
   update(): void {
-    if (!isPhone(this.hostNow)) return;
+    if (!this.on) return;
     const g = this.g;
     const tools = shows(g, 'catalog') ? VIA.filter((t) => toolRevealed(g.state, t.id)) : [];
     present(g, this.via, tools.length > 0);
@@ -256,11 +261,11 @@ export class MapColumn {
 
   /** Fits the column to the strip of map between the HUD and its foot (on the SHEET what stands on the bar, layout.dockH:
    *  the sheet at its detent's height, not mid-slide; a card in the sheet's slot; the placing banner; on the DRAWER the
-   *  foot of #app): one column when it can, else Via and Mappae beside the zoom (wrap), else without the zoom (tight:
-   *  fingers pinch), else none at all (gone). */
+   *  foot of #app; on the DOCK too): one column when it can, else Via and Mappae beside the zoom (wrap), else without the
+   *  zoom (tight: fingers pinch), else none at all (gone). */
   fit(): void {
     const hs = this.layout.sheetHeights, app = this.root.parentElement;
-    if (!isPhone(this.hostNow) || !app || (this.hostNow === 'sheet' && !hs)) return;
+    if (!this.on || !app || (this.hostNow === 'sheet' && !hs)) return;
     const hud = document.getElementById('hud');
     const top = hud ? hud.offsetTop + hud.offsetHeight : 0;
     let room: number;
@@ -362,7 +367,7 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   // the map treats any non-mouse tap as a preview (render/view.ts), so the Place button follows the last pointer used: a
   // touch laptop, a Surface or a pen taps a plot to preview it, as a phone does (ui/pointer.ts)
   const coarse = lastTouch() || primaryCoarse();
-  const sheet = isPhone(currentHost());
+  const sheet = slimBanner(currentHost());   // the phones' and the tablet's slim banner
   // 'Cancel' in words; ✕ on the phone's banner, whose row of buttons is tight
   const cancel = h('button', { class: 'btn small ghost place-x', type: 'button', 'aria-label': 'Cancel placing', onclick: () => g.cancelPlacing() },
     h('span', { class: 'place-x-t' }, 'Cancel'), h('span', { class: 'place-x-i', 'aria-hidden': 'true' }, '✕'));
@@ -394,8 +399,8 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
     ? h('button', { class: 'btn small primary place-go', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
-  // ⟳: a finger's Place leaves the next ghost up (the touch Shift-click); not for a Move, which places one stake. The
-  // phones' banners only, for now: the tablet's is P4's
+  // ⟳: a finger's Place leaves the next ghost up (the touch Shift-click); not for a Move, which places one stake. On
+  // the slim banners (the phones', the tablet's); the desktop's keeps Shift-click
   const keep = sheet && coarse && p.replaceId === undefined
     ? toggleBtn(g, 'place-keep', '⟳', 'Keep placing: after Place, the next plot is ready', keepPlacing(), setKeepPlacing) : null;
   const why = sheet ? placingWhy(g.state, p.type) : null;
@@ -408,6 +413,6 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       // the words follow the hand, as Place does (a mouse in a narrow or short window is on a phone host too, and clicks)
       h('div', { class: 'place-help' }, coarse ? (sheet ? 'Tap a plot, then Place' : 'TAP A GLOWING PLOT, THEN PLACE') : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
     h('div', { class: 'place-btns' }, keep, place, cancel)));
-  if (!sheet) steadyBox(box, `${p.type}:${coarse}`);   // a phone's banner has its own height whatever its words (sheet.css, drawer.css)
+  if (!sheet) steadyBox(box, `${p.type}:${coarse}`);   // a slim banner has its own height whatever its words (sheet.css, drawer.css, dock.css)
 }
 

@@ -20,6 +20,7 @@ import { houseSprite } from '../../render/art/index';
 import { section } from './common';
 import type { TabPanel } from './common';
 import { labourEl, labourKey } from './labour';
+import { focusOfBuilding } from '../focusrow';
 
 const STAGE_NAME = ['Children', 'Youths', 'Adults', 'Elders'] as const;
 const HUNGER = ['Sated', 'Peckish', 'Hungry', 'Starving'] as const;
@@ -154,7 +155,7 @@ function gentes(g: Game, up: Updater[]): HTMLElement {
     const row = (f: GameState['families'][number]): HTMLElement => {
       const head = s.people.find((p) => p.id === f.head);
       const home = f.home !== null ? getBuilding(s, f.home) : undefined;
-      return h('div', { class: 'pop-gens', 'data-key': `gens-${f.id}` }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
+      return h('div', { class: 'pop-gens', 'data-key': `gens-${f.id}`, 'data-focus': home ? focusOfBuilding(home.id) : null }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
         h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${plural(size[f.id] ?? 0, 'soul', 'souls')} · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
     };
     list.replaceChildren(...fams.slice(0, GENTES_SHOWN).map(row));

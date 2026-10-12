@@ -17,8 +17,13 @@
 // windows, P3; drawer.css) is the same nodes in another arrangement: the tab buttons a 56 px spine at the right edge, the
 // panel a pane beside it (its widths worked out here: drawerWidths, slid sideways by sheet.ts), the voice line afloat at
 // the bottom-left of the map while the pane is closed and the pane's head otherwise, the card slot and the placing banner
-// at the bottom-left of the free map. The other hosts keep today's panel (full = half until P4 styles them), their free
-// rect measured from today's CSS (panels.css, mobile.css, left.css).
+// at the bottom-left of the free map. The DOCK host (tablets, foldables, small windows, P4; dock.css) docks the panel at the
+// right: its head the one-line Res Gestae and the counsel line (the left column folded in), then the tab bar and the body;
+// closed it folds to a 56 px spine of tab icons (the head afloat top-right over the map), full it is wide (the whole
+// width under 960 px, all but a 320 px strip of live map from 960, the Breviarium its first column there). Its widths are
+// worked out here (dockWidths) and slid sideways by sheet.ts; the inspector stays a popup beside its target. COLUMNS
+// keeps today's panel, measured from today's CSS (panels.css, left.css), wide at full. The DOCK and the COLUMNS carry the
+// three-way view control (VIEWS: Urbs, Mensa, Tabularium; keys C, M, I, keyAction).
 import { TABS } from '../game/types';
 import type { TabId } from '../game/types';
 import { LESSONS, lessonPointer } from '../game/intro';
@@ -130,15 +135,30 @@ export function keepDetent(d: Detent, forced: boolean, host: Host, tiny: boolean
  *  measure, a load). Entering the SHEET (a load, a turn to portrait) shows the map, the sheet closed, unless a tab was
  *  opened just now (`justOpened`: its own detent stands); any other change keeps the player's detent (keepDetent): a
  *  phone turned to landscape keeps its ledger in the DRAWER's pane at the detent it had (a colony entered on a phone
- *  closes either panel: UI.hideTitle). The DOCK keeps it until P4 styles it. */
+ *  closes either panel: UI.hideTitle). The DOCK keeps it too: a tablet turned either way stays where the player had it.
+ *  But a phone's closed panel is its host's default, not the player's choice: a foldable unfolded into the DOCK, or a
+ *  window widened into the DOCK or the COLUMNS, docks the pane there (their default). */
 export function hostEntryDetent(d: Detent, forced: boolean, from: Host | null, to: Host, tiny: boolean, justOpened: boolean): { detent: Detent; forced: boolean } {
   if (from !== to && to === 'sheet' && !justOpened) return keepDetent('closed', false, to, tiny);
+  if (from !== null && isPhone(from) && !isPhone(to) && d === 'closed') return keepDetent(DEFAULT_DETENT[to], false, to, tiny);
   return keepDetent(d, forced, to, tiny);
 }
 
-/** True when `d` stands above the host's default: a layer Back and Esc close (history.ts). */
+/** True when `d` stands above the host's default. */
 export function aboveDefault(d: Detent, host: Host): boolean {
   return RANK[d] > RANK[DEFAULT_DETENT[host]];
+}
+
+/** True when `d` is a layer Back and Esc close (history.ts; pure): a detent above the host's default; on the DOCK any
+ *  detent but its docked pane, so the spine and the wide pane both come back to it (backDetent). */
+export function isLayer(d: Detent, host: Host): boolean {
+  return host === 'dock' ? d !== DEFAULT_DETENT.dock : aboveDefault(d, host);
+}
+
+/** Where one Back or Esc takes the panel from `d` (pure): one step down (stepDown: full → half → closed); on the DOCK
+ *  back to the docked pane, from the spine and from wide alike. */
+export function backDetent(d: Detent, host: Host, tiny: boolean): Detent {
+  return host === 'dock' ? DEFAULT_DETENT.dock : stepDown(d, host, tiny);
 }
 
 // ───────────────────────────── the sheet (pure) ─────────────────────────────
@@ -232,6 +252,81 @@ export function priorityDrops(need: number, room: number, widths: readonly numbe
   return n;
 }
 
+// ───────────────────────────── the dock (pure) ─────────────────────────────
+/** The DOCK's pane (SPEC A §1 TABLETS, DESIGN §15.7): docked at the right, clamp(300 px, 40% of #app, 360 px) wide under
+ *  960 px (medium), clamp(340 px, 30%, 400 px) from 960 (expanded); folded, a 56 px spine of tab icons; wide, the whole
+ *  width at medium, and from 960 all but a 320 px strip of live map at the left, the Breviarium its first column. */
+export const DOCK = {
+  spine: 56, strip: 320,
+  medium: { min: 300, share: 0.4, max: 360 }, expanded: { min: 340, share: 0.3, max: 400 },
+} as const;
+
+/** True for the width classes of a DOCK wide enough for the expanded pane, the minimap and the Breviarium column. */
+export function dockExpanded(w: WClass): boolean {
+  return w === 'expanded' || w === 'large';
+}
+
+/** The DOCK pane's width at each detent (pure), for #app's width `W` and width class `w`: closed is the spine; half the
+ *  docked pane's clamp; full all of #app at medium, all but the live strip of map from 960 (never narrower than half). */
+export function dockWidths(W: number, w: WClass): Record<Detent, number> {
+  const wide = dockExpanded(w), p = wide ? DOCK.expanded : DOCK.medium;
+  const half = Math.min(Math.round(W), Math.round(Math.min(p.max, Math.max(p.min, p.share * W))));
+  const full = Math.max(half, Math.round(wide ? W - DOCK.strip : W));
+  return { closed: Math.min(DOCK.spine, half), half, full };
+}
+
+/** Whether the Breviarium stands as the first column of the panel (pure): the DOCK's wide pane from 960 px wide. */
+export function brevColumn(host: Host, w: WClass, d: Detent): boolean {
+  return host === 'dock' && d === 'full' && dockExpanded(w);
+}
+
+/** Whether the host carries the phones' tool column ([Via][Mappae][+][−][⌂], mapbar.ts MapColumn), the overlay bar in
+ *  its Mappae popover (pure): the SHEET and the DRAWER, and the DOCK under 960 px wide (no room there for the minimap
+ *  and the labelled overlay bar beside the pane). From 960 the DOCK's map tools are the desktop's (#map-tools). */
+export function toolColumn(host: Host, w: WClass): boolean {
+  return isPhone(host) || (host === 'dock' && !dockExpanded(w));
+}
+
+/** Whether the placing banner is the slim one with the reason row and ⟳ keep placing (mapbar.ts renderPlaceBanner):
+ *  the phones' and the DOCK's; the desktop COLUMNS keep theirs. */
+export function slimBanner(host: Host | null): boolean {
+  return host !== null && host !== 'columns';
+}
+
+// ───────────────────────────── the view control (pure) ─────────────────────────────
+/** One of the three named views (SPEC A graft 1): the panel's detents as the DOCK and the COLUMNS name them, with the
+ *  key that goes there and the icon of its segment in the HUD's view control (hud.ts). */
+export interface View { detent: Detent; key: string; latin: string; en: string; icon: string }
+/** Urbs (the city: the panel folded), Mensa (map and ledger: docked), Tabularium (the ledgers: wide). */
+export const VIEWS: readonly View[] = [
+  { detent: 'closed', key: 'c', latin: 'Urbs', en: 'City', icon: 'i_view_closed' },
+  { detent: 'half', key: 'm', latin: 'Mensa', en: 'Map & ledger', icon: 'i_view_half' },
+  { detent: 'full', key: 'i', latin: 'Tabularium', en: 'Ledgers', icon: 'i_view_full' },
+];
+/** The hosts that carry the view control and its keys: the tablets' DOCK and the desktop COLUMNS (a phone's sheet and
+ *  drawer move by their grabber, bar and spine). */
+export const VIEW_HOSTS: readonly Host[] = ['dock', 'columns'];
+
+/** The view a detent is (VIEWS). */
+export function viewOf(d: Detent): View {
+  return VIEWS.find((v) => v.detent === d) ?? VIEWS[1];
+}
+
+/** Each tab's letter (DESIGN §15.8): E V B P T L. */
+export const TAB_KEYS: Readonly<Record<string, TabId>> = { e: 'council', v: 'advisors', b: 'build', p: 'people', t: 'trade', l: 'annals' };
+
+/** What a letter key does to the panel (pure; tests/layout.test.ts): a tab's letter opens that tab, and with Shift on the
+ *  DOCK or the COLUMNS opens it wide (route: from 'key' with shift); C, M and I go to the views Urbs, Mensa and
+ *  Tabularium there (closed, half, full; nothing on a phone). Anything else: null. */
+export type KeyAction = { kind: 'tab'; tab: TabId; wide: boolean } | { kind: 'view'; detent: Detent };
+export function keyAction(key: string, shift: boolean, host: Host): KeyAction | null {
+  const k = key.toLowerCase(), views = VIEW_HOSTS.includes(host);
+  const tab = TAB_KEYS[k];
+  if (tab) return { kind: 'tab', tab, wide: shift && views };
+  const v = VIEWS.find((x) => x.key === k);
+  return v && views ? { kind: 'view', detent: v.detent } : null;
+}
+
 // ───────────────────────────── routing (pure) ─────────────────────────────
 /** Who asked to open a tab: a ticker line, danger chip or portrait ('chip'), its key (Shift: wide), a remedy, a lesson,
  *  or a tab button on the bar, rail or spine. */
@@ -242,8 +337,8 @@ export type Intent =
   | { kind: 'focus' }                                                  // inspecting a building or tile (map, ledger row)
   | { kind: 'open'; tab: TabId; from?: OpenFrom; shift?: boolean; anchor?: string }   // a tab (at a row of it)
   | { kind: 'lesson'; lesson: LessonId };                              // an opening lesson's pointer
-/** Where the panel is now. */
-export interface RouteCtx { host: Host; detent: Detent; tiny: boolean }
+/** Where the panel is now (`w`: the width class; the DOCK's wide pane covers all of the map under 960 px). */
+export interface RouteCtx { host: Host; detent: Detent; tiny: boolean; w?: WClass }
 /** Where an intent takes it: the detent; `remember`, keep the current one for Back or ✕ to restore; `card`, show the
  *  context card (the inspector in the sheet's slot). */
 export interface Route { detent: Detent; remember: boolean; card: boolean }
@@ -284,14 +379,20 @@ function openDetent(tab: TabId, from: OpenFrom | undefined, shift: boolean, c: R
 }
 
 /** The detent an intent goes to (pure; tests/layout.test.ts). Place and focus clear a phone's map and remember the
- *  detent they left (focus also opens the context card); on a tablet or desktop the pane stays. A tab opens part-way
- *  on a phone (full for the long ledgers), docked elsewhere unless already wide. A lesson follows LESSON_VIEW. */
+ *  detent they left (focus also opens the context card); on a tablet or desktop the pane stays, but for a wide one.
+ *  Placing docks a wide pane (the DOCK's and the COLUMNS', any width), remembered: the banner and the ghost want the
+ *  docked layout's map (in a 320 px strip the banner lost its ✕), and cancelling goes wide again. A focus docks the
+ *  DOCK's wide pane under 960 px, which leaves no map at all, and does not remember it (SPEC A §7: a row's "show on map"
+ *  docks the pane and its popup shows; the pane stays docked, and Esc then closes the popup). A tab opens part-way on a
+ *  phone (full for the long ledgers), docked elsewhere unless already wide. A lesson follows LESSON_VIEW. */
 export function route(i: Intent, c: RouteCtx): Route {
   const phone = c.host === 'sheet' || c.host === 'drawer';
   const keep: Route = { detent: c.detent, remember: false, card: false };
+  const wide = !phone && c.detent === 'full';                                      // the DOCK's or the COLUMNS' wide pane
+  const blind = wide && c.host === 'dock' && c.w !== undefined && !dockExpanded(c.w);   // … with no map left beside it
   switch (i.kind) {
-    case 'place': return phone ? { detent: 'closed', remember: true, card: false } : keep;
-    case 'focus': return phone ? { detent: 'closed', remember: true, card: true } : keep;
+    case 'place': return phone ? { detent: 'closed', remember: true, card: false } : wide ? { detent: 'half', remember: true, card: false } : keep;
+    case 'focus': return phone ? { detent: 'closed', remember: true, card: true } : blind ? { detent: 'half', remember: false, card: false } : keep;
     case 'open': return { detent: openDetent(i.tab, i.from, i.shift === true, c, i.anchor), remember: false, card: false };
     case 'lesson': {
       const v = LESSON_VIEW[i.lesson], les = LESSONS.find((l) => l.id === i.lesson), tab = les?.tab;
@@ -318,19 +419,37 @@ export const MAP_TOOLS: readonly string[] = ['#overlay-bar', '#zoom-ctl', '#tick
 /** What a phone host shows of the frame: its [❚❚][1× ▾] pair is #speed itself (it glows as it is); the tool column's
  *  buttons stand in for what it hides (SHEET_HIDES); the bar's slots or the spine's icons are the tab buttons. */
 const PHONE_VISIBLE: readonly string[] = [...FRAME.filter((x) => !SHEET_HIDES.includes(x)), ...SHEET_FRAME];
-/** The frame targets each host shows: the phones (SHEET and DRAWER) theirs, the others today's frame. */
+/** The frame targets each host shows: the phones (SHEET and DRAWER) theirs, the others today's frame (the DOCK from
+ *  960 px wide: its overlay bar stands on the map beside the minimap; under 960 see DOCK_TOOLS). */
 export const VISIBLE: Readonly<Record<Host, readonly string[]>> = {
   sheet: PHONE_VISIBLE, drawer: PHONE_VISIBLE, dock: FRAME, columns: FRAME,
 };
+/** The DOCK under 960 px wide (toolColumn): today's frame (its HUD, the pane's head with the Res Gestae and the counsel,
+ *  the tab buttons, the ticker), but the phones' tool column for the overlay bar: the Mappae button stands in for it. */
+export const DOCK_TOOLS = {
+  visible: [...FRAME.filter((x) => x !== '#overlay-bar'), ...SHEET_FRAME] as readonly string[],
+  reveal: { '#overlay-bar': '#map-mappae' } as Readonly<Record<string, string>>,
+} as const;
+
+/** The frame targets a host shows at a width (pure): VISIBLE, but the DOCK's under 960 px (DOCK_TOOLS). */
+export function visibleOn(host: Host, w?: WClass): readonly string[] {
+  return host === 'dock' && w !== undefined && toolColumn(host, w) ? DOCK_TOOLS.visible : VISIBLE[host];
+}
 /** On a phone host, a hidden target → the visible proxy that glows instead: the Res Gestae glows the HUD, whose every
  *  figure opens the Breviarium that holds it; the overlay bar, the Mappae button that opens it ("Show me" opens the
  *  popover too: bringTarget); the ticker, the voice line that speaks its lines in calm; Annales, the menu, which has its
  *  row (on the DRAWER the spine's own icon glows itself whenever it shows: Layout.reveal). */
 const PHONE_REVEAL: Readonly<Record<string, string>> = { '#objective': '#hud', '#overlay-bar': '#map-mappae', '#ticker': '#counsel', '#tab-annals': '#hud-menu' };
-/** Per host, a hidden target → the visible proxy that glows instead (the phones: PHONE_REVEAL; P4 the DOCK's). */
+/** Per host, a hidden target → the visible proxy that glows instead (the phones: PHONE_REVEAL; the DOCK from 960 px
+ *  wide shows its whole frame, and under 960 DOCK_TOOLS.reveal: revealOn). */
 export const REVEAL: Readonly<Record<Host, Readonly<Record<string, string>>>> = {
   sheet: PHONE_REVEAL, drawer: PHONE_REVEAL, dock: {}, columns: {},
 };
+
+/** The hidden targets' proxies on a host at a width (pure): REVEAL, but the DOCK's under 960 px (DOCK_TOOLS). */
+export function revealOn(host: Host, w?: WClass): Readonly<Record<string, string>> {
+  return host === 'dock' && w !== undefined && toolColumn(host, w) ? DOCK_TOOLS.reveal : REVEAL[host];
+}
 /** Per host, a row of a tab body that a lesson's card carries too (CARD_LESSONS) → the card's own copy, which glows
  *  instead: the job is done there, without the tab. */
 export const CARD_ROWS: Readonly<Record<Host, Readonly<Record<string, string>>>> = {
@@ -339,8 +458,8 @@ export const CARD_ROWS: Readonly<Record<Host, Readonly<Record<string, string>>>>
 
 /** The selector to glow for a target on a host: its proxy where the host hides it, the lesson card's own copy of a row
  *  it carries, else itself. */
-export function reveal(selector: string, host: Host): string {
-  return REVEAL[host][selector] ?? CARD_ROWS[host][selector] ?? selector;
+export function reveal(selector: string, host: Host, w?: WClass): string {
+  return revealOn(host, w)[selector] ?? CARD_ROWS[host][selector] ?? selector;
 }
 
 /** True for a frame target (a bare id the hosts place); anything else is a row of the open tab's body. */
@@ -348,24 +467,24 @@ export function inFrame(selector: string): boolean {
   return /^#[\w-]+$/.test(selector);
 }
 
-/** Whether a target shows on a host at a detent: a row of the tab body needs the panel up; a frame target must be one the
- *  host shows, and the map's tools are hidden under a full panel. */
-export function shownAt(selector: string, host: Host, d: Detent): boolean {
+/** Whether a target shows on a host (at a width: the DOCK's frame depends on it) at a detent: a row of the tab body needs
+ *  the panel up; a frame target must be one the host shows, and the map's tools are hidden under a full panel. */
+export function shownAt(selector: string, host: Host, d: Detent, w?: WClass): boolean {
   if (!inFrame(selector)) return d !== 'closed';
-  if (!VISIBLE[host].includes(selector)) return false;
+  if (!visibleOn(host, w).includes(selector)) return false;
   return !(d === 'full' && MAP_TOOLS.includes(selector));
 }
 
 /** What "Show me" does for a lesson on a host (pure; tests/sheet.test.ts): lessonPointer's, except where the host's
  *  lesson card carries the job (CARD_LESSONS on the SHEET): no tab opens (`card`: the counsel's card unfolds instead),
  *  and the target glows on the card's own row (reveal: CARD_ROWS). A lesson that opens Aedificia on no row of it (VIII:
- *  "a work you choose") points a phone's Aedificia at its cards, every category (aedificia.ts focus): the SHEET's build
- *  tray, the DRAWER's catalogue (its short pane would show the Agenda at the tab's top), not the category an earlier
- *  lesson left it on. */
+ *  "a work you choose") points a phone's or a tablet's Aedificia at its cards, every category (aedificia.ts focus): the
+ *  SHEET's build tray, the DRAWER's and the DOCK's catalogue (their narrow pane would show the Agenda at the tab's top),
+ *  not the category an earlier lesson left it on. */
 export function hostPointer(l: Lesson, host: Host): { open: TabId | null; anchor?: string; glow: string | null; card: boolean } {
   const p = lessonPointer(l);
   if (host === 'sheet' && CARD_LESSONS.includes(l.id)) return { open: null, glow: p.glow, card: true };
-  if (isPhone(host) && p.open === 'build' && p.anchor === undefined) return { ...p, anchor: 'cards', card: false };
+  if ((isPhone(host) || host === 'dock') && p.open === 'build' && p.anchor === undefined) return { ...p, anchor: 'cards', card: false };
   return { ...p, card: false };
 }
 
@@ -394,7 +513,7 @@ export type LayoutChange = 'classes' | 'detent' | 'free';
 /** What the phone hosts' own DOM (sheet.ts) does for the engine: the SHEET's head height (the grabber and the voice line:
  *  all a closed sheet shows); the slide from one extent to another (the SHEET's height, the DRAWER pane's width), ending
  *  at rest on detent `to`, which also puts the voice line where `to` wants it; and the DRAWER's voice line while it
- *  floats on the map (the pane closed), else null. */
+ *  floats on the map (the pane closed), or the DOCK's head afloat beside its spine, else null. */
 export interface SheetHooks {
   head(): number;
   slide(fromH: number, toH: number, to: Detent, instant: boolean): void;
@@ -402,11 +521,6 @@ export interface SheetHooks {
 }
 
 const QUERIES = ['(pointer: coarse)', '(any-pointer: fine)', '(any-pointer: coarse)'] as const;
-/** Bridge to today's CSS off the SHEET: mobile.css's phone block (< 900 px) folds a dock's sheet and the drawer while
- *  placing. */
-const PHONE_CSS = '(max-width: 899px)';
-/** The tab bar a folded bottom sheet keeps on screen off the SHEET host (panels.css: translateY(calc(100% - 52px))). */
-const SHEET_BAR = 52;
 /** CSS px of map kept between a pre-positioned ghost's free rect and the placing banner above which it must show. */
 const BANNER_GAP = 8;
 /** CSS px kept between the free rect and the SHEET's tool column. */
@@ -447,9 +561,21 @@ export function routeIntent(i: Intent): void {
   active?.go(i);
 }
 
-/** Moves the panel to a detent by the player's own hand (a tab's ⤢: Aedificia's Catalogue), once the layout runs. */
+/** Moves the panel to a detent by the player's own hand (a tab's ⤢: Aedificia's Catalogue; the view control and its keys
+ *  C, M and I), once the layout runs. */
 export function moveDetent(d: Detent): void {
   active?.setDetent(d, { user: true });
+}
+
+/** The free map in #app px, as the layout measured it at rest (Layout.freeRect: empty when the panel covers it all, as
+ *  the medium DOCK's wide pane does), or null before the layout runs. */
+export function currentFree(): Box | null {
+  return active ? active.freeRect() : null;
+}
+
+/** The current classes, or null before the layout runs (headless tests). */
+export function currentClasses(): Classes | null {
+  return active ? active.classes : null;
 }
 
 /** Registers how the host brings a target it hides into view on an explicit "Show me" (the SHEET's Mappae popover holds
@@ -493,16 +619,18 @@ export class Layout {
   private openedAt = -Infinity;                // when a tab was last opened (go): a host change just then keeps its detent
   private heights: Record<Detent, number> | null = null;   // the SHEET's height at each detent (sizeSheet)
   private widths: Record<Detent, number> | null = null;    // the DRAWER pane's width at each detent (sizeDrawer)
+  private dockW: Record<Detent, number> | null = null;     // the DOCK pane's width at each detent (sizeDock)
   private sheetHooks: SheetHooks | null = null;
   private card: HTMLElement | null = null;     // the card docked in a phone's slot (dock): the context card or the event card
   private dockPx = -1;                         // what stands on the SHEET's bar, as written to --dock-h
+  private freeVars = '';                       // the DOCK's free map as written to --dock-free-t and --dock-free-r
   private free: Box = ZERO;
   private ins: Box = ZERO;                     // the free rect as canvas insets (CSS px), as given to the view
   private safe: Box = ZERO;                    // the safe area in #app px (safeArea)
   private started = false;
   private readonly mq: MediaQueryList[];
   private readonly subs = new Set<(why: LayoutChange) => void>();
-  private readonly mounts: ((host: Host) => void)[] = [];
+  private readonly mounts: ((host: Host, c: Classes) => void)[] = [];
   private readonly ro: ResizeObserver | null = null;
   private readonly hud: HTMLElement | null;
   private readonly sideEl: HTMLElement | null;
@@ -539,10 +667,11 @@ export class Layout {
       // the chrome growing, shown, hidden
       for (const el of [this.hud, this.sideEl, this.left, this.banner, this.tabs, this.column]) if (el) this.ro.observe(el);
     } else window.addEventListener('resize', () => this.update());
-    // a detent above the host's default is a layer Back and Esc close, one step at a time (full → half → closed). The
-    // Breviarium, the phone's speed popover and the tool column's popovers have their own (tray.ts, hud.ts, mapbar.ts),
-    // as do the cards in the sheet's slot (the selection's, history.ts; the event card's, ui/index.ts)
-    registerBack({ rank: BACK_RANK.detent, open: () => this.layerOpen(), close: () => this.setDetent(stepDown(this.det, this.cls.host, this.cls.tiny)) });
+    // a detent above the host's default is a layer Back and Esc close, one step at a time (full → half → closed); on the
+    // DOCK the spine and the wide pane both come back to the docked pane (isLayer, backDetent). The Breviarium, the
+    // phone's speed popover and the tool column's popovers have their own (tray.ts, hud.ts, mapbar.ts), as do the cards
+    // in the sheet's slot (the selection's, history.ts; the event card's, ui/index.ts)
+    registerBack({ rank: BACK_RANK.detent, open: () => this.layerOpen(), close: () => this.setDetent(backDetent(this.det, this.cls.host, this.cls.tiny)) });
     this.update();
   }
 
@@ -557,8 +686,9 @@ export class Layout {
   get offered(): readonly Detent[] { return detentsOf(this.cls.host, this.cls.tiny); }
   /** The SHEET's height above the bar at each detent (#app px, a copy), or null on any other host. */
   get sheetHeights(): Record<Detent, number> | null { return this.heights ? { ...this.heights } : null; }
-  /** The phone panel's extent at each detent (#app px, a copy): the SHEET's height above the bar, the DRAWER pane's width
-   *  beside the spine; null on any other host. sheet.ts drags and slides between these. */
+  /** The sliding panel's extent at each detent (#app px, a copy): the SHEET's height above the bar, the DRAWER pane's
+   *  width beside the spine, the DOCK pane's width at the right edge; null on the COLUMNS. sheet.ts slides between these
+   *  (and drags the phones'). */
   get extents(): Record<Detent, number> | null { const e = this.extentsNow(); return e ? { ...e } : null; }
   /** What stands on the SHEET's bar at rest, in px (also --dock-h on #app): the placing banner while placing, a card
    *  docked in the sheet's slot, else the sheet at its detent; 0 on any other host. The tool column rides on it. */
@@ -612,11 +742,14 @@ export class Layout {
 
   /** Routes an intent (route()) and moves the panel there; a remembering route keeps the detent it left for restore().
    *  The phones (SHEET, DRAWER) route their tabs, the voice line's chips, placing, the inspector and the lessons through
-   *  it; the other hosts route their tabs (with today's result) until P4 wires the rest. A tab opened is a new place to
-   *  come back from: a focus kept before it is no longer the way back. */
+   *  it; the DOCK and the COLUMNS their tabs (Shift with a key: wide), placing (a wide pane docks for it), the lessons and
+   *  every "show on map" (App.select, App.focusTile, the focus row: the DOCK's wide pane under 960 px docks for them). A
+   *  tab opened is a new place to come back from: a focus kept before it is no longer the way back; nor is anything kept
+   *  for a placing that keeps nothing itself (a docked pane staying): its end must not restore an older detent. */
   go(i: Intent): Route {
-    const r = route(i, { host: this.cls.host, detent: this.det, tiny: this.cls.tiny });
+    const r = route(i, { host: this.cls.host, detent: this.det, tiny: this.cls.tiny, w: this.cls.w });
     if (i.kind === 'open') { this.openedAt = performance.now(); this.kept = null; }
+    if (i.kind === 'place' && !r.remember) this.kept = null;
     if (r.remember && this.kept === null) { this.kept = this.det; this.keptTop = this.side.scrollTop; this.keptTab = this.side.current; }
     this.setDetent(r.detent);
     return r;
@@ -636,6 +769,15 @@ export class Layout {
 
   /** Drops what a remembering route kept: a work was placed, and the sheet stays where placing put it (closed). */
   forget(): void { this.kept = null; }
+
+  /** A colony entered on a tablet or the desktop (UI.hideTitle): never wide, the last colony's Tabularium left behind
+   *  (nor the wide pane a toggle would reopen at: a new colony's first tab opens it so), and nothing it kept is the way
+   *  back now. A panel folded stays folded, as the desktop's always did. */
+  settle(): void {
+    this.kept = null;
+    if (this.lastOpen === 'full') this.lastOpen = 'half';
+    if (this.det === 'full') this.setDetent('half', { instant: true });
+  }
 
   /** Raises a closed panel to half for a while (`why`: who, as the counsel unfolding its card on a phone); drop() with
    *  the same `why` closes it again, unless anything else moved the panel since. Not while a card stands in a phone's
@@ -663,7 +805,7 @@ export class Layout {
   /** The selector to glow for a lesson or remedy target here: its proxy where this host hides it, unless it shows after
    *  all (the SHEET's overlay bar in its open Mappae popover glows itself). */
   reveal(selector: string): string {
-    const proxy = reveal(selector, this.cls.host);
+    const proxy = reveal(selector, this.cls.host, this.cls.w);
     if (proxy !== selector && inFrame(selector) && shown(document.querySelector<HTMLElement>(selector))) return selector;
     return proxy;
   }
@@ -674,9 +816,10 @@ export class Layout {
     return () => { this.subs.delete(cb); };
   }
 
-  /** Registers a widget's placement per host: `mount(host)` runs now and on every host change, before the layout measures
-   *  (the SHEET re-hosts the counsel, the ticker, the tab bar, the overlay bar and the zoom buttons). */
-  onMount(mount: (host: Host) => void): void {
+  /** Registers a widget's placement per host: `mount(host, classes)` runs now and on every change of the host or of its
+   *  width class, before the layout measures (the SHEET re-hosts the counsel, the ticker, the tab bar, the overlay bar and
+   *  the zoom buttons; the DOCK its pane's head, and its tool column under 960 px wide). */
+  onMount(mount: (host: Host, c: Classes) => void): void {
     this.mounts.push(mount);
     this.runMount(mount);
     this.update();
@@ -706,13 +849,20 @@ export class Layout {
     for (const cb of this.subs) { try { cb(why); } catch (e) { console.error('[layout] onChange', e); } }
   }
 
-  private runMount(mount: (host: Host) => void): void {
-    try { mount(this.cls.host); } catch (e) { console.error('[layout] mount', e); }
+  private runMount(mount: (host: Host, c: Classes) => void): void {
+    try { mount(this.cls.host, { ...this.cls }); } catch (e) { console.error('[layout] mount', e); }
   }
 
-  /** The detent layer of the Back and Esc chain is open: a game, the panel showing a tab, above the host's default. */
+  /** The detent layer of the Back and Esc chain is open: a game, the panel showing a tab, at a detent that is a layer
+   *  (above the host's default; on the DOCK, the spine or the wide pane). */
   private layerOpen(): boolean {
-    return this.g.mode === 'game' && shown(this.sideEl) && aboveDefault(this.det, this.cls.host);
+    return this.g.mode === 'game' && this.paneShown() && isLayer(this.det, this.cls.host);
+  }
+
+  /** The panel shows a tab (it stands, and the introduction has brought one: not #side.empty, which the DOCK keeps up,
+   *  0 px wide, for its floating head). */
+  private paneShown(): boolean {
+    return shown(this.sideEl) && !this.sideEl?.classList.contains('empty');
   }
 
   /** The size the classes are read from: the window inside the safe-area insets (#safe-box), #app's own (`W` × `H`)
@@ -742,7 +892,9 @@ export class Layout {
     const shape = first || c.w !== was.w || c.h !== was.h || c.input !== was.input || c.host !== was.host || c.tiny !== was.tiny;
     const host = !first && c.host !== was.host;
     this.cls = c;
-    if (host) for (const m of this.mounts) this.runMount(m);   // the host's DOM in place before anything is measured
+    // the host's DOM in place before anything is measured (a DOCK turned from 820 to 1180 px wide trades its tool column
+    // for the minimap: a change of width class remounts too)
+    if (host || (!first && c.w !== was.w)) for (const m of this.mounts) this.runMount(m);
     // the host's default (hostEntryDetent): entering the SHEET shows the map, the sheet closed, unless a tab was opened
     // just now. A tiny sheet has no half (full instead), and a full forced so goes back to half once the window allows it
     const k = hostEntryDetent(this.det, this.forced, first ? null : was.host, c.host, c.tiny, performance.now() - this.openedAt <= JUST_OPENED_MS);
@@ -752,14 +904,16 @@ export class Layout {
     if (turned && k.detent !== 'closed') this.lastOpen = k.forced ? 'half' : k.detent;
     if (shape || turned) this.write();
     if (this.side.expanded !== (this.det !== 'closed')) this.side.show(this.det !== 'closed', true);
-    const sh = this.sizeSheet(H), dw = this.sizeDrawer(W), hs = sh ?? dw;   // (each drops its properties off its host)
-    if (hs && (turned || host || first) && this.sheetHooks) this.sheetHooks.slide(hs[this.det], hs[this.det], this.det, true);   // at rest there
+    const sh = this.sizeSheet(H), dw = this.sizeDrawer(W), kw = this.sizeDock(W), hs = sh ?? dw ?? kw;   // (each drops its properties off its host)
+    // at rest there (and on the DOCK when its width class changes: the pane's widths change with it)
+    if (hs && (turned || host || first || (kw && c.w !== was.w)) && this.sheetHooks) this.sheetHooks.slide(hs[this.det], hs[this.det], this.det, true);
     this.writeDock(H);
     this.safe = this.safeIn(W, H);
     const free = this.measure(W, H), ins = this.insets(free);
     const moved = !sameBox(free, this.free) || !sameBox(ins, this.ins);
     this.free = free;
     this.ins = ins;
+    this.writeFree(W);
     if (moved || host) this.g.view.setInsets(ins, { host, canvasZoom: c.host === 'columns' });
     if (shape && !first) this.emit('classes');
     if (turned && !first) this.emit('detent');
@@ -782,9 +936,11 @@ export class Layout {
     return isPhone(this.cls.host) && shown(this.card) ? this.card : null;
   }
 
-  /** The phone panel's extents at each detent now: the SHEET's heights, the DRAWER's widths; null elsewhere. */
+  /** The sliding panel's extents at each detent now: the SHEET's heights, the DRAWER's and the DOCK's widths; null on the
+   *  COLUMNS. */
   private extentsNow(): Record<Detent, number> | null {
-    return this.cls.host === 'sheet' ? this.heights : this.cls.host === 'drawer' ? this.widths : null;
+    const h = this.cls.host;
+    return h === 'sheet' ? this.heights : h === 'drawer' ? this.widths : h === 'dock' ? this.dockW : null;
   }
 
   /** Writes what stands in a phone's slot: #app[data-card] while a docked card shows (the voice line steps aside:
@@ -806,6 +962,20 @@ export class Layout {
     this.dockPx = px;
     if (px < 0) a.style.removeProperty('--dock-h');
     else a.style.setProperty('--dock-h', `${px}px`);
+  }
+
+  /** The DOCK's free map for what dock.css centres in it beside the folded pane (the event card, clear of the floating
+   *  head): its top and its distance from #app's right edge, written on #app as --dock-free-t and --dock-free-r; gone
+   *  off the DOCK. */
+  private writeFree(W: number): void {
+    const st = this.app.style, f = this.free;
+    const v = this.cls.host === 'dock' ? `${Math.round(f.top)}px|${Math.max(0, Math.round(W - f.right))}px` : '';
+    if (v === this.freeVars) return;
+    this.freeVars = v;
+    if (!v) { st.removeProperty('--dock-free-t'); st.removeProperty('--dock-free-r'); return; }
+    const [t, r] = v.split('|');
+    st.setProperty('--dock-free-t', t);
+    st.setProperty('--dock-free-r', r);
   }
 
   /** The SHEET's height at each detent (sheetHeights over the live HUD, bar and head), written on #app as --sheet-closed,
@@ -845,19 +1015,39 @@ export class Layout {
     return this.widths;
   }
 
+  /** The DOCK pane's width at each detent (dockWidths over #app's width and width class), written on #app as --dock-half
+   *  and --dock-full for dock.css (the pane, and what stands beside it on the map: the tool column, the map tools, the
+   *  ticker, the toasts, the event card, the placing banner); null (and the properties gone) on any other host. */
+  private sizeDock(W: number): Record<Detent, number> | null {
+    const st = this.app.style;
+    if (this.cls.host !== 'dock') {
+      if (this.dockW) { st.removeProperty('--dock-half'); st.removeProperty('--dock-full'); this.dockW = null; }
+      return null;
+    }
+    const ws = dockWidths(W, this.cls.w);
+    const was = this.dockW;
+    if (!was || DETENTS.some((d) => ws[d] !== was[d])) {
+      this.dockW = ws;
+      st.setProperty('--dock-half', `${ws.half}px`);
+      st.setProperty('--dock-full', `${ws.full}px`);
+    }
+    return this.dockW;
+  }
+
   /** The free rect at rest, in #app px: below the HUD, then per host. The SHEET: above the sheet at its detent's height
    *  (sizeSheet: never its slide) and the bar under it, and left of the tool column; a card docked in the sheet's slot
    *  stands in the sheet's place (the free map ends above it); while placing the sheet steps aside and the placing
-   *  banner stands over the bar instead. Elsewhere, from today's CSS: clear of the panel at the detent's
-   *  target (its box without the slide: offset* ignore transforms), a folded bottom sheet keeping its 52 px tab bar; right
-   *  of the left column where it stands as one (narrower than half of #app: from 900 px, and on a landscape phone; below
-   *  that it is a band of cards across the map). Everywhere, above the placing banner while placing, so a pre-positioned
-   *  ghost shows over it. The DRAWER: inside the safe area (its #app runs under the insets), left of the spine, and of
+   *  banner stands over the bar instead. Everywhere, above the placing banner while placing, so a pre-positioned ghost
+   *  shows over it. The DRAWER: inside the safe area (its #app runs under the insets), left of the spine, and of
    *  the pane at its detent's width (drawerWidths: never its slide; none while placing or a docked card has it aside),
    *  and of the tool column beside them; clear of what stands at the bottom-left of the map (clearOf: above it, or
    *  beside a tall card): the docked card, else the floating voice line while the pane is closed (the banner while
-   *  placing, as everywhere). What floats over the free map (the map's tools, the ticker, a band of cards off the
-   *  phones) is not taken out: the inspector steps a target clear of it. P4 replaces the rest with the DOCK's geometry. */
+   *  placing, as everywhere). The DOCK: left of the pane at its detent's width (dockWidths: the spine, the docked pane, or
+   *  the wide one, which leaves no map under 960 px and a 320 px strip from 960); the pane stays while placing; clear of
+   *  the head afloat beside the spine (clearOf: below it, or left of a tall one). The COLUMNS, from today's CSS: left of
+   *  the panel unless it is folded (its box without the slide: offset* ignore transforms), right of the left column.
+   *  What floats over the free map (the map's tools, the ticker, the view control) is not taken out: the inspector steps
+   *  a target clear of it. */
   private measure(W: number, H: number): Box {
     let box = { left: 0, top: 0, right: W, bottom: H };
     if (this.app.classList.contains('in-title')) return box;   // the title hides the chrome: all of the map shows
@@ -886,14 +1076,20 @@ export class Layout {
       if (at && shown(at)) {
         box = clearOf(box, { left: at.offsetLeft, top: at.offsetTop, right: at.offsetLeft + at.offsetWidth, bottom: at.offsetTop + at.offsetHeight }, CARD_GAP);
       }
+    } else if (this.cls.host === 'dock') {
+      const pane = this.dockW && this.paneShown() ? this.dockW[this.det] : 0;
+      box.right = Math.min(box.right, W - pane);
+      // the head afloat top-right over the map beside the spine (at rest there: no slide moves it): the free map is the
+      // larger part clear of it, as beside the DRAWER's floating line, so the popup, the event card and a centred target
+      // keep out from under it
+      const head = this.sheetHooks?.floating() ?? null;
+      if (head && shown(head)) {
+        const a = this.app.getBoundingClientRect(), r = head.getBoundingClientRect();
+        box = clearOf(box, { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top }, CARD_GAP);
+      }
     } else {
       const side = this.sideEl;
-      if (shown(side)) {
-        const sheet = side.offsetWidth >= W - 1;   // a bottom sheet spans #app; the panel and the drawer stand at the right
-        const down = this.det === 'closed' || (placing && matchMedia(PHONE_CSS).matches);
-        if (sheet) box.bottom = Math.min(box.bottom, down ? H - SHEET_BAR : side.offsetTop);
-        else if (!down) box.right = Math.min(box.right, side.offsetLeft);
-      }
+      if (shown(side) && this.det !== 'closed') box.right = Math.min(box.right, side.offsetLeft);
       const col = this.left;
       if (shown(col) && col.offsetWidth < W / 2) box.left = Math.max(box.left, col.offsetLeft + col.offsetWidth);
     }

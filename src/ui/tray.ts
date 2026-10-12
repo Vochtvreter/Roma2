@@ -12,6 +12,9 @@
 // only then): each section rebuilds on its discrete signature (never within a click of the pointer, nor while the mouse
 // rests here), its updaters patch numbers in place, and the cards are redrawn once a game day (at most once a second);
 // the element in view keeps its place across a redraw that changes a height (steady.ts).
+// On the tablet DOCK's wide pane from 960 px wide (layout.ts brevColumn) the same tray stands as the pane's first column
+// (column(): re-hosted into #side, open for as long as the pane is wide; no ✕, no grip, no Back layer, and a press outside
+// leaves it; a HUD figure scrolls it to its section), and goes back under the HUD, closed, when the pane docks again.
 import type { Essential, GameState, LogEntry, LogKind, ResId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { Host } from './layout';
@@ -43,6 +46,7 @@ import { PATH_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { RESOURCE_DEFS } from '../game/data/resources';
 import { resIcon } from '../render/art/index';
+import { Home } from './sheet';
 
 /** The section each HUD figure opens the tray at (its data-anchor). */
 const SECTION_OF: Readonly<Record<string, string>> = {
@@ -104,11 +108,14 @@ export class Tray {
   private cardDay = -1;
   private cardsAt = -Infinity;
   private seen: LogEntry | null = null;       // the newest Ordo line when the tray last closed: later ones are new
+  private col: HTMLElement | null = null;     // the pane the tray stands in as its first column (column), else null
+  private readonly rootHome: Home;            // the tray's own place in #app (under the HUD)
   /** "Read" on a waiting dispatch: the UI root unfolds the event card (ChoiceCard.reveal); false when none is pending. */
   onRead: (() => boolean) | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement, private readonly objective: HTMLElement) {
     this.home = { parent: objective.parentElement, next: objective.nextSibling };
+    this.rootHome = new Home(root);
     root.hidden = true;
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', 'Breviarium: the accounts');
@@ -135,10 +142,10 @@ export class Tray {
       this.materials(), this.ordo());
     this.body.append(this.steady.head, ...this.sections.map((x) => x.el), this.steady.foot);
     // a layer of the Back and Esc chain (history.ts); a press anywhere else closes it (a figure's own tap toggles it)
-    registerBack({ rank: BACK_RANK.tray, open: () => this.shownNow, close: () => this.close() });
+    registerBack({ rank: BACK_RANK.tray, open: () => this.shownNow && !this.col, close: () => this.close() });
     if (typeof document !== 'undefined') {
       document.addEventListener('pointerdown', (e) => {
-        if (!this.shownNow || !(e.target instanceof Node) || root.contains(e.target)) return;
+        if (!this.shownNow || this.col || !(e.target instanceof Node) || root.contains(e.target)) return;
         const el = e.target instanceof Element ? e.target : e.target.parentElement;
         if (el?.closest('[data-fig], #modal-root, #tooltip')) return;
         this.close();
@@ -147,15 +154,15 @@ export class Tray {
     }
   }
 
-  /** The tray is open. */
+  /** The tray is open (as the pull-down; the wide pane's column is part of the pane). */
   get open(): boolean {
-    return this.shownNow;
+    return this.shownNow && !this.col;
   }
 
   /** Whether a HUD figure's hover card would drop over the open tray (it follows the pointer down from the figure): the
    *  figure stands over the tray's span. Those cards hold their tongue; the others still speak (hud.ts quiet). */
   covers(el: HTMLElement): boolean {
-    if (!this.shownNow) return false;
+    if (!this.shownNow || this.col) return false;
     const t = this.root.getBoundingClientRect(), r = el.getBoundingClientRect();
     return r.left < t.right && r.right > t.left;
   }
@@ -163,12 +170,14 @@ export class Tray {
   /** A HUD figure was tapped or clicked: open the tray at its section, or close it on a second tap of the same figure
    *  (the same element: every material cell opens the materials, and another one keeps the tray open). */
   toggle(fig: string, from: HTMLElement | null, viaKey = false): void {
+    if (this.col) { this.g.sfx('click'); this.show(SECTION_OF[fig] ?? 'awaiting'); return; }   // the column: to its section
     if (this.shownNow && (from ? from === this.opener : this.fig === fig)) { this.g.sfx('click'); this.close(); return; }
     this.show(SECTION_OF[fig] ?? 'awaiting', from, fig, viaKey);
   }
 
   /** Opens the tray at a section ('awaiting' by default: the top), anchored to `from` off the phone sheet. */
   show(section = 'awaiting', from: HTMLElement | null = null, fig = '', viaKey = false): void {
+    if (this.col) { from = null; fig = ''; viaKey = false; }   // the wide pane's column: it only scrolls to the section
     const was = this.shownNow;
     this.opener?.setAttribute('aria-expanded', 'false');
     this.opener = from;
@@ -187,9 +196,38 @@ export class Tray {
     if (viaKey) this.root.querySelector<HTMLElement>('.tray-x')?.focus({ preventScroll: true });
   }
 
-  /** Closes the tray; the Ordo's lines shown so far are no longer new. */
+  /** Closes the tray; the Ordo's lines shown so far are no longer new. Not the wide pane's column: it stays while the pane
+   *  is wide (a row's action leaves it standing). */
   close(): void {
-    if (!this.shownNow) return;
+    if (!this.shownNow || this.col) return;
+    this.hide();
+  }
+
+  /** Stands the tray in `pane` as its first column (the DOCK's wide pane: layout.brevColumn), open and at its top; null
+   *  puts it back under the HUD, closed. An open pull-down becomes the column. */
+  column(pane: HTMLElement | null): void {
+    if (pane === this.col) return;
+    const was = this.col;
+    this.col = pane;
+    const st = this.root.style;
+    if (pane) {
+      this.opener?.setAttribute('aria-expanded', 'false');
+      this.opener = null;
+      this.fig = null;
+      pane.insertBefore(this.root, pane.firstChild);
+      this.root.classList.add('tray-col');
+      st.top = st.left = st.width = st.maxHeight = '';
+      if (!this.shownNow) { this.shownNow = true; this.root.hidden = false; this.update(performance.now(), true); }
+      this.body.scrollTop = 0;
+      return;
+    }
+    if (!was) return;
+    this.root.classList.remove('tray-col');
+    this.rootHome.back();
+    this.hide();
+  }
+
+  private hide(): void {
     this.shownNow = false;
     this.root.hidden = true;
     this.opener?.setAttribute('aria-expanded', 'false');
@@ -273,7 +311,7 @@ export class Tray {
    *  tapped figure's side. */
   private place(): void {
     const app = this.root.parentElement;
-    if (!app) return;
+    if (!app || this.col) return;
     const hud = document.getElementById('hud');
     const sheet = this.hostNow === 'sheet';
     const top = (hud && !hud.hidden ? hud.offsetTop + hud.offsetHeight : 0) + (sheet ? 0 : GAP);
