@@ -255,6 +255,7 @@ src/ui/
   keys.ts                          H   global keyboard                                             (80)
   history.ts                       H   layers Back and Esc close (registerBack), the Back sentinel (110)
   pointer.ts                       H   the pointer in use: lastTouch, touchInput, finePointer      (50)
+  layout.ts                        H   size classes, hosts, detents, route, reveal; data-* on #app, free rect → view insets (§13.10) (420)
   panels.ts                        I   side panel host, tabs, badges, NEW markers, signatures      (170)
   tabs/edicta.ts                   I   Decisions tab                                               (330)
   tabs/consiliarii.ts              I   Advisors tab                                                (160)
@@ -278,6 +279,7 @@ tests/
   progression.test.ts events.test.ts trade.test.ts save.test.ts              D                 (380)
   advisors.test.ts guide.test.ts                                             E                 (260)
   art.test.ts                                                                G                 (50)
+  camera.test.ts layout.test.ts                                              F H               (500)
   autoplayer.ts balance.test.ts contract.test.ts determinism.test.ts perf.test.ts trace.test.ts   J   (900)
 ```
 Approximate total: game 11.0k incl. data, render 4.4k, ui 4.3k incl. CSS, tests 2.6k → ≈ 22k if every budget is maxed, so **budgets are ceilings, not targets**; aim for ≈ 70% of each (≈ 15.5k). Files stay under ~600 lines; split if needed (new files must stay within the owner's directory prefix and be listed in the PR note).
@@ -1523,7 +1525,7 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
 
 ### 12.1 Coordinates, canvas and camera
 - World pixels: `TILE = 16` per tile; tile `i` covers world px `[tx(i)·16, +16) × [ty(i)·16, +16)`. The map is 1,792 × 1,344 world px.
-- `#map` is a full-viewport canvas with backing size = CSS size × `devicePixelRatio`; `imageSmoothingEnabled = false` for sprites. **Device pixels per world pixel** `scale = max(1, round(level × dpr))` with `ZOOM_LEVELS = [1, 2, 3, 4]` (CSS px per world px); default level 2, centred on the forum. Camera clamps so ≥ 25% of the viewport always shows map.
+- `#map` is a full-viewport canvas with backing size = CSS size × `devicePixelRatio`; `imageSmoothingEnabled = false` for sprites. **Device pixels per world pixel** `scale = max(1, round(level × dpr))` with `ZOOM_LEVELS = [1, 2, 3, 4]` (CSS px per world px); default level from the free map's shorter side (3, or 2 under 700 CSS px), centred on the forum in the free rect. Camera clamps so ≥ 25% of the free rect (the viewport less the UI's insets) always shows map.
 ```ts
 // camera.ts (F)
 export const ZOOM_LEVELS: readonly number[];
@@ -1531,9 +1533,16 @@ export interface Camera { x: number; y: number; level: number; scale: number; vw
 export function makeCamera(): Camera;
 export function worldToScreen(c: Camera, wx: number, wy: number): { sx: number; sy: number };   // device px
 export function screenToWorld(c: Camera, sx: number, sy: number): { wx: number; wy: number };
-export function clampCamera(c: Camera): void;
+export function clampCamera(c: Camera, insets?: Insets): void;                // ≥ 25% of the FREE rect stays on the map
 export function visibleTiles(c: Camera, margin?: number): Rect;
+// insets (device px the UI covers on each side of the canvas; the free rect is the canvas less these)
+export interface Insets { top: number; right: number; bottom: number; left: number }
+export function freeCentre(c: Camera, insets: Insets): { sx: number; sy: number };          // device px
+export function centerOnFree(c: Camera, wx: number, wy: number, insets: Insets): void;      // (wx, wy) at the free centre (unclamped)
+export function ensureVisibleDelta(c: Camera, worldRect: { x: number; y: number; w: number; h: number }, insets: Insets, marginPx: number): { dx: number; dy: number };
+export function defaultLevel(cssSize: number): number;   // 3, or 2 below ZOOM_SMALL_W: fed min(free width, free height)
 ```
+- **Insets** (tests/camera.test.ts at DPR 1, 2, 2.625, 3): the canvas stays full-bleed under the UI and never resizes between panel states. The UI (layout.ts) tells the view what it covers; centring, the ± zoom anchor, the clamp, the minimap rectangle and `ensureVisibleDelta` (the least move that brings a rect inside the free rect, `marginPx` clear of its edges; 0 when it is inside; a rect too big is only moved until it fills it) use the free rect. Insets that leave no free rect fall back to the whole viewport. `x, y` stay the world px at the canvas centre, so `screenToWorld`/`worldToScreen`, picking, the fling and drawing never see the insets.
 - `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
 
 ### 12.2 Frame and draw order (`view.ts`)
@@ -1618,10 +1627,14 @@ export class MapView {
   handleFx(events: FxEvent[], s: GameState): void;    // §12.6
   resize(): void;
   panBy(dxCss: number, dyCss: number): void;
-  centerOn(tile: number, level?: number): void;
+  centerOn(target: number | Rect, level?: number): void;   // a tile, or the middle of a tile rect, at the free-rect centre
   centerOnForum(): void;
-  zoomBy(steps: number, anchor?: { sx: number; sy: number }): void;
+  zoomBy(steps: number, anchor?: { sx: number; sy: number }): void;   // the player's own: default anchor = the free-rect centre
   setZoom(level: number): void;
+  setInsets(css: { top: number; right: number; bottom: number; left: number }, opts?: { host?: boolean }): void;   // CSS px (ui/layout.ts)
+  freeRect(): { left: number; top: number; right: number; bottom: number };   // canvas CSS px: the canvas less the insets
+  mapRect(): { left: number; top: number; width: number; height: number };    // the canvas box relative to #app (add to screenRect)
+  ensureVisible(target: number | Rect, marginCss?: number): { dx: number; dy: number };   // eased glide (Motion.glide); the target's screen shift
   readonly placing: PlacingState | null;
   startPlacing(p: PlacingState, s: GameState): void;  // auto-selects the matching overlay (§12.5), remembers the previous one
   cancelPlacing(): void;                              // restores the previous overlay
@@ -1633,10 +1646,15 @@ export class MapView {
   tileAt(sxCss: number, syCss: number): number | null;
   pickBuilding(sxCss: number, syCss: number): number | null;   // y-sorted sprites back to front with alphaMask, then derived.buildingAt
   screenOf(tile: number): { x: number; y: number } | null;     // CSS px, for anchoring DOM
+  screenRect(x: number, y: number, w: number, h: number): { left: number; top: number; right: number; bottom: number };   // canvas CSS px
+  buildingRect(id: number): { left: number; top: number; right: number; bottom: number } | null;
+  buildingTiles(id: number): Rect | null;             // its footprint as a tile rect
   titleDrift(dtMs: number, s: GameState): void;       // slow diagonal pan used behind the title
   setInputEnabled(on: boolean): void;                 // off under the catch-up veil and modals
 }
 ```
+Camera and the UI: every coordinate in and out is canvas CSS px; `mapRect()` places them in `#app`. `setInsets` never recentres, but clamps at once to the new free rect (at a map edge a wider free rect moves the limit: the step comes with the panel's slide, not with the next drag); with `host: true` (the layout changed shape) the default level is chosen again from the free map unless the player zoomed by hand since `attach`. `attach` picks the default level from min(free width, free height) (phones, landscape phones, docked tablets: 2), except on the COLUMNS host, where `setInsets({ canvasZoom: true })` keeps the canvas-width rule (desktops and 1366×768 laptops: 3) and centres the forum in the free rect. `startPlacing` with `at` glides the ghost into the free map (which ends above the placing banner) by the least it needs (`ensureVisible`, 64 px clear), never when it is there already. The inspector's popup (inspector.ts) glides a pinned target clear only when the UI covers it, when picked and again on a layout change (`Layout.onChange`): `ensureVisible` into the free rect, then `dodge()` (pure, tests/layout.test.ts) clear of what floats over it (the map's tools, the ticker, a phone's band of cards); a target already in view never moves.
+
 Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
 
 ### 12.5 Overlays (`overlays.ts`, F)
@@ -1675,7 +1693,7 @@ Auto-selection while placing: water buildings → `aqua`; service buildings → 
 Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walkers (`actors.ts`) are visual only: `min(220, pop / 4)` (120 on touch) sampled people walk home ↔ work along the road graph (BFS cached per `structEpoch`), chosen by `hash2(personId, day)`; tunic colour by labour category of the job (water `#62b0d6`, food `#d9a35b`, materials `#8a6b4a`, industry `#55565e`, services `#9e2f25`, builders `#c0623f`, none `#bba58b`); patricians in white togas; children and elders by stage.
 
 ### 12.7 Minimap (`minimap.ts`, F)
-`#minimap` canvas, CSS 224 × 168 (2 px per tile, backing × dpr): terrain colour per tile, buildings as footprint colours, roads, the active overlay, the viewport rectangle. Redrawn at most every 500 ms. Click or drag → `centerOn`. Hidden below 1,100 px and while placing.
+`#minimap` canvas, CSS 224 × 168 (2 px per tile, backing × dpr): terrain colour per tile, buildings as footprint colours, roads, the active overlay, the viewport rectangle (the free rect: the map the UI leaves in view). Redrawn at most every 500 ms. Click or drag → the point to the free-rect centre. Hidden below 1,100 px and while placing.
 
 ---
 
@@ -1777,6 +1795,7 @@ export class UI {
   showVeil(run: OfflineRun, onSkip: () => void): void; hideVeil(): void;
   showDispatch(kind: 'founding' | 'away' | 'victory', report?: AwayReport): void;
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void;
+  readonly layout: Layout;                        // §13.10, created in build() right after the SidePanel
 }
 // src/ui/panels.ts (I)
 export class SidePanel {
@@ -1784,7 +1803,8 @@ export class SidePanel {
   frame(now: number): void;                       // signature diff of the open tab; badges; NEW stickers on reveal
   open(tab: TabId, anchor?: string): void;
   readonly current: TabId;
-  toggle(open?: boolean): void;                   // collapse (desktop) / bottom sheet (mobile)
+  toggle(open?: boolean): void;                   // collapse (desktop) / bottom sheet (mobile): through layout.panelToggle
+  show(on: boolean, instant?: boolean): void;     // writes the open or folded panel (Layout.setDetent calls it)
 }
 // src/ui/inspector.ts (I)
 export class Inspector {
@@ -1888,13 +1908,18 @@ frame(t): dt = min(DT_CLAMP, (t − last) / 1000)
   view.frame(dt × 1000, s, speed, paused); ui.frame(t)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
-keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → placing → selection → menu); ignored inside inputs
-back (history.ts): initBack(app) registers the layers of the Esc chain (modal 100 › placing 50 › selection 40; later layers
+keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → placing → selection → the panel above its host's default detent → menu); ignored inside inputs
+back (history.ts): initBack(app) registers the layers of the Esc chain (modal 100 › placing 50 › selection 40; the layout
+      adds the panel above its host's default detent at 30, stepping full → half → closed; later layers
       registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;
       popstate closes the top open layer (a letter that must be answered goes to the title) and re-arms; with none open the
       first Back saves and toasts 'Back again to leave · the colony is saved', a second within LEAVE_MS leaves
-startPlacing(p): the place banner first, then view.startPlacing (a pre-positioned ghost reports its verdict, and on touch its
-      Place button, through onPlacementPreview); view.startPlacing centres the camera only when p.at is off the canvas
+startPlacing(p): the place banner first (it refreshes the layout: a phone's sheet drops while placing), then view.startPlacing
+      (a pre-positioned ghost reports its verdict, and on touch its Place button, through onPlacementPreview);
+      view.startPlacing glides the ghost into the free map only when it is not there already (ensureVisible)
+focusTile(tile): centres the building on it (its whole footprint) or the tile in the free map, and flashes it
+enter(s): the title comes down first (UI.hideTitle syncs the tab bar and refreshes the layout), then view.attach(s), so the
+      default zoom and the forum's centring are for the map the HUD, the panel and the column leave free
 ```
 `?dev` exposes `window.cv = app` and `window.skip(days)` (runs `days` online ticks synchronously).
 
@@ -1902,8 +1927,41 @@ startPlacing(p): the place banner first, then view.startPlacing (a pre-positione
 - `tokens.css` (S) defines every DESIGN §16.1 token plus `--font-body: 'Pixelify Sans'`, `--font-caps: 'Silkscreen'`, spacing `--s1..--s5` (4/8/12/16/24 px), radii, z-index tokens (`--z-map` 0 … `--z-veil` 200 from DESIGN §15.1). Fonts are imported in `main.ts` (`@fontsource/pixelify-sans/400.css`, `600.css`, `@fontsource/silkscreen/400.css`).
 - `base.css` (H) owns the shared components every UI file uses and nobody redefines: `.btn` (`.primary .legate .good .danger .ghost .small`), `.chip` (`.bad .good .gold`), `.well`, `.card`, `.kicker`, `.meter`, `.pip`, `.sev-0…3`, `.badge`, `.new`, `.seal`, `.num`, `.muted`, `.meander` (border-image from `f_meander`, injected as a CSS variable by `ui/index.ts`).
 - New class names are prefixed by area: `hud- left- obj- counsel- tick- toast- banner- place- map- modal- disp- title- veil-` (H); `side- tab- ed- adv- bld- pop- tr- ann- ins- choice-` (I).
-- Breakpoints: desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows); compact < 560. Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width (a touch screen under 1,280 px gets the two-row HUD for them); `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- Size classes (§13.10): `#app[data-w=compact|medium|expanded|large][data-h=short|regular|tall][data-input=touch|mixed|mouse][data-host=sheet|drawer|dock|columns][data-detent=closed|half|full]` and `[data-tiny]`, written by `ui/layout.ts`. New CSS keys on these attributes only (plus `@container` queries inside panels); the width-only `@media` breakpoints below are migrated to them as each host lands, and keep working until then.
+- Breakpoints (today's CSS, until the hosts replace them): desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows); compact < 560. Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width (a touch screen under 1,280 px gets the two-row HUD for them); `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
 - Page hygiene (base.css): `#app { overflow: clip }` (script can never scroll the frame; only `#tab-body` scrolls, through `dom.scrollWithin`, never `scrollIntoView`); `touch-action: pan-x pan-y` on `#app > :not(#map)`, `#modal-root`, `#title-screen`, `#veil` (never `#app *`, which would override `#map { touch-action: none }`); a `gesturestart` preventDefault (main.ts); `overscroll-behavior: none` and `text-size-adjust: 100%` on html, body; `-webkit-touch-callout: none` on img; fields of 16 px on touch; ligatures off everywhere (`font-variant-ligatures: no-common-ligatures`: Pixelify Sans draws 'fi' as one glyph that reads as 'A'). The canvas draws text in Silkscreen only, which has no ligatures.
+
+### 13.10 Layout engine (`src/ui/layout.ts`, H)
+One game screen: the map full-bleed underneath and one panel on top, whose shape (the **host**) follows the window and whose resting position (the **detent**) follows the player.
+```ts
+// pure (tests/layout.test.ts)
+export type WClass = 'compact' | 'medium' | 'expanded' | 'large';   // #app CSS px: < 600 · 600–959 · 960–1439 · ≥ 1440
+export type HClass = 'short' | 'regular' | 'tall';                  // < 480 · 480–759 · ≥ 760
+export type InputClass = 'touch' | 'mixed' | 'mouse';               // coarse & !any-fine · coarse & any-fine, or fine & any-coarse · else
+export type Host = 'sheet' | 'drawer' | 'dock' | 'columns';
+export type Detent = 'closed' | 'half' | 'full';
+export function classify(w: number, h: number, m: Media): Classes;   // { w, h, input, host, tiny }
+export function route(i: Intent, c: RouteCtx): Route;                // { detent, remember, card }
+export function reveal(selector: string, host: Host): string;       // a hidden target's visible proxy (REVEAL), else itself
+export const DEFAULT_DETENT, LESSON_VIEW, VISIBLE, REVEAL;          // host defaults · LessonId → 'tab' | 'map' | 'frame' · per-host targets
+// DOM: one instance (UI.build), window.cv.ui.layout in ?dev
+export class Layout {
+  readonly classes: Classes; readonly host: Host; readonly input: InputClass; readonly tiny: boolean; readonly detent: Detent;
+  setDetent(d: Detent, opts?: { instant?: boolean }): void;   // writes the panel (SidePanel.show), then the insets at the target
+  panelToggle(open: boolean): void;                           // SidePanel.toggle(): the last open detent, or closed
+  go(i: Intent): Route; restore(): boolean;                   // route() and move there; put back what a remembering route left
+  freeRect(): { left: number; top: number; right: number; bottom: number };   // #app px of map the UI leaves free
+  reveal(selector: string): string;
+  onChange(cb: (why: 'classes' | 'detent' | 'free') => void): () => void;
+  refresh(): void;                                            // measure now (the title shown or hidden, placing)
+}
+```
+- **Hosts**, first match wins: DRAWER if short and < 960 wide · SHEET if < 720 wide · COLUMNS if a mouse and ≥ 1280, or anything ≥ 1440 · else DOCK. **Tiny** (< 360 wide or < 420 tall) takes the half detent off the sheet (closed ↔ full). Players see the detents as sheet closed/half/full, drawer spine/half/full, dock and columns spine/docked/wide; code says closed/half/full. Defaults: sheet and drawer closed, dock and columns half.
+- **Observed**: a ResizeObserver on `#app`'s content box (inside the safe areas) and on `#hud`, `#side`, `#left`, `#place-banner`; `change` on `(pointer: coarse)`, `(any-pointer: fine)`, `(any-pointer: coarse)`; `refresh()` from the UI root when the title or placing changes the chrome. Each recompute rewrites the `data-*` attributes on `#app` (§13.9) when a class changes and calls `view.setInsets` when the free rect changes (with `host: true` on a host change: the view re-picks its default zoom).
+- **One source of truth for the detent**: the Layout. `SidePanel.toggle()` asks it (`panelToggle`), it writes the panel through `SidePanel.show()`; the event card's step-aside on a portrait phone (index.ts, `choice.onStage`) goes through `setDetent` too. A detent above the host's default is a Back/Esc layer (`BACK_RANK.detent`, 30). A tiny sheet's half becomes full, marked forced, and goes back to half once the window offers it again (`keepDetent`, pure).
+- **Free rect**: the `#app` rect below the HUD, clear of the panel at its detent's **target** (its untransformed box, never mid-slide; a folded bottom sheet keeps its 52 px tab bar; a phone's sheet and drawer drop while placing) right of `#left` where it stands as a column (narrower than half of `#app`: from 900 px, and on a landscape phone; under 900 px in portrait it is a band of cards across the map), and above `#place-banner` while placing. The map's tools, the ticker and a phone's band of cards float on the free map and are not taken out (the inspector steps a target clear of them; P2's voice line and tool column replace them). Turned into canvas insets with `view.mapRect()`.
+- **Routing** (`route`, pure): place and focus clear a phone's map (closed, remembered; focus also opens the context card) and leave a tablet or desktop pane; a tab opens half on a sheet (full for council, trade, annals; a tab switch keeps the detent; a chip half), half in a drawer, docked elsewhere unless already wide (Shift + its key: wide); a lesson follows `LESSON_VIEW` (its tab as a tab opens · the map shows: a full panel steps down · the frame: unchanged). `reveal` runs first in `pulseTarget` (counsel.ts), so every lesson's pointer glows something the host shows (a table test covers every lesson × host × detent).
+- **Phase 1** (now): hosts are computed and exposed, not styled: every open detent shows today's panel (full = half), the free rect is measured from today's CSS, `REVEAL` is empty (every host shows today's frame), and only the Back layer and the event card's step-aside move the detent. P2 (SHEET), P3 (DRAWER) and P4 (DOCK) style the hosts, apply `DEFAULT_DETENT` on a host change, route their callers through `go()` and fill `REVEAL`.
 
 ---
 
@@ -2018,6 +2076,8 @@ startPlacing(p): the place banner first, then view.startPlacing (a pre-positione
 | `advisors.test.ts` | E | always | 22 rule fixtures, hysteresis, flapping, remedies never throw |
 | `guide.test.ts` | E | always (+ `INTEGRATED` beat sheet) | tip graph, order, beat sheet with seed 42 |
 | `art.test.ts` | G | always | `REQUIRED_SPRITES` registered, `validateArt()` clean |
+| `camera.test.ts` | F | always | camera insets at DPR 1, 2, 2.625, 3: screen ↔ world round trips, free-rect centring, the clamp keeps 25% of the free rect, `ensureVisibleDelta` 0 inside and minimal outside |
+| `layout.test.ts` | H | always | `classify` over the 35 measured window sizes and the design's own (touch, mixed, mouse; tiny), the `route` table, the lessons' table covers every `LessonId`, every lesson's pointer shows on every host and detent, `keepDetent`, the inspector's `roomShift` and `dodge` |
 | `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |
 | `balance.test.ts` | J | `INTEGRATED`; full bands with `BAL_FULL=1` | DESIGN §18.5 |

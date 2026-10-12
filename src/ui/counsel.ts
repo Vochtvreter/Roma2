@@ -26,6 +26,7 @@ import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { portrait } from '../render/art/index';
 import { shows } from './intro';
+import { revealTarget } from './layout';
 
 /** The one item the card shows. */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
@@ -86,8 +87,10 @@ export function counselSig(g: Game, item: CounselItem): string {
 }
 
 /** Pulses a selector's element for 3 s (retries while a freshly opened tab builds); one in the side panel's body is
- *  scrolled into view there, and nothing else ever scrolls (dom.scrollWithin: the chrome stays put). */
-export function pulseTarget(selector: string): void {
+ *  scrolled into view there, and nothing else ever scrolls (dom.scrollWithin: the chrome stays put). A target the host
+ *  hides glows its proxy instead (layout.reveal: the Mappae button for the overlay bar on a phone, from P2). */
+export function pulseTarget(target: string): void {
+  const selector = revealTarget(target);
   let tries = 0;
   const go = (): void => {
     const el = document.querySelector<HTMLElement>(selector);

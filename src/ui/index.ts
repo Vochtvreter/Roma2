@@ -1,6 +1,7 @@
 // src/ui/index.ts — the UI root (ARCHITECTURE §13.3, §13.7): builds every widget in its DOM id, runs the throttled update
 // loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
-// mapbar.ts; the side panel, inspector and event card are WP-I's classes. Owner: WP-H.
+// mapbar.ts; the side panel, inspector and event card are WP-I's classes; the layout engine (layout.ts) owns the panel's
+// detent, the data-* size classes on #app and the camera's insets. Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -15,6 +16,8 @@ import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
 import { MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
+import { Layout } from './layout';
+import type { Detent } from './layout';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
 import { syncBack } from './history';
@@ -35,7 +38,8 @@ import { DUTY_DEFS } from '../game/ordo/duties';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
-/** The portrait phone of mobile.css, whose side panel is a bottom sheet (a landscape phone's is a right-hand drawer). */
+/** The portrait phone of mobile.css, whose side panel is a bottom sheet (a landscape phone's is a right-hand drawer).
+ *  P1 keeps today's CSS regime; P2 makes it layout.host === 'sheet' once the SHEET host styles the panel. */
 const SHEET_PHONE = '(max-width: 899px) and (min-height: 521px)';
 
 function el(id: string): HTMLElement {
@@ -47,6 +51,8 @@ function el(id: string): HTMLElement {
 /** The UI root. */
 export class UI {
   side!: SidePanel;
+  /** The layout engine: size classes, host, the panel's detent, the free map (window.cv.ui.layout in ?dev). */
+  layout!: Layout;
   inspector!: Inspector;
   choice!: ChoiceCard;
   private hud!: Hud;
@@ -60,7 +66,7 @@ export class UI {
   private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement; date: HTMLElement } | null = null;
   private tools!: MapTools;
   private lessonShown: { s: GameState; i: number } | null = null;
-  private lowered = false;   // the sheet was dropped for the event card (choice.onStage) and goes back up after it
+  private lowered: Detent | null = null;   // the sheet was dropped for the event card (choice.onStage): its detent, to go back to
 
   constructor(private readonly g: Game) {}
 
@@ -76,18 +82,22 @@ export class UI {
     this.ticker = new Ticker(g, el('ticker'));
     this.title = new TitleScreen(g, el('title-screen'));
     this.side = new SidePanel(g, el('side'));
+    this.layout = new Layout(g, el('app'), this.side);   // from here SidePanel.toggle() goes through the layout
     this.inspector = new Inspector(g, el('inspector'));
+    this.layout.onChange(() => this.inspector.reseek());   // the UI moved: a pinned target it now covers glides clear
     this.choice = new ChoiceCard(g, el('choice'));
     this.side.onChoiceAnchor = () => this.choice.reveal();   // "Read the dispatch" unfolds the event card itself
     // a portrait phone gives an unfolded event card the sheet's room: the sheet drops to its tab bar while the card is
     // up (its text and its pinned answers both show) and comes back once it is answered or folded. A tab tapped
     // meanwhile opens the sheet again; the card then scrolls in what is left
     this.choice.onStage = (up) => {
+      const L = this.layout;
       if (up) {
-        if (this.side.expanded && typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches) { this.side.toggle(false); this.lowered = true; }
+        if (L.detent !== 'closed' && typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches) { this.lowered = L.detent; L.setDetent('closed'); }
       } else if (this.lowered) {
-        this.lowered = false;
-        if (!this.side.expanded) this.side.toggle(true);
+        const d = this.lowered;
+        this.lowered = null;
+        if (L.detent === 'closed') L.setDetent(d);
       }
     };
     this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
@@ -227,18 +237,22 @@ export class UI {
       sub: `${opt ? `${opt.name} · ` : ''}you are now ${def.title}`, chips, icon: 'i_laurel' });
   }
 
-  /** Shows the title screen (hides the game chrome). */
+  /** Shows the title screen (hides the game chrome: the whole map is free behind it). */
   showTitle(): void {
     document.getElementById('app')?.classList.add('in-title');
     this.showPlaceBanner(null, null);
     this.title.show();
+    this.layout.refresh();
   }
 
-  /** Hides the title screen. */
+  /** Hides the title screen. The colony's own tab bar comes up at once (a new colony has none yet, and its panel hides)
+   *  and the layout measures the chrome, so the view that attaches next centres and zooms on the map it leaves free. */
   hideTitle(): void {
     document.getElementById('app')?.classList.remove('in-title');
     this.title.hide();
     this.changed();
+    this.side.frame(performance.now());
+    this.layout.refresh();
   }
 
   /** The catch-up veil: "Anni transeunt…" with progress, the racing date and Skip; the HUD and map race underneath. */
@@ -272,8 +286,12 @@ export class UI {
     openDispatch(this.g, kind, report);
   }
 
-  /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. */
+  /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. Entering or leaving
+   *  placing changes the free map on a phone (today's sheet drops while placing): the layout measures it again before
+   *  view.startPlacing glides a pre-positioned ghost into it. */
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void {
+    const app = document.getElementById('app'), was = app?.classList.contains('placing');
     renderPlaceBanner(this.g, el('place-banner'), p, check);
+    if (app && was !== app.classList.contains('placing')) this.layout?.refresh();
   }
 }

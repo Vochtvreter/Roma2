@@ -189,14 +189,18 @@ class App implements Game {
     this.inspect(id === null ? null : { kind: 'building', id }, true);
   }
 
+  /** Centres a tile, or the building on it (its whole footprint), in the free map, and flashes it. */
   focusTile(tile: number): void {
-    this.view.centerOn(tile);
     const id = derived(this.state).buildingAt[tile] ?? 0;
     const b = id > 0 ? getBuilding(this.state, id) : undefined;
     if (b) {
       const r = footprintRect(this.state, b);
+      this.view.centerOn(r);
       this.view.flash(idx(r.x, r.y), r.w, r.h);
-    } else this.view.flash(tile, 1, 1);
+    } else {
+      this.view.centerOn(tile);
+      this.view.flash(tile, 1, 1);
+    }
   }
 
   openTab(tab: TabId, anchor?: string): void {
@@ -316,10 +320,11 @@ class App implements Game {
     drainActionFx();
     this.run = null;
     this.pathCount = Object.keys(s.decisions.paths).length;
+    try { this.rates = previewRates(s); } catch { this.rates = emptyRates(); }
+    // the chrome first: the view centres and picks its zoom for the map the HUD, the panel and the column leave free
+    this.ui.hideTitle();
     try { this.view.attach(s); } catch (e) { this.fail(e); }   // a save that loads but cannot be drawn: stop, offer Export
     this.view.setInputEnabled(true);
-    try { this.rates = previewRates(s); } catch { this.rates = emptyRates(); }
-    this.ui.hideTitle();
     this.ui.showPlaceBanner(null, null);
     this.inspect(null, true);
   }

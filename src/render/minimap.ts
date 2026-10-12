@@ -1,12 +1,13 @@
 // src/render/minimap.ts — the minimap (ARCHITECTURE §12.7). Owner: WP-F.
 // CSS 224 × 168 = 2 px per tile, backing × dpr: seasonal ground with the woods as they stand, roads, walls, building
-// footprints, the active overlay and the viewport rectangle. Redrawn at most every 500 ms (and at once on demand).
-// Click or drag → onPick(world px). Hidden while placing (CSS hides it below 1,100 px).
+// footprints, the active overlay and the viewport rectangle (the free rect: the map the UI leaves in view, whose centre
+// a pick moves to). Redrawn at most every 500 ms (and at once on demand). Click or drag → onPick(world px). Hidden while
+// placing (CSS hides it below 1,100 px).
 import type { GameState } from '../game/types';
 import { H, W, getMap } from '../game/map';
 import { derived } from '../game/derived';
-import type { Camera } from './camera';
-import { TILE } from './camera';
+import type { Camera, Insets } from './camera';
+import { NO_INSETS, TILE, screenToWorld } from './camera';
 import { buildingColor, footprintRect } from './buildings';
 import { OVERLAY_ALPHA } from './overlays';
 import { looks } from './decor';
@@ -47,7 +48,7 @@ export class Minimap {
   }
 
   /** Redraws (throttled) from the 1 px/tile ground and overlay layers; hides itself while placing. */
-  draw(s: GameState, cam: Camera, ground: HTMLCanvasElement, overlay: HTMLCanvasElement | null, placing: boolean, now: number): void {
+  draw(s: GameState, cam: Camera, ground: HTMLCanvasElement, overlay: HTMLCanvasElement | null, placing: boolean, now: number, insets: Insets = NO_INSETS): void {
     this.cv.hidden = placing;
     if (placing || now - this.last < REDRAW_MS) return;
     this.last = now;
@@ -91,13 +92,15 @@ export class Minimap {
       g.drawImage(overlay, 0, 0, bw, bh);
       g.globalAlpha = 1;
     }
-    const vwT = cam.vw / cam.scale / TILE, vhT = cam.vh / cam.scale / TILE;
-    const cx = cam.x / TILE, cy = cam.y / TILE;
+    // the free rect in tiles (the whole viewport when the insets would leave none)
+    const i = cam.vw - insets.left - insets.right >= 1 && cam.vh - insets.top - insets.bottom >= 1 ? insets : NO_INSETS;
+    const a = screenToWorld(cam, i.left, i.top), b = screenToWorld(cam, cam.vw - i.right, cam.vh - i.bottom);
+    const x0 = (a.wx / TILE) * k, y0 = (a.wy / TILE) * k, rw = ((b.wx - a.wx) / TILE) * k, rh = ((b.wy - a.wy) / TILE) * k;
     g.strokeStyle = '#0a0710';
     g.lineWidth = Math.max(1, dpr) * 3;
-    g.strokeRect((cx - vwT / 2) * k, (cy - vhT / 2) * k, vwT * k, vhT * k);
+    g.strokeRect(x0, y0, rw, rh);
     g.strokeStyle = C.view;
     g.lineWidth = Math.max(1, dpr);
-    g.strokeRect((cx - vwT / 2) * k, (cy - vhT / 2) * k, vwT * k, vhT * k);
+    g.strokeRect(x0, y0, rw, rh);
   }
 }

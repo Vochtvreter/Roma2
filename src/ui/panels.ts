@@ -64,6 +64,9 @@ export class SidePanel {
   private readonly control: ControlHold;   // an open dropdown or a dragged slider: rebuilds wait
   /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
   onChoiceAnchor: (() => boolean) | null = null;
+  /** The layout engine (ui/layout.ts), the one owner of the panel's detent: toggle() asks it, and it writes the panel
+   *  through show(). Set when UI.build() creates it; before that, toggle() writes the panel itself. */
+  layout: { panelToggle(open: boolean): void } | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
@@ -127,12 +130,21 @@ export class SidePanel {
     if (anchor) safe(`${tab} scroll`, () => (p.scrollTo ? p.scrollTo(anchor, this.body) : pulseAnchor(anchor, this.body)));
   }
 
-  /** Collapses or expands the panel (toggles when no argument): collapsed on desktop, a bottom sheet's tab bar on mobile. */
+  /** Collapses or expands the panel (toggles when no argument): collapsed on desktop, a bottom sheet's tab bar on mobile.
+   *  Through the layout engine, which keeps the detent (closed, or the last open one) and the camera's insets with it. */
   toggle(open?: boolean): void {
     const on = open ?? this.root.classList.contains('collapsed');
+    if (this.layout) this.layout.panelToggle(on);
+    else this.show(on);
+  }
+
+  /** Writes the panel open or folded (Layout.setDetent; toggle() before the layout exists). `instant`: no slide. */
+  show(on: boolean, instant = false): void {
+    if (instant) this.root.style.transition = 'none';
     this.root.classList.toggle('collapsed', !on);
     this.toggleEl?.setAttribute('aria-expanded', String(on));
     this.toggleEl?.setAttribute('aria-label', on ? 'Hide the panel' : 'Show the panel');
+    if (instant) { void this.root.offsetWidth; this.root.style.transition = ''; }   // the folded box is laid out before the slide returns
   }
 
   /** The panel is open (not folded to its toggle, or to the sheet's tab bar on a phone). */

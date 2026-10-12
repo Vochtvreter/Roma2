@@ -1,9 +1,12 @@
 // src/ui/inspector.ts — the house / building / block / tile inspector (ARCHITECTURE §13.3, DESIGN §15.4, §11.10). Owner: WP-I.
 // Hover = a transient card bottom left, click = a closable popup pinned beside the target; signature-diffed like the panels (rebuild on discrete change, else updaters).
+// A pinned target the UI covers (the panel, the sheet, the HUD, the map's tools) glides clear (view.ensureVisible, then dodge())
+// rather than losing its card: when it is picked, and again when the layout moves the UI over it; never after a pan.
 // The same target is not rebuilt while the mouse rests on its card, unless to answer a click there (steady.ts): its buttons stay put.
 import { BUILDER, F, T } from '../game/types';
-import type { Building, GameState, ResId, SiteNote, Terrain } from '../game/types';
+import type { Building, GameState, Rect, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
+import type { Box } from './layout';
 import { clear, fmt, fmtRunway, h, img, plural } from './dom';
 import * as A from '../game/actions';
 import { getBuilding } from '../game/state';
@@ -81,6 +84,75 @@ function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
 
 const same = (a: InspectTarget | null, b: InspectTarget | null): boolean => JSON.stringify(a) === JSON.stringify(b);
 
+const E = 0.5;   // px of slack: the boxes are fractional
+const moved = (b: Box, dx: number, dy: number): Box => ({ left: b.left + dx, top: b.top + dy, right: b.right + dx, bottom: b.bottom + dy });
+
+/** How far (CSS px, down positive) a target spanning [top, bottom] should move so a card at least `room` tall fits
+ *  above or below it inside [y0, y1], the target itself staying inside [clear, y1] (clear of a band of cards the popup
+ *  may cover but the target should not: a phone's Res Gestae and counsel). The least such move (down first on a tie);
+ *  0 when none is needed, or none would do. */
+export function roomShift(top: number, bottom: number, y0: number, y1: number, room: number, clear = y0): number {
+  const fits = (d: number): boolean => top + d >= clear - E && bottom + d <= y1 + E && (top + d - y0 >= room - E || y1 - bottom - d >= room - E);
+  let best: number | null = null;
+  for (const d of [0, Math.max(0, clear - top), Math.max(0, room - (top - y0), clear - top), -(room - (y1 - bottom))]) {
+    if (fits(d) && (best === null || Math.abs(d) < Math.abs(best) - E)) best = d;
+  }
+  return best ?? 0;
+}
+
+/** How much of box `t` the boxes `over` cover, in px² (overlaps under half a px on an axis do not count; the boxes'
+ *  own overlaps are counted twice, which hardly matters: the UI's boxes seldom overlap). */
+export function coveredArea(t: Box, over: readonly Box[]): number {
+  let a = 0;
+  for (const o of over) {
+    const w = Math.min(t.right, o.right) - Math.max(t.left, o.left), hh = Math.min(t.bottom, o.bottom) - Math.max(t.top, o.top);
+    if (w > E && hh > E) a += w * hh;
+  }
+  return a;
+}
+
+/** The least move (CSS px, right and down positive) that takes box `t` clear of every box in `over` while it stays in
+ *  `within`. On each axis the move stays put or stops `m` px short of an edge of `within` or of a box (0 px short when no
+ *  such move clears it). When none clears it all, the nearest of those leaving least of it covered, if that uncovers at
+ *  least a quarter of it; else none. (0, 0) when it is clear already. */
+export function dodge(t: Box, over: readonly Box[], within: Box, m: number): { dx: number; dy: number } {
+  type Move = { dx: number; dy: number; a: number; d: number };   // a: the px² still covered, d: the distance
+  const steps = (gaps: readonly number[], a0: number, a1: number, lo: number, hi: number, edge: (o: Box) => readonly [number, number]): number[] => {
+    const out = [0];
+    for (const g of gaps) {
+      out.push(lo + g - a0, hi - g - a1);
+      for (const o of over) { const [o0, o1] = edge(o); out.push(o0 - g - a1, o1 + g - a0); }
+    }
+    return out.filter((d) => d === 0 || (a0 + d >= lo - E && a1 + d <= hi + E));
+  };
+  const moves = (gaps: readonly number[]): Move[] => {
+    const out: Move[] = [];
+    for (const dx of steps(gaps, t.left, t.right, within.left, within.right, (o) => [o.left, o.right])) {
+      for (const dy of steps(gaps, t.top, t.bottom, within.top, within.bottom, (o) => [o.top, o.bottom])) {
+        out.push({ dx, dy, a: coveredArea(moved(t, dx, dy), over), d: Math.hypot(dx, dy) });
+      }
+    }
+    return out;   // [0]: staying put
+  };
+  const nearest = (cs: readonly Move[], cap: number): Move | null => {
+    let best: Move | null = null;
+    for (const c of cs) if (c.a <= cap && (!best || c.d < best.d - E)) best = c;
+    return best;
+  };
+  const clear = nearest(moves([m]), E) ?? nearest(moves([m, 0]), E);
+  if (clear) return { dx: clear.dx, dy: clear.dy };
+  // nothing clears it: the least cover, among moves within 2% of it the nearest (a hair less is no reason to go far)
+  const all = moves([m, 0]), size = (t.right - t.left) * (t.bottom - t.top);
+  const least = Math.min(...all.map((c) => c.a)), best = nearest(all, least + Math.max(E, size * 0.02));
+  return best && all[0].a - best.a >= size / 4 ? { dx: best.dx, dy: best.dy } : { dx: 0, dy: 0 };
+}
+
+const SEEK_MARGIN = 16;   // CSS px a covered target glides clear of the UI's edge
+const NUDGE = 96;         // CSS px a target may slide sideways so its card fits beside it (a narrow free map)
+/** What floats over the free map (the layout's free rect leaves it in): a target under it is covered too. TODO(P2): the
+ *  hosts' voice line and tool column replace the ticker, the map tools and a phone's band of cards. */
+const FLOATING = ['objective', 'counsel', 'ticker', 'overlay-bar', 'zoom-ctl', 'minimap', 'side-toggle'] as const;
+
 /** The inspector: hover cards in #inspector (bottom left); a clicked target opens a closable popup beside it on the map. */
 export class Inspector {
   private readonly hoverCard: InspectorCard;
@@ -96,6 +168,10 @@ export class Inspector {
 
   /** True while a clicked (sticky) card is pinned: Esc closes it before opening the menu. */
   get pinned(): boolean { return this.popup.target !== null; }
+
+  /** The layout moved the UI (a detent, the host, the free rect): a pinned target it now covers glides clear again (not
+   *  one whose card was already hidden: the player had panned it away). */
+  reseek(): void { this.popup.reseek(); }
 
   /** Shows a target: a sticky one (click) opens the popup until closed or replaced; a transient one (hover) shows bottom left. */
   show(t: InspectTarget | null, sticky: boolean): void {
@@ -119,6 +195,7 @@ class InspectorCard {
   private ups: Updater[] = [];
   private collapsed = false;
   private placed = '';
+  private seek = false;   // a new pinned target, or the UI moved: the camera brings it clear once (never after a pan: that is the player's)
 
   constructor(private readonly g: Game, private readonly root: HTMLElement, private readonly sticky: boolean) {
     root.hidden = true;
@@ -129,8 +206,13 @@ class InspectorCard {
   set(t: InspectTarget | null): void {
     if (same(t, this.target)) return;
     this.target = t;
+    this.seek = this.sticky && t !== null;
     this.last = -Infinity;   // a new target re-renders at once, not at the next throttled frame
   }
+
+  /** Arms the seek again for the pinned target (Inspector.reseek), if its card still showed: one the player has panned
+   *  out of view or under the panel stays there (a pan is the player's; only a cover the UI brings is undone). */
+  reseek(): void { if (this.sticky && this.target && !this.root.hidden && this.root.style.visibility !== 'hidden') this.seek = true; }
 
   /** Throttled refresh: rebuild on a changed signature (not under a fresh click), else run the updaters. */
   frame(now: number): void {
@@ -147,14 +229,39 @@ class InspectorCard {
     if (this.sticky) this.place();
   }
 
-  /** Pins the popup beside its target, inside the free map (below the HUD, clear of the side panel or sheet). */
+  /** The target's tiles (a building's footprint, a block, a tile), for the camera. */
+  private tiles(t: InspectTarget): Rect | null {
+    if (t.kind === 'building') return this.g.view.buildingTiles(t.id);
+    if (t.kind === 'block') { const k = getMap(this.g.state.seed).survey.blocks[t.block]; return k ? { x: k.x, y: k.y, w: 4, h: 4 } : null; }
+    return { x: tx(t.tile), y: ty(t.tile), w: 1, h: 1 };
+  }
+
+  /** What of the UI stands over the map, in #app px: the HUD, the panel or the sheet as the layout's free rect leaves
+   *  them (view.freeRect: at rest, never mid-slide), and what floats over the map (FLOATING). A left column is not all UI:
+   *  only its cards are, and the map shows in the gap below them. */
+  private cover(m: { left: number; top: number; width: number; height: number }, app: DOMRect): Box[] {
+    const f = this.g.view.freeRect(), W = app.width, H = app.height, out: Box[] = [];
+    const top = f.top + m.top, right = f.right + m.left, bottom = f.bottom + m.top;
+    if (top > E) out.push({ left: 0, top: 0, right: W, bottom: top });
+    if (right < W - E) out.push({ left: right, top: 0, right: W, bottom: H });
+    if (bottom < H - E) out.push({ left: 0, top: bottom, right: W, bottom: H });
+    for (const id of FLOATING) {
+      const el = document.getElementById(id), b = el?.getBoundingClientRect();
+      if (el && b && b.width && b.height && getComputedStyle(el).visibility !== 'hidden') {
+        out.push({ left: b.left - app.left, top: b.top - app.top, right: b.right - app.left, bottom: b.bottom - app.top });
+      }
+    }
+    return out;
+  }
+
+  /** Pins the popup beside its target, inside the free map (below the HUD, clear of the side panel or sheet). A pinned
+   *  target the UI covers glides clear first (once when picked, and again after the layout moves: seek). */
   private place(): void {
     const t = this.target, pop = this.root;
     if (!t || pop.hidden) return;
     const view = this.g.view;
-    const r = t.kind === 'building' ? view.buildingRect(t.id)
-      : t.kind === 'block' ? (() => { const k = getMap(this.g.state.seed).survey.blocks[t.block]; return k ? view.screenRect(k.x, k.y, 4, 4) : null; })()
-      : view.screenRect(tx(t.tile), ty(t.tile), 1, 1);
+    const tl = this.tiles(t), c = tl ? view.screenRect(tl.x, tl.y, tl.w, tl.h) : null, m = view.mapRect();
+    const r = c && { left: c.left + m.left, right: c.right + m.left, top: c.top + m.top, bottom: c.bottom + m.top };   // canvas → #app px
     const app = (pop.offsetParent ?? document.body).getBoundingClientRect();
     const hud = document.getElementById('hud')?.getBoundingClientRect();
     const panel = document.getElementById('side')?.getBoundingClientRect();
@@ -166,12 +273,47 @@ class InspectorCard {
       if (panel.left - app.left > app.width / 2) bx1 = Math.min(bx1, panel.left - app.left - M);   // a panel or drawer on the right
       else if (panel.top - app.top > app.height / 2) by1 = Math.min(by1, panel.top - app.top - M);   // a bottom sheet
     }
-    const off = !r || r.right < 0 || r.left > bx1 || r.bottom < by0 || r.top > by1;
     if (column && column.width && column.width < app.width / 2) bx0 = column.right - app.left + M;   // the left column of a wide screen
     const card = pop.firstElementChild as HTMLElement | null;
-    if (off || !r || !card) { this.apply('hidden', () => { pop.style.visibility = 'hidden'; }); return; }
     const w = pop.offsetWidth;
-    const natural = card.scrollHeight + card.offsetHeight - card.clientHeight;
+    const natural = card ? card.scrollHeight + card.offsetHeight - card.clientHeight : 0;
+    if (this.seek && r && tl && card && !view.placing) {   // (placing: the ghost has the camera; the seek waits)
+      this.seek = false;
+      const over = this.cover(m, app);
+      const map: Box = { left: m.left, top: m.top, right: m.left + m.width, bottom: m.top + m.height };
+      const outside = r.left < map.left - E || r.top < map.top - E || r.right > map.right + E || r.bottom > map.bottom + E;
+      if (outside || coveredArea(r, over) > 0) {
+        // under the UI or partly off the map: it glides into the free map (the card follows it there instead of hiding),
+        // then clear of what floats over it (the map's tools, the ticker, a phone's cards). With no room beside it for
+        // the card, a short slide sideways makes some (a laptop's narrow map between the columns); failing that, a slide
+        // up or down makes room above or below for at least a short card (a phone's strip of map over its sheet), as
+        // long as neither slide puts it back under something. A target already in view never moves (a click is not a pan)
+        const mv = view.ensureVisible(tl, SEEK_MARGIN);
+        const at = moved(r, mv.dx, mv.dy), dg = dodge(at, over, map, SEEK_MARGIN), to = moved(at, dg.dx, dg.dy);
+        // the card's room where the panel comes to rest (the free rect), not where its slide has got to this frame
+        const f = view.freeRect(), rx1 = Math.min(app.width, f.right + m.left) - M, ry1 = Math.min(app.height, f.bottom + m.top) - M;
+        const beside = (d: number): boolean => to.right + d + GAP + w <= rx1 || to.left + d - GAP - w >= bx0;
+        let dx = 0, dy = 0;
+        if (!beside(0)) {
+          const sx = roomShift(to.left, to.right, bx0, rx1, w + GAP + 1);   // + 1: the boxes are fractional
+          if (sx && Math.abs(sx) <= NUDGE && beside(sx)) dx = sx;
+          else {
+            let clear = by0;   // a phone's band of cards over the map (not a column): the target stays below it
+            if (column && column.width >= app.width / 2) {
+              for (const id of ['objective', 'counsel']) {
+                const e = document.getElementById(id)?.getBoundingClientRect();
+                if (e && e.height) clear = Math.max(clear, e.bottom - app.top + M);
+              }
+            }
+            dy = roomShift(to.top, to.bottom, by0, ry1, Math.min(natural, MIN_H) + GAP + 1, clear);
+          }
+          if (coveredArea(moved(to, dx, dy), over) > coveredArea(to, over) + E) dx = dy = 0;   // the target comes first
+        }
+        if (dg.dx + dx || dg.dy + dy) view.panBy(dg.dx + dx, dg.dy + dy);
+      }
+    }
+    const off = !r || r.right < 0 || r.left > bx1 || r.bottom < by0 || r.top > by1;
+    if (off || !r || !card) { this.apply('hidden', () => { pop.style.visibility = 'hidden'; }); return; }
     const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
     const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
     const fullH = Math.min(MAX_H, by1 - by0), need = Math.min(natural, fullH);

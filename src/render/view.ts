@@ -3,13 +3,19 @@
 // through ViewCallbacks and main.ts runs the actions. Frame order (§12.2): ground chunks (crossfaded) → ground layer
 // (fields, stakes, selection ring) → trees → overlay → placement under-layer → y-sorted objects → status and overlay
 // marks → particles → birds → placement ghost → flashes. All coordinates passed in and out are CSS px.
+// The canvas stays full-bleed under the UI. The layout engine (ui/layout.ts) says what the UI covers (setInsets); the
+// rest is the free rect, where centring, the zoom anchor, the clamp, the minimap's rectangle and ensureVisible work.
 import type { BuildingId, CoverageLayerId, FxEvent, GameState, OverlayId, PlaceCheck, Rect } from '../game/types';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { H, W, getMap, inBounds } from '../game/map';
 import { derived } from '../game/derived';
 import { getBuilding } from '../game/state';
 import type { Camera, Push, Xform } from './camera';
-import { Motion, TILE, ZOOM_LEVELS, clampCamera, defaultLevel, makeCamera, nearestLevel, scaleFor, screenToWorld, tilesIn, worldToScreen } from './camera';
+import type { Insets } from './camera';
+import {
+  Motion, NO_INSETS, TILE, ZOOM_LEVELS, centerOnFree, clampCamera, defaultLevel, ensureVisibleDelta, freeCentre, makeCamera, nearestLevel,
+  scaleFor, screenToWorld, tilesIn, worldToScreen,
+} from './camera';
 import { Input } from './input';
 import { TerrainPainter } from './terrain';
 import { ForestLayer, forestItems, natureItems } from './forest';
@@ -40,7 +46,7 @@ export interface ViewCallbacks {
 const BG = '#15100d';
 const DEMOLISH_MS = 3000;
 const FLASH_MS = 1500;
-const EDGE_CSS = 48;                                // a pre-positioned ghost nearer the canvas edge than this is centred
+const EDGE_CSS = 64;                                // a pre-positioned ghost glides this far inside the free map (the ticker, the tools)
 const DRIFT = { r: 220, rate: 0.045 };              // title drift: world px around the forum, radians per second
 const DEV_SHEET = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search) && /[?&]sheet\b/.test(location.search);
 
@@ -81,12 +87,15 @@ export class MapView {
   private sheetY = 0;
   private sheet: HTMLCanvasElement | null = null;     // ?dev&sheet: a full-page canvas above every UI layer
   private titleUntil = 0;                            // titleDrift() was called this frame: a clean map, no marks
+  private insCss: Insets = NO_INSETS;                // CSS px the UI covers on each side of the canvas (setInsets)
+  private zoomed = false;                            // the player zoomed by hand since attach: a new host keeps the level
+  private canvasZoom = false;                        // desktop columns: the default zoom follows the canvas width (setInsets)
 
   constructor(private readonly canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, private readonly cb: ViewCallbacks) {
     const g = canvas.getContext('2d', { alpha: false });
     if (!g) throw new Error('2D canvas unavailable');
     this.g = g;
-    this.mini = minimap ? new Minimap(minimap, (wx, wy) => this.centerWorld(wx, wy)) : null;
+    this.mini = minimap ? new Minimap(minimap, (wx, wy) => this.centerWorld(wx, wy)) : null;   // the picked point to the free centre
     this.input = new Input(canvas, {
       hover: (x, y) => this.onHoverPx(x, y),
       leave: () => this.onLeave(),
@@ -112,7 +121,7 @@ export class MapView {
   get selected(): number | null { return this._selected; }
 
   // ───────────────────────────── lifecycle ─────────────────────────────
-  /** New or loaded game: drop caches, reset modes, default zoom, centre on the forum. */
+  /** New or loaded game: drop caches, reset modes, the default zoom for the free map, centre on the forum. */
   attach(s: GameState): void {
     this.s = s;
     this.terrain.reset();
@@ -127,8 +136,9 @@ export class MapView {
     this._overlay = 'none';
     this._selected = this.hoverTile = this.hoverId = this.doomed = this.dragFrom = null;
     this.flashes = [];
+    this.zoomed = false;
     this.resize();
-    this.setZoom(defaultLevel(this.cssW || window.innerWidth));
+    this.setZoom(this.defaultLevel());
     this.centerOnForum();
     this.mini?.invalidate();
   }
@@ -147,8 +157,44 @@ export class MapView {
     this.cam.vw = this.canvas.width;
     this.cam.vh = this.canvas.height;
     this.cam.scale = scaleFor(this.cam.level, this.dpr);
-    clampCamera(this.cam);
+    clampCamera(this.cam, this.ins);
     this.mini?.invalidate();
+  }
+
+  /** What the UI covers on each side of the canvas, in CSS px (ui/layout.ts, whenever its free rect changes). The camera
+   *  does not recentre: the next centring, zoom step and ensureVisible use the new free rect. It is clamped to it at once,
+   *  though: at a map edge a bigger free rect (the panel folding away) moves the clamp, and that step belongs with the
+   *  panel's own slide, not with the next drag (which would snap the map against the drag). `host`: the layout changed
+   *  shape (a rotation, a fold, a resized window): the default zoom is chosen again for the new free map, unless the
+   *  player has zoomed by hand. */
+  setInsets(css: Insets, opts?: { host?: boolean; canvasZoom?: boolean }): void {
+    if (opts?.canvasZoom !== undefined) this.canvasZoom = opts.canvasZoom;
+    const i ={ top: Math.max(0, css.top), right: Math.max(0, css.right), bottom: Math.max(0, css.bottom), left: Math.max(0, css.left) };
+    const same = i.top === this.insCss.top && i.right === this.insCss.right && i.bottom === this.insCss.bottom && i.left === this.insCss.left;
+    this.insCss = i;
+    if (!same) {
+      if (this.s) clampCamera(this.cam, this.ins);
+      this.mini?.invalidate();
+    }
+    if (opts?.host && !this.zoomed && this.s) {
+      if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
+      this.applyLevel(this.defaultLevel());
+    }
+  }
+
+  /** The free rect: the canvas less the insets, in canvas CSS px (the whole canvas when the insets would leave none). */
+  freeRect(): { left: number; top: number; right: number; bottom: number } {
+    const i = this.insCss, w = this.cssW, hh = this.cssH;
+    if (w - i.left - i.right < 1 || hh - i.top - i.bottom < 1) return { left: 0, top: 0, right: w, bottom: hh };
+    return { left: i.left, top: i.top, right: w - i.right, bottom: hh - i.bottom };
+  }
+
+  /** The canvas's box relative to #app, in CSS px: add its left and top to a canvas-px point (screenRect, buildingRect)
+   *  to place DOM in #app. (0, 0) while the canvas fills #app. */
+  mapRect(): { left: number; top: number; width: number; height: number } {
+    const app = this.canvas.ownerDocument.getElementById('app') ?? this.canvas.parentElement;
+    const r = this.canvas.getBoundingClientRect(), a = app ? app.getBoundingClientRect() : { left: 0, top: 0 };
+    return { left: r.left - a.left, top: r.top - a.top, width: r.width, height: r.height };
   }
 
   /** Draws one frame (called every animation frame by main.ts). */
@@ -158,7 +204,7 @@ export class MapView {
     if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
     if (this.doomed && this.time > this.doomed.until) this.doomed = null;
     if (this._placing) this.place.refresh(s);
-    this.motion.step(this.cam, dtMs);
+    this.motion.step(this.cam, dtMs, this.ins);
     const xf = this.motion.xform(this.cam);
     const vis = tilesIn(xf, this.cam.vw, this.cam.vh, 4);
     this.terrain.update(s, dtMs);
@@ -207,7 +253,7 @@ export class MapView {
     this.place.drawOver(g, s, this.time, cur);
     this.drawFlashes(g, s, xf);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    this.mini?.draw(s, this.cam, this.terrain.miniCanvas(s), ov, this._placing !== null, this.time);
+    this.mini?.draw(s, this.cam, this.terrain.miniCanvas(s), ov, this._placing !== null, this.time, this.ins);
   }
 
   /** Routes sim and action fx to particles, actors and flashes (§12.6); `season` crossfades on its own. */
@@ -223,10 +269,24 @@ export class MapView {
     this.motion.glide((-dxCss * this.ratio) / this.cam.scale, (-dyCss * this.ratio) / this.cam.scale);
   }
 
-  /** Centres the view on a tile, optionally at a zoom level. */
-  centerOn(tile: number, level?: number): void {
+  /** Centres a tile (or the middle of a tile rect: a building's footprint) in the free rect, optionally at a zoom level. */
+  centerOn(target: number | Rect, level?: number): void {
     if (level !== undefined) this.setZoom(level);
-    this.centerWorld(((tile % W) + 0.5) * TILE, (Math.floor(tile / W) + 0.5) * TILE);
+    const r = typeof target === 'number' ? { x: target % W, y: Math.floor(target / W), w: 1, h: 1 } : target;
+    this.centerWorld((r.x + r.w / 2) * TILE, (r.y + r.h / 2) * TILE);
+  }
+
+  /** Glides the camera (eased, Motion.glide) by the least that brings a tile, or a tile rect, into the free rect at least
+   *  `marginCss` from its edges; nothing moves when it is there already. Returns how far the target will move on screen
+   *  (CSS px, right and down positive; 0, 0 when it stays), so a caller can add a further panBy to the same glide. */
+  ensureVisible(target: number | Rect, marginCss = 24): { dx: number; dy: number } {
+    const r = typeof target === 'number' ? { x: target % W, y: Math.floor(target / W), w: 1, h: 1 } : target;
+    const d = ensureVisibleDelta(this.cam, { x: r.x * TILE, y: r.y * TILE, w: r.w * TILE, h: r.h * TILE }, this.ins, marginCss * this.ratio);
+    const k = this.cam.scale / this.ratio;   // CSS px per world px
+    if (Math.abs(d.dx * k) < 0.5 && Math.abs(d.dy * k) < 0.5) return { dx: 0, dy: 0 };
+    this.motion.stop();
+    this.motion.glide(d.dx, d.dy);
+    return { dx: -d.dx * k, dy: -d.dy * k };
   }
 
   /** Centres the view on the forum. */
@@ -236,13 +296,15 @@ export class MapView {
     this.centerWorld((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE);
   }
 
-  /** Steps the zoom level, keeping the world point under the anchor (CSS px) fixed; eased over 140 ms. */
+  /** Steps the zoom level (the player's own: wheel, pinch, keys, buttons), keeping the world point under the anchor (CSS
+   *  px; by default the free-rect centre) fixed; eased over 140 ms. */
   zoomBy(steps: number, anchor?: { sx: number; sy: number }): void {
+    this.zoomed = true;
     const cur = ZOOM_LEVELS.indexOf(nearestLevel(this.cam.level));
     this.applyLevel(ZOOM_LEVELS[Math.max(0, Math.min(ZOOM_LEVELS.length - 1, cur + Math.round(steps)))], anchor);
   }
 
-  /** Sets the zoom level (snapped to ZOOM_LEVELS), keeping the centre. */
+  /** Sets the zoom level (snapped to ZOOM_LEVELS), keeping the free-rect centre. */
   setZoom(level: number): void {
     this.applyLevel(nearestLevel(level));
   }
@@ -262,8 +324,10 @@ export class MapView {
     this.dragFrom = null;
     this.place.start(p, s);
     if (p.kind === 'building' && p.at !== undefined) {
-      // a pre-positioned ghost already on the canvas leaves the camera where the eye is; only one off screen is centred
-      if (!this.inView(p.at, EDGE_CSS)) this.centerOn(p.at);
+      // a pre-positioned ghost already in the free map leaves the camera where the eye is; one under the UI or off
+      // screen glides in by the least it needs (never a jump)
+      const [w, h] = BUILDING_DEFS[p.type].size;
+      this.ensureVisible({ x: p.at % W, y: Math.floor(p.at / W), w, h }, EDGE_CSS);
       this.cb.onPlacementPreview(this.place.check, p.at);
     }
   }
@@ -322,13 +386,6 @@ export class MapView {
     return x < 0 || y < 0 || x > this.cssW || y > this.cssH ? null : { x, y };
   }
 
-  /** True when a tile's centre lies on the canvas at least `marginCss` from its edges. */
-  inView(tile: number, marginCss = 0): boolean {
-    const p = worldToScreen(this.cam, ((tile % W) + 0.5) * TILE, (Math.floor(tile / W) + 0.5) * TILE);
-    const x = p.sx / this.ratio, y = p.sy / this.ratio;
-    return x >= marginCss && y >= marginCss && x <= this.cssW - marginCss && y <= this.cssH - marginCss;
-  }
-
   /** The CSS-px box of a w×h tile rectangle whose top-left tile is (x, y), for anchoring DOM; it may lie off screen. */
   screenRect(x: number, y: number, w: number, h: number): { left: number; top: number; right: number; bottom: number } {
     const a = worldToScreen(this.cam, x * TILE, y * TILE), b = worldToScreen(this.cam, (x + w) * TILE, (y + h) * TILE);
@@ -337,10 +394,14 @@ export class MapView {
 
   /** The CSS-px box of a building's footprint, or null when it is gone. */
   buildingRect(id: number): { left: number; top: number; right: number; bottom: number } | null {
+    const r = this.buildingTiles(id);
+    return r ? this.screenRect(r.x, r.y, r.w, r.h) : null;
+  }
+
+  /** A building's footprint as a tile rect (for centerOn and ensureVisible), or null when it is gone. */
+  buildingTiles(id: number): Rect | null {
     const b = this.s ? getBuilding(this.s, id) : undefined;
-    if (!this.s || !b) return null;
-    const r = footprintRect(this.s, b);
-    return this.screenRect(r.x, r.y, r.w, r.h);
+    return this.s && b ? footprintRect(this.s, b) : null;
   }
 
   /** The slow drift behind the title screen: a wide, lazy ellipse around the forum. */
@@ -359,29 +420,46 @@ export class MapView {
   }
 
   // ───────────────────────────── internals ─────────────────────────────
+  /** The insets in device px (CSS × the canvas's device px per CSS px). */
+  private get ins(): Insets {
+    const i = this.insCss, k = this.ratio;
+    return { top: i.top * k, right: i.right * k, bottom: i.bottom * k, left: i.left * k };
+  }
+
+  /** The default zoom for the free map: from its shorter side (the whole window before the canvas has a size). On the
+   *  desktop columns (`canvasZoom`) it follows the canvas width as it always has, so a 1366 px laptop keeps level 3. */
+  private defaultLevel(): number {
+    if (this.canvasZoom) return defaultLevel(this.cssW || window.innerWidth);
+    const f = this.freeRect();
+    const w = this.cssW ? f.right - f.left : window.innerWidth, hh = this.cssH ? f.bottom - f.top : window.innerHeight;
+    return defaultLevel(Math.min(w, hh));
+  }
+
+  /** Puts a world point at the free-rect centre (clamped), stopping any glide. */
   private centerWorld(wx: number, wy: number): void {
     this.motion.stop();
-    this.cam.x = wx;
-    this.cam.y = wy;
-    clampCamera(this.cam);
+    const ins = this.ins;
+    centerOnFree(this.cam, wx, wy, ins);
+    clampCamera(this.cam, ins);
   }
 
   private drag(dxCss: number, dyCss: number): void {
     this.cam.x -= (dxCss * this.ratio) / this.cam.scale;
     this.cam.y -= (dyCss * this.ratio) / this.cam.scale;
-    clampCamera(this.cam);
+    clampCamera(this.cam, this.ins);
   }
 
   private applyLevel(level: number, anchor?: { sx: number; sy: number }): void {
     if (level === this.cam.level && this.cam.scale === scaleFor(level, this.dpr)) return;
-    const ax = anchor ? anchor.sx * this.ratio : this.cam.vw / 2, ay = anchor ? anchor.sy * this.ratio : this.cam.vh / 2;
+    const fc = freeCentre(this.cam, this.ins);
+    const ax = anchor ? anchor.sx * this.ratio : fc.sx, ay = anchor ? anchor.sy * this.ratio : fc.sy;
     const before = screenToWorld(this.cam, ax, ay), s0 = this.motion.xform(this.cam).k;
     this.cam.level = level;
     this.cam.scale = scaleFor(level, this.dpr);
     const after = screenToWorld(this.cam, ax, ay);
     this.cam.x += before.wx - after.wx;
     this.cam.y += before.wy - after.wy;
-    clampCamera(this.cam);
+    clampCamera(this.cam, this.ins);
     if (this.s) this.motion.easeZoom(s0, ax, ay);
   }
 

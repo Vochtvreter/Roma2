@@ -1,7 +1,8 @@
 // src/ui/keys.ts — the global keyboard (DESIGN §15.8, ARCHITECTURE §13.8). Owner: WP-H.
 // Space pause · 1–4 speeds (5 = 20× in ?dev) · E V B P T L tabs · O / Shift+O overlays · R road · H forum ·
-// WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → menu (the layers of
-// history.ts, which Back walks too). Ignored inside inputs and on the title (Esc still closes modals).
+// WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → the panel above its host's
+// default detent (layout.ts) → menu (the layers of history.ts, which Back walks too). Ignored inside inputs and on the
+// title (Esc still closes modals).
 import { OVERLAYS } from '../game/types';
 import type { OverlayId, Speed, TabId } from '../game/types';
 import type { Game } from './types';
