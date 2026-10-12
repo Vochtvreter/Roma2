@@ -2,7 +2,12 @@
 // Hover = a transient card bottom left, click = a closable popup pinned beside the target; signature-diffed like the panels (rebuild on discrete change, else updaters).
 // A pinned target the UI covers (the panel, the sheet, the HUD, the map's tools) glides clear (view.ensureVisible, then dodge())
 // rather than losing its card: when it is picked, and again when the layout moves the UI over it; never after a pan.
-// The same target is not rebuilt while the mouse rests on its card, unless to answer a click there (steady.ts): its buttons stay put.
+// The same target is not rebuilt while the mouse rests on its card, unless to answer a click there, nor while a press made in
+// it is held (steady.ts): its buttons stay put.
+// On the phone SHEET (layout.ts) the popup is the context card (DESIGN §15.7): docked above the bar in the sheet's slot
+// (data-docked; never placed beside its target), its brief first (briefParts: the head, the two or three most useful lines,
+// the main actions) and More for the whole card; a work with posts carries its category's labour line (labourEl) to staff
+// it in place; the camera glides the target clear above it.
 import { BUILDER, F, T } from '../game/types';
 import type { Building, GameState, Rect, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
@@ -32,8 +37,10 @@ import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
 import { confirm2 } from './modals';
 import { PointerHold } from './steady';
+import { currentHost } from './layout';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
+import { labourEl } from './tabs/labour';
 
 /** '+4,000 grain (4.2 months at today's 32/day)': what a store adds, in time at today's need for grain and water (§8.6). */
 function storeText(s: GameState, r: ResId, n: number): string {
@@ -73,7 +80,7 @@ function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
     const hs = b.house;
     const next = hs ? nextTier(s, b) : null;
     return [`b${b.id}`, b.status, b.owner, +b.open, b.prio, staffOf(s, b), hs ? `${hs.tier}:${hs.pref}:${+hs.declining}:${+!!hs.renovating}` : '',
-      next ? unmetNeeds(s, b, next).join(',') : '', +s.ordo.on.build, s.rank].join('|');
+      next ? unmetNeeds(s, b, next).join(',') : '', +s.ordo.on.build, +s.ordo.on.labour, s.rank].join('|');
   }
   if (t.kind === 'block') {
     const p = derived(s).plotOwner;
@@ -83,6 +90,38 @@ function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
 }
 
 const same = (a: InspectTarget | null, b: InspectTarget | null): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/** The kinds of card, as the brief tells them apart. */
+export type CardKind = 'house' | 'works' | 'site' | 'block' | 'tile';
+/** What the phone's docked card shows before More, per kind: its lines by usefulness (the first BRIEF_LINES of those it
+ *  has) and its main actions. The parts are the card's own (data-part); anything else waits behind More. A house: a
+ *  decline first, then what it waits for (its first want, with the button that fixes it), beds and its tier. A work: its
+ *  hands and its category's labour line (staffed in place), else what it stores, serves or yields; Close it and the
+ *  staffing priority. A site: how far it has come and why; ↑ Build first and Cancel. A block: its plots; Place a house
+ *  plot and Reserve. Ground: what it is; what could be built on it. */
+export const BRIEF: Readonly<Record<CardKind, { lines: readonly string[]; acts: readonly string[] }>> = {
+  house: { lines: ['declining', 'needs', 'renovating', 'beds', 'sub', 'finest'], acts: [] },
+  works: { lines: ['staff', 'labour', 'benefit', 'stores', 'service', 'passive', 'chain'], acts: ['controls'] },
+  site: { lines: ['progress', 'why', 'notes'], acts: ['queue'] },
+  block: { lines: ['status', 'reserved', 'plots'], acts: ['actions'] },
+  tile: { lines: ['facts'], acts: ['buildable'] },
+};
+export const BRIEF_LINES = 3;
+
+/** The parts of a card its brief shows (pure; tests/sheet.test.ts), in the card's own order: its kind's most useful lines
+ *  among `present` (at most BRIEF_LINES of them: a part made of several elements counts once) and all its actions. */
+export function briefParts(kind: CardKind, present: readonly string[]): string[] {
+  const t = BRIEF[kind];
+  const lines = t.lines.filter((p) => present.includes(p)).slice(0, BRIEF_LINES);
+  const keep = new Set([...lines, ...t.acts.filter((p) => present.includes(p))]);
+  return present.filter((p, i) => keep.has(p) && present.indexOf(p) === i);
+}
+
+/** Names an element as one part of the card (data-part), for the phone's brief. */
+function part<T extends HTMLElement>(el: T, id: string): T {
+  el.dataset.part = id;
+  return el;
+}
 
 const E = 0.5;   // px of slack: the boxes are fractional
 const moved = (b: Box, dx: number, dy: number): Box => ({ left: b.left + dx, top: b.top + dy, right: b.right + dx, bottom: b.bottom + dy });
@@ -154,7 +193,8 @@ const NUDGE = 96;         // CSS px a target may slide sideways so its card fits
  *  holds the zoom buttons and the Mappae and Via popovers; off it, the left column's cards and the map tools float. */
 const FLOATING = ['objective', 'counsel', 'ticker', 'overlay-bar', 'zoom-ctl', 'minimap', 'side-toggle', 'map-col'] as const;
 
-/** The inspector: hover cards in #inspector (bottom left); a clicked target opens a closable popup beside it on the map. */
+/** The inspector: hover cards in #inspector (bottom left); a clicked target opens a closable popup beside it on the map
+ *  (on the phone SHEET: the context card, docked above the bar). */
 export class Inspector {
   private readonly hoverCard: InspectorCard;
   private readonly popup: InspectorCard;
@@ -162,13 +202,19 @@ export class Inspector {
   /** A clicked card opened (true) or closed (false): the UI root routes the phone's sheet for it (a focus clears the
    *  map; closing puts the sheet back). Not told when one pinned card replaces another. */
   onPin: ((on: boolean) => void) | null = null;
+  /** The context card came up docked in the phone sheet's slot (its root) or went (null): the UI root docks it in the
+   *  layout (Layout.dock), which measures the free map above it before the card glides its target there. */
+  onDock: ((el: HTMLElement | null) => void) | null = null;
 
   constructor(g: Game, root: HTMLElement) {
     this.hoverCard = new InspectorCard(g, root, false);
     const pop = h('div', { class: 'ins-popup', role: 'dialog', 'aria-label': 'Selection' });
     (root.closest('#app') ?? document.body).appendChild(pop);
-    this.popup = new InspectorCard(g, pop, true);
+    this.popup = new InspectorCard(g, pop, true, (el) => this.onDock?.(el));
   }
+
+  /** The pinned card's root (the popup; the context card on the phone). */
+  get popupEl(): HTMLElement { return this.popup.el; }
 
   /** True while a clicked (sticky) card is pinned: Esc closes it before opening the menu. */
   get pinned(): boolean { return this.popup.target !== null; }
@@ -205,19 +251,29 @@ class InspectorCard {
   private readonly hold: PointerHold;
   private ups: Updater[] = [];
   private collapsed = false;
+  private more = false;   // the docked card shows all of itself (More), not its brief; a new target starts brief
+  private wasDocked = false;   // the last rebuild docked the card (the layout was told so)
   private placed = '';
   private seek = false;   // a new pinned target, or the UI moved: the camera brings it clear once (never after a pan: that is the player's)
 
-  constructor(private readonly g: Game, private readonly root: HTMLElement, private readonly sticky: boolean) {
+  constructor(private readonly g: Game, private readonly root: HTMLElement, private readonly sticky: boolean,
+    private readonly dock: ((el: HTMLElement | null) => void) | null = null) {
     root.hidden = true;
     root.setAttribute('aria-live', 'polite');
     this.hold = new PointerHold(root);
   }
 
+  /** The card's root element. */
+  get el(): HTMLElement { return this.root; }
+
+  /** The pinned card on the phone SHEET: the context card, docked in the sheet's slot. */
+  private get docked(): boolean { return this.sticky && currentHost() === 'sheet'; }
+
   set(t: InspectTarget | null): void {
     if (same(t, this.target)) return;
     this.target = t;
     this.seek = this.sticky && t !== null;
+    this.more = false;
     this.last = -Infinity;   // a new target re-renders at once, not at the next throttled frame
   }
 
@@ -232,9 +288,11 @@ class InspectorCard {
       const s = this.g.state;
       if (this.target?.kind === 'building' && !getBuilding(s, this.target.id)) this.target = null;
       const t = this.target;
-      const sig = t ? `${t.kind}|${targetSig(s, t, this.sticky)}|${+this.collapsed}` : '';
+      // the context card also carries a dispatch that waits (its row: dispatchRow)
+      const sig = t ? `${t.kind}|${targetSig(s, t, this.sticky)}|${+this.collapsed}${+this.docked}${this.docked && s.choice ? `e${s.choice.event}:${s.choice.created}` : ''}` : '';
       const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
-      if (sig !== this.sig && (!sameTarget || !this.hold.holds(now))) this.rebuild(t, sig, this.sticky);
+      const reshaped = t !== null && this.docked !== (this.root.dataset.docked !== undefined);   // the host changed: docked or not
+      if (sig !== this.sig && (!sameTarget || reshaped || !this.hold.holds(now))) this.rebuild(t, sig, this.sticky);
       else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
     }
     if (this.sticky) this.place();
@@ -265,11 +323,37 @@ class InspectorCard {
     return out;
   }
 
+  /** The docked context card (the phone SHEET): never placed beside its target (sheet.css docks it above the bar), but
+   *  its target glides clear into the free map above it (the layout's free rect ends there: Layout.dock), then clear of
+   *  what floats over that map (the tool column), when it is picked and again whenever the layout moves (seek). It stays
+   *  up when the player pans the target away. */
+  private placeDocked(t: InspectTarget): void {
+    const pop = this.root, view = this.g.view;
+    this.apply('docked', () => {
+      pop.style.visibility = '';
+      pop.style.left = pop.style.top = pop.style.maxHeight = '';
+      delete pop.dataset.tail;
+    });
+    if (!this.seek || view.placing) return;
+    this.seek = false;
+    const tl = this.tiles(t);
+    if (!tl) return;
+    const m = view.mapRect(), app = (pop.offsetParent ?? document.body).getBoundingClientRect();
+    const mv = view.ensureVisible(tl, SEEK_MARGIN);
+    const c = view.screenRect(tl.x, tl.y, tl.w, tl.h);
+    const r: Box = { left: c.left + m.left + mv.dx, right: c.right + m.left + mv.dx, top: c.top + m.top + mv.dy, bottom: c.bottom + m.top + mv.dy };
+    const map: Box = { left: m.left, top: m.top, right: m.left + m.width, bottom: m.top + m.height };
+    const dg = dodge(r, this.cover(m, app), map, SEEK_MARGIN);
+    if (dg.dx || dg.dy) view.panBy(dg.dx, dg.dy);
+  }
+
   /** Pins the popup beside its target, inside the free map (below the HUD, clear of the side panel or sheet). A pinned
-   *  target the UI covers glides clear first (once when picked, and again after the layout moves: seek). */
+   *  target the UI covers glides clear first (once when picked, and again after the layout moves: seek). On the phone
+   *  SHEET the popup is the docked context card instead (placeDocked). */
   private place(): void {
     const t = this.target, pop = this.root;
     if (!t || pop.hidden) return;
+    if (pop.dataset.docked !== undefined) { this.placeDocked(t); return; }
     const view = this.g.view;
     const tl = this.tiles(t), c = tl ? view.screenRect(tl.x, tl.y, tl.w, tl.h) : null, m = view.mapRect();
     const r = c && { left: c.left + m.left, right: c.right + m.left, top: c.top + m.top, bottom: c.bottom + m.top };   // canvas → #app px
@@ -369,35 +453,76 @@ class InspectorCard {
     clear(this.root);
     this.root.hidden = !t;
     this.placed = '';
-    if (!t) return;
-    const card = h('div', { class: `card ins-card${sticky ? ' sticky' : ''}${this.collapsed ? ' collapsed' : ''}` });
-    try { this.render(t, card, sticky); } catch (e) { console.error('[inspector] render', e); }
-    this.root.appendChild(card);
+    const docked = this.docked;
+    if (docked) this.root.dataset.docked = ''; else delete this.root.dataset.docked;
+    if (t) {
+      const card = h('div', { class: `card ins-card${sticky ? ' sticky' : ''}${this.collapsed && !docked ? ' collapsed' : ''}${docked ? ' docked' : ''}${docked && this.more ? ' more' : ''}` });
+      try { this.render(t, card, sticky); } catch (e) { console.error('[inspector] render', e); }
+      if (docked) { this.dispatchRow(card); this.brief(card, t); }
+      this.root.appendChild(card);
+    }
+    // the layout measures the free map above a docked card now (and again for each rebuild: its height may change)
+    const el = this.sticky && docked && t ? this.root : null;
+    if (el || this.wasDocked) this.dock?.(el);
+    this.wasDocked = el !== null;
+  }
+
+  /** The context card stands where the voice line was, so a dispatch that waits (s.choice) shows on it, under its head:
+   *  'NVNTIVS · <title> · Read', which gives the slot to the event card (the 'choice' anchor: the UI root's Read). */
+  private dispatchRow(card: HTMLElement): void {
+    const g = this.g, c = g.state.choice;
+    if (!c) return;
+    const row = h('button', { class: 'btn small ghost ins-dispatch', type: 'button', 'aria-label': `A dispatch waits: ${c.title}. Read it`,
+      onclick: () => g.openTab('council', 'choice', 'chip') },
+    h('span', { class: 'kicker' }, 'NVNTIVS'), h('span', { class: 'ins-dispatch-t' }, c.title), h('b', null, 'Read'));
+    row.dataset.brief = '';
+    card.querySelector('.ins-head')?.after(row);
+  }
+
+  /** The docked card's brief (briefParts): marks the parts it shows before More (data-brief), and gives the head its
+   *  More button when anything waits behind it. */
+  private brief(card: HTMLElement, t: InspectTarget): void {
+    const parts = Array.from(card.children).filter((c): c is HTMLElement => c instanceof HTMLElement && c.dataset.part !== undefined);
+    const b = t.kind === 'building' ? getBuilding(this.g.state, t.id) : undefined;
+    const kind: CardKind = t.kind === 'block' ? 'block' : t.kind === 'tile' ? 'tile' : b?.house && b.status === 'done' ? 'house' : b?.status === 'done' ? 'works' : 'site';
+    const keep = new Set(briefParts(kind, parts.map((p) => p.dataset.part ?? '')));
+    for (const p of parts) if (keep.has(p.dataset.part ?? '')) p.dataset.brief = '';
+    if (!parts.some((p) => p.dataset.brief === undefined)) return;
+    const more = h('button', { class: 'btn small ghost ins-more', type: 'button', 'aria-expanded': String(this.more), onclick: () => {
+      this.more = !this.more;
+      card.classList.toggle('more', this.more);
+      more.textContent = this.more ? 'Less ▾' : 'More ▴';
+      more.setAttribute('aria-expanded', String(this.more));
+      this.dock?.(this.root);   // the layout measures the card's new height at once (its glide follows: reseek)
+    } }, this.more ? 'Less ▾' : 'More ▴');
+    card.querySelector('.ins-ctl')?.prepend(more);
   }
 
   private head(card: HTMLElement, sprite: string, kicker: string, title: string, sticky: boolean): void {
     const g = this.g;
+    const docked = this.docked;   // the context card: its brief is its folded form (More), no ▾
     card.append(h('div', { class: 'ins-head' }, h('div', { class: 'ins-img' }, img(sprite, 2)),
       h('div', { class: 'ins-titles' }, h('div', { class: 'kicker' }, kicker), h('div', { class: 'ins-title' }, title)),
       h('div', { class: 'ins-ctl' },
-        h('button', { class: 'btn small ghost', type: 'button', 'aria-label': this.collapsed ? 'Expand' : 'Collapse', onclick: () => { this.collapsed = !this.collapsed; this.last = -Infinity; this.hold.release(); } }, this.collapsed ? '▸' : '▾'),
+        docked ? null : h('button', { class: 'btn small ghost', type: 'button', 'aria-label': this.collapsed ? 'Expand' : 'Collapse', onclick: () => { this.collapsed = !this.collapsed; this.last = -Infinity; this.hold.release(); } }, this.collapsed ? '▸' : '▾'),
         sticky ? h('button', { class: 'btn small ghost', type: 'button', 'aria-label': 'Close', onclick: () => { g.select(null); g.inspect(null, true); } }, '✕') : null)));
   }
 
   private render(t: InspectTarget, card: HTMLElement, sticky: boolean): void {
     const s = this.g.state;
+    const open = !this.collapsed || this.docked;
     if (t.kind === 'building') {
       const b = getBuilding(s, t.id);
       if (!b) { card.append(h('div', { class: 'muted' }, 'It is gone.')); return; }
       const def = BUILDING_DEFS[b.type];
       if (b.house && b.status === 'done') {
         this.head(card, houseSprite(b.house.tier, isAquae(s, b), b.x, b.y), `DOMVS · T${TIER_DEFS[b.house.tier].level}${isAquae(s, b) ? ' · AQVAE' : ''}`, TIER_DEFS[b.house.tier].latin, sticky);
-        if (!this.collapsed) card.append(...houseView(this.g, b, this.ups), this.demolish(b));
+        if (open) card.append(...houseView(this.g, b, this.ups), this.demolish(b));
         return;
       }
       const sprite = b.status === 'done' ? buildingSprite(s, b, seasonOf(s.day)) : typeSprite(b.type);
       this.head(card, sprite, `${caps(def.latin)}${b.owner === 'ordo' ? ' · ORDO' : ''}`, def.name, sticky);
-      if (!this.collapsed) card.append(...(b.status === 'done' ? this.works(b) : this.site(b)));
+      if (open) card.append(...(b.status === 'done' ? this.works(b) : this.site(b)));
       return;
     }
     if (t.kind === 'block') { this.block(card, t.block, sticky); return; }
@@ -423,9 +548,9 @@ class InspectorCard {
     };
     refresh();
     this.ups.push(refresh);
-    const out = [line, pb.el];
-    if (b.reason) out.push(h('div', { class: 'ins-why' }, img('i_seal', 1), reasonText(b.reason)));
-    if (b.notes?.length) out.push(h('div', { class: 'ins-small muted' }, `Why here: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}.`));
+    const out = [part(line, 'progress'), part(pb.el, 'progress')];
+    if (b.reason) out.push(part(h('div', { class: 'ins-why' }, img('i_seal', 1), reasonText(b.reason)), 'why'));
+    if (b.notes?.length) out.push(part(h('div', { class: 'ins-small muted' }, `Why here: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}.`), 'notes'));
     const first = worksQueue(g.state)[0]?.id === b.id;
     const btns = h('div', { class: 'ins-btns' }, btn(g, '↑ Build first', () => A.prioritise(g.state, b.id), { reason: first ? 'Already first in the queue.' : null }));
     if (b.status === 'staked' && b.owner === 'ordo') btns.append(btn(g, 'Move', () => { g.startPlacing({ kind: 'building', type: b.type, replaceId: b.id }); }, { tip: 'Place it elsewhere yourself; the stake is refunded.' }));
@@ -435,7 +560,7 @@ class InspectorCard {
       confirm2(c, 'Click again to cancel', () => { g.act(A.cancelSite(g.state, b.id), { okSfx: 'click' }); });
       btns.append(c);
     }
-    out.push(btns);
+    out.push(part(btns, 'queue'));
     return out;
   }
 
@@ -444,7 +569,7 @@ class InspectorCard {
     const g = this.g;
     const s = g.state;
     const def = BUILDING_DEFS[b.type];
-    const out: HTMLElement[] = [h('div', { class: 'ins-sub' }, def.benefit)];
+    const out: HTMLElement[] = [part(h('div', { class: 'ins-sub' }, def.benefit), 'benefit')];
     if (def.slots > 0) {
       const staff = h('div', { class: 'ins-line' });
       const names = h('div', { class: 'ins-small muted' });
@@ -456,7 +581,16 @@ class InspectorCard {
       };
       refresh();
       this.ups.push(refresh);
-      out.push(staff, names);
+      out.push(part(staff, 'staff'), part(names, 'names'));
+      // the phone's context card staffs it in place: its category's labour line, the ± held to repeat (labour.ts); while
+      // the Ordo holds labour the line has no ±, and says so, with the way to take it back (Edicta's Mandata)
+      if (this.docked && def.labor) {
+        const ordo = s.ordo.on.labour
+          ? h('div', { class: 'ins-small muted ins-ordo-lab' }, 'The Ordo staffs these posts.',
+            btn(g, 'Mandata', () => g.openTab('council', 'mandates', 'chip'), { cls: 'ghost', tip: 'Edicta · Mandata: take labour back to set the hands yourself.' }))
+          : null;
+        out.push(part(h('div', { class: 'ins-labour' }, labourEl(g, this.ups, [def.labor]), ordo), 'labour'));
+      }
     }
     const chain = h('div', { class: 'ins-chain' });
     const refreshChain = (): void => {
@@ -470,12 +604,12 @@ class InspectorCard {
     };
     refreshChain();
     this.ups.push(refreshChain);
-    if (def.output || def.passive) out.push(chain);
-    if (def.inputs) out.push(h('div', { class: 'ins-small' }, `Uses ${Object.entries(def.inputs).map(([r, n]) => `${n} ${RESOURCE_DEFS[r as keyof typeof RESOURCE_DEFS].name.toLowerCase()}`).join(' + ')} per hand a day.`));
-    if (def.passive && !def.output) out.push(h('div', { class: 'ins-small' }, `${def.passive.perDay} ${RESOURCE_DEFS[def.passive.res].name.toLowerCase()} a day with no hands.`));
+    if (def.output || def.passive) out.push(part(chain, 'chain'));
+    if (def.inputs) out.push(part(h('div', { class: 'ins-small' }, `Uses ${Object.entries(def.inputs).map(([r, n]) => `${n} ${RESOURCE_DEFS[r as keyof typeof RESOURCE_DEFS].name.toLowerCase()}`).join(' + ')} per hand a day.`), 'uses'));
+    if (def.passive && !def.output) out.push(part(h('div', { class: 'ins-small' }, `${def.passive.perDay} ${RESOURCE_DEFS[def.passive.res].name.toLowerCase()} a day with no hands.`), 'passive'));
     for (const sv of def.service ?? []) {
       const r = effectiveRadius(s, b, sv.layer);
-      out.push(h('div', { class: `ins-line ${r ? '' : 'ins-bad'}` }, `${LAYER_META[sv.layer].label}: ${r ? `${r} road steps` : 'inactive'}${r && r < sv.radius ? ` (full ${sv.radius} at ${Math.ceil(def.slots * B.economy.SERVICE_FULL)} hands)` : ''}`));
+      out.push(part(h('div', { class: `ins-line ${r ? '' : 'ins-bad'}` }, `${LAYER_META[sv.layer].label}: ${r ? `${r} road steps` : 'inactive'}${r && r < sv.radius ? ` (full ${sv.radius} at ${Math.ceil(def.slots * B.economy.SERVICE_FULL)} hands)` : ''}`), 'service'));
     }
     if (def.storage) {
       const store = def.storage;
@@ -483,11 +617,11 @@ class InspectorCard {
       const refreshStore = (): void => { line.textContent = `Stores: ${(Object.keys(store) as ResId[]).map((r) => storeText(g.state, r, store[r] ?? 0)).join(' · ')}`; };
       refreshStore();
       this.ups.push(refreshStore);
-      out.push(line);
+      out.push(part(line, 'stores'));
     }
     const mult = siteMult(s, b);
     const site = Math.abs(mult - 1) > 0.01 ? `Site ${pct(mult)}` : 'Site';
-    if (site !== 'Site' || b.notes?.length) out.push(h('div', { class: 'ins-small' }, `${site}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`));
+    if (site !== 'Site' || b.notes?.length) out.push(part(h('div', { class: 'ins-small' }, `${site}${b.notes?.length ? `: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}` : ''}.`), 'site'));
     const flags: string[] = [];
     if (def.upkeep) flags.push(b.open ? `Upkeep ${fmt(def.upkeep)} den a day${b.unpaid ? ' · UNPAID: works at half pace' : ''}` : 'Closed: no upkeep');
     if ((b.toolUntil ?? 0) > s.day) flags.push(`Tool kit: +20%, ${plural((b.toolUntil ?? 0) - s.day, 'day', 'days')} left`);
@@ -495,13 +629,13 @@ class InspectorCard {
     if ((b.idleUntil ?? 0) > s.day) flags.push(`Idle until ${formatRoman(b.idleUntil ?? 0)}`);
     if ((b.bonusUntil ?? 0) > s.day) flags.push(`${pct(1 + (b.bonus ?? 0))} until ${formatRoman(b.bonusUntil ?? 0)}`);
     if ((b.youngUntil ?? 0) > s.day) flags.push(`Young grove: half yield until ${formatRoman(b.youngUntil ?? 0)}`);
-    if (flags.length) out.push(h('div', { class: `ins-small ${b.unpaid ? 'ins-bad' : 'muted'}` }, flags.join(' · ')));
-    if (b.reason) out.push(h('div', { class: 'ins-why' }, img('i_seal', 1), `Raised by the Ordo on ${formatRoman(b.placed)}: ${reasonText(b.reason)}`));
+    if (flags.length) out.push(part(h('div', { class: `ins-small ${b.unpaid ? 'ins-bad' : 'muted'}` }, flags.join(' · ')), 'flags'));
+    if (b.reason) out.push(part(h('div', { class: 'ins-why' }, img('i_seal', 1), `Raised by the Ordo on ${formatRoman(b.placed)}: ${reasonText(b.reason)}`), 'why'));
     if (def.slots > 0) {
-      out.push(h('div', { class: 'ins-btns' },
+      out.push(part(h('div', { class: 'ins-btns' },
         btn(g, b.open ? 'Close it' : 'Reopen it', () => A.setOpen(g.state, b.id, !b.open), { cls: b.open ? '' : 'primary', tip: b.open ? 'Closed works keep their sprite and release their hands.' : 'Let it take hands again.' }),
         seg(g, PRIO_IDS.map((p, i) => ({ id: p, label: PRIO[i], tip: `${PRIO[i]} staffing priority` })), String(b.prio) as (typeof PRIO_IDS)[number],
-          (p) => A.setPrio(g.state, b.id, Number(p) as 0 | 1 | 2))));
+          (p) => A.setPrio(g.state, b.id, Number(p) as 0 | 1 | 2))), 'controls'));
     }
     if (b.type !== 'principia' && b.type !== 'capitolium') out.push(this.demolish(b));
     return out;
@@ -511,7 +645,7 @@ class InspectorCard {
     const g = this.g;
     const d = h('button', { class: 'btn small ghost ins-demolish', type: 'button' }, 'Demolish');
     confirm2(d, `Demolish? ${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back`, () => { g.act(A.demolish(g.state, b.id), { okSfx: 'place' }); });
-    return h('div', { class: 'ins-btns end' }, d);
+    return part(h('div', { class: 'ins-btns end' }, d), 'demolish');
   }
 
   private block(card: HTMLElement, id: number, sticky: boolean): void {
@@ -521,22 +655,22 @@ class InspectorCard {
     if (!blk) return;
     const reserved = s.ordo.reserved.includes(id);
     this.head(card, 'i_tool_reserve', `INSVLA · ${caps(DISTRICT[blk.district])}`, `A block ${RING[blk.ring]}`, sticky);
-    if (this.collapsed) return;
+    if (this.collapsed && !this.docked) return;
     const active = RANK_DEFS[s.rank].rings.includes(blk.ring);
     const plots = [0, 1, 2, 3].map((i) => derived(s).plotOwner[id * 4 + i]);
     const free = plots.filter((p) => !p).length;
     const status = blk.masked ? 'The surveyors left this block to the fields.' : blk.reserved ? `Kept by the groma for the ${blk.reserved}.`
       : !active ? `Surveyed for later: it joins the pomerium at ${RANK_DEFS[blk.ring].name}.` : `${free} of 4 plots free.`;
-    card.append(h('div', { class: 'ins-line' }, status));
+    card.append(part(h('div', { class: 'ins-line' }, status), 'status'));
     const usable = !blk.masked && !blk.reserved && active;
-    if (usable) card.append(h('div', { class: 'ins-small muted' }, plots.map((p, i) => `plot ${i + 1}: ${p ? BUILDING_DEFS[getBuilding(s, p)?.type ?? 'area'].name.toLowerCase() : 'free'}`).join(' · ')));
-    if (reserved) card.append(h('div', { class: 'ins-good' }, 'Reserved: the Ordo leaves it alone.'));
-    card.append(h('div', { class: 'ins-btns' },
+    if (usable) card.append(part(h('div', { class: 'ins-small muted' }, plots.map((p, i) => `plot ${i + 1}: ${p ? BUILDING_DEFS[getBuilding(s, p)?.type ?? 'area'].name.toLowerCase() : 'free'}`).join(' · ')), 'plots'));
+    if (reserved) card.append(part(h('div', { class: 'ins-good' }, 'Reserved: the Ordo leaves it alone.'), 'reserved'));
+    card.append(part(h('div', { class: 'ins-btns' },
         // the ghost starts on a free plot of this very block (resolvePlaceAt)
         btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area', at: resolvePlaceAt(g.state, 'area', undefined, 'player', { block: id }) }); },
           { cls: 'primary', reason: usable && free ? null : 'No free plot to build on here.' }),
         btn(g, reserved ? 'Release the block' : 'Reserve the block', () => A.toggleReserveBlock(g.state, id),
-          { tip: 'The Ordo never builds in a reserved block.', reason: blk.masked || blk.reserved ? 'Only surveyed house blocks can be reserved.' : !toolRevealed(s, 'reserve') ? 'The Reserve-block tool comes with Oppidum.' : null })));
+          { tip: 'The Ordo never builds in a reserved block.', reason: blk.masked || blk.reserved ? 'Only surveyed house blocks can be reserved.' : !toolRevealed(s, 'reserve') ? 'The Reserve-block tool comes with Oppidum.' : null })), 'actions'));
   }
 
   private tile(card: HTMLElement, tile: number, sticky: boolean): void {
@@ -546,7 +680,7 @@ class InspectorCard {
     const ter = map.terrain[tile];
     const feat = map.feature[tile];
     this.head(card, 'i_ov_terra', 'TERRA', `${TERRAIN[ter] ?? 'Land'}${FEATURE[feat] ? `, ${FEATURE[feat]}` : ''}`, sticky);
-    if (this.collapsed) return;
+    if (this.collapsed && !this.docked) return;
     const d = derived(s);
     const facts: string[] = [];
     if (isFertile(ter as Terrain)) facts.push(`fertile ground ×${fertility(ter as Terrain).toFixed(2)}`);
@@ -554,13 +688,13 @@ class InspectorCard {
     if (map.vein[tile] > 0) facts.push(`ore quality ×${fmt(map.vein[tile])}`);
     if (map.waterTable[tile]) facts.push('on the water table');
     facts.push(d.pomerium[tile] ? 'inside the pomerium' : d.territory[tile] ? 'in our territory' : 'beyond our territory');
-    card.append(h('div', { class: 'ins-line' }, facts.join(' · ')), h('div', { class: 'ins-small muted' }, `(${tx(tile)}, ${ty(tile)})`));
+    card.append(part(h('div', { class: 'ins-line' }, facts.join(' · ')), 'facts'), part(h('div', { class: 'ins-small muted' }, `(${tx(tile)}, ${ty(tile)})`), 'coords'));
     if (!sticky) { card.append(h('div', { class: 'ins-small muted' }, 'Click the ground to see what could be built here.')); return; }
     const can = BUILD_ORDER.filter((type) => buildingVisible(s, type) && !rankReason(s, type))
       .map((type) => ({ type, c: canPlace(s, type, tile, { owner: 'player' }) }))
       .filter((x) => x.c.ok);
-    card.append(h('div', { class: 'ins-head2' }, can.length ? 'Could be built here' : 'Nothing can be built on this spot.'),
+    card.append(part(h('div', { class: 'ins-group' }, h('div', { class: 'ins-head2' }, can.length ? 'Could be built here' : 'Nothing can be built on this spot.'),
       h('div', { class: 'ins-btns wrap' }, can.map(({ type, c }) => btn(g, [img(typeSprite(type), 1, 'chip-ico'), BUILDING_DEFS[type].name, c.ok && c.mult >= 1.05 ? ` ${pct(c.mult)}` : ''],
-        () => { g.startPlacing({ kind: 'building', type, at: c.ok ? idx(c.x, c.y) : tile }); }, { cls: 'ghost' }))));
+        () => { g.startPlacing({ kind: 'building', type, at: c.ok ? idx(c.x, c.y) : tile }); }, { cls: 'ghost' })))), 'buildable'));
   }
 }

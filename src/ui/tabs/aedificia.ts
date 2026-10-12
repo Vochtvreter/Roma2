@@ -1,9 +1,12 @@
 // src/ui/tabs/aedificia.ts — Aedificia / Build: the Agenda, the works queue (↑, ✕, Move, stage bars), the builders line,
-// the tool row, category chips and the building cards (Place, Ask the Ordo, Build next) (DESIGN §10.1, §15.3). Owner: WP-I.
+// the tool row, category chips and the building cards (Place, Ask the Ordo, Build next) (DESIGN §10.1, §15.3). On the phone
+// SHEET at half the same panel draws the compact build tray instead (DESIGN §15.7): the category chips (the last one
+// remembered), a row of small cards scrolling sideways, each with its Place, and Catalogue ⤢ for the whole tab at full.
+// Owner: WP-I.
 import { PATH_DECISIONS } from '../../game/types';
 import type { Building, BuildCat, BuildingId, GameState, ToolId } from '../../game/types';
 import type { Game, Updater } from '../types';
-import { costEl, fmt, h, img, tip } from '../dom';
+import { costEl, fmt, h, img, scrollWithin, tip } from '../dom';
 import * as A from '../../game/actions';
 import { buildingVisible, toolRevealed } from '../../game/reveal';
 import { introduced, plainWork, taughtWorks } from '../../game/intro';
@@ -20,6 +23,8 @@ import { LAYER_META } from '../../game/data/housing';
 import { RESOURCE_DEFS } from '../../game/data/resources';
 import { confirm2 } from '../modals';
 import { touchInput } from '../pointer';
+import { currentDetent, currentHost, moveDetent } from '../layout';
+import { RANK_DEFS } from '../../game/data/ranks';
 import { councilReport } from '../../game/ordo/index';
 import { agendaEl, bar, btn, fresh, lackLine, lacking, newMark, rankReason, section, typeSprite } from './common';
 import type { TabPanel } from './common';
@@ -35,7 +40,13 @@ const CATS: readonly BuildCat[] = ['domus', 'annona', 'aqua', 'materia', 'offici
 const STAGES = ['Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const CLASS_NAME = { plot: 'plot', half: 'half-block', block: 'block', rural: 'rural', fixed: 'fixed' } as const;
 
-let cat: BuildCat | 'all' = 'all';
+let cat: BuildCat | 'all' = 'all';   // the category shown, remembered between visits (the tray's chips and the catalogue's)
+const PULSE_MS = 1600;
+
+/** Aedificia draws the compact build tray (DESIGN §15.7): on the phone SHEET at half; the whole tab anywhere else. */
+function trayShown(): boolean {
+  return currentHost() === 'sheet' && currentDetent() === 'half';
+}
 
 function footprint(type: BuildingId): string {
   const d = BUILDING_DEFS[type];
@@ -147,6 +158,61 @@ function cardEl(g: Game, type: BuildingId, up: Updater[], plain = false): HTMLEl
   return card;
 }
 
+/** A work's one benefit line for the tray: its plain words while the lessons run, else the first clause of its benefit
+ *  ('6 hands × 6 grain a day'). */
+function benefitLine(type: BuildingId, plain: boolean): string {
+  return (plain && plainWork(type)) || BUILDING_DEFS[type].benefit.split(';')[0];
+}
+
+/** A small card of the build tray: the sprite and its cost, the Latin and English names, one benefit line and a 44 px
+ *  Place (a locked work says which rank brings it). */
+function trayCard(g: Game, type: BuildingId, up: Updater[], plain: boolean): HTMLElement {
+  const s = g.state;
+  const def = BUILDING_DEFS[type];
+  const d = derived(s);
+  const locked = rankReason(s, type);
+  const max = def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount ? `Only ${def.maxCount} may be raised.` : null;
+  const placing = g.view.placing;
+  const sel = placing?.kind === 'building' && placing.type === type;
+  const cost = h('span', { class: 'bld-cost' });
+  const refresh = (): void => { cost.replaceChildren(costEl(g.state, def.cost)); };
+  refresh();
+  up.push(refresh);
+  const card = h('div', { class: `bld-tcard${sel ? ' sel' : ''}${locked ? ' locked' : ''}`, 'data-anchor': `b-${type}`, 'data-key': `t-${type}` },
+    h('div', { class: 'bld-tcard-top' }, h('div', { class: 'bld-img' }, img(typeSprite(type), 1)), locked ? null : cost),
+    h('div', { class: 'bld-tcard-name' }, h('b', null, def.latin), h('span', null, def.name),
+      fresh(s, rankDay(s, def.rank)) ? newMark() : null),
+    h('div', { class: 'bld-benefit' }, benefitLine(type, plain)),
+    locked ? h('div', { class: 'bld-lock' }, `Comes with ${RANK_DEFS[def.rank].name}`)
+      : btn(g, 'Place', () => { g.startPlacing({ kind: 'building', type, at: touchInput() ? resolvePlaceAt(g.state, type) : undefined }); },
+        { cls: 'primary bld-tcard-go', reason: max, tip: 'Choose a glowing plot or site on the map.' }));
+  tip(card.querySelector('.bld-img') as HTMLElement, () => details(g.state, type), { wide: true });
+  return card;
+}
+
+/** The compact build tray (the phone SHEET at half): AEDIFICIA · Build with Catalogue ⤢ (the whole tab, at full), the
+ *  category chips once the catalogue is open (All and each category that has a work), then the works of the chosen
+ *  category as cards in a row that scrolls sideways. While the lessons run: the works they have asked for, plainly. */
+function trayEl(g: Game, up: Updater[]): HTMLElement {
+  const s = g.state;
+  const all = introduced(s, 'catalog');
+  const visible = all ? BUILD_ORDER.filter((t) => buildingVisible(s, t)) : taughtWorks(s);
+  const cats = all ? CATS.filter((c) => visible.some((t) => BUILDING_DEFS[t].cat === c)) : [];
+  const shown = cat === 'all' || !cats.includes(cat) ? 'all' : cat;
+  const full = (): void => { g.sfx('click'); moveDetent('full'); };
+  const head = h('div', { class: 'bld-tray-head' }, h('span', { class: 'tab-sec-latin' }, 'AEDIFICIA'), h('span', { class: 'tab-sec-en' }, 'Build'),
+    h('button', { class: 'bld-tray-full', type: 'button', 'aria-label': 'The whole catalogue, the works queue and the tools', onclick: full }, 'Catalogue ⤢'));
+  const chip = (id: BuildCat | 'all', label: string, tipText?: string): HTMLElement =>
+    btn(g, label, () => { cat = id; g.changed(); }, { cls: `bld-cat${shown === id ? ' on' : ''}`, sfx: false, tip: tipText });
+  const chips = cats.length ? h('div', { class: 'bld-tray-cats', role: 'tablist', 'aria-label': 'Categories' },
+    chip('all', 'All'), ...cats.map((c) => chip(c, CAT_LABELS[c].latin, CAT_LABELS[c].english)),
+    // on a short phone the head steps aside: the catalogue is the chips' last stop instead
+    h('button', { class: 'btn small bld-cat bld-tray-more', type: 'button', onclick: full }, 'Catalogue ⤢')) : null;
+  const list = visible.filter((t) => shown === 'all' || BUILDING_DEFS[t].cat === shown);
+  const cards = h('div', { class: 'bld-tray-cards' }, list.map((t) => trayCard(g, t, up, !all)));
+  return h('section', { class: `bld-tray${chips ? '' : ' plain'}`, 'data-anchor': 'cards' }, head, chips, cards);
+}
+
 /** The Build tab. */
 export const panel: TabPanel = {
   id: 'build', label: 'Aedificia', sub: 'Build', icon: 'i_tab_build', hotkey: 'B',
@@ -162,10 +228,12 @@ export const panel: TabPanel = {
       +s.ordo.on.build, Object.values(s.ordo.works).map(Number).join(''), councilReport(s).would.build?.type ?? '', +introduced(s, 'catalog'), taughtWorks(s).join(','), labourKey(s), s.ordo.pin ?? '', s.ordo.requests.map((r) => r.type).join(','),
       placing?.kind === 'building' ? placing.type : placing?.kind ?? '',
       BUILD_ORDER.map((t) => +fresh(s, rankDay(s, BUILDING_DEFS[t].rank))).join(''),
+      trayShown() ? 'tray' : '',   // the host and the detent: discrete, and the same at every tick
     ].join('|');
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;
+    if (trayShown()) { body.append(trayEl(g, up)); return; }
     // while the lessons run (§11.13) Aedificia offers only the works they have asked for, plainly: no Ordo agenda, no
     // tools, no categories; the queue shows only while something rises. Every work opens with its own lesson.
     const all = introduced(s, 'catalog');
@@ -216,7 +284,22 @@ export const panel: TabPanel = {
     return n ? { text: String(n), kind: 'info' } : null;
   },
   focus(anchor: string): void {
-    // a card is shown among its own kind (the Aqua works for a cistern), so the work asked for is near the top
+    // a card is shown among its own kind (the Aqua works for a cistern), so the work asked for is near the top; the
+    // cards themselves (the phone's lesson VIII: a work of the player's choosing) show every kind
     if (anchor.startsWith('b-')) cat = BUILDING_DEFS[anchor.slice(2) as BuildingId]?.cat ?? 'all';
+    else if (anchor === 'cards') cat = 'all';
+  },
+  /** Scrolls to an anchor and pulses it: in the build tray a card is brought into its sideways row too. */
+  scrollTo(anchor: string, body: HTMLElement): void {
+    const el = body.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(anchor)}"]`);
+    if (!el) return;
+    const row = el.closest<HTMLElement>('.bld-tray-cards');
+    if (row) {
+      const r = row.getBoundingClientRect(), e = el.getBoundingClientRect();
+      if (e.left < r.left || e.right > r.right) row.scrollLeft += e.left - r.left - 8;
+    }
+    scrollWithin(body, el, row ? 'nearest' : 'start');
+    el.classList.add('side-pulse');
+    window.setTimeout(() => el.classList.remove('side-pulse'), PULSE_MS);
   },
 };

@@ -1,8 +1,8 @@
 // src/ui/history.ts — the layer stack that Back and Esc walk (DESIGN §15.8). Android's back button, a browser's Back and
 // Safari's edge swipe close what the player opened, top first, and never drop a colony by surprise. Owner: WP-H.
-// Layers register with a rank (a modal 100 › the speed popover 70 › the Breviarium tray 60 › placing 50 › the selection
-// 40 › the panel above its host's default detent 30, layout.ts: the Esc chain of keys.ts; later layers such as the context
-// card slot in between). While a game is up, one sentinel entry sits
+// Layers register with a rank (a modal 100 › the speed popover 70 › the Breviarium tray 60 › placing 50 › the phone's
+// event card in the sheet's slot 45 › the selection 40 (on the phone: the context card) › the panel above its host's
+// default detent 30, layout.ts: the Esc chain of keys.ts). While a game is up, one sentinel entry sits
 // on the session history. Back pops it (popstate): the open layer of the highest rank closes and the sentinel goes back
 // on. With nothing open, the first Back saves and says 'Back again to leave · the colony is saved', and the sentinel
 // stays off for LEAVE_MS: a second Back is then the browser's own, which leaves (or closes the tab, or the installed
@@ -18,7 +18,7 @@ export interface BackLayer { rank: number; open(): boolean; close(): void }
 
 /** The ranks of the layers every host has; a later layer takes a rank between them. The phone's speed popover and the
  *  Breviarium (tray.ts) drop over everything but a modal: Back closes them before placing or the selection. */
-export const BACK_RANK = { modal: 100, popover: 70, tray: 60, placing: 50, selection: 40, detent: 30 } as const;
+export const BACK_RANK = { modal: 100, popover: 70, tray: 60, placing: 50, card: 45, selection: 40, detent: 30 } as const;
 /** How long the 'Back again to leave' warning stands: a second Back within it leaves. */
 export const LEAVE_MS = 3000;
 const KEY = 'castraBack';

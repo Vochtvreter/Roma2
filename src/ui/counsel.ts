@@ -5,10 +5,13 @@
 // there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
 // On the phone SHEET (layout.ts, sheet.ts) the card is the voice line at the sheet's head: folded, its head is two rows
 // (portrait, kicker and title) with the one action chip of voiceAction and a '+n' pip for what else waits; a tap on the
-// line unfolds the card inside the sheet, at half (Layout.lift), and a closed sheet folds it again.
+// line unfolds the card inside the sheet, at half (Layout.lift), and a closed sheet folds it again. There a dispatch (an
+// event to answer) comes through the line too, right after a Periculum: 'NVNTIVS · … · 28 d' with Read, which opens the
+// event card in the sheet's slot (choice.ts); and lesson I's card carries the Annona labour line, so its job is done in
+// the card itself (layout.ts CARD_LESSONS).
 import { ADVISORS } from '../game/types';
-import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GameState, GuideStep, PathDecisionId, RankIndex, Remedy, TabId } from '../game/types';
-import type { Game } from './types';
+import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GameState, GuideStep, LaborCat, PathDecisionId, PendingChoice, RankIndex, Remedy, TabId } from '../game/types';
+import type { Game, Updater } from './types';
 import { clear, fmtDays, h, img, scrollWithin, tip } from './dom';
 import { caps } from './tipkit';
 import { PointerHold } from './steady';
@@ -30,13 +33,14 @@ import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { portrait } from '../render/art/index';
 import { shows, tabShown } from './intro';
-import { bringTarget, currentHost, revealTarget, routeIntent } from './layout';
+import { CARD_LESSONS, CARD_ROWS, bringTarget, currentHost, hostPointer, lessonFolds, registerBringer, revealTarget, routeIntent } from './layout';
 import type { Layout } from './layout';
+import { labourEl } from './tabs/labour';
 
-/** The one item the card shows. */
+/** The one item the card shows ('event': a dispatch to answer, on the phone SHEET only: elsewhere its own card floats). */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
   | { kind: 'lesson'; l: Lesson; index: number; done: boolean; nudge: boolean; stuck: boolean }
-  | { kind: 'offer'; duties: DutyId[] } | { kind: 'calm' };
+  | { kind: 'offer'; duties: DutyId[] } | { kind: 'event'; c: PendingChoice } | { kind: 'calm' };
 
 /** One thing that waits on the player: a row of the Breviarium's "Awaiting you" (tray.ts), and what the phone's voice
  *  line counts in its '+n' pip. A Periculum or Cave advisory, a dispatch to answer (s.choice), chores learned and not yet
@@ -60,19 +64,24 @@ const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
 const OPPORTUNITAS = 'augur.petition';
 const PULSE_MS = 3000;
 const PULSE_TRIES = 20;
+/** The labour line a lesson card carries on the SHEET (CARD_LESSONS): lesson I's hands go on the fields there. */
+const CARD_LABOUR: Partial<Record<LessonId, LaborCat>> = { fields: 'food' };
 const APPOINTED_AT: Partial<Record<AdvisorId, string>> = {
   quaestor: 'Appointed at Vicus, or with the first coin trouble', aedilis: 'Appointed at Vicus, or when a house is stuck',
   augur: 'Appointed with the first omen, or on Kal. Sept.',
 };
 
-/** The counsel priority rule (DESIGN §15.1): exactly one item. */
-export function pickCounsel(g: Game): CounselItem {
+/** The counsel priority rule (DESIGN §15.1): exactly one item. `events` (the phone SHEET, by default when it is the host):
+ *  a dispatch to answer comes through the card (the voice line) right after a Periculum, before anything else: it
+ *  expires, and its own card no longer floats over the map there. */
+export function pickCounsel(g: Game, events = currentHost() === 'sheet'): CounselItem {
   const s = g.state;
   const adv = activeAdvisories(s, { forCard: true });
   const tipStep = nextTip(s);
   const bySev = (sev: number): ActiveAdvisory | undefined => adv.find((a) => a.memo.sev === sev && a.rule !== OPPORTUNITAS);
   const peril = bySev(3);
   if (peril) return { kind: 'advisory', a: peril };
+  if (events && s.choice) return { kind: 'event', c: s.choice };
   if (tipStep?.urgent) return { kind: 'tip', t: tipStep };
   // an opening lesson (§11.13) holds the card until its job is done, then shows its payoff for a few seconds
   const cur = currentLesson(s);
@@ -151,7 +160,8 @@ export function voiceAction(item: CounselItem | AwaitItem, s: GameState): VoiceA
 /** How many waiting items (awaitingItems) the voice line's '+n' pip counts beside the one it shows (pure;
  *  tests/voice.test.ts): all of them, less the shown item when it is one of them (the same advisory, or the chores). */
 export function waitingBeyond(items: readonly AwaitItem[], shown: CounselItem): number {
-  const own = items.some((x) => (x.kind === 'advisory' && shown.kind === 'advisory' && x.a.rule === shown.a.rule) || (x.kind === 'offer' && shown.kind === 'offer'));
+  const own = items.some((x) => (x.kind === 'advisory' && shown.kind === 'advisory' && x.a.rule === shown.a.rule) || (x.kind === 'offer' && shown.kind === 'offer')
+    || (x.kind === 'event' && shown.kind === 'event'));
   return items.length - (own ? 1 : 0);
 }
 
@@ -171,6 +181,7 @@ export function counselSig(g: Game, item: CounselItem): string {
   if (item.kind === 'tip') key = `t:${item.t.id}`;
   if (item.kind === 'lesson') key = `l:${item.index}:${item.done ? 1 : 0}:${item.nudge ? 1 : 0}${item.stuck ? 1 : 0}:${item.l.progress?.(s) ?? ''}:${item.l.id === 'ordo' ? pendingOffers(s).join(',') : ''}`;
   if (item.kind === 'offer') key = `o:${item.duties.join(',')}`;
+  if (item.kind === 'event') key = `e:${item.c.event}:${item.c.created}`;
   if (item.kind === 'advisory') {
     const r = renderAdvisory(s, view(s), item.a);
     key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
@@ -182,17 +193,19 @@ export function counselSig(g: Game, item: CounselItem): string {
 
 /** "Show me" for a lesson (its card's button, the voice line's chip, an "Awaiting you" row): its tab opens on its anchor
  *  where the lessons' table routes it (or the panel makes way for the map: a map lesson), the host brings a target it
- *  hides into view (the SHEET's Mappae popover for the overlay bar), and the target glows. */
+ *  hides into view (the SHEET's Mappae popover for the overlay bar, its lesson card for the row the card carries:
+ *  hostPointer), and the target glows. */
 export function showLesson(g: Game, l: Lesson): void {
-  const ptr = lessonPointer(l);
+  const ptr = hostPointer(l, currentHost() ?? 'columns');
   if (ptr.open) g.openTab(ptr.open, ptr.anchor, 'lesson');
   else routeIntent({ kind: 'lesson', lesson: l.id });
   if (ptr.glow) { bringTarget(ptr.glow); pulseTarget(ptr.glow); }
 }
 
-/** Pulses a selector's element for 3 s (retries while a freshly opened tab builds); one in the side panel's body is
- *  scrolled into view there, and nothing else ever scrolls (dom.scrollWithin: the chrome stays put). A target the host
- *  hides glows its proxy instead (layout.reveal: the Mappae button for the overlay bar on a phone, from P2). */
+/** Pulses a selector's element for 3 s (retries while a freshly opened tab builds); one in the side panel's body (or in a
+ *  phone lesson card's body) is scrolled into view there, and nothing else ever scrolls (dom.scrollWithin: the chrome
+ *  stays put). A target the host hides glows its proxy instead (layout.reveal: the Mappae button for the overlay bar on
+ *  a phone, from P2). */
 export function pulseTarget(target: string): void {
   const selector = revealTarget(target);
   let tries = 0;
@@ -200,7 +213,8 @@ export function pulseTarget(target: string): void {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) { if (++tries < PULSE_TRIES) window.setTimeout(go, 60); return; }
     el.classList.add('guide-glow');
-    const body = el.closest<HTMLElement>('#tab-body');
+    // the box it scrolls in: the tab body, or a phone lesson card's own body (the row it carries: CARD_ROWS)
+    const body = el.closest<HTMLElement>('#tab-body') ?? el.closest<HTMLElement>('#counsel .counsel-body');
     // a frame later: the card that unfolds with a lesson (a phone's sheet, above its tab body) has taken its room by then.
     // And again while it glows, whenever the body, the row or the tab's content changes size (the sheet coming to rest, a
     // line the panel adds once the day turns): the row the lesson points at stays whole in view
@@ -228,6 +242,8 @@ export class Counsel {
   private open = false;                       // mobile: the card is expanded from its portrait chip
   private autoOpen = false;                   // … and it was a tip or lesson that unfolded it
   private skipArmed = false;                  // "Skip the lessons" asks once more before it skips
+  private live: Updater[] = [];               // live parts of the card (a lesson's labour line): refreshed every update
+  private item: CounselItem = { kind: 'calm' };   // the item on the card
   /** The layout (UI.build): on the SHEET an unfolded card raises a closed sheet to half and lets it drop again. */
   layout: Pick<Layout, 'lift' | 'drop' | 'detent'> | null = null;
   /** The voice line's '+n' pip: the UI root opens the Breviarium at "Awaiting you". */
@@ -237,6 +253,16 @@ export class Counsel {
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.hold = new PointerHold(root);
+    // "Show me" on a row a lesson's card carries on the SHEET (CARD_ROWS): the card unfolds, and its row glows
+    for (const sel of Object.keys(CARD_ROWS.sheet)) registerBringer(sel, () => this.unfoldLesson());
+  }
+
+  /** Unfolds a card lesson's card on the SHEET (CARD_LESSONS); true when the card shows the lesson. */
+  private unfoldLesson(): boolean {
+    const it = this.item;
+    if (currentHost() !== 'sheet' || it.kind !== 'lesson' || !CARD_LESSONS.includes(it.l.id)) return false;
+    if (!this.open) this.toggleOpen();
+    return true;
   }
 
   /** True while the mouse rests on the card or the strip: the Res Gestae above holds still too (objective.ts). */
@@ -252,12 +278,16 @@ export class Counsel {
     const sig = counselSig(g, item);
     if (sig !== this.sig && !this.hold.holds()) {
       this.sig = sig;
+      this.item = item;
       this.build(item);
       this.textDay = s.day;
-    } else if (this.refresh && s.day !== this.textDay) {
+      return;
+    }
+    if (this.refresh && s.day !== this.textDay) {
       this.textDay = s.day;
       this.refresh();
     }
+    for (const u of this.live) { try { u(); } catch (e) { console.error('[counsel] updater', e); } }
   }
 
   /** The sheet came down to closed (the player, Back, placing): the card folds into its line. */
@@ -272,9 +302,11 @@ export class Counsel {
   private build(item: CounselItem): void {
     clear(this.root);
     this.refresh = null;
+    this.live = [];
     const sheet = currentHost() === 'sheet';
     const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}`
-      : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : item.kind === 'offer' ? `o:${item.duties[0]}` : 'c';
+      : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : item.kind === 'offer' ? `o:${item.duties[0]}`
+        : item.kind === 'event' ? `e:${item.c.event}:${item.c.created}` : 'c';
     const enter = key !== this.shownKey;
     const wasOffer = this.shownKey.startsWith('o:');
     this.shownKey = key;
@@ -282,8 +314,12 @@ export class Counsel {
     // read or its payoff has shown the card folds again. A duty offer never unfolds by itself: eight chores with two
     // buttons each would cover the whole map; its title says what waits and a tap opens it. Answering one of its chores
     // brings the same offer back shorter: an unfolded card stays unfolded
-    if (enter && (item.kind === 'tip' || item.kind === 'lesson')) { this.open = true; this.autoOpen = true; }
+    // On the SHEET a lesson whose job is a build tray card arrives folded (lessonFolds: the tray needs the half whole)
+    const folds = sheet && item.kind === 'lesson' && !item.done && lessonFolds(item.l, 'sheet');
+    if (enter && folds) { this.open = false; this.autoOpen = false; }
+    else if (enter && (item.kind === 'tip' || item.kind === 'lesson')) { this.open = true; this.autoOpen = true; }
     else if (enter && ((item.kind === 'offer' && !wasOffer) || this.autoOpen)) { this.open = false; this.autoOpen = false; }
+    if (item.kind === 'event') { this.open = false; this.autoOpen = false; }   // its line's Read opens the event card itself
     // on a phone's sheet the card unfolds inside the sheet: a new lesson raises a closed sheet to half (it is to be read
     // and done), a tip waits folded in the voice line while the sheet is closed (the map first), and a card that folds
     // lets the sheet it raised drop again
@@ -298,7 +334,7 @@ export class Counsel {
     if (shows(this.g, 'portraits')) this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
     if (item.kind === 'calm') { this.root.appendChild(this.calm()); return; }
     const card = item.kind === 'tip' ? this.tipCard(item.t) : item.kind === 'lesson' ? this.lessonCard(item)
-      : item.kind === 'offer' ? this.offerCard(item.duties) : this.advisoryCard(item.a);
+      : item.kind === 'offer' ? this.offerCard(item.duties) : item.kind === 'event' ? this.eventCard(item.c) : this.advisoryCard(item.a);
     if (enter) card.classList.add('enter');
     if (sheet) card.querySelector('.counsel-head')?.append(this.voiceActs(item));
     else card.prepend(h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾'));
@@ -338,8 +374,8 @@ export class Counsel {
   }
 
   /** The voice line's chip: a remedy runs (one that cannot says why, as the tray's rows and the card's buttons do: a
-   *  dimmed chip's tap is a refusal with its reason, never a start), a tab opens part-way, a lesson shows, the dispatch
-   *  unfolds. */
+   *  dimmed chip's tap is a refusal with its reason, never a start), a tab opens part-way, a lesson shows (and its card
+   *  folds), the dispatch unfolds. */
   private runAction(a: VoiceAction): void {
     const g = this.g;
     switch (a.kind) {
@@ -349,7 +385,15 @@ export class Counsel {
         return;
       case 'open': g.openTab(a.tab, a.anchor, 'chip'); return;
       case 'event': if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); return;
-      case 'lesson': { const l = LESSONS.find((x) => x.id === a.lesson); if (l) showLesson(g, l); return; }
+      case 'lesson': {
+        const l = LESSONS.find((x) => x.id === a.lesson);
+        if (!l) return;
+        showLesson(g, l);
+        // on the phone the card folds into its line once it has shown where the job is: the tab (or the map, the frame)
+        // takes the sheet's room. A lesson whose card carries its job stays open
+        if (currentHost() === 'sheet' && this.open && !CARD_LESSONS.includes(l.id)) this.toggleOpen();
+        return;
+      }
     }
   }
 
@@ -449,6 +493,10 @@ export class Counsel {
     }
     const then = !x.done && next ? h('div', { class: 'lesson-then' }, `Then: ${next.title}`) : null;
     if (x.nudge && !x.done) { const glow = lessonPointer(l).glow ?? (l.tab ? `#tab-${l.tab}` : null); if (glow) pulseTarget(glow); }
+    // the phone carries the job's own row in the card (CARD_LESSONS): lesson I's hands go on the fields here, ± held to
+    // repeat, without opening Populus
+    const cat = currentHost() === 'sheet' && !x.done && CARD_LESSONS.includes(l.id) ? CARD_LABOUR[l.id] : undefined;
+    const labour = cat ? h('div', { class: 'lesson-labour' }, labourEl(g, this.live, [cat])) : null;
     const notes = s.counters.mentorDiedDay !== null;
     const kicker = h('span', { class: 'counsel-kicker' }, `DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`);
     const title = h('span', { class: 'counsel-title' }, l.title);
@@ -460,7 +508,27 @@ export class Counsel {
       : h('div', { class: 'counsel-who' }, kicker, title);
     return h('div', { class: `counsel-card tip lesson${x.done ? ' done' : ''}${x.nudge ? ' nudge' : ''}`, role: 'note' },
       h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'), who),
-      h('div', { class: 'counsel-body' }, text, job, acts, then));
+      h('div', { class: 'counsel-body' }, text, job, labour, acts, then));
+  }
+
+  /** A dispatch to answer, as the phone's voice line (DESIGN §15.7): its kicker ('NVNTIVS · VETERANI AD PORTAM') and the
+   *  days left over its title, and Read (voiceAction), which opens the event card in the sheet's slot (choice.ts); a tap
+   *  on the line reads it too. The days count down once a day. */
+  private eventCard(c: PendingChoice): HTMLElement {
+    const g = this.g;
+    const days = h('span', { class: 'voice-prog voice-days num' });
+    const tick = (): void => {
+      const d = Math.max(0, c.expires - g.state.day);
+      days.textContent = `${d} d`;
+      days.classList.toggle('bad', d <= B.advisors.RULES.CHOICE_SOON);
+    };
+    tick();
+    this.refresh = tick;
+    const read = (): void => { g.sfx('click'); if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); };
+    return h('div', { class: 'counsel-card event', role: 'alert' },
+      h('div', { class: 'counsel-head', onclick: read }, img('f_seal', 2, 'counsel-face'),
+        h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, caps(c.kicker)), days),
+          h('span', { class: 'counsel-title' }, c.title))));
   }
 
   /** Duties the player has learned (§10.2): each to hand to the Ordo or keep; Edicta's Mandata can change it later. */

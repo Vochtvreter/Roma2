@@ -33,6 +33,7 @@
 .ins-chain .tab-kv-v { font-family: var(--font-body); }
 .ins-chain { display: flex; flex-direction: column; padding: 2px 6px; background: var(--well); border: 1px solid var(--well-line); border-radius: var(--r1); }
 .ins-demolish { color: var(--muted); }
+.ins-group { display: contents; }   /* a part of several boxes (a head and its list): no box of its own */
 
 /* A clicked target's card: a popup pinned beside it on the map (placed by Inspector each frame), its tail pointing at it.
    data-tail names the popup edge the tail sits on; --tail is its offset along that edge. */

@@ -1,4 +1,8 @@
-/* src/styles/tabs.css — owner I (WP-I UI panels). Tab bodies: Edicta, Consiliarii, Aedificia, Populus, Commercium, Annales. Prefixes tab- ed- adv- bld- pop- tr- ann-. */
+/* src/styles/tabs.css — owner I (WP-I UI panels). Tab bodies: Edicta, Consiliarii, Aedificia, Populus, Commercium, Annales. Prefixes tab- ed- adv- bld- pop- tr- ann-.
+   The tab body (#tab-body, panels.css) is a size container: its pages lay out by its own width, whatever the host (the
+   end of this file): one column under 520 px (the 380 px desktop panel, a phone), two from 520 and three from 840 (a
+   tablet's wide sheet, a wide pane), and the dense rows (labour lines, trade rows, edict rows) fold under 330 (a
+   landscape phone's drawer) so nothing is cut off. */
 
 /* ───────── shared ───────── */
 .tab-sec { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 6px; }
@@ -52,9 +56,9 @@
 .tab-lab-name { font-size: 14px; }
 .tab-lab-prio { margin-left: 6px; font-size: 11px; color: var(--gold); }
 .tab-lab-ctl { display: flex; align-items: center; gap: 4px; }
-.tab-lab-count { min-width: 64px; text-align: center; font-size: 12px; }
+.tab-lab-count { min-width: 64px; text-align: center; font-size: 12px; white-space: nowrap; }
 .tab-lab-count.short { color: var(--ember); }
-.tab-lab-pm { min-width: 26px; font-size: 15px; }
+.tab-lab-pm { min-width: 26px; font-size: 15px; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* held to repeat */
 
 /* ───────── Edicta ───────── */
 .ed-path { position: relative; display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px;
@@ -106,7 +110,7 @@
 .ed-would { flex: 1; font-size: 12px; color: #c9dff0; font-style: italic; }
 
 /* ───────── Consiliarii ───────── */
-.adv-filters { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
+.adv-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(48px, 1fr)); gap: 3px; }   /* six across from 303 px of body */
 .btn.adv-f { position: relative; min-width: 0; flex-direction: column; gap: 1px; min-height: 64px; padding: 3px 1px; border-color: var(--ring); }
 .btn.adv-f.on { border-color: var(--ember); background: linear-gradient(180deg, rgba(240,160,75,.22), rgba(240,160,75,.05)); }
 .adv-f.absent img { opacity: .55; }
@@ -160,7 +164,7 @@
 .bld-btns { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
 
 /* ───────── Populus ───────── */
-.pop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.pop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 4px; }   /* three in a 380 px panel, more as it widens */
 .pop-cell { padding: 4px 6px; background: var(--well); border: var(--border-w) solid var(--well-line); border-radius: var(--r1); cursor: help; min-width: 0; }
 .pop-k { font-family: var(--font-caps); font-size: 9px; color: var(--muted); letter-spacing: .04em; }
 .pop-v { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -237,3 +241,33 @@
 .ann-tip p { margin: 2px 0 6px 14px; font-size: 12px; }
 .tab-confirm { display: block; margin-top: 3px; font-size: 12px; color: var(--gold); font-family: var(--font-caps); letter-spacing: .03em; }
 .ann-filters .btn.bld-cat { padding: 1px 5px; font-size: 11px; }
+
+/* ───────── the page by the tab body's width (container queries) ───────── */
+#tab-body { container: tab-body / inline-size; }
+/* from 520 px the sections of a page share two columns (three from 840), each kept whole; the body's flex column becomes
+   a block so the columns can flow (.side-body, panels.css) */
+@container tab-body (min-width: 520px) {
+  .side-body { display: block; columns: 2; column-gap: 16px; }
+  .side-body > * { break-inside: avoid; }
+  .side-body > .tab-sec:first-child { margin-top: 0; }
+}
+@container tab-body (min-width: 840px) {
+  .side-body { columns: 3; }
+}
+/* under 330 px (a landscape phone's 340 px drawer, whose body is 314): the dense rows fold, so no button is cut off at
+   the body's edge. Not at 330–339: the 380 px desktop panel's body is 354 px, and 339 with a classic 15 px scrollbar */
+@container tab-body (max-width: 329px) {
+  .tab-lab { grid-template-columns: minmax(0, 1fr); }
+  .tab-lab-ctl { flex-wrap: wrap; }
+  .tab-lab-count { min-width: 52px; }
+  .tr-row { grid-template-columns: 26px minmax(0, 1fr); }
+  .tr-row > .tr-btns { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+  .tr-top, .tr-goods, .tr-quick { flex-wrap: wrap; }
+  .tr-field:has(.ed-slider) { grid-template-columns: 52px minmax(0, 1fr) 28px; }
+  .tr-field:has(.ed-slider) > :last-child { grid-column: 1 / -1; }
+  .ed-row { flex-wrap: wrap; }
+  .ed-row > .ed-row-main { flex: 1 1 100%; }
+  .ed-would-row { flex-wrap: wrap; }
+  .bld-q { grid-template-columns: 36px minmax(0, 1fr); }
+  .bld-q > .bld-q-btns { grid-column: 2; }
+}

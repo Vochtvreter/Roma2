@@ -33,6 +33,7 @@
 .modal-p { margin: 0 0 10px; color: #e6d9c2; line-height: 1.45; }
 .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .modal-status { min-height: 18px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.modal-foot { display: contents; }   /* the actions and their status line: one box only on a phone's sheet (sheet.css) */
 .modal-text, .modal-input {
   width: 100%; padding: 8px 10px; border: 2px solid var(--line-2); border-radius: 4px; background: rgba(0, 0, 0, .35); color: var(--text);
 }

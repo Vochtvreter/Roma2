@@ -4,7 +4,9 @@
 // detent, the data-* size classes on #app and the camera's insets; the Breviarium (tray.ts) drops from any HUD figure and
 // holds the Res Gestae panel on a phone's sheet. On the phone SHEET host, sheet.ts gives the sheet its grabber and voice
 // line (the counsel and the ticker re-hosted there), the tab buttons are its bar, and MapColumn (mapbar.ts) its tool
-// column; placing, the pinned inspector, the lessons and the voice line's chips route the sheet (layout.go). Owner: WP-H.
+// column; placing, the pinned inspector, the lessons and the voice line's chips route the sheet (layout.go). The sheet's
+// slot holds one card at a time (here: the context card or the event card, docked by Layout.dock), and closing it puts
+// the sheet back as it was. Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -19,13 +21,13 @@ import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
 import { MapColumn, MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
-import { Layout } from './layout';
+import { Layout, hostPointer, lessonFolds } from './layout';
 import { SheetHost } from './sheet';
 import { Tray } from './tray';
 import type { Detent } from './layout';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
-import { syncBack } from './history';
+import { BACK_RANK, registerBack, syncBack } from './history';
 import { watchPointer } from './pointer';
 import { getBuilding } from '../game/state';
 import { dismissTip } from '../game/actions';
@@ -38,7 +40,7 @@ import { PATH_DEFS } from '../game/data/decisions';
 import { PATH_DECISIONS } from '../game/types';
 import { B } from '../game/balance';
 import { present, shows } from './intro';
-import { currentLesson, introRunning, lessonPointer } from '../game/intro';
+import { currentLesson, introRunning } from '../game/intro';
 import { DUTY_DEFS } from '../game/ordo/duties';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
@@ -77,6 +79,7 @@ export class UI {
   private lowered: Detent | null = null;   // the sheet was dropped for the event card (choice.onStage): its detent, to go back to
   private placedOk = false;                // the placing that ends now ended in a work placed (placed()): the sheet stays closed
   private unpinning = false;               // the pinned card closed this turn: its restore waits to see whether another opens
+  private swapping = false;                // one card is giving the sheet's slot to the other: no restore in between
 
   constructor(private readonly g: Game) {}
 
@@ -114,24 +117,60 @@ export class UI {
     this.counsel.onAwaiting = () => this.tray.show('awaiting');
     this.counsel.onRead = () => this.readDispatch();
     this.layout.onChange((why) => { if (why === 'detent' && this.layout.host === 'sheet' && this.layout.detent === 'closed') this.counsel.fold(); });
-    // focus (IMPL §1): on the SHEET a pinned card clears the map (the sheet closes, remembered) and closing it puts the
-    // sheet back; a card replaced by another in the same turn (a tap from one target to the next) keeps it closed
+    this.choice = new ChoiceCard(g, el('choice'));
+    // the phone SHEET's one card slot (SPEC A graft 4): the context card (the pinned inspector) or the event card, never
+    // both, docked above the bar where the sheet was (Layout.dock). Opening one is a focus (IMPL §1: the sheet closes,
+    // remembered, and the camera brings the target clear above the card); one card taking the slot from the other keeps it
+    // closed; closing the last (✕, Back, its building gone, a bar slot) puts the sheet back: its tab, detent and scroll. A
+    // card replaced by another of its kind in the same turn (a tap from one target to the next) keeps it closed too
     this.inspector.onPin = (on) => {
       if (this.layout.host !== 'sheet') return;
-      if (on) { this.unpinning = false; this.layout.go({ kind: 'focus' }); return; }
+      if (on) {
+        this.unpinning = false;
+        if (this.choice.staged) this.swap(() => this.choice.fold());
+        this.layout.go({ kind: 'focus' });
+        return;
+      }
+      if (this.swapping) return;
       this.unpinning = true;
       queueMicrotask(() => { if (this.unpinning && !this.inspector.pinned) { this.unpinning = false; this.layout.restore(); } });
     };
-    this.choice = new ChoiceCard(g, el('choice'));
+    this.inspector.onDock = (card) => {
+      if (card) this.layout.dock(card);
+      else if (this.layout.docked === this.inspector.popupEl) this.layout.dock(null);
+    };
     this.side.onChoiceAnchor = () => this.readDispatch();   // "Read the dispatch" unfolds the event card itself
     this.tray.onRead = () => this.readDispatch();
-    // a portrait phone gives an unfolded event card the sheet's room: the sheet drops to its tab bar while the card is
-    // up (its text and its pinned answers both show) and comes back once it is answered or folded. A tab tapped
-    // meanwhile opens the sheet again; the card then scrolls in what is left
+    // a bar slot tapped while a card stands in the sheet's slot: the card steps aside for the tab (its restore first)
+    this.side.onSlotTap = () => {
+      if (this.choice.staged && this.layout.docked === el('choice')) { this.choice.fold(); return true; }
+      if (!this.inspector.pinned) return false;
+      g.select(null);
+      g.inspect(null, true);
+      if (this.unpinning) { this.unpinning = false; this.layout.restore(); }
+      return true;
+    };
+    // the event card on the phone SHEET: Read docks it in the sheet's slot (a focus, as above) and folding or answering it
+    // gives the slot back. Back folds it (a layer). Elsewhere a portrait sheet (a 720–899 px tablet until P4 docks it)
+    // drops to its tab bar while the card is up and comes back once it is answered or folded
+    registerBack({ rank: BACK_RANK.card, open: () => this.layout.host === 'sheet' && this.choice.staged, close: () => this.choice.fold() });
     this.choice.onStage = (up) => {
       const L = this.layout;
+      if (L.host === 'sheet') {
+        const card = el('choice');
+        if (up) {
+          if (this.inspector.pinned) this.swap(() => { g.select(null); g.inspect(null, true); });
+          L.go({ kind: 'focus' });
+          L.dock(card);
+        } else {
+          if (L.docked === card) L.dock(null);
+          if (!this.swapping && !this.inspector.pinned) L.restore();
+        }
+        return;
+      }
+      if (L.docked === el('choice')) L.dock(null);   // the phone turned with the card up: it floats again here
       if (up) {
-        if (L.detent !== 'closed' && (L.host === 'sheet' || (typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches))) { this.lowered = L.detent; L.setDetent('closed'); }
+        if (L.detent !== 'closed' && typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches) { this.lowered = L.detent; L.setDetent('closed'); }
       } else if (this.lowered) {
         const d = this.lowered;
         this.lowered = null;
@@ -142,7 +181,15 @@ export class UI {
     this.column = new MapColumn(g, el('map-col'), el('overlay-bar'), el('zoom-ctl'), this.layout);
     this.layout.onMount((host) => this.column.mount(host));
     this.layout.onChange(() => this.column.fit());   // a detent, a host, the free map: the column fits its strip again
+    // a new detent or host can change how a tab draws itself (Aedificia is a build tray at the SHEET's half)
+    this.layout.onChange((why) => { if (why !== 'free') this.side.poke(); });
     this.showPlaceBanner(null, null);
+  }
+
+  /** Runs `fn` while one card hands the sheet's slot to the other: the closing card's restore stays off. */
+  private swap(fn: () => void): void {
+    this.swapping = true;
+    try { fn(); } finally { this.swapping = false; }
   }
 
   /** Forces every widget to re-check its signature on the next frame (Game.changed). */
@@ -200,8 +247,12 @@ export class UI {
     if (this.lessonShown?.s === s && this.lessonShown.i === key) return;
     this.lessonShown = { s, i: key };
     if (!cur || cur.done) return;
-    // where the lessons' table routes it (layout.ts LESSON_VIEW): its tab opens, or the panel makes way for the map
-    const ptr = lessonPointer(cur.lesson);
+    // where the lessons' table routes it (layout.ts LESSON_VIEW): its tab opens, or the panel makes way for the map (on
+    // the phone a card lesson's own card carries its job: hostPointer)
+    const ptr = hostPointer(cur.lesson, this.layout.host);
+    // a lesson whose job is a card of the phone's build tray comes folded (lessonFolds): the card that stood in the voice
+    // line folds at once, so the tray's card is whole in view as it pulses (the counsel draws the new lesson a moment on)
+    if (lessonFolds(cur.lesson, this.layout.host)) this.counsel.fold();
     if (ptr.open) this.g.openTab(ptr.open, ptr.anchor, 'lesson');
     else this.layout.go({ kind: 'lesson', lesson: cur.lesson.id });
     if (ptr.glow) pulseTarget(ptr.glow);
@@ -347,17 +398,18 @@ export class UI {
     if (L?.host === 'sheet') {
       if (now) L.go({ kind: 'place' });
       else if (this.placedOk) L.forget();
-      else L.restore();
+      else if (!this.inspector.pinned) L.restore();   // a card placing started from comes back: the sheet stays aside
     }
     this.placedOk = false;
     L?.refresh();
   }
 
-  /** Unfolds the event card (the voice line's Read, the Breviarium's, "Read the dispatch"): a full phone sheet, which
-   *  leaves the card no map to stand on (sheet.css hides it there), comes down first. False when no dispatch waits. */
+  /** Unfolds the event card (the voice line's Read, the Breviarium's, "Read the dispatch"): on the phone it docks in the
+   *  sheet's slot (choice.onStage), never over placing (asked for while placing, the placing ends first). False when no
+   *  dispatch waits. */
   private readDispatch(): boolean {
     if (!this.g.state.choice) return false;
-    if (this.layout.host === 'sheet' && this.layout.detent === 'full') this.layout.setDetent('closed');
+    if (this.layout.host === 'sheet' && this.g.view.placing) this.g.cancelPlacing();
     return this.choice.reveal();
   }
 

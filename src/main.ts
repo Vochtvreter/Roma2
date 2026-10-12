@@ -23,7 +23,8 @@ import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
-import { idx } from './game/map';
+import { idx, tx, ty } from './game/map';
+import { BUILDING_DEFS } from './game/data/buildings';
 import { blockOfTile, derived } from './game/derived';
 import { resolvePlaceAt } from './game/site';
 import * as actions from './game/actions';
@@ -41,6 +42,8 @@ import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
 import { closeAllModals, exportDue, modalCount } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
+import { afterPlace, keepPlacing, startAt } from './ui/mapbar';
+import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 import type { OpenFrom } from './ui/layout';
 
@@ -159,10 +162,17 @@ class App implements Game {
   startPlacing(p: PlacingState): void {
     if (this.mode !== 'game') return;
     this.sfx('click');
-    // the banner first: a pre-positioned ghost reports its verdict from view.startPlacing (onPlacementPreview), and on
-    // touch that verdict carries the Place button, which a banner drawn after it would wipe
-    this.ui.showPlaceBanner(p, null);
-    this.view.startPlacing(p, this.state);
+    this.beginPlacing(p);
+  }
+
+  /** Placing starts (or goes on to the next plot: placeAt). A finger's ghost, or any on the phone SHEET, starts on the
+   *  best plot when none was given (startAt), so Place shows at once. The banner first: a pre-positioned ghost reports
+   *  its verdict from view.startPlacing (onPlacementPreview), and on touch that verdict carries the Place button, which a
+   *  banner drawn after it would wipe. */
+  private beginPlacing(p: PlacingState): void {
+    const at = startAt(p, touchInput(), this.ui.layout.host === 'sheet', () => (p.kind === 'building' ? resolvePlaceAt(this.state, p.type) : undefined));
+    this.ui.showPlaceBanner(at, null);
+    this.view.startPlacing(at, this.state);
   }
 
   cancelPlacing(): void {
@@ -174,7 +184,16 @@ class App implements Game {
     const p = this.view.placing;
     if (!p || p.kind !== 'building') return;
     const r = this.act(actions.place(this.state, p.type, tile, { owner: 'player', replaceId: p.replaceId }), { okSfx: 'place' });
-    if (r.ok && !shift) { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's sheet stays closed (no spring back)
+    const touch = lastTouch();   // the press of this Place: a finger's Place button, or a mouse's click
+    // ⟳ is the phone banner's (mapbar.ts): elsewhere a finger's Place ends the placing, as it always did
+    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && this.ui.layout.host === 'sheet', moving: p.replaceId !== undefined });
+    if (next === 'end') { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's sheet stays closed (no spring back)
+    else if (next === 'more' && touch) {
+      // ⟳ on touch: the ghost goes on to the free plot nearest the one just taken (a mouse's ghost follows the mouse)
+      const [w, hh] = BUILDING_DEFS[p.type].size;
+      const near = resolvePlaceAt(this.state, p.type, undefined, 'player', { near: { x: tx(tile), y: ty(tile), w, h: hh } });
+      this.beginPlacing({ kind: 'building', type: p.type, at: near });
+    }
   }
 
   inspect(t: InspectTarget | null, sticky: boolean): void {

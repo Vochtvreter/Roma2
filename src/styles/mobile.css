@@ -190,6 +190,10 @@
   #app.placing .map-ov { min-width: 44px; justify-content: center; }   /* the icon-only column while placing */
   .tick-box { min-height: 44px; border-radius: 22px; }
   .hud-sp, .hud-menu { height: 44px; }
+  /* a page's folds (the roster, the rest of the households), now in view in a tablet's two columns */
+  #tab-body summary { min-height: 44px; }
+  #tab-body summary.tab-sec-head { align-items: center; }
+  #tab-body summary:not(.tab-sec-head) { line-height: 44px; }
 }
 @media (pointer: coarse) and (min-width: 900px) {
   #side-toggle { left: -46px; width: 44px; }

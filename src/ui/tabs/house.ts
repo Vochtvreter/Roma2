@@ -96,7 +96,15 @@ function gensOf(g: Game, b: Building): string | null {
   return fam ? `gens ${feminine(fam.gens)}` : null;
 }
 
-/** The house view's parts (header facts first). */
+/** Names an element as one part of an inspector card (data-part): the phone's docked card shows a brief of them first
+ *  (inspector.ts briefParts). */
+function part<T extends HTMLElement>(el: T, id: string): T {
+  el.dataset.part = id;
+  return el;
+}
+
+/** The house view's parts (header facts first), each named (data-part: sub, beds, who, renovating, declining, finest,
+ *  needs, renovation, pref) for the phone's brief card. */
 export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
   const s = g.state;
   const hs = b.house;
@@ -115,13 +123,13 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
   refresh();
   up.push(refresh);
   const gens = gensOf(g, b);
-  out.push(h('div', { class: 'ins-sub' }, `${tier.name}${gens ? ` · ${gens}` : ''}`), beds, who);
+  out.push(part(h('div', { class: 'ins-sub' }, `${tier.name}${gens ? ` · ${gens}` : ''}`), 'sub'), part(beds, 'beds'), part(who, 'who'));
   if (hs.renovating) {
     const r = h('div', { class: 'ins-good' });
     const tick = (): void => { r.textContent = `Renovating into ${TIER_DEFS[hs.renovating?.to ?? hs.tier].latin}: ${plural(Math.max(0, (hs.renovating?.until ?? 0) - g.state.day), 'day', 'days')} left.`; };
     tick();
     up.push(tick);
-    out.push(r);
+    out.push(part(r, 'renovating'));
   }
   if (hs.declining) {
     const lower = HOUSE_TIERS[Math.max(B.housing.MIN_DROP_LEVEL, HOUSE_TIERS.indexOf(hs.tier) - 1)];
@@ -130,11 +138,11 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
     const tick = (): void => { d.textContent = `Declining${lapsed ? `: ${lapsed} lapsed` : ''}. Falls back to ${TIER_DEFS[lower].latin} in ${plural(Math.max(0, B.housing.DROP_AFTER - hs.declineDays), 'day', 'days')} unless restored.`; };
     tick();
     up.push(tick);
-    out.push(d);
+    out.push(part(d, 'declining'));
   }
   const next = nextTier(s, b);
   if (!next) {
-    out.push(h('div', { class: 'ins-good' }, `The finest home of its kind.`));
+    out.push(part(h('div', { class: 'ins-good' }, `The finest home of its kind.`), 'finest'));
   } else {
     const nt = TIER_DEFS[next];
     const unmet = unmetNeeds(s, b, next);
@@ -148,14 +156,15 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
     }));
     if (want === 'materials') list.append(h('li', { class: 'unmet' }, h('span', { class: 'ins-mark' }, '○'), img(NEED_META.materials.icon, 1, 'ins-want'),
       h('span', { class: 'ins-need' }, NEED_META.materials.label, h('div', { class: 'ins-hint' }, HINT.materials))));
-    out.push(h('div', { class: 'ins-head2' }, `To become ${nt.latin} (${nt.name.toLowerCase()}, ${nt.beds} beds)`), list,
-      h('div', { class: 'ins-line' }, 'Renovation: ', costEl(s, nt.renovation), h('span', { class: 'ins-small muted' }, ` after ${B.housing.OK_DAYS} days with every need met`)));
+    // the head and its list are one part (a box-less wrapper: the card's own spacing is unchanged)
+    out.push(part(h('div', { class: 'ins-group' }, h('div', { class: 'ins-head2' }, `To become ${nt.latin} (${nt.name.toLowerCase()}, ${nt.beds} beds)`), list), 'needs'),
+      part(h('div', { class: 'ins-line' }, 'Renovation: ', costEl(s, nt.renovation), h('span', { class: 'ins-small muted' }, ` after ${B.housing.OK_DAYS} days with every need met`)), 'renovation'));
   }
   if (tier.level >= 3) {
-    out.push(h('div', { class: 'ins-head2' }, 'Insula or domus?'),
+    out.push(part(h('div', { class: 'ins-group' }, h('div', { class: 'ins-head2' }, 'Insula or domus?'),
       seg(g, PREFS.map((p) => ({ id: p, label: p === 'auto' ? 'As the street allows' : p === 'insula' ? 'Insula' : 'Domus',
         tip: p === 'auto' ? 'A domus where desirability reaches 10, else an insula.' : p === 'insula' ? 'Many hands for work: 24 beds.' : 'Patricians: few hands, rich taxes and prestige; needs wine and desirability 10.' })),
-      hs.pref, (p) => A.setHousePref(g.state, b.id, p)));
+      hs.pref, (p) => A.setHousePref(g.state, b.id, p))), 'pref'));
   }
   return out;
 }

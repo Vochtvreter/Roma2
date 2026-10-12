@@ -43,7 +43,7 @@ function textModal(kicker: string, title: string, text: string, onLoad?: (t: str
   }
   const prompt = !onLoad ? 'Keep this text: a newer version of the game may read it.'
     : confirmLabel ? 'Paste the text of an exported colony. Loading it replaces the colony saved in this browser.' : 'Paste the text of an exported colony.';
-  close = openModal(h('div', null, h('p', { class: 'modal-p' }, prompt), area, h('div', { class: 'modal-actions' }, load), status), { kicker, title, wide: true });
+  close = openModal(h('div', null, h('p', { class: 'modal-p' }, prompt), area, h('div', { class: 'modal-foot' }, h('div', { class: 'modal-actions' }, load), status)), { kicker, title, wide: true });
   area.focus();
 }
 

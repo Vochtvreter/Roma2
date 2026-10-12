@@ -90,6 +90,9 @@ export class MapView {
   private insCss: Insets = NO_INSETS;                // CSS px the UI covers on each side of the canvas (setInsets)
   private zoomed = false;                            // the player zoomed by hand since attach: a new host keeps the level
   private canvasZoom = false;                        // desktop columns: the default zoom follows the canvas width (setInsets)
+  /** A road or paving drag turns after its vertical leg (the placing banner's ↕ toggle: a finger has no Shift); Shift
+   *  turns it the other way again. */
+  verticalFirst = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, minimap: HTMLCanvasElement | null, private readonly cb: ViewCallbacks) {
     const g = canvas.getContext('2d', { alpha: false });
@@ -529,7 +532,7 @@ export class MapView {
       return true;
     }
     if (this.dragFrom === null) return true;
-    const path = tile === null ? this.place.path ?? [this.dragFrom] : lPath(this.dragFrom, tile, shift);
+    const path = tile === null ? this.place.path ?? [this.dragFrom] : lPath(this.dragFrom, tile, shift !== this.verticalFirst);
     this.place.path = path;
     if (phase === 'move') this.cb.onDrag(kind, path, false);
     else {

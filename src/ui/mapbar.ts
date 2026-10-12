@@ -1,11 +1,13 @@
 // src/ui/mapbar.ts — the map widgets of the shell (DESIGN §15.4, §11.9): the overlay bar (five toggles, the Officia
 // layer selector and a legend), the zoom buttons, the phone SHEET's tool column (Via, Mappae, the zoom) and the placement
-// banner. Owner: WP-H (split from ui/index.ts).
+// banner with the touch verbs (⟳ keep placing, ↕ vertical first), and the pure rules of placing a work: where its ghost
+// starts (startAt), what a Place does next (afterPlace) and why the work is being placed (placingWhy). Owner: WP-H
+// (split from ui/index.ts).
 import { OVERLAYS } from '../game/types';
-import type { CoverageLayerId, OverlayId, PlaceCheck, ToolId } from '../game/types';
+import type { BuildingId, CoverageLayerId, GameState, OverlayId, PlaceCheck, ToolId } from '../game/types';
 import type { Game, PlacingState } from './types';
 import type { Host, Layout } from './layout';
-import { registerBringer } from './layout';
+import { currentHost, registerBringer } from './layout';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
@@ -13,9 +15,63 @@ import { BACK_RANK, registerBack } from './history';
 import { present, shows } from './intro';
 import { Home } from './sheet';
 import { notePractice } from '../game/actions';
+import { currentLesson } from '../game/intro';
+import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
+import { view } from '../game/sim';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
 import { lastTouch, primaryCoarse, touchInput } from './pointer';
+
+// ───────────────────────────── placing a work (pure) ─────────────────────────────
+/** Where a building's ghost starts (pure; tests/sheet.test.ts): the tile it was given; else, for a finger or on the phone
+ *  SHEET (where the hand is a finger), the best plot (`best`: resolvePlaceAt), so Place shows at once and the camera
+ *  glides there only if it is out of view; never for a Move (replaceId: the player chooses where), nor for a mouse
+ *  elsewhere (it hovers the plots itself, and the camera never jumps). */
+export function startAt(p: PlacingState, touch: boolean, sheet: boolean, best: () => number | undefined): PlacingState {
+  if (p.kind !== 'building' || p.at !== undefined || p.replaceId !== undefined || !(touch || sheet)) return p;
+  const at = best();
+  return at === undefined ? p : { ...p, at };
+}
+
+/** What follows a Place (pure; tests/sheet.test.ts): 'stay' placing after a refusal (its toast says why); after a work
+ *  placed, 'more' of the same for Shift (a mouse) or, by the ⟳ toggle, a finger (its touch equivalent: the ghost moves
+ *  on to the next plot), 'end' otherwise and always after a Move (the stake it replaced is gone). */
+export function afterPlace(o: { ok: boolean; shift: boolean; touch: boolean; keep: boolean; moving: boolean }): 'stay' | 'more' | 'end' {
+  if (!o.ok) return 'stay';
+  if (o.moving) return 'end';
+  return o.shift || (o.touch && o.keep) ? 'more' : 'end';
+}
+
+/** Why a work is being placed, for the phone banner's reason row: the job of the lesson that asks for it, else the title
+ *  of the Periculum or Cave whose remedy it is; null for a work placed of the player's own accord. */
+export function placingWhy(s: GameState, type: BuildingId): string | null {
+  const cur = currentLesson(s);
+  if (cur && !cur.done && (cur.lesson.anchor === `b-${type}` || cur.lesson.id === 'works')) return cur.lesson.job;
+  for (const a of activeAdvisories(s, { forCard: true })) {
+    if (a.memo.sev < 2) continue;
+    const r = renderAdvisory(s, view(s), a);
+    if (r.remedies.some((x) => (x.remedy.kind === 'place' || x.remedy.kind === 'ask') && x.remedy.building === type)) return r.title;
+  }
+  return null;
+}
+
+/** The ⟳ keep-placing toggle, kept per browser in a UI-owned key (never in Prefs, which the save carries). */
+const KEEP_KEY = 'castravaleria.ui.keepPlacing.v1';
+let keepOn: boolean | null = null;
+
+/** Whether ⟳ keep placing is on (a finger's Place leaves the next ghost up, as Shift-click does for a mouse). */
+export function keepPlacing(): boolean {
+  if (keepOn === null) {
+    try { keepOn = localStorage.getItem(KEEP_KEY) === '1'; } catch { keepOn = false; }   // storage blocked: off, this session
+  }
+  return keepOn;
+}
+
+/** Turns ⟳ keep placing on or off and remembers it. */
+export function setKeepPlacing(on: boolean): void {
+  keepOn = on;
+  try { localStorage.setItem(KEEP_KEY, on ? '1' : '0'); } catch { /* storage blocked: it lasts this session */ }
+}
 
 const OVERLAY_LABEL: Record<OverlayId, string> = { none: 'Off', aqua: 'Aqua', domus: 'Domus', officia: 'Officia', desir: 'Dignitas loci', terra: 'Terra' };
 const OVERLAY_SUB: Record<OverlayId, string> = {
@@ -103,7 +159,8 @@ const COL_BTN = 44;  // the column's buttons (sheet.css)
 const COL_GAP = 4;
 
 /** The phone SHEET's tool column in #map-col (DESIGN §15.7): [Via][Mappae][+][−][⌂], 44 px each, at the right edge 8 px
- *  above the sheet (it rides up with half, hides at full) and left in view while placing. Via drops the road tools it
+ *  above what stands on the bar (the sheet: it rides up with half, hides at full; a card in the sheet's slot; the placing
+ *  banner, over which it stays in view while placing). Via drops the road tools it
  *  offers (Road, Pave, Reserve block, Demolish: those revealed, once the lessons open the catalogue); Mappae drops the
  *  overlay bar itself (#overlay-bar, re-hosted, its labels and legend shown); + − ⌂ are the zoom buttons (#zoom-ctl,
  *  re-hosted). Each popover is a Back and Esc layer and closes on a press outside it. Off the SHEET the column hides and
@@ -122,7 +179,7 @@ export class MapColumn {
   private toolsKey = '';
 
   constructor(private readonly g: Game, private readonly root: HTMLElement, bar: HTMLElement, zoom: HTMLElement,
-    private readonly layout: Pick<Layout, 'sheetHeights' | 'detent'>) {
+    private readonly layout: Pick<Layout, 'sheetHeights' | 'detent' | 'dockH'>) {
     this.bar = new Home(bar);
     this.zoom = new Home(zoom);
     root.setAttribute('aria-label', 'Map tools');
@@ -192,22 +249,24 @@ export class MapColumn {
     this.fit();
   }
 
-  /** Fits the column to the strip of map between the HUD and the sheet at its detent's height (not mid-slide): one column
-   *  when it can, else Via and Mappae beside the zoom (wrap), else without the zoom (tight: fingers pinch). */
+  /** Fits the column to the strip of map between the HUD and what stands on the bar (layout.dockH: the sheet at its
+   *  detent's height, not mid-slide; a card in the sheet's slot; the placing banner): one column when it can, else Via and
+   *  Mappae beside the zoom (wrap), else without the zoom (tight: fingers pinch), else none at all (gone). */
   fit(): void {
     const hs = this.layout.sheetHeights, app = this.root.parentElement;
     if (this.hostNow !== 'sheet' || !hs || !app) return;
     const bar = document.getElementById('tabs')?.offsetHeight ?? 0, hud = document.getElementById('hud');
     const top = hud ? hud.offsetTop + hud.offsetHeight : 0;
-    const placing = app.classList.contains('placing');
-    const room = app.clientHeight - bar - (placing ? 0 : hs[this.layout.detent]) - COL_EDGE - top - COL_EDGE;
+    const room = app.clientHeight - bar - this.layout.dockH - COL_EDGE - top - COL_EDGE;
     // the stacks' own heights, whatever fit() hid last time (so it never flips back and forth)
     const stack = (el: HTMLElement): number => { const n = Array.from(el.children).filter((c) => !(c as HTMLElement).hidden).length; return n ? n * (COL_BTN + COL_GAP) - COL_GAP : 0; };
     const a = stack(this.group), b = stack(this.zoom.el);
     const one = a + (a && b ? COL_GAP : 0) + b;
-    const wrap = one > room, tight = wrap && Math.max(a, b) > room;
+    // and with no room even for Via over Mappae (a tall card in the sheet's slot), the column steps aside altogether
+    const wrap = one > room, tight = wrap && Math.max(a, b) > room, gone = tight && a > room;
     if (wrap !== this.root.classList.contains('wrap')) this.root.classList.toggle('wrap', wrap);
     if (tight !== this.root.classList.contains('tight')) this.root.classList.toggle('tight', tight);
+    if (gone !== this.root.classList.contains('gone')) this.root.classList.toggle('gone', gone);
   }
 
   /** Opens a popover (the other one closes), sized to the map between the HUD and the column's foot. */
@@ -253,7 +312,25 @@ function steadyBox(box: HTMLElement, what: string): void {
   floor.h = Math.max(floor.h, Math.ceil(r.height));
 }
 
-/** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. */
+/** A toggle button of the banner (⟳ keep placing, ↕ vertical first): pressed or not, flipped in place on a tap. */
+function toggleBtn(g: Game, cls: string, label: string, aria: string, on: boolean, set: (on: boolean) => void): HTMLButtonElement {
+  const b = h('button', { class: `btn small ${cls}${on ? ' on' : ''}`, type: 'button', 'aria-pressed': String(on), 'aria-label': aria }, label);
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    g.sfx('click');
+    const now = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', String(now));
+    b.classList.toggle('on', now);
+    set(now);
+  });
+  tip(b, aria);
+  return b;
+}
+
+/** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. On the
+ *  phone SHEET it is the 76 px banner over the bar (DESIGN §15.7): the name and cost, the verdict, the reason row (the
+ *  lesson job or the advisory that asked for the work: placingWhy; else the help), and at the right ⟳ keep placing,
+ *  Place and ✕. A finger gets ↕ vertical first on the road banner (its Shift) on every host. */
 export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | null, check: PlaceCheck | null): void {
   clear(root);
   root.hidden = !p;
@@ -262,17 +339,28 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   // the map treats any non-mouse tap as a preview (render/view.ts), so the Place button follows the last pointer used: a
   // touch laptop, a Surface or a pen taps a plot to preview it, as a phone does (ui/pointer.ts)
   const coarse = lastTouch() || primaryCoarse();
-  const cancel = h('button', { class: 'btn small ghost', onclick: () => g.cancelPlacing() }, 'Cancel');
+  const sheet = currentHost() === 'sheet';
+  // 'Cancel' in words; ✕ on the phone's banner, whose row of buttons is tight
+  const cancel = h('button', { class: 'btn small ghost place-x', type: 'button', 'aria-label': 'Cancel placing', onclick: () => g.cancelPlacing() },
+    h('span', { class: 'place-x-t' }, 'Cancel'), h('span', { class: 'place-x-i', 'aria-hidden': 'true' }, '✕'));
   if (p.kind !== 'building') {
     const tap = touchInput();   // the words follow the hand: a finger taps and has no Shift or Esc
+    const roadHelp = (): string => (tap ? `DRAG TO LAY A ROAD${g.view.verticalFirst ? ' · UP OR DOWN FIRST' : ''}` : 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST');
     const what = {
-      road: ['Road', tap ? 'DRAG TO LAY A ROAD' : 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST'],
+      road: ['Road', roadHelp()],
       pave: ['Paving', 'DRAG OVER ROADS TO PAVE THEM IN BASALT'],
       reserve: ['Reserve a block', `${tap ? 'TAP' : 'CLICK'} A BLOCK TO KEEP IT FOR YOURSELF, OR RELEASE IT`],
       demolish: ['Demolish', `${tap ? 'TAP' : 'CLICK'} A BUILDING, THEN AGAIN TO CONFIRM`],
     }[p.kind];
-    root.appendChild(h('div', { class: 'place-box' }, img(`i_tool_${p.kind}`, 3, 'place-ico'),
-      h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), h('div', { class: 'place-help' }, tap ? what[1] : `${what[1]} · ESC TO CANCEL`)), cancel));
+    const help = h('div', { class: 'place-help' }, tap ? what[1] : `${what[1]} · ESC TO CANCEL`);
+    // a finger has no Shift: ↕ turns a road's (or paving's) drag after its vertical leg instead
+    const vert = tap && (p.kind === 'road' || p.kind === 'pave')
+      ? toggleBtn(g, 'place-vert', '↕', 'Vertical first: the drag goes up or down, then across', g.view.verticalFirst, (on) => {
+        g.view.verticalFirst = on;
+        if (p.kind === 'road') help.textContent = roadHelp();
+      }) : null;
+    root.appendChild(h('div', { class: 'place-box tool' }, img(`i_tool_${p.kind}`, 3, 'place-ico'),
+      h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), help), h('div', { class: 'place-btns' }, vert, cancel)));
     return;
   }
   const def = BUILDING_DEFS[p.type];
@@ -282,14 +370,21 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
-    ? h('button', { class: 'btn small primary', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
-  const box = root.appendChild(h('div', { class: `place-box${check && !check.ok ? ' bad' : ''}` },
+    ? h('button', { class: 'btn small primary place-go', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
+  // ⟳: a finger's Place leaves the next ghost up (the touch Shift-click); not for a Move, which places one stake. The
+  // phone's banner only, for now: the landscape drawer's and the tablet's banners are P3's and P4's
+  const keep = sheet && coarse && p.replaceId === undefined
+    ? toggleBtn(g, 'place-keep', '⟳', 'Keep placing: after Place, the next plot is ready', keepPlacing(), setKeepPlacing) : null;
+  const why = sheet ? placingWhy(g.state, p.type) : null;
+  const box = root.appendChild(h('div', { class: `place-box${check && !check.ok ? ' bad' : ''}${why ? ' why' : ''}` },
     img(p.type === 'area' ? 'h_tentoria_0' : `b_${p.type}`, 1, 'place-ico'),
     h('div', { class: 'place-main' },
       h('div', { class: 'place-name' }, def.name, h('span', { class: 'place-latin' }, def.latin), costEl(g.state, check?.ok ? check.cost : def.cost)),
       verdict,
-      h('div', { class: 'place-help' }, coarse ? 'TAP A GLOWING PLOT, THEN PLACE' : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
-    place, cancel));
-  steadyBox(box, `${p.type}:${coarse}`);
+      why ? h('div', { class: 'place-why' }, why) : null,
+      // the words follow the hand, as Place does (a mouse in a narrow window is on the SHEET too, and clicks to place)
+      h('div', { class: 'place-help' }, coarse ? (sheet ? 'Tap a plot, then Place' : 'TAP A GLOWING PLOT, THEN PLACE') : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
+    h('div', { class: 'place-btns' }, keep, place, cancel)));
+  if (!sheet) steadyBox(box, `${p.type}:${coarse}`);   // the phone's banner is 76 px whatever its words (sheet.css)
 }
 

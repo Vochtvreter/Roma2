@@ -2,6 +2,9 @@
 // Shows s.choice at the top centre: Latin kicker, title, text, options with −cost / +gain chips (disabled with a reason
 // when unaffordable), the default marked, a countdown; veterans show each family's skills and the free beds. The options
 // and the countdown are pinned to the card's foot, so a card taller than its room scrolls its text, never its answers.
+// On the phone SHEET (layout.ts) a new dispatch arrives folded: the voice line carries it ('NVNTIVS · … · 28 d', Read:
+// counsel.ts), and Read unfolds the card docked in the sheet's slot (data-docked; at most 70% of the screen, its answers
+// pinned at its foot); folding it (▾, Back) gives it back to the voice line.
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, PendingChoice } from '../game/types';
 import type { Game, Updater } from './types';
@@ -14,6 +17,7 @@ import { B } from '../game/balance';
 import { feminine } from '../game/data/names';
 import { resIcon } from '../render/art/index';
 import { btn, caps } from './tabs/common';
+import { currentHost } from './layout';
 
 const PULSE_MS = 1600;
 
@@ -52,16 +56,31 @@ export class ChoiceCard {
   private folded = false;
   private folding: PendingChoice | null = null;
   private shown = '';                         // the dispatch on screen: only a new one slides in, a refresh stays put
-  private staged = false;                     // an unfolded card is on screen (onStage was told so)
+  private staged_ = false;                    // an unfolded card is on screen (onStage was told so)
+  private stagedDocked = false;               // … docked in the phone sheet's slot when it was told
   /** Told when an unfolded card comes on screen (true) and when it folds or is answered (false): the UI root makes room
-   *  for it on a phone. */
+   *  for it on a phone (on the SHEET: docks it in the sheet's slot). Told again (true) when an unfolded card is docked or
+   *  undocked by a turn of the phone (the host changed under it). */
   onStage: ((up: boolean) => void) | null = null;
+
+  /** An unfolded card is on screen. */
+  get staged(): boolean { return this.staged_; }
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     root.hidden = true;
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', 'A dispatch awaits your answer');
     root.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
+  }
+
+  /** Folds an unfolded card (Back, a bar slot, another card taking the sheet's slot): on the SHEET it goes back to the
+   *  voice line. Built at once, so the UI root's onStage runs before the caller goes on. */
+  fold(): void {
+    if (!this.staged_ || this.folded) return;
+    this.folded = true;
+    this.last = -Infinity;
+    this.lastClick = -Infinity;
+    this.frame(performance.now());
   }
 
   /** "Read the dispatch": unfolds the pending card at once and pulses it; false when no dispatch is pending. */
@@ -85,8 +104,9 @@ export class ChoiceCard {
     this.last = now;
     const s = this.g.state;
     const c = s.choice;
-    if (c !== this.folding) { this.folding = c; this.folded = false; }
-    const sig = c ? `${c.event}:${c.created}:${c.options.map((o) => +!shortReason(s, o.cost)).join('')}:${+this.folded}:${s.gate ? s.gate.families.length : 0}` : '';
+    const sheet = currentHost() === 'sheet';
+    if (c !== this.folding) { this.folding = c; this.folded = sheet; }   // the phone's voice line carries a new one, folded
+    const sig = c ? `${c.event}:${c.created}:${c.options.map((o) => +!shortReason(s, o.cost)).join('')}:${+this.folded}:${s.gate ? s.gate.families.length : 0}:${+sheet}` : '';
     if (sig !== this.sig && (now - this.lastClick > B.ui.CLICK_GUARD_MS || !c)) this.build(c, sig);
     else for (const u of this.ups) u();
   }
@@ -98,9 +118,17 @@ export class ChoiceCard {
     this.ups = [];
     clear(this.root);
     this.root.hidden = !c;
+    const sheet = currentHost() === 'sheet';
+    if (sheet) this.root.dataset.docked = ''; else delete this.root.dataset.docked;
     const up = !!c && !this.folded;
-    if (up !== this.staged) { this.staged = up; this.onStage?.(up); }
-    if (!c) return;
+    // told once the card is drawn (the phone measures its height to dock it)
+    const stage = (): void => {
+      if (up === this.staged_ && (!up || sheet === this.stagedDocked)) return;
+      this.staged_ = up;
+      this.stagedDocked = up && sheet;
+      this.onStage?.(up);
+    };
+    if (!c) { stage(); return; }
     const def = c.options[c.defaultIndex];
     const left = h('span', { class: 'chip choice-left num' });
     const meter = h('i');
@@ -116,8 +144,9 @@ export class ChoiceCard {
     tickDown();
     this.ups.push(tickDown);
     tip(left, () => realTime(Math.max(0, c.expires - g.state.day), g.speed));
+    // the phone's docked card folds down into the voice line; elsewhere the card folds up to its head
     const fold = h('button', { class: 'btn small ghost choice-fold', type: 'button', 'aria-expanded': String(!this.folded), 'aria-label': this.folded ? 'Open the dispatch' : 'Fold the dispatch',
-      onclick: () => { this.folded = !this.folded; this.last = -Infinity; this.lastClick = -Infinity; } }, this.folded ? '▾' : '▴');
+      onclick: () => { this.folded = !this.folded; this.last = -Infinity; this.lastClick = -Infinity; } }, this.folded ? '▾' : sheet ? '▾' : '▴');
     const id = `${c.event}:${c.created}`;
     const enter = id !== this.shown ? ' enter' : '';
     this.shown = id;
@@ -125,6 +154,7 @@ export class ChoiceCard {
       h('div', { class: 'choice-titles' }, h('div', { class: 'kicker choice-kicker' }, caps(c.kicker)), h('div', { class: 'choice-title' }, c.title)), left, fold);
     if (this.folded) {
       this.root.append(h('div', { class: `card choice-card folded${enter}` }, head, h('div', { class: 'meter choice-meter' }, meter)));
+      stage();
       return;
     }
     const opts = h('div', { class: 'choice-opts' }, c.options.map((o, i) => {
@@ -138,5 +168,6 @@ export class ChoiceCard {
     // never they off it (the silent course follows, read at the end of the scroll)
     this.root.append(h('div', { class: `card choice-card${enter}` }, head, h('p', { class: 'choice-text' }, c.text), gate(g),
       h('div', { class: 'choice-foot' }, opts, h('div', { class: 'meter choice-meter' }, meter)), silent));
+    stage();
   }
 }

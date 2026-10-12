@@ -129,3 +129,9 @@
 .place-verdict.bad { color: #ff8b80; }
 .place-warn { color: var(--gold); }
 .place-help { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1px; color: var(--dim); }
+/* the banner's buttons: one box on the phone's 76 px banner (sheet.css); elsewhere they stand in the banner's row as they
+   always did. Cancel says so in words (✕ on the phone). The touch verbs: ⟳ keep placing, ↕ vertical first (pressed: lit) */
+.place-btns { display: contents; }
+.place-x-i { display: none; }
+.btn:is(.place-keep, .place-vert) { min-width: 44px; font-size: 18px; }
+.btn:is(.place-keep, .place-vert):not(.on) { color: var(--muted); }

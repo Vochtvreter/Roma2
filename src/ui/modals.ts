@@ -1,6 +1,8 @@
 // src/ui/modals.ts — the modal stack, menu, export/import, how-to-play and rename (ARCHITECTURE §13.4, DESIGN §15.5). Owner: WP-H.
 // The sim pauses while any modal is open (App.modalOpen reads modalCount()). Esc (keys.ts) closes the top closable modal.
-// Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close.
+// Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close. On the phone
+// SHEET host every modal is a full-screen sheet within the safe areas (modals.css): its head (✕, kicker, title) sticks to
+// the top and its actions to the foot while the body scrolls between them; a letter keeps its parchment and pinned foot.
 import type { Game } from './types';
 import { h } from './dom';
 import type { Kid } from './dom';
@@ -75,10 +77,13 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   const closable = opts?.closable ?? true;
   const cls = ['modal', opts?.wide ? 'wide' : '', opts?.parchment ? 'parchment' : 'dark'].filter(Boolean).join(' ');
   let closed = false;
+  // the head is one box (it sticks on a phone's full-screen sheet); without a style of its own elsewhere it lays out
+  // as its parts always did
   const box = h('div', { class: cls, role: 'dialog', 'aria-modal': 'true', 'aria-label': opts?.title ?? opts?.kicker ?? 'Dialog', tabindex: '-1' },
-    closable ? h('button', { class: 'modal-x', 'aria-label': 'Close (Esc)' }, '✕') : null,
-    opts?.kicker ? h('div', { class: 'modal-kicker' }, opts.kicker) : null,
-    opts?.title ? h('h2', { class: 'modal-title' }, opts.title) : null,
+    h('div', { class: 'modal-head' },
+      closable ? h('button', { class: 'modal-x', 'aria-label': 'Close (Esc)' }, '✕') : null,
+      opts?.kicker ? h('div', { class: 'modal-kicker' }, opts.kicker) : null,
+      opts?.title ? h('h2', { class: 'modal-title' }, opts.title) : null),
     h('div', { class: 'modal-body' }, content));
   const back = h('div', { class: 'modal-back' }, box);
   const entry: Entry = { el: back, box, closable, close: () => undefined, prevFocus: document.activeElement };
@@ -169,7 +174,8 @@ export function openMenu(g: Game): void {
 }
 
 /** The export text area with its Copy button and status line; a copy (button or by hand) is recorded for the
- *  keep-a-copy reminder. */
+ *  keep-a-copy reminder. The status goes with the actions in one .modal-foot (no box of its own, but the foot that sticks
+ *  on a phone's full-screen sheet: what Copy or Load says is never under the bar). */
 function exportBlock(g: Game): { area: HTMLTextAreaElement; copy: HTMLButtonElement; status: HTMLElement } {
   const area = h('textarea', { class: 'modal-text', rows: '6', spellcheck: 'false', 'aria-label': 'Save text', value: g.mode === 'game' ? g.exportSave() : '' });
   const status = h('div', { class: 'modal-status', role: 'status' });
@@ -194,7 +200,7 @@ export function openExportImport(g: Game): void {
   });
   const body = h('div', null,
     h('p', { class: 'modal-p' }, 'Copy this text to keep your colony safe, or paste a saved text and press Load.'),
-    area, h('div', { class: 'modal-actions' }, copy, load), status);
+    area, h('div', { class: 'modal-foot' }, h('div', { class: 'modal-actions' }, copy, load), status));
   close = openModal(body, { kicker: 'TABVLAE', title: 'Export / Import', wide: true });
   area.select();
 }
@@ -207,7 +213,7 @@ function openUnsaved(g: Game): void {
   confirm2(quit, 'Click again: the colony is lost', () => { close(); g.toTitle(); });
   const body = h('div', null,
     h('p', { class: 'modal-p' }, 'The colony could not be saved. Copy the text below and keep it: Import a save on the title brings the colony back.'),
-    area, h('div', { class: 'modal-actions' }, copy, h('button', { class: 'btn primary', 'data-autofocus': '', onclick: () => close() }, 'Keep governing'), quit), status);
+    area, h('div', { class: 'modal-foot' }, h('div', { class: 'modal-actions' }, copy, h('button', { class: 'btn primary', 'data-autofocus': '', onclick: () => close() }, 'Keep governing'), quit), status));
   close = openModal(body, { kicker: 'TABVLAE', title: 'The colony is not saved', wide: true });
 }
 

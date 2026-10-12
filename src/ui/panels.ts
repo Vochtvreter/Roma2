@@ -15,7 +15,7 @@ import { slotTap } from './layout';
 import { clear, h, img, scrollWithin, tip } from './dom';
 import { tabShown } from './intro';
 import { notePractice } from '../game/actions';
-import { ControlHold, ScrollAnchor } from './steady';
+import { ControlHold, PointerHold, ScrollAnchor } from './steady';
 import { B } from '../game/balance';
 import { panel as edicta } from './tabs/edicta';
 import { panel as consiliarii } from './tabs/consiliarii';
@@ -66,8 +66,12 @@ export class SidePanel {
   private stateRef: GameState | null = null;
   private readonly steady: ScrollAnchor;   // keeps the pointed row in place across rebuilds
   private readonly control: ControlHold;   // an open dropdown or a dragged slider: rebuilds wait
+  private readonly press: PointerHold;     // a press still held in the body (a repeating labour ±): rebuilds wait
   /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
   onChoiceAnchor: (() => boolean) | null = null;
+  /** A bar slot was tapped, or a tab opens, on the SHEET: the UI root closes a card standing in the sheet's slot (true
+   *  when it closed one). */
+  onSlotTap: (() => boolean) | null = null;
   /** The layout engine (ui/layout.ts), the one owner of the panel's detent: toggle() asks it, open() routes through it,
    *  and it writes the panel through show(). Set when UI.build() creates it; before that, the panel writes itself. */
   layout: Pick<Layout, 'panelToggle' | 'go' | 'setDetent' | 'detent' | 'host'> | null = null;
@@ -79,6 +83,7 @@ export class SidePanel {
     this.bodyHome = this.body;
     this.steady = new ScrollAnchor(this.body);
     this.control = new ControlHold(this.body);
+    this.press = new PointerHold(this.body);
     this.toggleEl = root.querySelector<HTMLButtonElement>('#side-toggle');
     this.toggleEl?.addEventListener('click', () => { g.sfx('click'); this.toggle(); });
     this.toggleEl?.setAttribute('aria-expanded', 'true');
@@ -110,7 +115,7 @@ export class SidePanel {
     const p = PANELS[this.cur];
     let sig = '';
     safe(`${this.cur} signature`, () => { sig = `${this.cur}|${p.signature(g)}`; });
-    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS && !this.control.holds()) { this.rebuild(sig); return; }
+    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS && !this.control.holds() && !this.press.pressed(now)) { this.rebuild(sig); return; }
     if (!this.ups.length) return;
     let mark: ReturnType<ScrollAnchor['capture']> = [];
     safe('anchor', () => { mark = this.steady.capture(); });
@@ -125,9 +130,13 @@ export class SidePanel {
     this.forced = tabShown(this.g.state, tab) ? null : tab;
     if (tab === 'advisors') notePractice(this.g.state, 'advisors');   // the lessons' jobs (§11.13)
     if (tab === 'people') notePractice(this.g.state, 'people');
+    // a card in the phone sheet's slot steps aside for any tab that opens (its own buttons, the Breviarium's rows, a
+    // lesson), as for a bar slot: else the tab would open behind it, out of sight. Its restore runs first, so the new
+    // tab's detent wins
+    if (this.layout?.host === 'sheet') this.onSlotTap?.();
     this.cur = tab;
     this.fresh.delete(tab);
-    if (this.layout) this.layout.go({ kind: 'open', tab, from });
+    if (this.layout) this.layout.go({ kind: 'open', tab, from, anchor });
     else this.toggle(true);
     safe('tabs', () => this.syncTabs());
     const p = PANELS[tab];
@@ -160,6 +169,16 @@ export class SidePanel {
     return !this.root.classList.contains('collapsed');
   }
 
+  /** How far the tab body is scrolled (the layout keeps it while a card or placing has the phone's sheet aside). */
+  get scrollTop(): number {
+    return this.body.scrollTop;
+  }
+
+  /** Scrolls the tab body back to `top` (Layout.restore), unless the player has moved it since. */
+  scrollBack(top: number): void {
+    if (this.body.scrollTop < 1) this.body.scrollTop = top;
+  }
+
   /** The host changed (layout.onMount): on the SHEET the tab buttons become the bar at the foot of #app, outside the
    *  sheet that slides above it; anywhere else they go back to the panel's head. */
   mount(host: Host): void {
@@ -170,12 +189,14 @@ export class SidePanel {
 
   /** A tab's button: on the SHEET the open tab's slot folds a sheet that is up (slotTap); any other press opens the tab
    *  (at its own detent: route). A tap while placing ends the placing first: the player has moved on, and the sheet they
-   *  saw was closed, so the open tab's slot brings its tab back (where the end of placing restored it), never folds it. */
+   *  saw was closed, so the open tab's slot brings its tab back (where the end of placing restored it), never folds it.
+   *  A card in the sheet's slot (the context card, the event card: onSlotTap) steps aside for the tab the same way. */
   private tap(t: TabId): void {
     const L = this.layout;
     if (L && L.host === 'sheet') {
-      if (this.g.view.placing) {
-        this.g.cancelPlacing();
+      const placing = this.g.view.placing !== null;
+      if (placing) this.g.cancelPlacing();
+      if (this.onSlotTap?.() || placing) {
         if (t === this.cur && L.detent !== 'closed') return;   // the restore put this tab back up
       } else if (slotTap(t, this.cur, L.detent) === 'close') { L.setDetent('closed', { user: true }); return; }
     }

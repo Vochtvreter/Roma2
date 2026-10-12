@@ -11,7 +11,9 @@
 // hands the camera its insets: the free rect, the map the UI leaves in view (view.setInsets).
 // The SHEET host (portrait phones, P2b) is styled (sheet.css) and its DOM is sheet.ts's: the panel rests at closed (the
 // grabber and the voice line over the 5-slot bar), half or full, its heights worked out here (sheetHeights) and slid by
-// sheet.ts; tabs, placing, the inspector and the lessons route through go(). The other hosts keep today's panel (full =
+// sheet.ts; tabs, placing, the inspector and the lessons route through go(). One card at a time stands in the sheet's
+// slot instead (dock: the context card or the event card, P2c), and the placing banner over the bar while placing; the
+// free rect and --dock-h (what stands on the bar) follow whichever it is. The other hosts keep today's panel (full =
 // half until P3/P4 style them), their free rect measured from today's CSS (panels.css, mobile.css, left.css).
 import { TABS } from '../game/types';
 import type { TabId } from '../game/types';
@@ -188,7 +190,7 @@ export type OpenFrom = 'chip' | 'key' | 'remedy' | 'lesson' | 'tab';
 export type Intent =
   | { kind: 'place' }                                                  // placing a work or a tool
   | { kind: 'focus' }                                                  // inspecting a building or tile (map, ledger row)
-  | { kind: 'open'; tab: TabId; from?: OpenFrom; shift?: boolean }    // a tab
+  | { kind: 'open'; tab: TabId; from?: OpenFrom; shift?: boolean; anchor?: string }   // a tab (at a row of it)
   | { kind: 'lesson'; lesson: LessonId };                              // an opening lesson's pointer
 /** Where the panel is now. */
 export interface RouteCtx { host: Host; detent: Detent; tiny: boolean }
@@ -200,16 +202,28 @@ export interface Route { detent: Detent; remember: boolean; card: boolean }
 export const SHEET_FULL_TABS: readonly TabId[] = ['council', 'trade', 'annals'];
 
 /** How each opening lesson shows its pointer (UI-side: never a field of src/game/intro.ts). 'tab': it opens its tab
- *  (the target is a row there); 'map': the map must show (the target rides on it), so a full panel steps down;
- *  'frame': it points at the frame (the HUD, a tab button), and the panel stays where the player has it. */
+ *  (the target is a row there; on the SHEET a lesson of CARD_LESSONS carries that row in its own card instead); 'map':
+ *  the map must show (the target rides on it), so a full panel steps down; 'frame': it points at the frame (the HUD, a
+ *  tab button), and the panel stays where the player has it. */
 export const LESSON_VIEW: Readonly<Record<LessonId, 'tab' | 'map' | 'frame'>> = {
   fields: 'tab', water: 'tab', homes: 'tab', ordo: 'tab', charter: 'tab',
   advisors: 'frame', speed: 'frame', works: 'tab', overlays: 'map', edicts: 'tab',
 };
+/** The lessons whose job the SHEET's lesson card carries itself, so no tab need open for it (SPEC A graft 4): lesson I's
+ *  Annona labour line (labourEl, counsel.ts) rides in its card at half, and its target glows there (CARD_ROWS). */
+export const CARD_LESSONS: readonly LessonId[] = ['fields'];
 
-function openDetent(tab: TabId, from: OpenFrom | undefined, shift: boolean, c: RouteCtx): Detent {
+/** Whether the SHEET's build tray (Aedificia at half) carries a tab anchor (pure; tests/sheet.test.ts): a work's card
+ *  (b-<type>) and the cards themselves do; the Agenda, the works queue, the builders and the tools (road, pave…) are
+ *  the whole tab's, which opens at full for them. */
+export function trayHolds(anchor: string | undefined): boolean {
+  return anchor === undefined || anchor === 'cards' || anchor.startsWith('b-');
+}
+
+function openDetent(tab: TabId, from: OpenFrom | undefined, shift: boolean, c: RouteCtx, anchor?: string): Detent {
   const fit = (d: Detent): Detent => fitDetent(d, 'closed', c.host, c.tiny);   // opening: a tiny sheet's half is full, never closed
   if (c.host === 'sheet') {
+    if (tab === 'build' && !trayHolds(anchor)) return 'full';         // a row the build tray lacks: the whole tab
     if (from === 'chip') return fit('half');
     return fit(SHEET_FULL_TABS.includes(tab) ? 'full' : 'half');   // each tab its own detent, a slot tap's switch too
   }
@@ -228,10 +242,12 @@ export function route(i: Intent, c: RouteCtx): Route {
   switch (i.kind) {
     case 'place': return phone ? { detent: 'closed', remember: true, card: false } : keep;
     case 'focus': return phone ? { detent: 'closed', remember: true, card: true } : keep;
-    case 'open': return { detent: openDetent(i.tab, i.from, i.shift === true, c), remember: false, card: false };
+    case 'open': return { detent: openDetent(i.tab, i.from, i.shift === true, c, i.anchor), remember: false, card: false };
     case 'lesson': {
-      const v = LESSON_VIEW[i.lesson], tab = LESSONS.find((l) => l.id === i.lesson)?.tab;
-      if (v === 'tab' && tab) return { detent: openDetent(tab, 'lesson', false, c), remember: false, card: false };
+      const v = LESSON_VIEW[i.lesson], les = LESSONS.find((l) => l.id === i.lesson), tab = les?.tab;
+      // the SHEET's lesson card carries the job: it unfolds at half (a tiny sheet's full), the map above it
+      if (c.host === 'sheet' && CARD_LESSONS.includes(i.lesson)) return { detent: fitDetent('half', 'closed', c.host, c.tiny), remember: false, card: false };
+      if (v === 'tab' && tab) return { detent: openDetent(tab, 'lesson', false, c, les?.anchor), remember: false, card: false };
       if (v === 'map' && c.detent === 'full') return { detent: stepDown('full', c.host, c.tiny), remember: false, card: false };
       return keep;
     }
@@ -261,10 +277,16 @@ export const REVEAL: Readonly<Record<Host, Readonly<Record<string, string>>>> = 
   sheet: { '#objective': '#hud', '#overlay-bar': '#map-mappae', '#ticker': '#counsel', '#tab-annals': '#hud-menu' },
   drawer: {}, dock: {}, columns: {},
 };
+/** Per host, a row of a tab body that a lesson's card carries too (CARD_LESSONS) → the card's own copy, which glows
+ *  instead: the job is done there, without the tab. */
+export const CARD_ROWS: Readonly<Record<Host, Readonly<Record<string, string>>>> = {
+  sheet: { '.tab-lab[data-cat="food"]': '#counsel .tab-lab[data-cat="food"]' }, drawer: {}, dock: {}, columns: {},
+};
 
-/** The selector to glow for a target on a host: its proxy where the host hides it, else itself. */
+/** The selector to glow for a target on a host: its proxy where the host hides it, the lesson card's own copy of a row
+ *  it carries, else itself. */
 export function reveal(selector: string, host: Host): string {
-  return REVEAL[host][selector] ?? selector;
+  return REVEAL[host][selector] ?? CARD_ROWS[host][selector] ?? selector;
 }
 
 /** True for a frame target (a bare id the hosts place); anything else is a row of the open tab's body. */
@@ -278,6 +300,27 @@ export function shownAt(selector: string, host: Host, d: Detent): boolean {
   if (!inFrame(selector)) return d !== 'closed';
   if (!VISIBLE[host].includes(selector)) return false;
   return !(d === 'full' && MAP_TOOLS.includes(selector));
+}
+
+/** What "Show me" does for a lesson on a host (pure; tests/sheet.test.ts): lessonPointer's, except where the host's
+ *  lesson card carries the job (CARD_LESSONS on the SHEET): no tab opens (`card`: the counsel's card unfolds instead),
+ *  and the target glows on the card's own row (reveal: CARD_ROWS). A lesson that opens Aedificia on no row of it (VIII:
+ *  "a work you choose") points the SHEET's build tray at its cards, every category (aedificia.ts focus), not at the one
+ *  an earlier lesson left it on. */
+export function hostPointer(l: Lesson, host: Host): { open: TabId | null; anchor?: string; glow: string | null; card: boolean } {
+  const p = lessonPointer(l);
+  if (host === 'sheet' && CARD_LESSONS.includes(l.id)) return { open: null, glow: p.glow, card: true };
+  if (host === 'sheet' && p.open === 'build' && p.anchor === undefined) return { ...p, anchor: 'cards', card: false };
+  return { ...p, card: false };
+}
+
+/** Whether a lesson arrives folded in the voice line rather than unfolded in the sheet (pure; tests/sheet.test.ts): on
+ *  the SHEET, one whose job is a card of the build tray (hostPointer opens Aedificia at half: II, III, VIII), as the
+ *  mockup has it. The tray then has the sheet's half to itself and the card's Place is whole in view as it pulses; the
+ *  unfolded card would push it under the bar. Its line's Show me, or a tap, still unfolds it. */
+export function lessonFolds(l: Lesson, host: Host): boolean {
+  const p = hostPointer(l, host);
+  return host === 'sheet' && p.open === 'build' && trayHolds(p.anchor);
 }
 
 /** What a lesson's pointer glows: its target, else its anchor's row, else its tab's button (lessonPointer, counsel.ts). */
@@ -310,6 +353,8 @@ const SHEET_BAR = 52;
 const BANNER_GAP = 8;
 /** CSS px kept between the free rect and the SHEET's tool column. */
 const COLUMN_GAP = 4;
+/** CSS px of map kept between the free rect and a card docked in the SHEET's slot (the context card, the event card). */
+const CARD_GAP = 8;
 /** A tab opened this recently (ms) keeps its detent through a host change; otherwise entering the SHEET closes it. */
 const JUST_OPENED_MS = 1000;
 const ZERO: Box = Object.freeze({ left: 0, top: 0, right: 0, bottom: 0 });
@@ -328,9 +373,19 @@ export function currentHost(): Host | null {
   return active ? active.host : null;
 }
 
+/** The panel's detent, or null before the layout runs (headless tests): Aedificia is a build tray at the SHEET's half. */
+export function currentDetent(): Detent | null {
+  return active ? active.detent : null;
+}
+
 /** Moves the panel for an intent (Layout.go) once the layout runs; a no-op before (headless tests). */
 export function routeIntent(i: Intent): void {
   active?.go(i);
+}
+
+/** Moves the panel to a detent by the player's own hand (a tab's ⤢: Aedificia's Catalogue), once the layout runs. */
+export function moveDetent(d: Detent): void {
+  active?.setDetent(d, { user: true });
 }
 
 /** Registers how the host brings a target it hides into view on an explicit "Show me" (the SHEET's Mappae popover holds
@@ -368,10 +423,14 @@ export class Layout {
   private lastOpen: Detent = 'half';           // a toggle opens the panel to the detent it last had open
   private forced = false;                      // the detent is full only because a tiny sheet has no half (keepDetent)
   private kept: Detent | null = null;          // the detent a remembering route left (place, focus): restore()
+  private keptTop = 0;                         // … and the tab body's scroll then (a closed sheet's body is not drawn)
+  private keptTab: TabId | null = null;        // … of this tab: another tab opened since starts at its own top
   private lifted: string | null = null;        // who raised a closed sheet to half for a while (lift, drop)
   private openedAt = -Infinity;                // when a tab was last opened (go): a host change just then keeps its detent
   private heights: Record<Detent, number> | null = null;   // the SHEET's height at each detent (sizeSheet)
   private sheetHooks: SheetHooks | null = null;
+  private card: HTMLElement | null = null;     // the card docked in the SHEET's slot (dock): the context card or the event card
+  private dockPx = -1;                         // what stands on the SHEET's bar, as written to --dock-h
   private free: Box = ZERO;
   private ins: Box = ZERO;                     // the free rect as canvas insets (CSS px), as given to the view
   private started = false;
@@ -406,8 +465,8 @@ export class Layout {
       for (const el of [this.hud, this.sideEl, this.left, this.banner, this.tabs, this.column]) if (el) this.ro.observe(el);
     } else window.addEventListener('resize', () => this.update());
     // a detent above the host's default is a layer Back and Esc close, one step at a time (full → half → closed). The
-    // Breviarium, the phone's speed popover and the tool column's popovers have their own (tray.ts, hud.ts, mapbar.ts);
-    // P2c's context card will too
+    // Breviarium, the phone's speed popover and the tool column's popovers have their own (tray.ts, hud.ts, mapbar.ts),
+    // as do the cards in the sheet's slot (the selection's, history.ts; the event card's, ui/index.ts)
     registerBack({ rank: BACK_RANK.detent, open: () => this.layerOpen(), close: () => this.setDetent(stepDown(this.det, this.cls.host, this.cls.tiny)) });
     this.update();
   }
@@ -423,6 +482,23 @@ export class Layout {
   get offered(): readonly Detent[] { return detentsOf(this.cls.host, this.cls.tiny); }
   /** The SHEET's height above the bar at each detent (#app px, a copy), or null on any other host. */
   get sheetHeights(): Record<Detent, number> | null { return this.heights ? { ...this.heights } : null; }
+  /** What stands on the SHEET's bar at rest, in px (also --dock-h on #app): the placing banner while placing, a card
+   *  docked in the sheet's slot, else the sheet at its detent; 0 on any other host. The tool column rides on it. */
+  get dockH(): number { return Math.max(0, this.dockPx); }
+  /** The card docked in the sheet's slot, if any (dock). */
+  get docked(): HTMLElement | null { return this.card; }
+
+  /** Docks a card in the SHEET's slot (null: none): the context card (the inspector's popup) or the event card. One at a
+   *  time (the UI root sees to it): while it shows, the sheet steps aside behind it (#app[data-card]; the bar stays), the
+   *  free rect ends above it and the tool column rides on it. Measured at once, so the camera call that follows (the
+   *  card's glide of its target clear above it) sees the free map it leaves; its own growth is observed. */
+  dock(el: HTMLElement | null): void {
+    if (el === this.card) { this.update(); return; }
+    if (this.card) this.ro?.unobserve(this.card);
+    this.card = el;
+    if (el) this.ro?.observe(el);
+    this.update();
+  }
 
   /** Moves the panel to a detent: the host's own for `d` (a tiny sheet has no half), the panel written at once
    *  (`instant`: no slide), then the camera insets for the detent's target (never mid-slide). On the SHEET the sheet
@@ -460,17 +536,20 @@ export class Layout {
   go(i: Intent): Route {
     const r = route(i, { host: this.cls.host, detent: this.det, tiny: this.cls.tiny });
     if (i.kind === 'open') { this.openedAt = performance.now(); this.kept = null; }
-    if (r.remember && this.kept === null) this.kept = this.det;
+    if (r.remember && this.kept === null) { this.kept = this.det; this.keptTop = this.side.scrollTop; this.keptTab = this.side.current; }
     this.setDetent(r.detent);
     return r;
   }
 
-  /** Puts back the detent a remembering route left (✕ on the context card, the end of placing); false when none. */
+  /** Puts back the detent a remembering route left (✕ on the context card, the end of placing) and the tab body's scroll
+   *  with it (once the body is drawn again, and only while that tab is still the one open: a bar slot that closed the
+   *  card goes on to open its own tab at its top); false when none. */
   restore(): boolean {
-    const d = this.kept;
+    const d = this.kept, top = this.keptTop, tab = this.keptTab;
     this.kept = null;
     if (d === null) return false;
     this.setDetent(d);
+    if (d !== 'closed' && top > 0) requestAnimationFrame(() => { if (this.side.current === tab) this.side.scrollBack(top); });
     return true;
   }
 
@@ -569,6 +648,7 @@ export class Layout {
     if (this.side.expanded !== (this.det !== 'closed')) this.side.show(this.det !== 'closed', true);
     const hs = this.sizeSheet(H);
     if (hs && (turned || host || first) && this.sheetHooks) this.sheetHooks.slide(hs[this.det], hs[this.det], this.det, true);   // at rest there
+    this.writeDock(H);
     const free = this.measure(W, H), ins = this.insets(free);
     const moved = !sameBox(free, this.free) || !sameBox(ins, this.ins);
     this.free = free;
@@ -590,6 +670,32 @@ export class Layout {
     return shown(this.tabs) ? this.tabs.offsetHeight : 0;
   }
 
+  /** The docked card while it shows on the SHEET (not while placing hides it, nor folded away), else null. */
+  private cardShown(): HTMLElement | null {
+    return this.cls.host === 'sheet' && shown(this.card) ? this.card : null;
+  }
+
+  /** Writes what stands on the SHEET's bar: #app[data-card] while a docked card shows (the sheet steps aside: sheet.css)
+   *  and --dock-h, the height of the banner, the card or the sheet at its detent (the tool column rides on it). Off the
+   *  SHEET both go. */
+  private writeDock(H: number): void {
+    const a = this.app;
+    const card = this.cardShown();
+    if (!!card !== ('card' in a.dataset)) { if (card) a.dataset.card = ''; else delete a.dataset.card; }
+    let px = -1;
+    if (this.cls.host === 'sheet') {
+      const bar = this.barH(), ban = this.banner;
+      if (a.classList.contains('placing') && shown(ban)) px = H - bar - ban.offsetTop;
+      else if (card) px = H - bar - card.offsetTop;
+      else px = this.heights?.[this.det] ?? 0;
+      px = Math.max(0, Math.round(px));
+    }
+    if (px === this.dockPx) return;
+    this.dockPx = px;
+    if (px < 0) a.style.removeProperty('--dock-h');
+    else a.style.setProperty('--dock-h', `${px}px`);
+  }
+
   /** The SHEET's height at each detent (sheetHeights over the live HUD, bar and head), written on #app as --sheet-closed,
    *  --sheet-half and --sheet-full for sheet.css; null (and the properties gone) on any other host. */
   private sizeSheet(H: number): Record<Detent, number> | null {
@@ -609,8 +715,9 @@ export class Layout {
   }
 
   /** The free rect at rest, in #app px: below the HUD, then per host. The SHEET: above the sheet at its detent's height
-   *  (sizeSheet: never its slide) and the bar under it, and left of the tool column; while placing the sheet steps aside
-   *  and the placing banner stands over the bar instead. Elsewhere, from today's CSS: clear of the panel at the detent's
+   *  (sizeSheet: never its slide) and the bar under it, and left of the tool column; a card docked in the sheet's slot
+   *  stands in the sheet's place (the free map ends above it); while placing the sheet steps aside and the placing
+   *  banner stands over the bar instead. Elsewhere, from today's CSS: clear of the panel at the detent's
    *  target (its box without the slide: offset* ignore transforms), a folded bottom sheet keeping its 52 px tab bar; right
    *  of the left column where it stands as one (narrower than half of #app: from 900 px, and on a landscape phone; below
    *  that it is a band of cards across the map). Everywhere, above the placing banner while placing, so a pre-positioned
@@ -622,8 +729,10 @@ export class Layout {
     if (shown(this.hud)) box.top = Math.max(0, this.hud.offsetTop + this.hud.offsetHeight);
     const placing = this.app.classList.contains('placing');
     if (this.cls.host === 'sheet') {
-      const up = this.heights && shown(this.sideEl) && !placing ? this.heights[this.det] : 0;
+      const card = placing ? null : this.cardShown();   // the sheet stands aside behind a docked card
+      const up = this.heights && shown(this.sideEl) && !placing && !card ? this.heights[this.det] : 0;
       box.bottom = Math.min(box.bottom, H - this.barH() - up);
+      if (card) box.bottom = Math.min(box.bottom, card.offsetTop - CARD_GAP);
       const col = this.column;
       if (shown(col)) box.right = Math.min(box.right, col.offsetLeft - COLUMN_GAP);
     } else {

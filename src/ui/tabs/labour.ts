@@ -1,6 +1,7 @@
-// src/ui/tabs/labour.ts — labour by category: have / target / posts with the Ordo's reason; manual targets (±, Shift ±5),
-// "Ordo would", Apply once, and "first for 30 days" priorities (DESIGN §10.2, §10.4, §15.3). Shared by Populus and
-// Aedificia (builders). Owner: WP-I.
+// src/ui/tabs/labour.ts — labour by category: have / target / posts with the Ordo's reason; manual targets (± a tap,
+// Shift or a long press ±5, held: ±5 again every 300 ms), "Ordo would", Apply once, and "first for 30 days" priorities
+// (DESIGN §10.2, §10.4, §15.3). Shared by Populus, Aedificia (builders), the phone's context card (a work's own
+// category) and its first lesson's card (Annona). Owner: WP-I.
 import { LABOR_CATS } from '../../game/types';
 import type { GameState, LaborCat } from '../../game/types';
 import type { Game, Updater } from '../types';
@@ -19,6 +20,49 @@ export const CAT_LABEL: Record<LaborCat, [string, string]> = {
   industry: ['Officinae', 'Industry'], services: ['Officia', 'Services'], builders: ['Fabri', 'Builders'],
 };
 const SHIFT_STEP = 5;
+/** A held ±: the long press (the tooltip's 450 ms, dom.ts) steps ±5, and every REPEAT_MS more while it is held. */
+export const HOLD = { LONG_MS: 450, REPEAT_MS: 300, STEP: SHIFT_STEP } as const;
+const HOLD_POLL_MS = 50;
+
+/** How many ±5 steps a press held `ms` has made (pure; tests/sheet.test.ts): none before the long press, one at it, then
+ *  one every REPEAT_MS while held. A press let go sooner is a tap: its click steps ±1 (Shift ±5). +12 hands is a long press
+ *  and two taps, not twelve. */
+export function holdSteps(ms: number): number {
+  return ms < HOLD.LONG_MS ? 0 : 1 + Math.floor((ms - HOLD.LONG_MS) / HOLD.REPEAT_MS);
+}
+
+/** A ± button: a tap (or Enter) steps by one, Shift by five; a press held past the long press steps by five, again and
+ *  again while held, and its click is then no tap. The widget around it holds its rebuilds while the press lasts
+ *  (steady.ts PointerHold, the side panel's own guard), so the button stays under the finger. */
+function stepBtn(g: Game, cat: LaborCat, dir: 1 | -1): HTMLButtonElement {
+  const fire = (n: number): void => {
+    const s = g.state;
+    g.act(A.setManualTarget(s, cat, Math.max(0, s.ordo.manual[cat] + dir * n)), { okSfx: 'click' });
+  };
+  let t0 = 0, done = 0, timer = 0, long = false;
+  const stop = (): void => { window.clearInterval(timer); timer = 0; };
+  const b = h('button', { class: 'btn small ghost tab-lab-pm', type: 'button', 'aria-label': `${dir < 0 ? 'Fewer' : 'More'} ${CAT_LABEL[cat][1]} hands` }, dir < 0 ? '−' : '+');
+  b.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    stop();
+    t0 = performance.now();
+    done = 0;
+    long = false;
+    timer = window.setInterval(() => {
+      if (!b.isConnected) { stop(); return; }
+      const n = holdSteps(performance.now() - t0);
+      if (n > done) { long = true; fire(HOLD.STEP * (n - done)); done = n; }
+    }, HOLD_POLL_MS);
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) b.addEventListener(ev, stop);
+  b.addEventListener('contextmenu', (e) => e.preventDefault());   // a long press is the button's, not the browser's menu
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (long) { long = false; return; }   // the long press has stepped already
+    fire(e.shiftKey ? SHIFT_STEP : 1);
+  });
+  return b;
+}
 
 /** Whether a category has anything to show: posts, hands, a target, or (builders) works in hand; manual shows all. */
 export function labourShown(s: GameState, cat: LaborCat): boolean {
@@ -42,15 +86,10 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
     const count = h('span', { class: 'tab-lab-count num' });
     const why = h('div', { class: 'tab-why' });
     const prio = h('span', { class: 'tab-lab-prio' });
-    const step = (dir: number) => (e: MouseEvent): void => {
-      e.stopPropagation();
-      const s = g.state;
-      g.act(A.setManualTarget(s, cat, Math.max(0, s.ordo.manual[cat] + dir * (e.shiftKey ? SHIFT_STEP : 1))), { okSfx: 'click' });
-    };
     const ctl = h('div', { class: 'tab-lab-ctl' },
-      manual ? h('button', { class: 'btn small ghost tab-lab-pm', type: 'button', 'aria-label': `Fewer ${CAT_LABEL[cat][1]} hands`, onclick: step(-1) }, '−') : null,
+      manual ? stepBtn(g, cat, -1) : null,
       tip(count, () => countTip(g, cat)),
-      manual ? h('button', { class: 'btn small ghost tab-lab-pm', type: 'button', 'aria-label': `More ${CAT_LABEL[cat][1]} hands`, onclick: step(1) }, '+') : null,
+      manual ? stepBtn(g, cat, 1) : null,
       cat === 'builders' ? null : btn(g, 'First', () => A.setLabourPriority(g.state, cat, B.ordo.PRIORITY_DAYS),
         { cls: 'ghost', tip: `${CAT_LABEL[cat][1]} first for ${B.ordo.PRIORITY_DAYS} days: staffed right after water and food.` }));
     box.append(h('div', { class: 'tab-lab', 'data-cat': cat, 'data-key': `lab-${cat}` },
