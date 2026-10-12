@@ -10,7 +10,8 @@ import { houseBeds, residents } from '../../game/census';
 import { crowds, houseTax, nextTier, unmetNeeds, firstWant } from '../../game/housing';
 import { getBuilding } from '../../game/lookup';
 import { houseDesir } from '../../game/coverage';
-import { derived } from '../../game/derived';
+import { classAt, derived, sizeOf } from '../../game/derived';
+import { resolvePlaceAt } from '../../game/site';
 import { hubOpen, price } from '../../game/trade';
 import { personName } from '../../game/people';
 import { overlayRevealed } from '../../game/reveal';
@@ -59,8 +60,8 @@ function crowdHint(g: Game, b: Building, next: HouseTierId): string | null {
   return `Its own street suffices, but ${aTier(next)} here would push ${who} below the desirability ${c.length > 1 ? 'they need' : 'it needs'}: it waits until a garden or a fountain lifts ${c.length > 1 ? 'their' : 'that'} street.`;
 }
 
-/** How to fix one unmet need: a hint and the buttons that do it. */
-function fix(g: Game, need: NeedId): Kid[] {
+/** How to fix one unmet need of house `b`: a hint and the buttons that do it. */
+function fix(g: Game, b: Building, need: NeedId): Kid[] {
   const s = g.state;
   let type = SERVICE[need];
   if (need === 'water' && derived(s).castellumActive && !rankReason(s, 'lacus')) type = 'lacus';
@@ -68,7 +69,13 @@ function fix(g: Game, need: NeedId): Kid[] {
   if (type) {
     const reason = rankReason(s, type);
     if (s.ordo.on.build) out.push(btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason, tip: `The Ordo raises ${BUILDING_DEFS[type].name.toLowerCase()} at its best site.` }));
-    out.push(btn(g, `Place ${article(BUILDING_DEFS[type].name.toLowerCase())}`, () => { g.startPlacing({ kind: 'building', type }); }, { cls: 'primary', reason }));
+    // the ghost starts on the free slot nearest this house, the one most likely to reach it (resolvePlaceAt)
+    const place = (t: BuildingId): void => {
+      const st = g.state;
+      const [w, ht] = sizeOf(b.type, classAt(st, b.type, b.x, b.y));
+      g.startPlacing({ kind: 'building', type: t, at: resolvePlaceAt(st, t, undefined, 'player', { near: { x: b.x, y: b.y, w, h: ht } }) });
+    };
+    out.push(btn(g, `Place ${article(BUILDING_DEFS[type].name.toLowerCase())}`, () => place(type), { cls: 'primary', reason }));
   }
   if (need === 'desirability' && overlayRevealed(s, 'desir')) out.push(btn(g, 'Show on map', () => { g.view.setOverlay('desir'); }, { cls: 'ghost' }));
   if (need === 'fed') out.push(btn(g, 'Rations', () => { g.openTab('council', 'edict-rationes'); }, { cls: 'ghost' }));
@@ -137,7 +144,7 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
       return h('li', { class: met ? 'met' : 'unmet' }, h('span', { class: 'ins-mark' }, met ? '✔' : '○'), img(NEED_META[n].icon, 1, 'ins-want'),
         h('span', { class: 'ins-need' }, n === 'rank' ? `A ${RANK_DEFS[nt.rank].name} charter` : NEED_META[n].label,
           met ? null : h('div', { class: 'ins-hint' }, (n === 'desirability' ? crowdHint(g, b, next) : null) ?? HINT[n]),
-          met ? null : h('div', { class: 'ins-fix' }, fix(g, n))));
+          met ? null : h('div', { class: 'ins-fix' }, fix(g, b, n))));
     }));
     if (want === 'materials') list.append(h('li', { class: 'unmet' }, h('span', { class: 'ins-mark' }, '○'), img(NEED_META.materials.icon, 1, 'ins-want'),
       h('span', { class: 'ins-need' }, NEED_META.materials.label, h('div', { class: 'ins-hint' }, HINT.materials))));

@@ -11,7 +11,7 @@ import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
 import { derived } from '../game/derived';
 import { canPlace } from '../game/place';
 import { worksQueue } from '../game/construction';
-import { siteMult } from '../game/site';
+import { resolvePlaceAt, siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
@@ -379,7 +379,9 @@ class InspectorCard {
     if (usable) card.append(h('div', { class: 'ins-small muted' }, plots.map((p, i) => `plot ${i + 1}: ${p ? BUILDING_DEFS[getBuilding(s, p)?.type ?? 'area'].name.toLowerCase() : 'free'}`).join(' · ')));
     if (reserved) card.append(h('div', { class: 'ins-good' }, 'Reserved: the Ordo leaves it alone.'));
     card.append(h('div', { class: 'ins-btns' },
-        btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area' }); }, { cls: 'primary', reason: usable && free ? null : 'No free plot to build on here.' }),
+        // the ghost starts on a free plot of this very block (resolvePlaceAt)
+        btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area', at: resolvePlaceAt(g.state, 'area', undefined, 'player', { block: id }) }); },
+          { cls: 'primary', reason: usable && free ? null : 'No free plot to build on here.' }),
         btn(g, reserved ? 'Release the block' : 'Reserve the block', () => A.toggleReserveBlock(g.state, id),
           { tip: 'The Ordo never builds in a reserved block.', reason: blk.masked || blk.reserved ? 'Only surveyed house blocks can be reserved.' : !toolRevealed(s, 'reserve') ? 'The Reserve-block tool comes with Oppidum.' : null })));
   }

@@ -26,6 +26,22 @@ function append(el: Node, kid: Kid): void {
   el.appendChild(kid instanceof Node ? kid : document.createTextNode(String(kid)));
 }
 
+/** Scrolls one scroll box so `el` (inside it) shows: its top 8 px below the box's top ('start'), or only as far as needed
+ *  ('nearest'). Never scrollIntoView, which scrolls every scrollable ancestor too: #app included, which then slid the
+ *  whole interface up and took the HUD off the screen (a pulse while the sheet was moved aside for placing). */
+export function scrollWithin(box: HTMLElement, el: HTMLElement, block: 'start' | 'nearest' = 'start', smooth = false): void {
+  const PAD = 8;
+  const b = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const y = r.top - b.top + box.scrollTop;   // the element's offset within the box's scrolled content
+  let top: number | null = y - PAD;
+  if (block === 'nearest') {
+    if (r.top >= b.top + PAD && r.bottom <= b.bottom - PAD) top = null;                // in view already
+    else if (r.top >= b.top + PAD) top = Math.min(y - PAD, y + r.height - box.clientHeight + PAD);   // below: bring its foot up
+  }
+  if (top === null) return;
+  box.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+}
+
 /** Creates an element with attributes, styles, listeners and children (text children are text nodes, never HTML). */
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Attrs | null, ...kids: Kid[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);

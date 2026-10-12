@@ -6,7 +6,7 @@
 import { ADVISORS } from '../game/types';
 import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GuideStep, Remedy } from '../game/types';
 import type { Game } from './types';
-import { clear, fmtDays, h, img, tip } from './dom';
+import { clear, fmtDays, h, img, scrollWithin, tip } from './dom';
 import { caps } from './tipkit';
 import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
@@ -85,14 +85,16 @@ export function counselSig(g: Game, item: CounselItem): string {
   return `${strip}|${key}|${g.prefs.tips ? 1 : 0}`;
 }
 
-/** Pulses a selector's element for 3 s (retries while a freshly opened tab builds). */
+/** Pulses a selector's element for 3 s (retries while a freshly opened tab builds); one in the side panel's body is
+ *  scrolled into view there, and nothing else ever scrolls (dom.scrollWithin: the chrome stays put). */
 export function pulseTarget(selector: string): void {
   let tries = 0;
   const go = (): void => {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) { if (++tries < PULSE_TRIES) window.setTimeout(go, 60); return; }
     el.classList.add('guide-glow');
-    el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    const body = el.closest<HTMLElement>('#tab-body');
+    if (body) scrollWithin(body, el, 'nearest', true);
     window.setTimeout(() => el.classList.remove('guide-glow'), PULSE_MS);
   };
   go();
@@ -140,11 +142,14 @@ export class Counsel {
     const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}`
       : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : item.kind === 'offer' ? `o:${item.duties[0]}` : 'c';
     const enter = key !== this.shownKey;
+    const wasOffer = this.shownKey.startsWith('o:');
     this.shownKey = key;
     // a phone shows the card folded to its title: a new tip or lesson unfolds it (the next waits on it), and once it is
-    // read or its payoff has shown the card folds again
-    if (enter && (item.kind === 'tip' || item.kind === 'lesson' || item.kind === 'offer')) { this.open = true; this.autoOpen = true; }
-    else if (enter && this.autoOpen) { this.open = false; this.autoOpen = false; }
+    // read or its payoff has shown the card folds again. A duty offer never unfolds by itself: eight chores with two
+    // buttons each would cover the whole map; its title says what waits and a tap opens it. Answering one of its chores
+    // brings the same offer back shorter: an unfolded card stays unfolded
+    if (enter && (item.kind === 'tip' || item.kind === 'lesson')) { this.open = true; this.autoOpen = true; }
+    else if (enter && ((item.kind === 'offer' && !wasOffer) || this.autoOpen)) { this.open = false; this.autoOpen = false; }
     this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
     // the portraits come with the advisors' tip (the paced introduction); until then the card stands alone
     if (shows(this.g, 'portraits')) this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));

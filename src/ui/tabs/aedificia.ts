@@ -11,6 +11,7 @@ import { capitoliumFlow, capitoliumStage, worksQueue } from '../../game/construc
 import { derived } from '../../game/derived';
 import { idx } from '../../game/map';
 import { getBuilding } from '../../game/state';
+import { resolvePlaceAt } from '../../game/site';
 import { reasonText } from '../../game/ordo/reasons';
 import { B } from '../../game/balance';
 import { BUILD_ORDER, BUILDING_DEFS, CAT_LABELS } from '../../game/data/buildings';
@@ -18,6 +19,7 @@ import { PATH_DEFS } from '../../game/data/decisions';
 import { LAYER_META } from '../../game/data/housing';
 import { RESOURCE_DEFS } from '../../game/data/resources';
 import { confirm2 } from '../modals';
+import { touchInput } from '../pointer';
 import { councilReport } from '../../game/ordo/index';
 import { agendaEl, bar, btn, fresh, lackLine, lacking, newMark, rankReason, section, typeSprite } from './common';
 import type { TabPanel } from './common';
@@ -133,7 +135,10 @@ function cardEl(g: Game, type: BuildingId, up: Updater[], plain = false): HTMLEl
       h('div', { class: 'bld-benefit' }, (plain && plainWork(type)) || def.benefit),
       locked ? h('div', { class: 'bld-lock' }, `Requires ${locked.replace(/^Rome grants this to (an?) /, '').replace(/\.$/, '')}`) : cost,
       locked ? null : h('div', { class: 'bld-btns' },
-        btn(g, 'Place', () => { g.startPlacing({ kind: 'building', type }); }, { cls: 'primary', reason, tip: 'Choose a glowing plot or site on the map.' }),
+        // a finger previews before it places, so its ghost starts on the best plot; a mouse hovers the plots itself and
+        // its camera never jumps (ui/pointer.ts reads this very press)
+        btn(g, 'Place', () => { g.startPlacing({ kind: 'building', type, at: touchInput() ? resolvePlaceAt(g.state, type) : undefined }); },
+          { cls: 'primary', reason, tip: 'Choose a glowing plot or site on the map.' }),
         s.ordo.on.build && !plain ? btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason: reason ?? full, tip: 'The Ordo places it at its best site within 2 days.' }) : null,
         toolRevealed(s, 'pin') && !plain ? btn(g, pinned ? 'Pinned ✓' : 'Build next', () => A.pinBuild(g.state, pinned ? null : type),
           { cls: pinned ? 'on' : '', reason: pinned ? null : reason, tip: pinned ? 'Release the pin.' : 'The Ordo saves for it and raises it first.' }) : null)));
@@ -182,7 +187,7 @@ export const panel: TabPanel = {
       return;
     }
     const works = section('Opera', queue.length ? `Works queue · ${queue.length}` : 'Works queue', { anchor: 'works',
-      note: queue.length ? 'Builders work down the queue: your works first, then the Ordo\'s. Click a row to see it.' : 'Nothing is being built.' });
+      note: queue.length ? `Builders work down the queue: your works first, then the Ordo's. ${touchInput() ? 'Tap' : 'Click'} a row to see it.` : 'Nothing is being built.' });
     queue.forEach((b, i) => works.append(queueRow(g, b, i === 0, up)));
     if (labourShown(s, 'builders')) works.append(labourEl(g, up, ['builders']));
     body.append(works);

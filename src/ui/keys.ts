@@ -1,11 +1,12 @@
 // src/ui/keys.ts — the global keyboard (DESIGN §15.8, ARCHITECTURE §13.8). Owner: WP-H.
 // Space pause · 1–4 speeds (5 = 20× in ?dev) · E V B P T L tabs · O / Shift+O overlays · R road · H forum ·
-// WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → menu. Ignored inside
-// inputs and on the title (Esc still closes modals).
+// WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → menu (the layers of
+// history.ts, which Back walks too). Ignored inside inputs and on the title (Esc still closes modals).
 import { OVERLAYS } from '../game/types';
 import type { OverlayId, Speed, TabId } from '../game/types';
 import type { Game } from './types';
 import { closeTopModal, modalCount, openMenu } from './modals';
+import { closeTopLayer } from './history';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { shows, tabShown } from './intro';
 import { notePractice } from '../game/actions';
@@ -22,12 +23,12 @@ function typing(t: EventTarget | null): boolean {
   return t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
 }
 
-/** The Esc chain: close the top modal → cancel placing → clear the selection → open the menu. */
+/** The Esc chain: close the top modal → the open layer of the highest rank (history.ts: placing, then the selection,
+ *  also a pinned ground card; Back walks the same layers) → open the menu. A letter that must be answered swallows Esc. */
 export function escape(g: Game): void {
   if (modalCount() > 0) { closeTopModal(); return; }
   if (g.mode !== 'game') return;
-  if (g.view.placing) { g.cancelPlacing(); return; }
-  if (g.view.selected !== null || g.inspecting()) { g.select(null); g.inspect(null, true); return; }   // also a pinned ground card
+  if (closeTopLayer()) return;
   g.sfx('click');
   openMenu(g);
 }

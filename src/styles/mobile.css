@@ -3,8 +3,9 @@
    compact < 560 px. Imported last. The bottom sheet itself (#side) is WP-I's; --sheet tracks its height here. */
 
 /* ───────── tablet and narrow desktop ───────── */
-@media (max-width: 1099px) {
-  /* the HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below */
+/* The HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below. Also
+   on a touch screen up to 1279 px: its six 44 px speed buttons and the menu leave the one-row strip no room (1180 px). */
+@media (max-width: 1099px), (pointer: coarse) and (max-width: 1279px) {
   :root { --hud-h: 108px; }
   #hud { flex-wrap: wrap; align-content: center; row-gap: 3px; }
   .hud-strip { grid-template-rows: 32px; }
@@ -12,6 +13,8 @@
   .hud-speed { margin-left: auto; }
   .hud-break { display: block; flex: 0 0 100% !important; height: 0; order: 2; }
   .hud-date, .hud-strip { order: 3; }
+}
+@media (max-width: 1099px) {
   #minimap { display: none; }
   #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
   #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
@@ -73,6 +76,11 @@
   #counsel.open .counsel-toggle { transform: rotate(180deg); }
   .counsel-metric { display: none; }
   .counsel-who { padding-right: 34px; }
+  /* the unfolded card overflows the short column on purpose (it sits above the map); a duty offer unfolds only on a tap
+     (counsel.ts), and then the screen caps it */
+  #left > #counsel { flex: none; }
+  #counsel:has(> .counsel-card.offer) { max-height: none; }
+  .counsel-card.offer { max-height: 50vh; max-height: 50dvh; }
   .counsel-calm { font-size: 11px; }
 
   #map-tools { right: 8px; bottom: calc(var(--sheet) + 52px); }
@@ -154,8 +162,13 @@
 }
 
 /* ───────── touch: targets of at least 44 px (DESIGN §15.7) ───────── */
+/* Keyed on the pointer, never the width: a 1180–1376 px touch tablet is fingers too (the speed buttons were 28 px wide).
+   The width blocks below only narrow what a phone's HUD row cannot fit. */
 @media (pointer: coarse) {
   .btn, .btn.small, .btn.tab-seg-btn, .btn.bld-cat, .obj-cta, .side-tab, .modal-row, .tr-repeat, .tr-select, button.chip { min-height: 44px; }
+  .hud-sp, .hud-menu { min-width: 44px; }
+  /* iOS zooms the page into any field under 16 px when it takes focus */
+  .modal-text, .tr-select { font-size: 16px; }
   .btn.adv-f { min-height: 64px; }
   .btn.small, .btn.bld-cat { min-width: 44px; }
   .btn.adv-f { min-width: 0; }
@@ -168,11 +181,15 @@
   .counsel-pt { width: 44px; height: 44px; padding: 8px; }
   .map-btn { width: 44px; height: 44px; }
   .map-ov { height: 44px; }
+  #app.placing .map-ov { min-width: 44px; justify-content: center; }   /* the icon-only column while placing */
+  .tick-box { min-height: 44px; border-radius: 22px; }
   .hud-sp, .hud-menu { height: 44px; }
+}
+@media (pointer: coarse) and (min-width: 900px) {
+  #side-toggle { left: -46px; width: 44px; }
 }
 @media (pointer: coarse) and (max-width: 1099px) {
   .hud-sp { min-width: clamp(32px, calc((100vw - 700px) / 5), 44px); }
-  .hud-menu { min-width: 44px; }
 }
 @media (pointer: coarse) and (max-width: 899px) {
   :root { --hud-h: 104px; }
@@ -204,6 +221,9 @@
   #side.collapsed #side-toggle::before { content: '◂'; }
   #tabs { grid-template-columns: repeat(3, 1fr); }
   #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
+  /* here the column reaches the screen's foot: an unfolded card takes what it leaves and scrolls inside */
+  #left > #counsel { flex: 0 1 auto; }
+  .counsel-card.offer { max-height: none; }
   #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
   #map-tools { bottom: 8px; }
   #app:not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
@@ -211,4 +231,7 @@
   .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
   #ticker { display: none; }
   #place-banner, #app:has(#side.collapsed) #place-banner { bottom: 8px; }
+}
+@media (pointer: coarse) and (max-width: 899px) and (max-height: 520px) {
+  #side-toggle { left: -46px; width: 44px; }
 }

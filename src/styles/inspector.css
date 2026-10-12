@@ -71,6 +71,12 @@
 .choice-left.bad { color: var(--bad); border-color: var(--bad); }
 .choice-text { margin: 0; font-size: 14px; color: #ecdfc6; }
 .choice-gate { display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; font-size: 12px; background: var(--well); border-radius: var(--r1); }
+/* the answers and the countdown stay in view at the card's foot while a tall text scrolls under them: stuck, the footer
+   covers the card's bottom padding too, so nothing shows below it; its 6 px fade marks the cut */
+.choice-foot { position: sticky; bottom: -10px; z-index: 1; display: flex; flex-direction: column; gap: 6px;
+  margin: 0 -12px -8px; padding: 0 12px 8px; background: var(--panel-solid); }
+.choice-foot::before { content: ''; position: absolute; left: 0; right: 0; top: -6px; height: 6px; pointer-events: none;
+  background: linear-gradient(rgba(36, 26, 22, 0), var(--panel-solid)); }
 .choice-opts { display: flex; flex-direction: column; gap: 4px; }
 .choice-opt { flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; white-space: normal; text-align: left; min-height: 0; font-size: 14px; }
 .choice-opt.default { border-color: var(--line-2); }

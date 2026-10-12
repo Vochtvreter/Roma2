@@ -1,6 +1,7 @@
 // src/ui/choice.ts — the event card (ARCHITECTURE §13.3, DESIGN §12.1, §15.4). Owner: WP-I.
 // Shows s.choice at the top centre: Latin kicker, title, text, options with −cost / +gain chips (disabled with a reason
-// when unaffordable), the default marked, a countdown; veterans show each family's skills and the free beds.
+// when unaffordable), the default marked, a countdown; veterans show each family's skills and the free beds. The options
+// and the countdown are pinned to the card's foot, so a card taller than its room scrolls its text, never its answers.
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, PendingChoice } from '../game/types';
 import type { Game, Updater } from './types';
@@ -51,6 +52,10 @@ export class ChoiceCard {
   private folded = false;
   private folding: PendingChoice | null = null;
   private shown = '';                         // the dispatch on screen: only a new one slides in, a refresh stays put
+  private staged = false;                     // an unfolded card is on screen (onStage was told so)
+  /** Told when an unfolded card comes on screen (true) and when it folds or is answered (false): the UI root makes room
+   *  for it on a phone. */
+  onStage: ((up: boolean) => void) | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     root.hidden = true;
@@ -93,6 +98,8 @@ export class ChoiceCard {
     this.ups = [];
     clear(this.root);
     this.root.hidden = !c;
+    const up = !!c && !this.folded;
+    if (up !== this.staged) { this.staged = up; this.onStage?.(up); }
     if (!c) return;
     const def = c.options[c.defaultIndex];
     const left = h('span', { class: 'chip choice-left num' });
@@ -127,7 +134,9 @@ export class ChoiceCard {
         o.cost || o.gain ? h('span', { class: 'choice-opt-cost' }, o.cost ? chips(o.cost, '−', s) : null, o.gain ? chips(o.gain, '+', s) : null) : null];
       return btn(g, body, () => A.chooseOption(g.state, i), { cls: `choice-opt${i === c.defaultIndex ? ' default' : ''}`, reason });
     }));
-    this.root.append(h('div', { class: `card choice-card${enter}` }, head, h('p', { class: 'choice-text' }, c.text), gate(g), opts,
-      h('div', { class: 'meter choice-meter' }, meter), silent));
+    // the answers and the countdown sit in a footer pinned to the card's foot: on a phone the text scrolls under them,
+    // never they off it (the silent course follows, read at the end of the scroll)
+    this.root.append(h('div', { class: `card choice-card${enter}` }, head, h('p', { class: 'choice-text' }, c.text), gate(g),
+      h('div', { class: 'choice-foot' }, opts, h('div', { class: 'meter choice-meter' }, meter)), silent));
   }
 }

@@ -884,7 +884,7 @@ GuideStep `{id, title, text, when, after?, until?, target?, tab?, urgent?}`; but
 
 | # | id | Title | When | After | Until | Target | Gist |
 |---|---|---|---|---|---|---|---|
-| 1 | `welcome` | Salve, Praefecte | always | — | — | — | *"I am Decimus Cassius, once primus pilus. The Ordo runs the camp day by day, even while you sleep. You set its course, and you may build whatever you like yourself. I will speak when something new matters."* |
+| 1 | `welcome` | Salve, Praefecte | always | — | — | — | *"I am Decimus Cassius, once primus pilus. The camp is yours to run by hand; each chore you master, the Ordo can carry day by day, even while you sleep. You set its course, and you may build whatever you like yourself. I will speak when something new matters."* |
 | 2 | `starving` ★urgent | The bellies are empty | any group hunger > 50 | welcome | grain DoH > 20 | `#vital-grain` | *"The Ordo cuts rations before anyone starves. Raise fields, buy grain, or set rations yourself in Edicta."* |
 | 3 | `thirst` ★urgent | The amphorae run dry | water R < 6 | welcome | water DoH > 12 | `#vital-water` | *"A well by the river draws best. The Curator's card has a remedy."* |
 | 4 | `event` ★urgent | A dispatch arrives | a choice is pending | welcome | — | `#choice` | *"Decide before the timer ends, or the Ordo takes the cautious path."* |
@@ -1195,7 +1195,7 @@ Panels rebuild only when their signature string changes; volatile text updates t
 - There is no defeat modal.
 
 ### 15.6 Title screen
-The live map of the save (or a fresh seed) drifts behind the title. Logo **CASTRA·VALERIA** in Silkscreen with a terracotta extrusion (`0 4px 0 #8a3b13, 0 8px 0 #0a0710, 0 0 40px rgba(242,201,76,.35)`) and a bobbing aquila; kicker `AB CASTRIS AD COLONIAM`; subtitle *From a legion's camp to a colonia of Rome*. Buttons: **Continue** (*"Castra Valeria · Vicus · Id. Mai. AUC DCCCII · 64 souls"*), **Found a new colony** (two-click confirm when a save exists; shows Legacy), **How to play**, **Import a save**. The **Fasti coloniarum** list if any colony is finished. Footer: *"An idle Roman city · saves automatically · v1.0"*. An unreadable save shows an explanation and an *Export raw save* button.
+The live map of the save (or a fresh seed) drifts behind the title. Logo **CASTRA·VALERIA** in Silkscreen with a terracotta extrusion (`0 4px 0 #8a3b13, 0 8px 0 #0a0710, 0 0 40px rgba(242,201,76,.35)`) and a bobbing aquila; kicker `AB CASTRIS AD COLONIAM`; subtitle *From a legion's camp to a colonia of Rome*. Buttons: **Continue** (*"Castra Valeria · Vicus · Id. Mai. AUC DCCCII · 64 souls"*), **Found a new colony** (two-click confirm when a save exists; shows Legacy), **How to play**, **Import a save**. The **Fasti coloniarum** list if any colony is finished. Footer: *"A Roman city-builder · saves automatically · v1.0"*. An unreadable save shows an explanation and an *Export raw save* button.
 
 ### 15.7 Mobile (< 900 px; compact < 560 px)
 - HUD row 1: grain, water, coin, souls, spirits (no strips) + speed; row 2: date + scrolling resources.
@@ -1204,6 +1204,13 @@ The live map of the save (or a fresh seed) drifts behind the title. Logo **CASTR
 
 ### 15.8 Controls
 Space pause · 1–4 speeds · E/V/B/P/T/L tabs · O cycle overlay, Shift+O off · R road tool · H centre on forum · WASD/arrows pan · +/−/wheel zoom (accumulated deltas) · Shift-click place more · right-click or Esc cancels · Esc chain: modal → placement → selection → menu. Keys are ignored in inputs. Tabs carry `aria-selected`; modals trap focus.
+- **Back** (Android's back button, a browser's Back, Safari's edge swipe) walks the same layers in a game: modal → placement → selection. With nothing open the first Back saves and says *"Back again to leave · the colony is saved"*; a second within 3 s leaves. On the founding letter Back returns to the title; the title sets no trap.
+- **The hand in use decides the words and the steps**, per press, not per device: a finger or a pen taps a plot to preview it and confirms with **Place** (the ghost already on the best plot when placing starts from a card); a mouse clicks to place and its camera never jumps. A remedy, a house's *Place a well* and a block's *Place a house plot* always start with the ghost on a valid plot (the remedy's own, the one nearest the house, a free plot of that block), and the camera moves only when that plot is off the screen. How to play shows the gestures to a finger and the keys whenever a mouse or a trackpad is attached; *Tap/Click a row*, *Tap/Hover them on the map*, *Tap/Click again to demolish* follow the hand.
+
+### 15.9 Cards that never outgrow the screen
+- **Duty offers** never unfold by themselves on a phone (their folded title says what waits; a tap opens them). Unfolded, the offer card is capped (half the screen on a phone, 60% of the left column on desktop) and scrolls inside, with *Hand over all* / *Keep them all* pinned at its foot.
+- **Edicta shows the Mandata first while an offer waits**, led by a pinned *Hand over all* / *Keep them all*; once the offer is answered the Mandata go back to the end of the tab.
+- **The event card pins its options** (and the countdown) to its foot: the text scrolls under them, the answers never leave the screen. On a portrait phone the sheet drops to its tab bar while the card is unfolded (so its text has room too) and comes back once it is answered or folded; a tab tapped meanwhile opens the sheet again. **The letters pin their answer** (*Return to the city*, *Raise the standard*) to the foot, and the away letter opens with *Awaiting you*.
 
 ---
 

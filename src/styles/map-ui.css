@@ -19,6 +19,7 @@
 #minimap {
   grid-area: mini; width: 224px; height: 168px; display: block; border: 2px solid var(--line); border-radius: 6px;
   background: #0a0710; cursor: crosshair; box-shadow: var(--ring-shadow), 0 4px 14px rgba(0, 0, 0, .45);
+  touch-action: none;   /* a finger drags the view rectangle, as the mouse does */
 }
 #app.placing #minimap { display: none; }
 /* while placing, the icon-only overlay column sits flush right above the zoom buttons, clear of the place banner */

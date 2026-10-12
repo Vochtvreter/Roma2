@@ -112,7 +112,8 @@ describe('tip engine', () => {
     for (const s of [fresh(42), run(fresh(3), 200)]) {
       for (const g of GUIDE) expect(g.text(s)).not.toMatch(/undefined|NaN|\[object/);
     }
-    expect(GUIDE[0].text(fresh(42))).toMatch(/^I am Decimus Cassius, once primus pilus\. The Ordo runs Castra Valeria/);
+    // the welcome names the colony (F17: the camp is run by hand, the Ordo carries what is mastered)
+    expect(GUIDE[0].text(fresh(42))).toMatch(/^I am Decimus Cassius, once primus pilus\. Castra Valeria is yours to run by hand/);
   });
   it('shows welcome on day 1 and vitals before day 10 when each tip is read (seed 42)', () => {
     const shown = play(fresh(42), 30);

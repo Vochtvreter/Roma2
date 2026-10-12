@@ -5,25 +5,36 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body {
-  margin: 0; height: 100%; overflow: hidden;
+  margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none;   /* no pull-to-refresh, no rubber band */
   background: var(--bg); color: var(--text);
   font-family: var(--font-body); font-size: var(--fs-base); line-height: 1.35;
   -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; font-smooth: never;
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;   /* a phone turned sideways keeps the type size */
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* Pixelify Sans draws its 'fi' ligature as one glyph that reads as a capital A ('Raise your Arst building'): ligatures
+   off everywhere, form controls included (after their font shorthand, which would reset it) */
+html, body, button, input, select, textarea { font-variant-ligatures: no-common-ligatures; font-feature-settings: 'liga' 0, 'clig' 0; }
 button { cursor: pointer; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 img.pix, canvas, .pix { image-rendering: pixelated; image-rendering: crisp-edges; }
 img.pix { -webkit-user-drag: none; }
+img { -webkit-touch-callout: none; }   /* a long press on a sprite is the tooltip (dom.ts), not iOS's save-image sheet */
 [hidden] { display: none !important; }
 input, textarea { user-select: text; -webkit-user-select: text; }
 
 /* ───────── app frame ───────── */
 /* viewport-fit=cover (index.html): the frame keeps clear of the notch, the Dynamic Island and the home indicator */
-#app { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); overflow: hidden; }
+/* overflow: clip, not hidden: a hidden box can still be scrolled by script, and an element scrolled into view slid the
+   whole interface up and off the screen (hidden stays as the fallback for engines without clip) */
+#app { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); overflow: hidden; overflow: clip; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: var(--z-map); touch-action: none; cursor: crosshair; }
+/* Gestures: the chrome pans its own scroll boxes, but a pinch or a double tap there never zooms the page (iOS ignores
+   user-scalable=no). Only #app's children other than the map: '#app *' would tie #map's specificity and, coming later,
+   hand the map's pans and pinches to the browser. */
+#app > :not(#map), #modal-root, #title-screen, #veil { touch-action: pan-x pan-y; }
 #app.in-title > :not(#map) { display: none !important; }
 
 /* ───────── buttons ───────── */

@@ -118,7 +118,7 @@ export class TitleScreen {
       btns,
       fasti.length ? h('div', { class: 'title-fasti' }, h('div', { class: 'title-fasti-k' }, 'FASTI COLONIARVM'),
         h('ol', null, fasti.slice(0, FASTI_SHOWN).map(fastiRow))) : null,
-      h('div', { class: 'title-foot' }, 'An idle Roman city · saves automatically · v1.0', DEV ? ' · DEV' : '')));
+      h('div', { class: 'title-foot' }, 'A Roman city-builder · saves automatically · v1.0', DEV ? ' · DEV' : '')));
     this.root.hidden = false;
   }
 

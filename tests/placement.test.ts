@@ -1,18 +1,19 @@
 // tests/placement.test.ts — the placement pipeline (ARCHITECTURE §8.2, §14.2 WP-A): every canPlace code in order with its
 // exact reason; plans, stakes and sites per PlaceOpts; felling, auto-roads, block streets, the aqueduct; road, paving,
-// reserve and demolish tools; validSlots agreement and speed; site multipliers; bestSlot determinism.
+// reserve and demolish tools; validSlots agreement and speed; site multipliers; bestSlot determinism; where a placement
+// the player starts puts its ghost (resolvePlaceAt).
 import { describe, expect, it } from 'vitest';
 import { BUILDINGS, F, T } from '../src/game/types';
 import type { Building, BuildingId, GameState, Owner, PlaceFail, PlaceOpts, RankIndex } from '../src/game/types';
 import { H, W, getMap, idx, tx, ty } from '../src/game/map';
 import { blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
-import { derived } from '../src/game/derived';
+import { blockOfTile, classAt, derived, sizeOf } from '../src/game/derived';
 import { invalidate, structEpoch } from '../src/game/memo';
 import {
   buildRoad, canPlace, ceremonyPaving, demolish, pave, placeBuilding, placementCost, roadPathFor, routeAqueduct,
   streetsForBlock, toggleReserveBlock, validSlots,
 } from '../src/game/place';
-import { bestSlot, siteMultAt, siteScore } from '../src/game/site';
+import { bestSlot, resolvePlaceAt, siteMultAt, siteScore } from '../src/game/site';
 import { fx } from '../src/game/fx';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
@@ -602,5 +603,74 @@ describe('bestSlot', () => {
     const sc = siteScore(s, 'ager', field.x, field.y).score;
     const best = bestSlot(s, 'ager', { owner: 'ordo' })!;
     expect(sc).toBeGreaterThanOrEqual(best.score - 1e-9);
+  });
+});
+
+describe('resolvePlaceAt: where a placement the player starts puts its ghost', () => {
+  it('no tile given: the best slot', () => {
+    const s = fresh(42);
+    for (const type of ['puteus', 'area', 'ager', 'lararium'] as const) {
+      expect(resolvePlaceAt(s, type), type).toBe(bestSlot(s, type, { owner: 'player' })?.tile);
+    }
+  });
+
+  it('a tile that is still a valid slot is kept', () => {
+    const s = fresh(42);
+    const best = bestSlot(s, 'puteus', { owner: 'player' })?.tile;
+    const other = [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => a - b).find((t) => t !== best);
+    expect(other).toBeDefined();
+    expect(resolvePlaceAt(s, 'puteus', other)).toBe(other);
+  });
+
+  it('a tile taken since (the Ordo built there): the best slot instead', () => {
+    const s = fresh(42);
+    const at = bestSlot(s, 'puteus', { owner: 'player' })!.tile;
+    expect(placeBuilding(s, 'puteus', at, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    expect(canPlace(s, 'puteus', at, { owner: 'player' }).ok).toBe(false);
+    const next = resolvePlaceAt(s, 'puteus', at);
+    expect(next).toBeDefined();
+    expect(next).not.toBe(at);
+    expect(next).toBe(bestSlot(s, 'puteus', { owner: 'player' })?.tile);
+    expect(canPlace(s, 'puteus', next!, { owner: 'player' }).ok).toBe(true);
+  });
+
+  it('a tapped block: a free plot in that block, the best slot when it lies there', () => {
+    const s = fresh(42);
+    const slots = [...validSlots(s, 'area', 'player').keys()].sort((a, b) => a - b);
+    const best = bestSlot(s, 'area', { owner: 'player' })!;
+    const bestBlock = blockOfTile(s, best.tile)!.id;
+    expect(resolvePlaceAt(s, 'area', undefined, 'player', { block: bestBlock })).toBe(best.tile);
+    const other = slots.map((t) => blockOfTile(s, t)!.id).find((b) => b !== bestBlock);
+    expect(other).toBeDefined();
+    const at = resolvePlaceAt(s, 'area', undefined, 'player', { block: other })!;
+    expect(blockOfTile(s, at)?.id).toBe(other);
+    expect(at).toBe(slots.find((t) => blockOfTile(s, t)!.id === other));
+    expect(canPlace(s, 'area', at, { owner: 'player' }).ok).toBe(true);
+    // a still valid tile wins over the block; a block with no free plot falls back to the best slot
+    expect(resolvePlaceAt(s, 'area', best.tile, 'player', { block: other })).toBe(best.tile);
+    expect(resolvePlaceAt(s, 'area', undefined, 'player', { block: -1 })).toBe(best.tile);
+  });
+
+  it('near a house: the valid slot whose centre is nearest, the lowest tile on a tie', () => {
+    const s = fresh(42);
+    const house = s.buildings.find((b) => b.house)!;
+    const [hw, hh] = sizeOf(house.type, classAt(s, house.type, house.x, house.y));
+    const near = { x: house.x, y: house.y, w: hw, h: hh };
+    for (const type of ['puteus', 'lararium'] as const) {
+      let pick = -1, d2 = Infinity;
+      for (const t of [...validSlots(s, type, 'player').keys()].sort((a, b) => a - b)) {
+        const [w, h] = sizeOf(type, classAt(s, type, tx(t), ty(t)));
+        const d = (tx(t) + w / 2 - (near.x + near.w / 2)) ** 2 + (ty(t) + h / 2 - (near.y + near.h / 2)) ** 2;
+        if (d < d2) { d2 = d; pick = t; }
+      }
+      expect(resolvePlaceAt(s, type, undefined, 'player', { near }), type).toBe(pick);
+    }
+  });
+
+  it('no valid slot anywhere: undefined', () => {
+    const s = fresh(42);
+    expect(validSlots(s, 'thermae', 'player').size).toBe(0);
+    expect(resolvePlaceAt(s, 'thermae')).toBeUndefined();
+    expect(resolvePlaceAt(s, 'thermae', 0)).toBeUndefined();
   });
 });

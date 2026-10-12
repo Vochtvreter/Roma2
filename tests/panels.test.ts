@@ -9,6 +9,9 @@ import { emptyRates } from '../src/game/sim';
 import { DEFAULT_PREFS } from '../src/game/save';
 import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
 import { councilReport } from '../src/game/ordo/index';
+import { pendingOffers } from '../src/game/ordo/duties';
+import { newGame } from '../src/game/state';
+import { keepDuties, skipIntro } from '../src/game/actions';
 import { view } from '../src/game/sim';
 import { placeBuilding } from '../src/game/place';
 import { B } from '../src/game/balance';
@@ -35,6 +38,8 @@ function discrete(s: GameState): string {
     labourKey(s),
     // NEW stickers expire NEW_DAYS after the milestone or rank that revealed them
     [...Object.values(s.guidance.milestoneDays), ...Object.values(s.decisions.pathDays)].map((d) => s.day - (d ?? 0) < B.ui.NEW_DAYS),
+    // chores learned and not yet answered: Edicta leads with the Mandata and the offer's answer while any wait
+    pendingOffers(s),
   ]);
 }
 
@@ -104,6 +109,19 @@ describe('panel signatures', () => {
     expect(people.signature(g)).not.toBe(p0);
     s.log.push({ day: s.day, kind: 'info', text: 'A test line.' });
     expect(annals.signature(g)).not.toBe(a0);
+  });
+
+  it('Edicta rebuilds when the duty offer is answered (the Mandata lead the tab only while one waits)', () => {
+    const s = newGame({ seed: 42, now: 0, intro: true });
+    const g = fakeGame(s);
+    skipIntro(s);   // a colony run by hand past the lessons: every chore learned, none handed over or kept
+    expect(pendingOffers(s).length).toBeGreaterThan(1);
+    const council = PANELS.council;
+    const offered = council.signature(g);
+    expect(council.signature(g)).toBe(offered);
+    expect(keepDuties(s).ok).toBe(true);   // answered: nothing else about the duties changed
+    expect(pendingOffers(s)).toEqual([]);
+    expect(council.signature(g)).not.toBe(offered);
   });
 
   it('badges never throw and keep their shape', () => {

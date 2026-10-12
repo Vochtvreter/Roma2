@@ -102,6 +102,14 @@
 .disp-await.s3 .disp-mark { color: #a3291f; } .disp-await.s2 .disp-mark { color: #c0621f; } .disp-await.s1 .disp-mark { color: #b07d10; }
 .disp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; padding-top: 10px;
   border-top: 2px solid rgba(111, 86, 57, .35); }
+/* The letter's answer stays in reach: Return to the city (Raise the standard, Keep governing) is pinned to the foot of a
+   letter taller than the screen, its text scrolling under it. The footer takes the letter's side and bottom padding, so
+   nothing shows around it; its rule keeps the text's width, and its shading follows the letter's lower edge (the
+   parchment darkens to the right and the inset shadow at the sides, which the footer covers). */
+.modal.parchment .disp-foot { position: sticky; bottom: -18px; z-index: 1; margin: 12px -24px -18px; padding: 10px 24px 18px; border-top: 0;
+  background: linear-gradient(rgba(111, 86, 57, .35), rgba(111, 86, 57, .35)) 24px 0 / calc(100% - 48px) 2px no-repeat,
+    linear-gradient(90deg, rgba(120, 80, 30, .06), transparent 40px, transparent 50%, rgba(120, 80, 30, .15) 85%, rgba(120, 80, 30, .18)),
+    linear-gradient(transparent, rgba(120, 80, 30, .06)), #decdab; }
 .disp-note { font-size: 12px; color: #6f5639; margin-right: auto; font-style: italic; }
 .disp-sign { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1px; color: #6f5639; margin-right: auto; }
 .disp-note + .disp-sign { margin-right: 0; }

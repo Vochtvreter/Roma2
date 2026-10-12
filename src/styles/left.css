@@ -101,6 +101,20 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 .counsel-name { font-size: 11px; color: var(--dim); font-style: italic; margin-right: auto; }
 .counsel-foot .counsel-link { margin-left: 0; }
 .counsel-toggle { display: none; }
+/* The column never runs off the screen: when its parts cannot all fit (a short window, a two-row touch HUD, a long
+   advisory), the inspector gives way first, then the counsel card, whose body scrolls inside. A duty offer lists every
+   chore learned (eight after 'skip the introduction', 19 buttons): it is capped at 60% of the column outright, with Hand
+   over all / Keep them all pinned at its foot (mobile.css caps it by the screen instead). */
+#left > #counsel { flex: 0 1 auto; min-height: 0; }
+#left > #inspector { flex-shrink: 1000; }   /* gives way first: shrinking goes by factor × size */
+#counsel:has(> .counsel-card.offer) { max-height: 60%; }
+.counsel-card { display: flex; flex-direction: column; min-height: 0; }
+.counsel-card > .counsel-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.counsel-card.offer .counsel-foot { position: sticky; bottom: 0; z-index: 1; background: var(--panel-solid); }
+/* the note takes a line of its own, the two answers share the next (the 300 px column wrapped each onto two lines) */
+.counsel-card.offer .counsel-foot { flex-wrap: wrap; row-gap: 0; }
+.counsel-card.offer .counsel-name { flex-basis: 100%; }
+.counsel-card.offer .counsel-link { white-space: nowrap; }
 .counsel-calm {
   display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted);
   background: rgba(36, 26, 22, .82); border: 2px solid #3a2a22; border-radius: 6px; box-shadow: var(--ring-shadow);

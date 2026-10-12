@@ -4,6 +4,7 @@ import { BUILDER, HOUSE_TIERS, STAGES } from '../../game/types';
 import type { GameState, HouseTierId, NeedId, Person } from '../../game/types';
 import type { Game, Updater } from '../types';
 import { fmt, h, img, plural, tip } from '../dom';
+import { touchInput } from '../pointer';
 import { ageOf, census, stageOf } from '../../game/census';
 import { personName } from '../../game/people';
 import { firstWant } from '../../game/housing';
@@ -131,7 +132,7 @@ function homes(g: Game, up: Updater[]): HTMLElement {
             h('button', { class: 'chip pop-want', type: 'button', onclick: () => { g.view.setOverlay('domus'); g.sfx('click'); } },
               img(NEED_META[n].icon, 1, 'chip-ico'), `${k} · ${NEED_META[n].label.toLowerCase()}`))) : null));
     }));
-    if (c.declining) box.append(h('div', { class: 'ed-warn' }, `${plural(c.declining, 'home is', 'homes are')} declining. Hover them on the map to see what lapsed.`));
+    if (c.declining) box.append(h('div', { class: 'ed-warn' }, `${plural(c.declining, 'home is', 'homes are')} declining. ${touchInput() ? 'Tap' : 'Hover'} them on the map to see what lapsed.`));
     if (!c.houses) box.append(h('div', { class: 'tab-quiet' }, 'No homes yet.'));
   };
   refresh();

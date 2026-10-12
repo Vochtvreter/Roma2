@@ -9,6 +9,7 @@ import { renameColony } from '../game/actions';
 import { B } from '../game/balance';
 import { lastExported, markExported } from '../game/save';
 import type { GameState } from '../game/types';
+import { finePointer, pressWord, touchInput } from './pointer';
 
 interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; close: () => void; prevFocus: Element | null }
 const stack: Entry[] = [];
@@ -24,6 +25,11 @@ export function exportDue(s: GameState): boolean {
 /** Number of open modals. */
 export function modalCount(): number {
   return stack.length;
+}
+
+/** True when a modal is open and the top one may be closed (Esc, ✕, Back); the founding letter may not. */
+export function topModalClosable(): boolean {
+  return stack[stack.length - 1]?.closable ?? false;
 }
 
 /** Closes the top modal if it is closable; true when one was closed. */
@@ -112,7 +118,7 @@ export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => v
   btn.addEventListener('click', () => {
     if (btn.dataset.armed === '1') { window.clearTimeout(timer); disarm(); fn(); return; }
     btn.dataset.armed = '1';
-    btn.textContent = armedLabel;
+    btn.textContent = pressWord(armedLabel);   // 'Click again…' says Tap to a finger
     btn.classList.add('armed');
     timer = window.setTimeout(disarm, ARM_MS);
   });
@@ -200,22 +206,25 @@ function openUnsaved(g: Game): void {
 const kbd = (k: string): HTMLElement => h('kbd', { class: 'kbd' }, k);
 const sec = (title: string, ...kids: Kid[]): HTMLElement => h('section', { class: 'modal-sec' }, h('h3', null, title), ...kids);
 
-/** How to play: five short sections and the controls (DESIGN §15.5); touch screens get the touch gestures. */
+/** How to play: five short sections and the controls (DESIGN §15.5). The words follow the hand in use (ui/pointer.ts): a
+ *  finger gets the gestures, and the keyboard shortcuts show whenever a mouse or a trackpad is attached (an iPad with a
+ *  Magic Keyboard gets both). */
 export function openHowTo(_g: Game): void {
-  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;   // as the placement banner decides
+  const touch = touchInput();
+  const keys = !touch || finePointer();
   const build = touch
     ? 'Pick a work in Aedificia, tap a glowing plot to preview it, then press Place. Gold means a bonus; the laurel marks the Ordo’s own choice. Cancel (or a two-finger tap) stops placing.'
     : 'Pick a work in Aedificia and click a glowing plot. Gold means a bonus; the laurel marks the Ordo’s own choice. Shift-click places more; Esc or right-click cancels.';
-  const controls = touch
-    ? h('ul', { class: 'modal-keys' },
-      h('li', null, 'Drag to pan · pinch to zoom'),
-      h('li', null, 'Tap a building to inspect it · hold a control for its tooltip'),
-      h('li', null, 'Two-finger tap to cancel placing'))
-    : h('ul', { class: 'modal-keys' },
-      h('li', null, kbd('Space'), ' pause · ', kbd('1'), kbd('2'), kbd('3'), kbd('4'), ' speed'),
-      h('li', null, kbd('E'), kbd('V'), kbd('B'), kbd('P'), kbd('T'), kbd('L'), ' panels · ', kbd('O'), ' overlays · ', kbd('R'), ' road'),
-      h('li', null, kbd('W'), kbd('A'), kbd('S'), kbd('D'), ' pan · ', kbd('+'), kbd('−'), ' zoom · ', kbd('H'), ' the forum'),
-      h('li', null, kbd('Esc'), ' close · cancel · menu · touch: hold for a tooltip'));
+  const gestures = touch ? [
+    h('li', null, 'Drag to pan · pinch to zoom'),
+    h('li', null, 'Tap a building to inspect it · hold a control for its tooltip'),
+    h('li', null, 'Two-finger tap to cancel placing')] : [];
+  const shortcuts = keys ? [
+    h('li', null, kbd('Space'), ' pause · ', kbd('1'), kbd('2'), kbd('3'), kbd('4'), ' speed'),
+    h('li', null, kbd('E'), kbd('V'), kbd('B'), kbd('P'), kbd('T'), kbd('L'), ' panels · ', kbd('O'), ' overlays · ', kbd('R'), ' road'),
+    h('li', null, kbd('W'), kbd('A'), kbd('S'), kbd('D'), ' pan · ', kbd('+'), kbd('−'), ' zoom · ', kbd('H'), ' the forum'),
+    h('li', null, kbd('Esc'), touch ? ' close · cancel · menu' : ' close · cancel · menu · touch: hold for a tooltip')] : [];
+  const controls = h('ul', { class: 'modal-keys' }, gestures, shortcuts);
   openModal(h('div', { class: 'modal-howto' },
     sec('By your hand, then the Ordo\'s', h('p', null, 'You run a new camp by hand: who works where, what is raised, what is traded. Each chore you have done yourself becomes a duty you may hand to the Ordo Decurionum (Edicta → Mandata), or keep; it then does it every day, even while you are away, and says why on the ticker. Take a duty back whenever you like. You set its course with the charter, the paths, the focus and the edicts, and your own works are always raised first.')),
     sec('Grain and water in days', h('p', null, 'The two tablets count days on hand, with the year ahead beneath: green is safe, gold is thin, red is danger. Every warning comes with a remedy.')),

@@ -9,6 +9,7 @@ import { overlayRevealed } from '../game/reveal';
 import { notePractice } from '../game/actions';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
+import { lastTouch, primaryCoarse, touchInput } from './pointer';
 
 const OVERLAY_LABEL: Record<OverlayId, string> = { none: 'Off', aqua: 'Aqua', domus: 'Domus', officia: 'Officia', desir: 'Dignitas loci', terra: 'Terra' };
 const OVERLAY_SUB: Record<OverlayId, string> = {
@@ -96,34 +97,26 @@ function steadyBox(box: HTMLElement, what: string): void {
   floor.h = Math.max(floor.h, Math.ceil(r.height));
 }
 
-let lastTouch = false;       // the last pointer was a finger or a pen, whatever the device's main pointer
-let watching = false;
-
-/** Tracks the last pointer type (capture phase, before the map sees the tap): a touch laptop, a Surface or a pen taps a
- *  plot to preview it, as a phone does, so its banner needs the Place button too. */
-function watchPointer(): void {
-  if (watching || typeof window === 'undefined') return;
-  watching = true;
-  const note = (e: PointerEvent): void => { lastTouch = e.pointerType !== 'mouse'; };
-  window.addEventListener('pointerdown', note, true);
-  window.addEventListener('pointermove', note, true);
-}
-
 /** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. */
 export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | null, check: PlaceCheck | null): void {
-  watchPointer();
   clear(root);
   root.hidden = !p;
   document.getElementById('app')?.classList.toggle('placing', !!p);
   if (!p) return;
-  // the map treats any non-mouse tap as a preview (render/view.ts), so the Place button follows the last pointer used
-  const coarse = lastTouch || (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
+  // the map treats any non-mouse tap as a preview (render/view.ts), so the Place button follows the last pointer used: a
+  // touch laptop, a Surface or a pen taps a plot to preview it, as a phone does (ui/pointer.ts)
+  const coarse = lastTouch() || primaryCoarse();
   const cancel = h('button', { class: 'btn small ghost', onclick: () => g.cancelPlacing() }, 'Cancel');
   if (p.kind !== 'building') {
-    const what = { road: ['Road', 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST'], pave: ['Paving', 'DRAG OVER ROADS TO PAVE THEM IN BASALT'],
-      reserve: ['Reserve a block', 'CLICK A BLOCK TO KEEP IT FOR YOURSELF, OR RELEASE IT'], demolish: ['Demolish', 'CLICK A BUILDING, THEN AGAIN TO CONFIRM'] }[p.kind];
+    const tap = touchInput();   // the words follow the hand: a finger taps and has no Shift or Esc
+    const what = {
+      road: ['Road', tap ? 'DRAG TO LAY A ROAD' : 'DRAG TO LAY A ROAD · SHIFT = VERTICAL FIRST'],
+      pave: ['Paving', 'DRAG OVER ROADS TO PAVE THEM IN BASALT'],
+      reserve: ['Reserve a block', `${tap ? 'TAP' : 'CLICK'} A BLOCK TO KEEP IT FOR YOURSELF, OR RELEASE IT`],
+      demolish: ['Demolish', `${tap ? 'TAP' : 'CLICK'} A BUILDING, THEN AGAIN TO CONFIRM`],
+    }[p.kind];
     root.appendChild(h('div', { class: 'place-box' }, img(`i_tool_${p.kind}`, 3, 'place-ico'),
-      h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), h('div', { class: 'place-help' }, `${what[1]} · ESC TO CANCEL`)), cancel));
+      h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), h('div', { class: 'place-help' }, tap ? what[1] : `${what[1]} · ESC TO CANCEL`)), cancel));
     return;
   }
   const def = BUILDING_DEFS[p.type];

@@ -253,6 +253,8 @@ src/ui/
   title.ts                         H   title screen, Fasti                                         (150)
   audio.ts                         H   synthesized sfx                                             (130)
   keys.ts                          H   global keyboard                                             (80)
+  history.ts                       H   layers Back and Esc close (registerBack), the Back sentinel (110)
+  pointer.ts                       H   the pointer in use: lastTouch, touchInput, finePointer      (50)
   panels.ts                        I   side panel host, tabs, badges, NEW markers, signatures      (170)
   tabs/edicta.ts                   I   Decisions tab                                               (330)
   tabs/consiliarii.ts              I   Advisors tab                                                (160)
@@ -1848,7 +1850,7 @@ Exactly one item, by priority: Periculum advisory › urgent tip (`nextTip(s)?.u
 ### 13.6 Remedy execution (`App.applyRemedy`, H)
 ```
 check = checkRemedy(s, r); if (!check.ok) → toast(check.reason, 'bad'); sfx 'error'; return
-place     → startPlacing({ kind: 'building', type: r.building, at: r.tile ?? bestSlot(s, r.building, { owner: 'player' })?.tile })
+place     → startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) })   // the tile while still valid, else the best slot
 open      → openTab(r.tab, r.anchor)
 overlay   → view.setOverlay(r.overlay, r.layer)
 contract  → prefillContract(r.spec)
@@ -1887,6 +1889,12 @@ frame(t): dt = min(DT_CLAMP, (t − last) / 1000)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
 keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → placing → selection → menu); ignored inside inputs
+back (history.ts): initBack(app) registers the layers of the Esc chain (modal 100 › placing 50 › selection 40; later layers
+      registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;
+      popstate closes the top open layer (a letter that must be answered goes to the title) and re-arms; with none open the
+      first Back saves and toasts 'Back again to leave · the colony is saved', a second within LEAVE_MS leaves
+startPlacing(p): the place banner first, then view.startPlacing (a pre-positioned ghost reports its verdict, and on touch its
+      Place button, through onPlacementPreview); view.startPlacing centres the camera only when p.at is off the canvas
 ```
 `?dev` exposes `window.cv = app` and `window.skip(days)` (runs `days` online ticks synchronously).
 
@@ -1894,7 +1902,8 @@ keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/a
 - `tokens.css` (S) defines every DESIGN §16.1 token plus `--font-body: 'Pixelify Sans'`, `--font-caps: 'Silkscreen'`, spacing `--s1..--s5` (4/8/12/16/24 px), radii, z-index tokens (`--z-map` 0 … `--z-veil` 200 from DESIGN §15.1). Fonts are imported in `main.ts` (`@fontsource/pixelify-sans/400.css`, `600.css`, `@fontsource/silkscreen/400.css`).
 - `base.css` (H) owns the shared components every UI file uses and nobody redefines: `.btn` (`.primary .legate .good .danger .ghost .small`), `.chip` (`.bad .good .gold`), `.well`, `.card`, `.kicker`, `.meter`, `.pip`, `.sev-0…3`, `.badge`, `.new`, `.seal`, `.num`, `.muted`, `.meander` (border-image from `f_meander`, injected as a CSS variable by `ui/index.ts`).
 - New class names are prefixed by area: `hud- left- obj- counsel- tick- toast- banner- place- map- modal- disp- title- veil-` (H); `side- tab- ed- adv- bld- pop- tr- ann- ins- choice-` (I).
-- Breakpoints: desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows); compact < 560. Touch targets ≥ 44 px; `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- Breakpoints: desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows); compact < 560. Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width (a touch screen under 1,280 px gets the two-row HUD for them); `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- Page hygiene (base.css): `#app { overflow: clip }` (script can never scroll the frame; only `#tab-body` scrolls, through `dom.scrollWithin`, never `scrollIntoView`); `touch-action: pan-x pan-y` on `#app > :not(#map)`, `#modal-root`, `#title-screen`, `#veil` (never `#app *`, which would override `#map { touch-action: none }`); a `gesturestart` preventDefault (main.ts); `overscroll-behavior: none` and `text-size-adjust: 100%` on html, body; `-webkit-touch-callout: none` on img; fields of 16 px on touch; ligatures off everywhere (`font-variant-ligatures: no-common-ligatures`: Pixelify Sans draws 'fi' as one glyph that reads as 'A'). The canvas draws text in Silkscreen only, which has no ligatures.
 
 ---
 

@@ -1,4 +1,4 @@
-# Castra Valeria: a Roman idle city-builder
+# Castra Valeria: a Roman city-builder
 
 It is the Kalends of April, AUC 800. Twenty-four souls of six legionary families pitch their tents inside a fresh
 earth-and-timber rampart on a river bend at the frontier, and you are the *Praefectus castrorum*.

@@ -25,8 +25,7 @@ import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
 import { idx } from './game/map';
 import { blockOfTile, derived } from './game/derived';
-import { bestSlot } from './game/site';
-import { canPlace } from './game/place';
+import { resolvePlaceAt } from './game/site';
 import * as actions from './game/actions';
 import { applyRemedy as applySimRemedy, checkRemedy } from './game/advisors/remedies';
 import { MapView } from './render/view';
@@ -36,6 +35,7 @@ import { footprintRect } from './render/buildings';
 import { UI } from './ui/index';
 import { initTooltips } from './ui/dom';
 import { initKeys } from './ui/keys';
+import { initBack } from './ui/history';
 import { setTitleNotice } from './ui/title';
 import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
@@ -95,6 +95,7 @@ class App implements Game {
     });
     this.ui = new UI(this);
     this.ui.build();
+    initBack(this);
     initKeys(this, DEV);
     try { this.view.attach(this.state); } catch (e) {   // a save that loads but cannot be drawn: a fresh map behind the title
       console.error('[castra] the saved colony could not be shown', e);
@@ -102,6 +103,8 @@ class App implements Game {
       this.view.attach(this.state);
     }
     window.addEventListener('resize', () => this.view.resize());
+    // iOS ignores user-scalable=no: a pinch on the chrome would zoom the page (the map's own pinch is pointer events)
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('visibilitychange', () => this.onVisibility());
     window.addEventListener('pagehide', () => { if (this.mode === 'game') this.write(false); });
     // another tab entered a game: it owns the save now (R02); a page restored from the back-forward cache checks too
@@ -155,8 +158,10 @@ class App implements Game {
   startPlacing(p: PlacingState): void {
     if (this.mode !== 'game') return;
     this.sfx('click');
-    this.view.startPlacing(p, this.state);
+    // the banner first: a pre-positioned ghost reports its verdict from view.startPlacing (onPlacementPreview), and on
+    // touch that verdict carries the Place button, which a banner drawn after it would wipe
     this.ui.showPlaceBanner(p, null);
+    this.view.startPlacing(p, this.state);
   }
 
   cancelPlacing(): void {
@@ -208,11 +213,9 @@ class App implements Game {
     const check = checkRemedy(s, r);
     if (!check.ok) { toast(check.reason, 'bad'); this.sfx('error'); return; }
     switch (r.kind) {
-      case 'place': {   // a remedy's tile can be taken since it was rendered (the Ordo built there): the best slot instead
-        const at = r.tile !== undefined && canPlace(s, r.building, r.tile, { owner: 'player' }).ok ? r.tile : bestSlot(s, r.building, { owner: 'player' })?.tile;
-        this.startPlacing({ kind: 'building', type: r.building, at });
+      case 'place':   // a remedy's tile can be taken since it was rendered (the Ordo built there): the best slot instead
+        this.startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) });
         return;
-      }
       case 'open': this.openTab(r.tab, r.anchor); return;
       case 'overlay': this.view.setOverlay(r.overlay, r.layer); return;
       case 'contract': this.prefillContract(r.spec); return;

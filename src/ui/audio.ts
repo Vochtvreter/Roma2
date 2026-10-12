@@ -1,6 +1,7 @@
 // src/ui/audio.ts — the 17 synthesized sound effects, no files (DESIGN §17). Owner: WP-H.
 // Master gain B.ui.SFX_GAIN × volume; B.ui.SFX_THROTTLE_MS per-sound throttle. The AudioContext is created on the first
-// sound (always after a user gesture) and resumed if the browser suspended it. Math.random here is cosmetic (noise).
+// sound (always after a user gesture) and resumed if the browser stopped it (suspended, or Safari's 'interrupted' after a
+// call). Math.random here is cosmetic (noise).
 import type { SfxName } from './types';
 import { B } from '../game/balance';
 
@@ -26,9 +27,28 @@ function ensure(): AudioContext | null {
     master = ctx.createGain();
     master.gain.value = B.ui.SFX_GAIN * volume;
     master.connect(ctx.destination);
+    watchWake();
   }
-  if (ctx.state === 'suspended') void ctx.resume();
+  wake();
   return ctx;
+}
+
+/** Resumes the context when the browser stopped it: 'suspended' (autoplay rules, a hidden tab) or, on Safari after a call
+ *  or Siri, 'interrupted', which never resumes by itself. Safari resumes only inside a user gesture, so this runs on every
+ *  sound, on the next press or key, and when the page shows again. */
+function wake(): void {
+  const st = ctx?.state as string | undefined;
+  if (ctx && enabled && (st === 'suspended' || st === 'interrupted')) void ctx.resume().catch(() => {});
+}
+
+let waking = false;
+/** Listens for the gestures and the page showing again that may resume a stopped context (once, with the first sound). */
+function watchWake(): void {
+  if (waking || typeof window === 'undefined') return;
+  waking = true;
+  window.addEventListener('pointerdown', wake, { capture: true, passive: true });
+  window.addEventListener('keydown', wake, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
 }
 
 /** One oscillator note: attack, exponential decay, optional pitch slide, optional destination node. */

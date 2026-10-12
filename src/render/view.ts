@@ -40,6 +40,7 @@ export interface ViewCallbacks {
 const BG = '#15100d';
 const DEMOLISH_MS = 3000;
 const FLASH_MS = 1500;
+const EDGE_CSS = 48;                                // a pre-positioned ghost nearer the canvas edge than this is centred
 const DRIFT = { r: 220, rate: 0.045 };              // title drift: world px around the forum, radians per second
 const DEV_SHEET = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search) && /[?&]sheet\b/.test(location.search);
 
@@ -74,7 +75,7 @@ export class MapView {
   private hoverId: number | null = null;
   private flashes: { r: Rect; until: number; ms: number }[] = [];
   private time = 0;
-  private doomed: { id: number; until: number } | null = null;
+  private doomed: { id: number; until: number; touch: boolean } | null = null;   // touch: the label says Tap, not Click
   private dragFrom: number | null = null;
   private titleT = 0;
   private sheetY = 0;
@@ -132,12 +133,14 @@ export class MapView {
     this.mini?.invalidate();
   }
 
-  /** Re-reads the canvas CSS size and devicePixelRatio. */
+  /** Re-reads the canvas CSS size and devicePixelRatio. A hidden canvas (0×0) keeps its last size: falling back to the
+   *  window would make frame() see a mismatch and reallocate the backing store every frame. */
   resize(): void {
     const r = this.canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
     this.dpr = Math.min(3, window.devicePixelRatio || 1);
-    this.cssW = Math.max(1, r.width || window.innerWidth);
-    this.cssH = Math.max(1, r.height || window.innerHeight);
+    this.cssW = r.width;
+    this.cssH = r.height;
     this.canvas.width = Math.max(1, Math.round(this.cssW * this.dpr));
     this.canvas.height = Math.max(1, Math.round(this.cssH * this.dpr));
     this.ratio = this.canvas.width / this.cssW;
@@ -259,7 +262,8 @@ export class MapView {
     this.dragFrom = null;
     this.place.start(p, s);
     if (p.kind === 'building' && p.at !== undefined) {
-      this.centerOn(p.at);
+      // a pre-positioned ghost already on the canvas leaves the camera where the eye is; only one off screen is centred
+      if (!this.inView(p.at, EDGE_CSS)) this.centerOn(p.at);
       this.cb.onPlacementPreview(this.place.check, p.at);
     }
   }
@@ -316,6 +320,13 @@ export class MapView {
     const p = worldToScreen(this.cam, ((tile % W) + 0.5) * TILE, (Math.floor(tile / W) + 0.5) * TILE);
     const x = p.sx / this.ratio, y = p.sy / this.ratio;
     return x < 0 || y < 0 || x > this.cssW || y > this.cssH ? null : { x, y };
+  }
+
+  /** True when a tile's centre lies on the canvas at least `marginCss` from its edges. */
+  inView(tile: number, marginCss = 0): boolean {
+    const p = worldToScreen(this.cam, ((tile % W) + 0.5) * TILE, (Math.floor(tile / W) + 0.5) * TILE);
+    const x = p.sx / this.ratio, y = p.sy / this.ratio;
+    return x >= marginCss && y >= marginCss && x <= this.cssW - marginCss && y <= this.cssH - marginCss;
   }
 
   /** The CSS-px box of a w×h tile rectangle whose top-left tile is (x, y), for anchoring DOM; it may lie off screen. */
@@ -416,7 +427,7 @@ export class MapView {
       if (this.doomed?.id === id && this.time <= this.doomed.until) {
         this.doomed = null;
         this.cb.onClick(tile, id, { button, shift });
-      } else this.doomed = { id, until: this.time + DEMOLISH_MS };
+      } else this.doomed = { id, until: this.time + DEMOLISH_MS, touch };
       return;
     }
     this.cb.onClick(tile, id, { button, shift });
@@ -464,7 +475,7 @@ export class MapView {
       const r = footprintRect(s, b);
       g.fillStyle = `rgba(229,85,74,${0.3 + 0.2 * Math.sin(this.time / 120)})`;
       g.fillRect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE);
-      label(g, 'Click again to demolish', (r.x + r.w / 2) * TILE, r.y * TILE - 8 - 12 / xf.k, '#e5554a');
+      label(g, `${this.doomed?.touch ? 'Tap' : 'Click'} again to demolish`, (r.x + r.w / 2) * TILE, r.y * TILE - 8 - 12 / xf.k, '#e5554a');
     }
   }
 

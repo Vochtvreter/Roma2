@@ -17,6 +17,8 @@ import { MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
+import { syncBack } from './history';
+import { watchPointer } from './pointer';
 import { getBuilding } from '../game/state';
 import { dismissTip } from '../game/actions';
 import { aucYear, formatRoman, toRoman } from '../game/calendar';
@@ -33,6 +35,8 @@ import { DUTY_DEFS } from '../game/ordo/duties';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
+/** The portrait phone of mobile.css, whose side panel is a bottom sheet (a landscape phone's is a right-hand drawer). */
+const SHEET_PHONE = '(max-width: 899px) and (min-height: 521px)';
 
 function el(id: string): HTMLElement {
   const e = document.getElementById(id);
@@ -56,6 +60,7 @@ export class UI {
   private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement; date: HTMLElement } | null = null;
   private tools!: MapTools;
   private lessonShown: { s: GameState; i: number } | null = null;
+  private lowered = false;   // the sheet was dropped for the event card (choice.onStage) and goes back up after it
 
   constructor(private readonly g: Game) {}
 
@@ -63,6 +68,7 @@ export class UI {
   build(): void {
     const g = this.g;
     installMeander();
+    watchPointer();   // from the first press: placing and the help follow the hand in use (pointer.ts)
     this.hud = new Hud(g, el('hud'));
     this.hud.build();
     this.objective = new Objective(g, el('objective'));
@@ -73,6 +79,17 @@ export class UI {
     this.inspector = new Inspector(g, el('inspector'));
     this.choice = new ChoiceCard(g, el('choice'));
     this.side.onChoiceAnchor = () => this.choice.reveal();   // "Read the dispatch" unfolds the event card itself
+    // a portrait phone gives an unfolded event card the sheet's room: the sheet drops to its tab bar while the card is
+    // up (its text and its pinned answers both show) and comes back once it is answered or folded. A tab tapped
+    // meanwhile opens the sheet again; the card then scrolls in what is left
+    this.choice.onStage = (up) => {
+      if (up) {
+        if (this.side.expanded && typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches) { this.side.toggle(false); this.lowered = true; }
+      } else if (this.lowered) {
+        this.lowered = false;
+        if (!this.side.expanded) this.side.toggle(true);
+      }
+    };
     this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
     this.showPlaceBanner(null, null);
   }
@@ -93,6 +110,7 @@ export class UI {
       v.label.textContent = `${fmt(Math.round(p * v.run.days))} / ${fmt(v.run.days)} days`;
       v.date.textContent = formatRoman(this.g.state.day, { year: true });
     }
+    syncBack(this.g.mode !== 'title');   // Back walks the layers in a game, and leaves from the title (history.ts)
     if (this.g.mode === 'title') return;
     this.side.frame(now);
     this.inspector.frame(now);

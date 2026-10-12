@@ -8,7 +8,7 @@ import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
-import { clear, h, img, tip } from './dom';
+import { clear, h, img, scrollWithin, tip } from './dom';
 import { tabShown } from './intro';
 import { notePractice } from '../game/actions';
 import { ControlHold, ScrollAnchor } from './steady';
@@ -34,11 +34,11 @@ function safe(what: string, fn: () => void): boolean {
   try { fn(); return true; } catch (e) { console.error(`[panels] ${what}`, e); return false; }
 }
 
-/** Scrolls to `[data-anchor=…]` inside the body and pulses it. */
+/** Scrolls to `[data-anchor=…]` inside the body (that box alone: dom.scrollWithin) and pulses it. */
 export function pulseAnchor(anchor: string, body: HTMLElement): void {
   const el = body.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(anchor)}"]`);
   if (!el) return;
-  el.scrollIntoView({ block: 'start' });
+  scrollWithin(body, el, 'start');
   el.classList.add('side-pulse');
   window.setTimeout(() => el.classList.remove('side-pulse'), PULSE_MS);
 }
@@ -57,6 +57,7 @@ export class SidePanel {
   private barKey = '';
   private known: Set<TabId> | null = null;     // revealed tabs the player has already been shown
   private readonly fresh = new Set<TabId>();   // revealed since, not yet visited: NEW sticker
+  private built: TabId | null = null;          // the tab the body holds now
   private forced: TabId | null = null;         // a tab opened by a button before the introduction brought it in
   private stateRef: GameState | null = null;
   private readonly steady: ScrollAnchor;   // keeps the pointed row in place across rebuilds
@@ -93,6 +94,7 @@ export class SidePanel {
       this.fresh.clear();
       this.forced = null;
       this.sig = '';
+      this.built = null;                           // and from the top of its page, not the old colony's scroll
     }
     safe('tabs', () => this.syncTabs());
     safe('badges', () => this.badges());
@@ -131,6 +133,11 @@ export class SidePanel {
     this.root.classList.toggle('collapsed', !on);
     this.toggleEl?.setAttribute('aria-expanded', String(on));
     this.toggleEl?.setAttribute('aria-label', on ? 'Hide the panel' : 'Show the panel');
+  }
+
+  /** The panel is open (not folded to its toggle, or to the sheet's tab bar on a phone). */
+  get expanded(): boolean {
+    return !this.root.classList.contains('collapsed');
   }
 
   /** Forces a signature check on the next frame (Game.changed). */
@@ -196,8 +203,12 @@ export class SidePanel {
     }
   }
 
-  /** Rebuilds the open tab; `keepScroll` (a refresh, not a newly opened page) keeps the pointed element in place. */
+  /** Rebuilds the open tab; `keepScroll` (a refresh, not a newly opened page) keeps the pointed element in place. A tab
+   *  the bar switched to by itself (the open one went away, as Populus does after 'skip the introduction') is a new page
+   *  too: it starts at its top, never at the old page's scroll. */
   private rebuild(sig: string, keepScroll = true): void {
+    if (this.built !== this.cur) keepScroll = false;
+    this.built = this.cur;
     let mark: ReturnType<ScrollAnchor['capture']> = [];
     if (keepScroll) safe('anchor', () => { mark = this.steady.capture(); });
     const top = keepScroll ? this.body.scrollTop : 0;
