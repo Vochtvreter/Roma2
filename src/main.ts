@@ -46,6 +46,7 @@ import { afterPlace, keepPlacing, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 import type { OpenFrom } from './ui/layout';
+import { isPhone } from './ui/layout';
 
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
@@ -165,12 +166,12 @@ class App implements Game {
     this.beginPlacing(p);
   }
 
-  /** Placing starts (or goes on to the next plot: placeAt). A finger's ghost, or any on the phone SHEET, starts on the
+  /** Placing starts (or goes on to the next plot: placeAt). A finger's ghost, or any on a phone host, starts on the
    *  best plot when none was given (startAt), so Place shows at once. The banner first: a pre-positioned ghost reports
    *  its verdict from view.startPlacing (onPlacementPreview), and on touch that verdict carries the Place button, which a
    *  banner drawn after it would wipe. */
   private beginPlacing(p: PlacingState): void {
-    const at = startAt(p, touchInput(), this.ui.layout.host === 'sheet', () => (p.kind === 'building' ? resolvePlaceAt(this.state, p.type) : undefined));
+    const at = startAt(p, touchInput(), isPhone(this.ui.layout.host), () => (p.kind === 'building' ? resolvePlaceAt(this.state, p.type) : undefined));
     this.ui.showPlaceBanner(at, null);
     this.view.startPlacing(at, this.state);
   }
@@ -185,9 +186,9 @@ class App implements Game {
     if (!p || p.kind !== 'building') return;
     const r = this.act(actions.place(this.state, p.type, tile, { owner: 'player', replaceId: p.replaceId }), { okSfx: 'place' });
     const touch = lastTouch();   // the press of this Place: a finger's Place button, or a mouse's click
-    // ⟳ is the phone banner's (mapbar.ts): elsewhere a finger's Place ends the placing, as it always did
-    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && this.ui.layout.host === 'sheet', moving: p.replaceId !== undefined });
-    if (next === 'end') { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's sheet stays closed (no spring back)
+    // ⟳ is the phone banners' (mapbar.ts): elsewhere a finger's Place ends the placing, as it always did
+    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && isPhone(this.ui.layout.host), moving: p.replaceId !== undefined });
+    if (next === 'end') { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's panel stays closed (no spring back)
     else if (next === 'more' && touch) {
       // ⟳ on touch: the ghost goes on to the free plot nearest the one just taken (a mouse's ghost follows the mouse)
       const [w, hh] = BUILDING_DEFS[p.type].size;

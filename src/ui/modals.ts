@@ -1,8 +1,9 @@
 // src/ui/modals.ts — the modal stack, menu, export/import, how-to-play and rename (ARCHITECTURE §13.4, DESIGN §15.5). Owner: WP-H.
 // The sim pauses while any modal is open (App.modalOpen reads modalCount()). Esc (keys.ts) closes the top closable modal.
 // Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close. On the phone
-// SHEET host every modal is a full-screen sheet within the safe areas (modals.css): its head (✕, kicker, title) sticks to
-// the top and its actions to the foot while the body scrolls between them; a letter keeps its parchment and pinned foot.
+// hosts (the SHEET and the DRAWER) every modal is a full-screen sheet within the safe areas (sheet.css): its head (✕,
+// kicker, title) sticks to the top and its actions to the foot while the body scrolls between them; a letter keeps its
+// parchment and pinned foot.
 import type { Game } from './types';
 import { h } from './dom';
 import type { Kid } from './dom';
@@ -14,9 +15,11 @@ import type { GameState } from '../game/types';
 import { finePointer, pressWord, touchInput } from './pointer';
 import { tabShown } from './intro';
 
-/** The phone SHEET host is up (layout.ts writes it on #app; read from there, as layout.ts reaches modals through history.ts). */
+/** A phone host is up, the SHEET or the DRAWER (layout.ts writes it on #app; read from there, as layout.ts reaches
+ *  modals through history.ts). */
 function sheetHost(): boolean {
-  return typeof document !== 'undefined' && document.getElementById('app')?.dataset.host === 'sheet';
+  const host = typeof document !== 'undefined' ? document.getElementById('app')?.dataset.host : undefined;
+  return host === 'sheet' || host === 'drawer';
 }
 
 interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; close: () => void; prevFocus: Element | null }
@@ -155,7 +158,8 @@ export function openMenu(g: Game): void {
   const body = h('div', { class: 'modal-menu' },
     h('div', { class: 'modal-col' },
       h('button', { class: 'btn primary', onclick: () => close() }, 'Resume'),
-      // the phone bar has no Annales slot: the chronicle opens here too (and by key L, the ACTA lines, the Breviarium)
+      // the phone bar has no Annales slot (nor a short spine): the chronicle opens here too (and by key L, the ACTA
+      // lines, the Breviarium)
       sheetHost() && tabShown(g.state, 'annals') ? h('button', { class: 'btn', onclick: () => { close(); g.openTab('annals'); } }, 'Annales · the chronicle') : null,
       h('button', { class: 'btn', onclick: () => { if (g.save()) toast('Saved.', 'good', 'i_seal'); } }, 'Save'),
       h('button', { class: 'btn', onclick: () => openHowTo(g) }, 'How to play'),

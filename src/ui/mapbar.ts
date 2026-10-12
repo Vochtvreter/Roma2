@@ -1,13 +1,13 @@
 // src/ui/mapbar.ts — the map widgets of the shell (DESIGN §15.4, §11.9): the overlay bar (five toggles, the Officia
-// layer selector and a legend), the zoom buttons, the phone SHEET's tool column (Via, Mappae, the zoom) and the placement
-// banner with the touch verbs (⟳ keep placing, ↕ vertical first), and the pure rules of placing a work: where its ghost
-// starts (startAt), what a Place does next (afterPlace) and why the work is being placed (placingWhy). Owner: WP-H
-// (split from ui/index.ts).
+// layer selector and a legend), the zoom buttons, the phones' tool column (Via, Mappae, the zoom: the SHEET's and the
+// DRAWER's) and the placement banner with the touch verbs (⟳ keep placing, ↕ vertical first), and the pure rules of
+// placing a work: where its ghost starts (startAt), what a Place does next (afterPlace) and why the work is being placed
+// (placingWhy). Owner: WP-H (split from ui/index.ts).
 import { OVERLAYS } from '../game/types';
 import type { BuildingId, CoverageLayerId, GameState, OverlayId, PlaceCheck, ToolId } from '../game/types';
 import type { Game, PlacingState } from './types';
 import type { Host, Layout } from './layout';
-import { currentHost, registerBringer } from './layout';
+import { currentHost, isPhone, registerBringer, safeArea } from './layout';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
@@ -23,12 +23,12 @@ import { LAYER_META } from '../game/data/housing';
 import { lastTouch, primaryCoarse, touchInput } from './pointer';
 
 // ───────────────────────────── placing a work (pure) ─────────────────────────────
-/** Where a building's ghost starts (pure; tests/sheet.test.ts): the tile it was given; else, for a finger or on the phone
- *  SHEET (where the hand is a finger), the best plot (`best`: resolvePlaceAt), so Place shows at once and the camera
- *  glides there only if it is out of view; never for a Move (replaceId: the player chooses where), nor for a mouse
- *  elsewhere (it hovers the plots itself, and the camera never jumps). */
-export function startAt(p: PlacingState, touch: boolean, sheet: boolean, best: () => number | undefined): PlacingState {
-  if (p.kind !== 'building' || p.at !== undefined || p.replaceId !== undefined || !(touch || sheet)) return p;
+/** Where a building's ghost starts (pure; tests/sheet.test.ts): the tile it was given; else, for a finger or on a phone
+ *  host (`phone`: the SHEET or the DRAWER, where the hand is a finger), the best plot (`best`: resolvePlaceAt), so Place
+ *  shows at once and the camera glides there only if it is out of view; never for a Move (replaceId: the player chooses
+ *  where), nor for a mouse elsewhere (it hovers the plots itself, and the camera never jumps). */
+export function startAt(p: PlacingState, touch: boolean, phone: boolean, best: () => number | undefined): PlacingState {
+  if (p.kind !== 'building' || p.at !== undefined || p.replaceId !== undefined || !(touch || phone)) return p;
   const at = best();
   return at === undefined ? p : { ...p, at };
 }
@@ -42,8 +42,9 @@ export function afterPlace(o: { ok: boolean; shift: boolean; touch: boolean; kee
   return o.shift || (o.touch && o.keep) ? 'more' : 'end';
 }
 
-/** Why a work is being placed, for the phone banner's reason row: the job of the lesson that asks for it, else the title
- *  of the Periculum or Cave whose remedy it is; null for a work placed of the player's own accord. */
+/** Why a work is being placed, for a phone banner's reason (its row on the SHEET, after the verdict on the DRAWER): the
+ *  job of the lesson that asks for it, else the title of the Periculum or Cave whose remedy it is; null for a work placed
+ *  of the player's own accord. */
 export function placingWhy(s: GameState, type: BuildingId): string | null {
   const cur = currentLesson(s);
   if (cur && !cur.done && (cur.lesson.anchor === `b-${type}` || cur.lesson.id === 'works')) return cur.lesson.job;
@@ -153,18 +154,21 @@ const VIA: readonly { id: Exclude<ToolId, 'pin'>; label: string; sub: string }[]
   { id: 'reserve', label: 'Reserve block', sub: 'the Ordo leaves it alone' },
   { id: 'demolish', label: 'Demolish', sub: 'tap a work twice' },
 ];
-const POP_GAP = 8;   // CSS px kept between a popover and the HUD
-const COL_EDGE = 8;  // CSS px the tool column keeps from the sheet and from the HUD
+const POP_GAP = 8;   // CSS px kept between a popover and the HUD, the column and the screen's (safe) edge
+const POP_W = 264;   // a popover's width (sheet.css), less where the map left of the column is narrower
+const POP_MIN = 220; // a strip of map narrower than this beside the DRAWER's pane: the popover opens over the pane
+const COL_EDGE = 8;  // CSS px the tool column keeps from the sheet (or the drawer's foot) and from the HUD
 const COL_BTN = 44;  // the column's buttons (sheet.css)
 const COL_GAP = 4;
 
-/** The phone SHEET's tool column in #map-col (DESIGN §15.7): [Via][Mappae][+][−][⌂], 44 px each, at the right edge 8 px
- *  above what stands on the bar (the sheet: it rides up with half, hides at full; a card in the sheet's slot; the placing
- *  banner, over which it stays in view while placing). Via drops the road tools it
- *  offers (Road, Pave, Reserve block, Demolish: those revealed, once the lessons open the catalogue); Mappae drops the
- *  overlay bar itself (#overlay-bar, re-hosted, its labels and legend shown); + − ⌂ are the zoom buttons (#zoom-ctl,
- *  re-hosted). Each popover is a Back and Esc layer and closes on a press outside it. Off the SHEET the column hides and
- *  the bar and the zoom go home to #map-tools (layout.onMount). */
+/** The phones' tool column in #map-col (DESIGN §15.7): [Via][Mappae][+][−][⌂], 44 px each. On the SHEET at the right edge
+ *  8 px above what stands on the bar (the sheet: it rides up with half, hides at full; a card in the sheet's slot; the
+ *  placing banner, over which it stays in view while placing); on the DRAWER at the right edge of the free map, left of
+ *  the spine or the open pane, from the foot up (it hides at full; drawer.css). Via drops the road tools it offers (Road,
+ *  Pave, Reserve block, Demolish: those revealed, once the lessons open the catalogue); Mappae drops the overlay bar
+ *  itself (#overlay-bar, re-hosted, its labels and legend shown); + − ⌂ are the zoom buttons (#zoom-ctl, re-hosted).
+ *  Each popover is a Back and Esc layer and closes on a press outside it. Off the phones the column hides and the bar and
+ *  the zoom go home to #map-tools (layout.onMount). */
 export class MapColumn {
   private readonly via: HTMLButtonElement;
   private readonly mappae: HTMLButtonElement;
@@ -206,22 +210,23 @@ export class MapColumn {
     }, true);
     // "Show me" on the overlay bar (lesson IX, the wants and fork tips) opens the popover that holds it
     registerBringer('#overlay-bar', () => {
-      if (this.hostNow !== 'sheet' || this.mappae.hidden) return false;
+      if (!isPhone(this.hostNow) || this.mappae.hidden) return false;
       this.show('mappae');
       return true;
     });
   }
 
-  /** The host changed (layout.onMount): on the SHEET the overlay bar moves into the Mappae popover and the zoom buttons
-   *  into the column; elsewhere they go home and any popover closes. */
+  /** The host changed (layout.onMount): on a phone the overlay bar moves into the Mappae popover and the zoom buttons
+   *  into the column; elsewhere they go home and any popover closes (a popover open across a turn of the phone closes:
+   *  the column moved under it). */
   mount(host: Host): void {
     if (host === this.hostNow) return;
     this.hostNow = host;
-    if (host === 'sheet') {
+    this.close();
+    if (isPhone(host)) {
       this.mapPop.append(this.bar.el);
       this.root.append(this.zoom.el);
     } else {
-      this.close();
       this.bar.back();
       this.zoom.back();
     }
@@ -230,7 +235,7 @@ export class MapColumn {
   /** Throttled by the UI root: Via and Mappae come with what they hold (the catalogue's tools, the overlays lesson), the
    *  Via list follows the tools revealed, and a popover whose button went away closes. */
   update(): void {
-    if (this.hostNow !== 'sheet') return;
+    if (!isPhone(this.hostNow)) return;
     const g = this.g;
     const tools = shows(g, 'catalog') ? VIA.filter((t) => toolRevealed(g.state, t.id)) : [];
     present(g, this.via, tools.length > 0);
@@ -249,15 +254,20 @@ export class MapColumn {
     this.fit();
   }
 
-  /** Fits the column to the strip of map between the HUD and what stands on the bar (layout.dockH: the sheet at its
-   *  detent's height, not mid-slide; a card in the sheet's slot; the placing banner): one column when it can, else Via and
-   *  Mappae beside the zoom (wrap), else without the zoom (tight: fingers pinch), else none at all (gone). */
+  /** Fits the column to the strip of map between the HUD and its foot (on the SHEET what stands on the bar, layout.dockH:
+   *  the sheet at its detent's height, not mid-slide; a card in the sheet's slot; the placing banner; on the DRAWER the
+   *  foot of #app): one column when it can, else Via and Mappae beside the zoom (wrap), else without the zoom (tight:
+   *  fingers pinch), else none at all (gone). */
   fit(): void {
     const hs = this.layout.sheetHeights, app = this.root.parentElement;
-    if (this.hostNow !== 'sheet' || !hs || !app) return;
-    const bar = document.getElementById('tabs')?.offsetHeight ?? 0, hud = document.getElementById('hud');
+    if (!isPhone(this.hostNow) || !app || (this.hostNow === 'sheet' && !hs)) return;
+    const hud = document.getElementById('hud');
     const top = hud ? hud.offsetTop + hud.offsetHeight : 0;
-    const room = app.clientHeight - bar - this.layout.dockH - COL_EDGE - top - COL_EDGE;
+    let room: number;
+    if (this.hostNow === 'sheet') {
+      const bar = document.getElementById('tabs')?.offsetHeight ?? 0;
+      room = app.clientHeight - bar - this.layout.dockH - COL_EDGE - top - COL_EDGE;
+    } else room = app.clientHeight - (parseFloat(getComputedStyle(this.root).bottom) || COL_EDGE) - top - COL_EDGE;
     // the stacks' own heights, whatever fit() hid last time (so it never flips back and forth)
     const stack = (el: HTMLElement): number => { const n = Array.from(el.children).filter((c) => !(c as HTMLElement).hidden).length; return n ? n * (COL_BTN + COL_GAP) - COL_GAP : 0; };
     const a = stack(this.group), b = stack(this.zoom.el);
@@ -269,7 +279,9 @@ export class MapColumn {
     if (gone !== this.root.classList.contains('gone')) this.root.classList.toggle('gone', gone);
   }
 
-  /** Opens a popover (the other one closes), sized to the map between the HUD and the column's foot. */
+  /** Opens a popover (the other one closes), sized to the map between the HUD and the column's foot and, across, to the
+   *  map left of the column inside the safe area; beside the DRAWER's half pane, where that strip is narrow (a 568 or 667
+   *  px phone), it opens to the column's right instead, over the pane. */
   show(which: 'via' | 'mappae'): void {
     this.openNow = which;
     const pop = which === 'via' ? this.viaPop : this.mapPop;
@@ -280,12 +292,22 @@ export class MapColumn {
     }
     const hud = document.getElementById('hud')?.getBoundingClientRect(), col = this.root.getBoundingClientRect();
     if (hud) pop.style.maxHeight = `${Math.max(120, Math.round(col.bottom - hud.bottom - POP_GAP))}px`;
+    const app = document.getElementById('app')?.getBoundingClientRect(), sa = safeArea();
+    const edge = (app?.left ?? 0) + (sa?.left ?? 0) + POP_GAP;
+    const left = Math.floor(col.left - POP_GAP - edge);
+    const spine = this.hostNow === 'drawer' ? document.getElementById('tabs')?.getBoundingClientRect() : undefined;
+    const right = spine && spine.width ? Math.floor(spine.left - POP_GAP - (col.right + POP_GAP)) : 0;
+    const over = left < Math.min(POP_W, POP_MIN) && right > left;
+    pop.classList.toggle('map-pop-over', over);
+    this.root.classList.toggle('map-pop-over', over);
+    pop.style.maxWidth = `${Math.max(160, Math.min(POP_W, over ? right : left))}px`;
   }
 
   /** Closes the open popover, if any. */
   close(): void {
     if (!this.openNow) return;
     this.openNow = null;
+    this.root.classList.remove('map-pop-over');
     for (const [p, b] of [[this.viaPop, this.via], [this.mapPop, this.mappae]] as const) {
       p.hidden = true;
       b.setAttribute('aria-expanded', 'false');
@@ -327,10 +349,11 @@ function toggleBtn(g: Game, cls: string, label: string, aria: string, on: boolea
   return b;
 }
 
-/** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. On the
- *  phone SHEET it is the 76 px banner over the bar (DESIGN §15.7): the name and cost, the verdict, the reason row (the
- *  lesson job or the advisory that asked for the work: placingWhy; else the help), and at the right ⟳ keep placing,
- *  Place and ✕. A finger gets ↕ vertical first on the road banner (its Shift) on every host. */
+/** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. On a
+ *  phone it carries the reason (the lesson job or the advisory that asked for the work: placingWhy; else the help) and
+ *  at the right ⟳ keep placing, Place and ✕ (DESIGN §15.7): the SHEET's is the 76 px banner over the bar (the name and
+ *  cost, the verdict, the reason row), the DRAWER's one row of 56 px at the foot of the free map (the name and cost over
+ *  the verdict and the reason). A finger gets ↕ vertical first on the road banner (its Shift) on every host. */
 export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | null, check: PlaceCheck | null): void {
   clear(root);
   root.hidden = !p;
@@ -339,7 +362,7 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   // the map treats any non-mouse tap as a preview (render/view.ts), so the Place button follows the last pointer used: a
   // touch laptop, a Surface or a pen taps a plot to preview it, as a phone does (ui/pointer.ts)
   const coarse = lastTouch() || primaryCoarse();
-  const sheet = currentHost() === 'sheet';
+  const sheet = isPhone(currentHost());
   // 'Cancel' in words; ✕ on the phone's banner, whose row of buttons is tight
   const cancel = h('button', { class: 'btn small ghost place-x', type: 'button', 'aria-label': 'Cancel placing', onclick: () => g.cancelPlacing() },
     h('span', { class: 'place-x-t' }, 'Cancel'), h('span', { class: 'place-x-i', 'aria-hidden': 'true' }, '✕'));
@@ -372,7 +395,7 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   const place = coarse && check?.ok
     ? h('button', { class: 'btn small primary place-go', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
   // ⟳: a finger's Place leaves the next ghost up (the touch Shift-click); not for a Move, which places one stake. The
-  // phone's banner only, for now: the landscape drawer's and the tablet's banners are P3's and P4's
+  // phones' banners only, for now: the tablet's is P4's
   const keep = sheet && coarse && p.replaceId === undefined
     ? toggleBtn(g, 'place-keep', '⟳', 'Keep placing: after Place, the next plot is ready', keepPlacing(), setKeepPlacing) : null;
   const why = sheet ? placingWhy(g.state, p.type) : null;
@@ -382,9 +405,9 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       h('div', { class: 'place-name' }, def.name, h('span', { class: 'place-latin' }, def.latin), costEl(g.state, check?.ok ? check.cost : def.cost)),
       verdict,
       why ? h('div', { class: 'place-why' }, why) : null,
-      // the words follow the hand, as Place does (a mouse in a narrow window is on the SHEET too, and clicks to place)
+      // the words follow the hand, as Place does (a mouse in a narrow or short window is on a phone host too, and clicks)
       h('div', { class: 'place-help' }, coarse ? (sheet ? 'Tap a plot, then Place' : 'TAP A GLOWING PLOT, THEN PLACE') : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
     h('div', { class: 'place-btns' }, keep, place, cancel)));
-  if (!sheet) steadyBox(box, `${p.type}:${coarse}`);   // the phone's banner is 76 px whatever its words (sheet.css)
+  if (!sheet) steadyBox(box, `${p.type}:${coarse}`);   // a phone's banner has its own height whatever its words (sheet.css, drawer.css)
 }
 

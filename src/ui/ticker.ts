@@ -1,7 +1,7 @@
 // src/ui/ticker.ts — the one ticker (DESIGN §15.1): the Ordo line and the Acta merged, rotating every B.ui.TICKER_S —
 // current Ordo action, next wish, saving line, latest Annales line (a new line shows at once). Click → the Agenda. Owner: WP-H.
-// On the phone SHEET the ticker is the voice line in calm (sheet.ts hosts it in the line's slot): an ACTA line opens the
-// Annales there (the bar has no Annales slot), any other line the Agenda part-way.
+// On a phone (the SHEET, the DRAWER) the ticker is the voice line in calm (sheet.ts hosts it in the line's slot): an ACTA
+// line opens the Annales there (the bar has no Annales slot), any other line the Agenda part-way.
 import type { LogEntry, WishView } from '../game/types';
 import type { Game } from './types';
 import { clear, h, img, tip } from './dom';
@@ -11,7 +11,7 @@ import { formatRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { WISH_STATE, lacking, savingLine } from './tabs/common';
-import { currentHost } from './layout';
+import { currentHost, isPhone } from './layout';
 import { tabShown } from './intro';
 
 interface Line { kicker: string; text: string; kind: string }
@@ -82,9 +82,10 @@ export class Ticker {
     this.name();
   }
 
-  /** A tap on an ACTA line opens the Annales on a phone's sheet (its bar has no Annales slot); else the Agenda. */
+  /** A tap on an ACTA line opens the Annales on a phone (the SHEET's bar has no Annales slot, a short DRAWER spine none
+   *  either); else the Agenda. */
   private toAnnals(): boolean {
-    return currentHost() === 'sheet' && this.kind.startsWith('acta') && tabShown(this.g.state, 'annals');
+    return isPhone(currentHost()) && this.kind.startsWith('acta') && tabShown(this.g.state, 'annals');
   }
 
   /** The button's name says where its tap goes now (the line shown, the host). */

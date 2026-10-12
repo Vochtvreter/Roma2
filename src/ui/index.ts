@@ -2,11 +2,11 @@
 // loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
 // mapbar.ts; the side panel, inspector and event card are WP-I's classes; the layout engine (layout.ts) owns the panel's
 // detent, the data-* size classes on #app and the camera's insets; the Breviarium (tray.ts) drops from any HUD figure and
-// holds the Res Gestae panel on a phone's sheet. On the phone SHEET host, sheet.ts gives the sheet its grabber and voice
-// line (the counsel and the ticker re-hosted there), the tab buttons are its bar, and MapColumn (mapbar.ts) its tool
-// column; placing, the pinned inspector, the lessons and the voice line's chips route the sheet (layout.go). The sheet's
-// slot holds one card at a time (here: the context card or the event card, docked by Layout.dock), and closing it puts
-// the sheet back as it was. Owner: WP-H.
+// holds the Res Gestae panel on a phone. On the phone hosts (the portrait SHEET, the landscape DRAWER) sheet.ts gives the
+// panel its grabber and voice line (the counsel and the ticker re-hosted there), the tab buttons are the SHEET's bar or
+// the DRAWER's spine, and MapColumn (mapbar.ts) is the tool column; placing, the pinned inspector, the lessons and the
+// voice line's chips route the panel (layout.go). The phone's slot holds one card at a time (here: the context card or
+// the event card, docked by Layout.dock), and closing it puts the panel back as it was. Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -21,7 +21,7 @@ import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
 import { MapColumn, MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
-import { Layout, hostPointer, lessonFolds } from './layout';
+import { Layout, hostPointer, isPhone, lessonFolds } from './layout';
 import { SheetHost } from './sheet';
 import { Tray } from './tray';
 import type { Detent } from './layout';
@@ -77,7 +77,7 @@ export class UI {
   private column!: MapColumn;
   private lessonShown: { s: GameState; i: number } | null = null;
   private lowered: Detent | null = null;   // the sheet was dropped for the event card (choice.onStage): its detent, to go back to
-  private placedOk = false;                // the placing that ends now ended in a work placed (placed()): the sheet stays closed
+  private placedOk = false;                // the placing that ends now ended in a work placed (placed()): a phone's panel stays closed
   private unpinning = false;               // the pinned card closed this turn: its restore waits to see whether another opens
   private swapping = false;                // one card is giving the sheet's slot to the other: no restore in between
 
@@ -99,8 +99,8 @@ export class UI {
     this.title = new TitleScreen(g, el('title-screen'));
     this.side = new SidePanel(g, el('side'));
     this.layout = new Layout(g, el('app'), this.side);   // from here SidePanel.toggle() goes through the layout
-    // per host, before the layout measures: the tab buttons (the SHEET's bar), the sheet's head (the counsel and the
-    // ticker in its voice line), the Res Gestae (in the tray on the SHEET)
+    // per host, before the layout measures: the tab buttons (the SHEET's bar, the DRAWER's spine), the panel's head (the
+    // counsel and the ticker in its voice line), the Res Gestae (in the tray on a phone)
     this.layout.onMount((host) => this.side.mount(host));
     new SheetHost(g, this.layout, el('side'), el('counsel'), el('ticker'));
     this.layout.onMount((host) => this.tray.mount(host));
@@ -111,20 +111,21 @@ export class UI {
       if (why === 'classes') this.hud.closePopover();
       this.tray.relayout();
     });
-    // the SHEET's voice line: '+n' opens "Awaiting you", Read the dispatch; its unfolded card rides the sheet (lift), and
-    // folds when the sheet comes down to closed
+    // a phone's voice line: '+n' opens "Awaiting you", Read the dispatch; its unfolded card rides the panel (lift), and
+    // folds when the panel comes down to closed
     this.counsel.layout = this.layout;
     this.counsel.onAwaiting = () => this.tray.show('awaiting');
     this.counsel.onRead = () => this.readDispatch();
-    this.layout.onChange((why) => { if (why === 'detent' && this.layout.host === 'sheet' && this.layout.detent === 'closed') this.counsel.fold(); });
+    this.layout.onChange((why) => { if (why === 'detent' && isPhone(this.layout.host) && this.layout.detent === 'closed') this.counsel.fold(); });
     this.choice = new ChoiceCard(g, el('choice'));
-    // the phone SHEET's one card slot (SPEC A graft 4): the context card (the pinned inspector) or the event card, never
-    // both, docked above the bar where the sheet was (Layout.dock). Opening one is a focus (IMPL §1: the sheet closes,
-    // remembered, and the camera brings the target clear above the card); one card taking the slot from the other keeps it
-    // closed; closing the last (✕, Back, its building gone, a bar slot) puts the sheet back: its tab, detent and scroll. A
-    // card replaced by another of its kind in the same turn (a tap from one target to the next) keeps it closed too
+    // a phone's one card slot (SPEC A graft 4): the context card (the pinned inspector) or the event card, never both,
+    // docked where the voice line was (Layout.dock: above the SHEET's bar, at the bottom-left of the DRAWER's map).
+    // Opening one is a focus (IMPL §1: the panel closes, remembered, and the camera brings the target clear of the card);
+    // one card taking the slot from the other keeps it closed; closing the last (✕, Back, its building gone, a bar slot or
+    // spine icon) puts the panel back: its tab, detent and scroll. A card replaced by another of its kind in the same turn
+    // (a tap from one target to the next) keeps it closed too
     this.inspector.onPin = (on) => {
-      if (this.layout.host !== 'sheet') return;
+      if (!isPhone(this.layout.host)) return;
       if (on) {
         this.unpinning = false;
         if (this.choice.staged) this.swap(() => this.choice.fold());
@@ -141,7 +142,8 @@ export class UI {
     };
     this.side.onChoiceAnchor = () => this.readDispatch();   // "Read the dispatch" unfolds the event card itself
     this.tray.onRead = () => this.readDispatch();
-    // a bar slot tapped while a card stands in the sheet's slot: the card steps aside for the tab (its restore first)
+    // a bar slot or spine icon tapped while a card stands in the phone's slot: the card steps aside for the tab (its
+    // restore first)
     this.side.onSlotTap = () => {
       if (this.choice.staged && this.layout.docked === el('choice')) { this.choice.fold(); return true; }
       if (!this.inspector.pinned) return false;
@@ -150,13 +152,13 @@ export class UI {
       if (this.unpinning) { this.unpinning = false; this.layout.restore(); }
       return true;
     };
-    // the event card on the phone SHEET: Read docks it in the sheet's slot (a focus, as above) and folding or answering it
-    // gives the slot back. Back folds it (a layer). Elsewhere a portrait sheet (a 720–899 px tablet until P4 docks it)
-    // drops to its tab bar while the card is up and comes back once it is answered or folded
-    registerBack({ rank: BACK_RANK.card, open: () => this.layout.host === 'sheet' && this.choice.staged, close: () => this.choice.fold() });
+    // the event card on a phone: Read docks it in the phone's slot (a focus, as above) and folding or answering it gives
+    // the slot back. Back folds it (a layer). Elsewhere a portrait sheet (a 720–899 px tablet until P4 docks it) drops to
+    // its tab bar while the card is up and comes back once it is answered or folded
+    registerBack({ rank: BACK_RANK.card, open: () => isPhone(this.layout.host) && this.choice.staged, close: () => this.choice.fold() });
     this.choice.onStage = (up) => {
       const L = this.layout;
-      if (L.host === 'sheet') {
+      if (isPhone(L.host)) {
         const card = el('choice');
         if (up) {
           if (this.inspector.pinned) this.swap(() => { g.select(null); g.inspect(null, true); });
@@ -350,7 +352,7 @@ export class UI {
     this.title.hide();
     this.changed();
     this.side.frame(performance.now());
-    if (this.layout.host === 'sheet') this.layout.setDetent('closed', { instant: true });   // a colony entered on a phone: the map
+    if (isPhone(this.layout.host)) this.layout.setDetent('closed', { instant: true });   // a colony entered on a phone: the map
     this.layout.refresh();
   }
 
@@ -386,16 +388,16 @@ export class UI {
   }
 
   /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. Entering or leaving
-   *  placing changes the free map on a phone: on the SHEET placing routes the sheet to closed (remembered; the banner
-   *  stands in its place), and it comes back when placing is cancelled, but not after a work was placed (placed()): the
-   *  player is on the map. The layout measures again before view.startPlacing glides a pre-positioned ghost into it. */
+   *  placing changes the free map on a phone: there placing routes the panel to closed (remembered; the banner stands
+   *  where the voice line was), and it comes back when placing is cancelled, but not after a work was placed (placed()):
+   *  the player is on the map. The layout measures again before view.startPlacing glides a pre-positioned ghost into it. */
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void {
     const app = document.getElementById('app'), was = app?.classList.contains('placing');
     renderPlaceBanner(this.g, el('place-banner'), p, check);
     const now = app?.classList.contains('placing');
     if (!app || was === now) return;
     const L = this.layout;
-    if (L?.host === 'sheet') {
+    if (L && isPhone(L.host)) {
       if (now) L.go({ kind: 'place' });
       else if (this.placedOk) L.forget();
       else if (!this.inspector.pinned) L.restore();   // a card placing started from comes back: the sheet stays aside
@@ -404,16 +406,16 @@ export class UI {
     L?.refresh();
   }
 
-  /** Unfolds the event card (the voice line's Read, the Breviarium's, "Read the dispatch"): on the phone it docks in the
-   *  sheet's slot (choice.onStage), never over placing (asked for while placing, the placing ends first). False when no
+  /** Unfolds the event card (the voice line's Read, the Breviarium's, "Read the dispatch"): on a phone it docks in the
+   *  phone's slot (choice.onStage), never over placing (asked for while placing, the placing ends first). False when no
    *  dispatch waits. */
   private readDispatch(): boolean {
     if (!this.g.state.choice) return false;
-    if (this.layout.host === 'sheet' && this.g.view.placing) this.g.cancelPlacing();
+    if (isPhone(this.layout.host) && this.g.view.placing) this.g.cancelPlacing();
     return this.choice.reveal();
   }
 
-  /** A work was placed and the placing ends (App.placeAt): a phone's sheet stays where placing put it. */
+  /** A work was placed and the placing ends (App.placeAt): a phone's panel stays where placing put it. */
   placed(): void {
     this.placedOk = true;
   }

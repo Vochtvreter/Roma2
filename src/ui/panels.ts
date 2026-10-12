@@ -5,13 +5,14 @@
 // element under the mouse (else the first in view) keeps its place on screen (steady.ts): a works row finishing or a
 // caravan coming home never slides the card the player is about to click.
 // The tab buttons (#tabs) head the panel on most hosts; on the phone SHEET (layout.ts) they are its fixed bottom bar of
-// five stable slots, re-hosted into #app (mount), and a tab opens where layout.go() routes it.
+// five stable slots, on the landscape DRAWER its 56 px spine of icons at the right edge (labels in the long-press tip and
+// the aria-label), re-hosted into #app either way (mount), and a tab opens where layout.go() routes it.
 import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
 import type { Host, Layout, OpenFrom } from './layout';
-import { slotTap } from './layout';
+import { isPhone, slotTap } from './layout';
 import { clear, h, img, scrollWithin, tip } from './dom';
 import { tabShown } from './intro';
 import { notePractice } from '../game/actions';
@@ -69,13 +70,14 @@ export class SidePanel {
   private readonly press: PointerHold;     // a press still held in the body (a repeating labour ±): rebuilds wait
   /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
   onChoiceAnchor: (() => boolean) | null = null;
-  /** A bar slot was tapped, or a tab opens, on the SHEET: the UI root closes a card standing in the sheet's slot (true
-   *  when it closed one). */
+  /** A bar slot or spine icon was tapped, or a tab opens, on a phone: the UI root closes a card standing in the phone's
+   *  slot (true when it closed one). */
   onSlotTap: (() => boolean) | null = null;
   /** The layout engine (ui/layout.ts), the one owner of the panel's detent: toggle() asks it, open() routes through it,
    *  and it writes the panel through show(). Set when UI.build() creates it; before that, the panel writes itself. */
   layout: Pick<Layout, 'panelToggle' | 'go' | 'setDetent' | 'detent' | 'host'> | null = null;
-  private readonly bodyHome: HTMLElement;   // where the tab buttons stand off the SHEET: before the body
+  private readonly bodyHome: HTMLElement;   // where the tab buttons stand off the phones: before the body
+  private vertical = false;                 // the tab buttons are the DRAWER's spine: the arrows go up and down
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
@@ -130,10 +132,14 @@ export class SidePanel {
     this.forced = tabShown(this.g.state, tab) ? null : tab;
     if (tab === 'advisors') notePractice(this.g.state, 'advisors');   // the lessons' jobs (§11.13)
     if (tab === 'people') notePractice(this.g.state, 'people');
-    // a card in the phone sheet's slot steps aside for any tab that opens (its own buttons, the Breviarium's rows, a
-    // lesson), as for a bar slot: else the tab would open behind it, out of sight. Its restore runs first, so the new
-    // tab's detent wins
-    if (this.layout?.host === 'sheet') this.onSlotTap?.();
+    // a card in the phone's slot steps aside for any tab that opens (its own buttons, the Breviarium's rows, a lesson),
+    // as for a bar slot: else the tab would open behind it, out of sight. Its restore runs first, so the new tab's
+    // detent wins. So does the placing for a tab the player asks for (a Breviarium row, a key: as a tap on the bar or the
+    // spine), whose panel would stay away behind the banner; a lesson's own tab waits for the placing to end
+    if (isPhone(this.layout?.host ?? null)) {
+      if (from !== 'lesson' && this.g.view.placing !== null) this.g.cancelPlacing();
+      this.onSlotTap?.();
+    }
     this.cur = tab;
     this.fresh.delete(tab);
     if (this.layout) this.layout.go({ kind: 'open', tab, from, anchor });
@@ -179,21 +185,25 @@ export class SidePanel {
     if (this.body.scrollTop < 1) this.body.scrollTop = top;
   }
 
-  /** The host changed (layout.onMount): on the SHEET the tab buttons become the bar at the foot of #app, outside the
-   *  sheet that slides above it; anywhere else they go back to the panel's head. */
+  /** The host changed (layout.onMount): on a phone the tab buttons stand in #app outside the panel that slides beside
+   *  them (the SHEET's bar at its foot, the DRAWER's spine at its right edge: a vertical tab list); anywhere else they go
+   *  back to the panel's head. */
   mount(host: Host): void {
     const bar = this.tabsEl, app = this.root.parentElement;
-    if (host === 'sheet' && app) { if (bar.parentElement !== app) app.insertBefore(bar, this.root.nextSibling); }
+    if (isPhone(host) && app) { if (bar.parentElement !== app) app.insertBefore(bar, this.root.nextSibling); }
     else if (bar.parentElement !== this.root) this.root.insertBefore(bar, this.bodyHome);
+    this.vertical = host === 'drawer';
+    bar.setAttribute('aria-orientation', this.vertical ? 'vertical' : 'horizontal');
   }
 
-  /** A tab's button: on the SHEET the open tab's slot folds a sheet that is up (slotTap); any other press opens the tab
-   *  (at its own detent: route). A tap while placing ends the placing first: the player has moved on, and the sheet they
-   *  saw was closed, so the open tab's slot brings its tab back (where the end of placing restored it), never folds it.
-   *  A card in the sheet's slot (the context card, the event card: onSlotTap) steps aside for the tab the same way. */
+  /** A tab's button: on a phone the open tab's slot (or spine icon) folds a panel that is up (slotTap); any other press
+   *  opens the tab (at its own detent: route). A tap while placing ends the placing first: the player has moved on, and
+   *  the panel they saw was closed, so the open tab's slot brings its tab back (where the end of placing restored it),
+   *  never folds it. A card in the phone's slot (the context card, the event card: onSlotTap) steps aside for the tab the
+   *  same way. */
   private tap(t: TabId): void {
     const L = this.layout;
-    if (L && L.host === 'sheet') {
+    if (L && isPhone(L.host)) {
       const placing = this.g.view.placing !== null;
       if (placing) this.g.cancelPlacing();
       if (this.onSlotTap?.() || placing) {
@@ -229,8 +239,8 @@ export class SidePanel {
     const wasEmpty = this.root.classList.contains('empty');
     this.root.classList.toggle('empty', shown.length === 0);
     if (shown.length === 0) this.toggle(false);
-    else if (wasEmpty && this.layout?.host !== 'sheet') this.toggle(true);   // a phone's sheet stays closed: the map first
-    const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}`;
+    else if (wasEmpty && !isPhone(this.layout?.host ?? null)) this.toggle(true);   // a phone's panel stays closed: the map first
+    const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}|${+this.vertical}`;
     if (key === this.barKey) return;
     this.barKey = key;
     clear(this.tabsEl);
@@ -243,6 +253,7 @@ export class SidePanel {
       const btn = h('button', {
         class: `side-tab${on ? ' on' : ''}${isNew ? ' fresh' : ''}`, role: 'tab', id: `tab-${t}`, type: 'button',
         'aria-selected': String(on), 'aria-controls': 'tab-body', tabindex: on ? '0' : '-1', 'data-tab': t,
+        'aria-label': this.vertical ? `${p.label} · ${p.sub}` : null,   // the DRAWER's spine shows the icon alone
         onclick: () => { this.g.sfx('click'); this.tap(t); },
       },
       img(p.icon, 2, 'side-tab-ico'),
@@ -287,12 +298,13 @@ export class SidePanel {
     if (keepScroll) safe('anchor', () => this.steady.restore(mark));
   }
 
-  /** Arrow keys move between tabs (WAI-ARIA tabs pattern). */
+  /** Arrow keys move between tabs (WAI-ARIA tabs pattern): left and right, up and down on the DRAWER's spine. */
   private onKey(e: KeyboardEvent): void {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const [back, on] = this.vertical ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+    if (e.key !== back && e.key !== on) return;
     const ids = [...this.btns.keys()];
     const i = ids.indexOf(this.cur);
-    const next = ids[(i + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
+    const next = ids[(i + (e.key === on ? 1 : ids.length - 1)) % ids.length];
     e.preventDefault();
     this.open(next, undefined, 'tab');
     this.btns.get(next)?.btn.focus();

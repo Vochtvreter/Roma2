@@ -6,8 +6,8 @@
 // Non-modal: the colony runs on, the map stays live; a press outside, a second tap on the same figure, the ✕, a swipe up
 // on the grip, Esc and Back (a history.ts layer) close it. Full width under a phone's HUD; elsewhere a 420 px panel under
 // the HUD on the tapped figure's side. At most 70% of #app tall; its body scrolls inside.
-// One instance of every widget: on the phone SHEET host the Res Gestae panel itself (#objective, objective.ts) moves in
-// here and goes back to the left column on any other host, which shows a one-line entry instead. The essentials' strips
+// One instance of every widget: on the phone hosts (the SHEET, the DRAWER) the Res Gestae panel itself (#objective,
+// objective.ts) moves in here and goes back to the left column on any other host, which shows a one-line entry instead. The essentials' strips
 // and cards are vitals.ts' own helpers; the ledgers are hud-tips.ts' cards. Refreshed like the side panel while open (and
 // only then): each section rebuilds on its discrete signature (never within a click of the pointer, nor while the mouse
 // rests here), its updaters patch numbers in place, and the cards are redrawn once a game day (at most once a second);
@@ -15,6 +15,7 @@
 import type { Essential, GameState, LogEntry, LogKind, ResId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { Host } from './layout';
+import { isPhone } from './layout';
 import { clear, fmt, fmtRate, h, img, scrollWithin } from './dom';
 import { caps } from './tipkit';
 import { PointerHold, ScrollAnchor } from './steady';
@@ -93,7 +94,7 @@ export class Tray {
   private readonly steady: ScrollAnchor;
   private readonly hold: PointerHold;
   private readonly sections: Section[] = [];
-  private readonly slot = h('div', { class: 'tray-gestae-slot' });   // the Res Gestae panel's place here (phone SHEET)
+  private readonly slot = h('div', { class: 'tray-gestae-slot' });   // the Res Gestae panel's place here (on a phone)
   private readonly home: { parent: HTMLElement | null; next: Node | null };
   private shownNow = false;
   private fig: string | null = null;          // the figure that opened the tray ('' when a caller opened it)
@@ -198,19 +199,20 @@ export class Tray {
     this.seen = ordoLines(this.g.state)[0] ?? this.seen;
   }
 
-  /** The host changed (or the layout started): the Res Gestae panel moves in here on a phone's sheet and back to the left
+  /** The host changed (or the layout started): the Res Gestae panel moves in here on a phone and back to the left
    *  column anywhere else; an open tray takes the new host's shape. */
   mount(host: Host): void {
     if (host === this.hostNow) { if (this.shownNow) this.place(); return; }
+    const wasPhone = isPhone(this.hostNow);
     this.hostNow = host;
     const o = this.objective;
-    if (host === 'sheet') { if (o.parentElement !== this.slot) this.slot.appendChild(o); }
+    if (isPhone(host)) { if (o.parentElement !== this.slot) this.slot.appendChild(o); }
     else if (o.parentElement === this.slot && this.home.parent) {
       const next = this.home.next && this.home.next.parentNode === this.home.parent ? this.home.next : this.home.parent.firstChild;
       this.home.parent.insertBefore(o, next);
     }
     const gestae = this.sections.find((x) => x.id === 'gestae');
-    if (gestae) gestae.key = '\u0000';   // the one-line entry or the panel: rebuilt for the host
+    if (gestae && wasPhone !== isPhone(host)) gestae.key = '\u0000';   // the one-line entry or the panel: rebuilt for the host
     if (this.shownNow) { this.update(performance.now(), true); this.place(); }
   }
 
@@ -267,7 +269,8 @@ export class Tray {
   }
 
   // ───────────────────────────── placement ─────────────────────────────
-  /** Under the HUD: full width on a phone's sheet; elsewhere a 420 px panel on the tapped figure's side. */
+  /** Under the HUD: full width on a phone's sheet; elsewhere (a landscape phone's drawer too) a 420 px panel on the
+   *  tapped figure's side. */
   private place(): void {
     const app = this.root.parentElement;
     if (!app) return;
@@ -405,15 +408,15 @@ export class Tray {
     return reason ? h('span', { class: 'tray-act' }, b, h('span', { class: 'tray-why' }, reason)) : b;
   }
 
-  /** The Res Gestae: the panel itself on a phone's sheet (moved in by mount); elsewhere the left column keeps it, and a
-   *  one-line entry stands here. */
+  /** The Res Gestae: the panel itself on a phone (moved in by mount); elsewhere the left column keeps it, and a one-line
+   *  entry stands here. */
   private gestae(): Section {
     const g = this.g;
     return this.section('gestae', {
       shown: () => shows(g, 'goals'),
-      sig: () => `${this.hostNow === 'sheet' ? 'panel' : 'line'}|${currentMilestone(g.state)?.id ?? '-'}`,
+      sig: () => `${isPhone(this.hostNow) ? 'panel' : 'line'}|${currentMilestone(g.state)?.id ?? '-'}`,
       build: (body, up) => {
-        if (this.hostNow === 'sheet') return;   // the panel itself stands in the slot
+        if (isPhone(this.hostNow)) return;   // the panel itself stands in the slot
         const s = g.state;
         const m = currentMilestone(s);
         const main = MILESTONES.filter((x) => !x.postVictory).length;

@@ -2,9 +2,10 @@
 // Shows s.choice at the top centre: Latin kicker, title, text, options with −cost / +gain chips (disabled with a reason
 // when unaffordable), the default marked, a countdown; veterans show each family's skills and the free beds. The options
 // and the countdown are pinned to the card's foot, so a card taller than its room scrolls its text, never its answers.
-// On the phone SHEET (layout.ts) a new dispatch arrives folded: the voice line carries it ('NVNTIVS · … · 28 d', Read:
-// counsel.ts), and Read unfolds the card docked in the sheet's slot (data-docked; at most 70% of the screen, its answers
-// pinned at its foot); folding it (▾, Back) gives it back to the voice line.
+// On a phone (the SHEET and the DRAWER: layout.ts) a new dispatch arrives folded: the voice line carries it ('NVNTIVS · …
+// · 28 d', Read: counsel.ts), and Read unfolds the card docked in the phone's slot (data-docked: over the SHEET's bar, at
+// most 70% of the screen; at the bottom-left of the DRAWER's map; its answers pinned at its foot); folding it (▾, Back)
+// gives it back to the voice line.
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, PendingChoice } from '../game/types';
 import type { Game, Updater } from './types';
@@ -17,7 +18,7 @@ import { B } from '../game/balance';
 import { feminine } from '../game/data/names';
 import { resIcon } from '../render/art/index';
 import { btn, caps } from './tabs/common';
-import { currentHost } from './layout';
+import { currentHost, isPhone } from './layout';
 
 const PULSE_MS = 1600;
 
@@ -57,10 +58,10 @@ export class ChoiceCard {
   private folding: PendingChoice | null = null;
   private shown = '';                         // the dispatch on screen: only a new one slides in, a refresh stays put
   private staged_ = false;                    // an unfolded card is on screen (onStage was told so)
-  private stagedDocked = false;               // … docked in the phone sheet's slot when it was told
+  private stagedDocked = false;               // … docked in a phone's slot when it was told
   /** Told when an unfolded card comes on screen (true) and when it folds or is answered (false): the UI root makes room
-   *  for it on a phone (on the SHEET: docks it in the sheet's slot). Told again (true) when an unfolded card is docked or
-   *  undocked by a turn of the phone (the host changed under it). */
+   *  for it on a phone (docks it in the phone's slot). Told again (true) when an unfolded card is docked or undocked by
+   *  a change of host under it (a phone turned to a tablet's shape, a window grown). */
   onStage: ((up: boolean) => void) | null = null;
 
   /** An unfolded card is on screen. */
@@ -73,8 +74,8 @@ export class ChoiceCard {
     root.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
   }
 
-  /** Folds an unfolded card (Back, a bar slot, another card taking the sheet's slot): on the SHEET it goes back to the
-   *  voice line. Built at once, so the UI root's onStage runs before the caller goes on. */
+  /** Folds an unfolded card (Back, a bar slot or spine icon, another card taking the slot): on a phone it goes back to
+   *  the voice line. Built at once, so the UI root's onStage runs before the caller goes on. */
   fold(): void {
     if (!this.staged_ || this.folded) return;
     this.folded = true;
@@ -104,7 +105,7 @@ export class ChoiceCard {
     this.last = now;
     const s = this.g.state;
     const c = s.choice;
-    const sheet = currentHost() === 'sheet';
+    const sheet = isPhone(currentHost());
     if (c !== this.folding) { this.folding = c; this.folded = sheet; }   // the phone's voice line carries a new one, folded
     const sig = c ? `${c.event}:${c.created}:${c.options.map((o) => +!shortReason(s, o.cost)).join('')}:${+this.folded}:${s.gate ? s.gate.families.length : 0}:${+sheet}` : '';
     if (sig !== this.sig && (now - this.lastClick > B.ui.CLICK_GUARD_MS || !c)) this.build(c, sig);
@@ -118,7 +119,7 @@ export class ChoiceCard {
     this.ups = [];
     clear(this.root);
     this.root.hidden = !c;
-    const sheet = currentHost() === 'sheet';
+    const sheet = isPhone(currentHost());
     if (sheet) this.root.dataset.docked = ''; else delete this.root.dataset.docked;
     const up = !!c && !this.folded;
     // told once the card is drawn (the phone measures its height to dock it)

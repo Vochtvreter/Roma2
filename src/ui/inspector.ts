@@ -4,10 +4,10 @@
 // rather than losing its card: when it is picked, and again when the layout moves the UI over it; never after a pan.
 // The same target is not rebuilt while the mouse rests on its card, unless to answer a click there, nor while a press made in
 // it is held (steady.ts): its buttons stay put.
-// On the phone SHEET (layout.ts) the popup is the context card (DESIGN §15.7): docked above the bar in the sheet's slot
-// (data-docked; never placed beside its target), its brief first (briefParts: the head, the two or three most useful lines,
-// the main actions) and More for the whole card; a work with posts carries its category's labour line (labourEl) to staff
-// it in place; the camera glides the target clear above it.
+// On a phone (the SHEET and the DRAWER: layout.ts) the popup is the context card (DESIGN §15.7): docked in the phone's slot
+// (data-docked; never placed beside its target: above the SHEET's bar, at the bottom-left of the DRAWER's map), its brief
+// first (briefParts: the head, the two or three most useful lines, the main actions) and More for the whole card; a work
+// with posts carries its category's labour line (labourEl) to staff it in place; the camera glides the target clear of it.
 import { BUILDER, F, T } from '../game/types';
 import type { Building, GameState, Rect, ResId, SiteNote, Terrain } from '../game/types';
 import type { Game, InspectTarget, Updater } from './types';
@@ -37,7 +37,7 @@ import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
 import { confirm2 } from './modals';
 import { PointerHold } from './steady';
-import { currentHost } from './layout';
+import { currentHost, isPhone } from './layout';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
 import { labourEl } from './tabs/labour';
@@ -188,9 +188,10 @@ export function dodge(t: Box, over: readonly Box[], within: Box, m: number): { d
 
 const SEEK_MARGIN = 16;   // CSS px a covered target glides clear of the UI's edge
 const NUDGE = 96;         // CSS px a target may slide sideways so its card fits beside it (a narrow free map)
-/** What floats over the free map (the layout's free rect leaves it in): a target under it is covered too. On the phone
- *  SHEET the counsel and the ticker are in the sheet's voice line (outside the free rect) and the tool column (map-col)
- *  holds the zoom buttons and the Mappae and Via popovers; off it, the left column's cards and the map tools float. */
+/** What floats over the free map (the layout's free rect leaves it in): a target under it is covered too. On a phone
+ *  the counsel and the ticker are in the voice line (outside the free rect: the SHEET's head, the DRAWER's pane head or
+ *  its floating line) and the tool column (map-col) holds the zoom buttons and the Mappae and Via popovers; off the
+ *  phones, the left column's cards and the map tools float. */
 const FLOATING = ['objective', 'counsel', 'ticker', 'overlay-bar', 'zoom-ctl', 'minimap', 'side-toggle', 'map-col'] as const;
 
 /** The inspector: hover cards in #inspector (bottom left); a clicked target opens a closable popup beside it on the map
@@ -266,8 +267,8 @@ class InspectorCard {
   /** The card's root element. */
   get el(): HTMLElement { return this.root; }
 
-  /** The pinned card on the phone SHEET: the context card, docked in the sheet's slot. */
-  private get docked(): boolean { return this.sticky && currentHost() === 'sheet'; }
+  /** The pinned card on a phone: the context card, docked in the phone's slot. */
+  private get docked(): boolean { return this.sticky && isPhone(currentHost()); }
 
   set(t: InspectTarget | null): void {
     if (same(t, this.target)) return;

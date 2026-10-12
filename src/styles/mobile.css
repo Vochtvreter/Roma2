@@ -5,7 +5,7 @@
    The layout engine's hosts (layout.ts, #app[data-host]) take over host by host: a portrait phone (SHEET) has its one-row
    HUD in hud.css, its Res Gestae in the Breviarium (tray.css) and its sheet, bar, voice line and tool column in sheet.css
    (imported after this file, and outranking the portrait rules here that it does not want), so the phone HUD and Res
-   Gestae rules below stand under :where(#app:not([data-host='sheet'])): the landscape phone and the 720–899 px tablets
+   Gestae rules below stand under :where(#app:not([data-host='sheet'], [data-host='drawer'])): the landscape phone and the 720–899 px tablets
    keep all of this, at the specificity it had, until their hosts land (P3, P4). */
 
 /* ───────── tablet and narrow desktop ───────── */
@@ -43,33 +43,33 @@
   :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
   #app:has(#side.collapsed) { --sheet: 56px; }
   #app:has(#side.empty) { --sheet: 0px; }
-  :where(#app:not([data-host='sheet'])) #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
-  :where(#app:not([data-host='sheet'])) .hud-brand { display: none; }
-  :where(#app:not([data-host='sheet'])) .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-brand { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-break { display: block; flex: 0 0 100% !important; height: 0; }
   /* row 1 sizes to its numbers (flex-basis auto) and shares out the rest, so no figure is cut while the row has room */
-  :where(#app:not([data-host='sheet'])) .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
-  :where(#app:not([data-host='sheet'])) .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
-  :where(#app:not([data-host='sheet'])) .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
-  :where(#app:not([data-host='sheet'])) .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
-  :where(#app:not([data-host='sheet'])) :is(.hud-date, .hud-speed, .hud-menu) { flex: none !important; }
-  :where(#app:not([data-host='sheet'])) :is(.hud-speed, .hud-menu, .hud-date, .hud-strip) { order: 3; }
-  :where(#app:not([data-host='sheet'])) .hud-speed { margin-left: 0; }
-  :where(#app:not([data-host='sheet'])) :is(.vit-strip, .vit-seasons) { display: none; }
-  :where(#app:not([data-host='sheet'])) .vit-sub, :where(#app:not([data-host='sheet'])) .hud-vital.falling .vit-sub { display: none; }
-  :where(#app:not([data-host='sheet'])) .hud-chip { height: 42px; }
-  :where(#app:not([data-host='sheet'])) .hud-menu { margin-left: auto; height: 40px; }
-  :where(#app:not([data-host='sheet'])) .hud-date { height: 38px; }
-  :where(#app:not([data-host='sheet'])) .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
-  :where(#app:not([data-host='sheet'])) .hud-res { min-width: 56px; }
-  :where(#app:not([data-host='sheet'])) .hud-sp { height: 36px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vitals { flex: 2 1 auto !important; min-width: 0; gap: 4px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vital { flex: 1 1 auto; min-width: 0; width: auto; height: 42px; grid-template-rows: 11px 19px; padding: 3px 5px; cursor: pointer; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip { flex: 1 1 auto !important; min-width: 0; overflow: hidden; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip .hud-n { overflow: hidden; text-overflow: ellipsis; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.hud-date, .hud-speed, .hud-menu) { flex: none !important; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.hud-speed, .hud-menu, .hud-date, .hud-strip) { order: 3; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-speed { margin-left: 0; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.vit-strip, .vit-seasons) { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-sub, :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vital.falling .vit-sub { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip { height: 42px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-menu { margin-left: auto; height: 40px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date { height: 38px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-strip { grid-template-rows: 32px; flex: 1 1 0 !important; min-width: 0; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-res { min-width: 56px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-sp { height: 36px; }
 
   #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
-  :where(#app:not([data-host='sheet'])) #objective { padding: 6px 10px; }
-  :where(#app:not([data-host='sheet'])) :is(.obj-hint, .obj-unlocks, .obj-meter, .obj-laurel) { display: none; }
-  :where(#app:not([data-host='sheet'])) .obj-goal { font-size: 14px; margin: 2px 0 0; }
-  :where(#app:not([data-host='sheet'])) .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
-  :where(#app:not([data-host='sheet'])) .obj-chip { flex: none; }
-  :where(#app:not([data-host='sheet'])) .obj-cta { margin-top: 5px; padding: 4px 8px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #objective { padding: 6px 10px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.obj-hint, .obj-unlocks, .obj-meter, .obj-laurel) { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-goal { font-size: 14px; margin: 2px 0 0; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 5px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-chip { flex: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .obj-cta { margin-top: 5px; padding: 4px 8px; }
   .counsel-strip { display: none; }
   .counsel-card { padding: 6px 10px; cursor: pointer; }
   .counsel-card .counsel-body { display: none; }
@@ -128,39 +128,39 @@
 
 /* narrow tablets and large phones: dignitas steps out of row 1 so the souls keep their beds figure */
 @media (max-width: 699px) {
-  :where(#app:not([data-host='sheet'])) .hud-dignitas { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-dignitas { display: none; }
 }
 
 /* ───────── compact phones ───────── */
 @media (max-width: 559px) {
-  :where(#app:not([data-host='sheet'])) .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
-  :where(#app:not([data-host='sheet'])) .hud-n { font-size: 12px; }
-  :where(#app:not([data-host='sheet'])) .vit-label { font-size: 7px; letter-spacing: .5px; }
-  :where(#app:not([data-host='sheet'])) .vit-trend { display: none; }
-  :where(#app:not([data-host='sheet'])) .vit-days { font-size: 15px; }
-  :where(#app:not([data-host='sheet'])) #hud { padding: 4px; gap: 3px; }
-  :where(#app:not([data-host='sheet'])) .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
-  :where(#app:not([data-host='sheet'])) .hud-coin .hud-sub { font-size: 7px; }
-  :where(#app:not([data-host='sheet'])) .hud-stages { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vital { grid-template-columns: 24px 1fr; padding: 3px 4px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-n { font-size: 12px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-label { font-size: 7px; letter-spacing: .5px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-trend { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .vit-days { font-size: 15px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud { padding: 4px; gap: 3px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip { padding: 0 2px; gap: 2px; border-color: transparent; background: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-coin .hud-sub { font-size: 7px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-stages { display: none; }
   /* Three rows: tablets, coin and souls · date, speed and menu · spirits and the materials (scrolling). No row can wrap:
      in each one item takes what is left (flex-basis 0) and the others keep their natural width; if even that runs short
      (a 360 px phone late in the game) only the souls figure or the date ellipsizes. #hud::after breaks rows 2 and 3. */
   :root { --hud-h: 136px; }
-  :where(#app:not([data-host='sheet'])) #hud { row-gap: 3px; }
-  :where(#app:not([data-host='sheet'])) #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
-  :where(#app:not([data-host='sheet'])) .hud-vitals, :where(#app:not([data-host='sheet'])) .hud-chip.hud-coin { flex: 0 1 auto !important; }
-  :where(#app:not([data-host='sheet'])) .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
-  :where(#app:not([data-host='sheet'])) .hud-break { order: 1; }
-  :where(#app:not([data-host='sheet'])) .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
-  :where(#app:not([data-host='sheet'])) .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
-  :where(#app:not([data-host='sheet'])) :is(.hud-speed, .hud-menu) { order: 2; }
-  :where(#app:not([data-host='sheet'])) .hud-menu { margin-left: 0; }
-  :where(#app:not([data-host='sheet'])) .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
-  :where(#app:not([data-host='sheet'])) .hud-strip { order: 4; flex: 1 1 0 !important; }
-  :where(#app:not([data-host='sheet'])) .hud-date-main { font-size: 9px; }
-  :where(#app:not([data-host='sheet'])) .hud-date .hud-sub { display: none; }
-  :where(#app:not([data-host='sheet'])) .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
-  :where(#app:not([data-host='sheet'])) .hud-speed { gap: 2px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud { row-gap: 3px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) #hud::after { content: ''; flex: 0 0 100%; height: 0; order: 3; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-vitals, :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip.hud-coin { flex: 0 1 auto !important; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip.hud-souls { flex: 1 1 0 !important; justify-content: center; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-break { order: 1; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date { order: 2; flex: 1 1 0 !important; min-width: 0; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date-main { overflow: hidden; text-overflow: ellipsis; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) :is(.hud-speed, .hud-menu) { order: 2; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-menu { margin-left: 0; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-chip.hud-morale { order: 4; flex: none !important; height: 32px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-strip { order: 4; flex: 1 1 0 !important; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date-main { font-size: 9px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-date .hud-sub { display: none; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-sp { min-width: 28px; padding: 0 2px; font-size: 9px; }
+  :where(#app:not([data-host='sheet'], [data-host='drawer'])) .hud-speed { gap: 2px; }
   .title-logo { letter-spacing: 1px; }
   .title-row { flex-direction: column; }
   .modal-title { font-size: 21px; }
@@ -216,32 +216,34 @@
   .hud-menu { min-width: 40px; }
 }
 
-/* ───────── landscape phones: the sheet becomes a right-hand drawer ───────── */
-/* Every rule above assumes a portrait phone (a 46vh sheet under a two-row HUD), which leaves no map on an 844×390
-   screen. Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit
-   at the bottom right of the free map. */
+/* ───────── short windows under 900 px off the phones: the sheet becomes a right-hand drawer ───────── */
+/* Every rule above assumes a portrait phone (a 46vh sheet under a two-row HUD), which leaves no map on a short window.
+   Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit at the
+   bottom right of the free map. A landscape phone is the DRAWER host now (drawer.css: the spine, the pane, the floating
+   voice line); these rules stand under :where(#app:not([data-host='drawer'])) for what is left of them: a short window
+   480–520 px tall and 720–899 px wide, a DOCK until P4 styles it. */
 @media (max-width: 899px) and (max-height: 520px) {
-  :root, #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
-  #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
+  #app:not([data-host='drawer']), #app:not([data-host='drawer']):has(#side.collapsed), #app.placing:not([data-host='drawer']) { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
+  :where(#app:not([data-host='drawer'])) #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
     border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
-  #side.collapsed, #app.placing #side { transform: translateX(100%); }
-  #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
+  :where(#app:not([data-host='drawer'])) #side.collapsed, #app.placing:not([data-host='drawer']) #side { transform: translateX(100%); }
+  :where(#app:not([data-host='drawer'])) #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
     border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2); }
-  #side-toggle::before { content: '▸'; }
-  #side.collapsed #side-toggle::before { content: '◂'; }
-  #tabs { grid-template-columns: repeat(3, 1fr); }
-  #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
+  :where(#app:not([data-host='drawer'])) #side-toggle::before { content: '▸'; }
+  :where(#app:not([data-host='drawer'])) #side.collapsed #side-toggle::before { content: '◂'; }
+  :where(#app:not([data-host='drawer'])) #tabs { grid-template-columns: repeat(3, 1fr); }
+  :where(#app:not([data-host='drawer'])) #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
   /* here the column reaches the screen's foot: an unfolded card takes what it leaves and scrolls inside */
-  #left > #counsel { flex: 0 1 auto; }
-  .counsel-card.offer { max-height: none; }
-  #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
-  #map-tools { bottom: 8px; }
-  #app:not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
+  :where(#app:not([data-host='drawer'])) #left > #counsel { flex: 0 1 auto; }
+  :where(#app:not([data-host='drawer'])) .counsel-card.offer { max-height: none; }
+  :where(#app:not([data-host='drawer'])) #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
+  :where(#app:not([data-host='drawer'])) #map-tools { bottom: 8px; }
+  :where(#app:not([data-host='drawer'])):not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
   /* the overlay toggles fold into rows of three so the tools fit the free map beside the left column */
-  .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
-  #ticker { display: none; }
-  #place-banner, #app:has(#side.collapsed) #place-banner { bottom: 8px; }
+  :where(#app:not([data-host='drawer'])) .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
+  :where(#app:not([data-host='drawer'])) #ticker { display: none; }
+  :where(#app:not([data-host='drawer'])) #place-banner, #app:not([data-host='drawer']):has(#side.collapsed) #place-banner { bottom: 8px; }
 }
 @media (pointer: coarse) and (max-width: 899px) and (max-height: 520px) {
-  #side-toggle { left: -46px; width: 44px; }
+  :where(#app:not([data-host='drawer'])) #side-toggle { left: -46px; width: 44px; }
 }

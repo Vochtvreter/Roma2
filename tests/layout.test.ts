@@ -1,15 +1,16 @@
 // tests/layout.test.ts — the layout engine's pure part (src/ui/layout.ts, ARCHITECTURE §13.10): size classes, input
 // classes and the host for every window size the game was measured on (platform.md §0's 35 and the design's own), the
-// route() table, the lessons' table, that every lesson's pointer shows on every host (the SHEET's through its proxies),
-// and the phone sheet's own tables: its heights, the drag's snap, the grabber's cycle and the bar's slots. Headless: no
-// DOM (the Layout class is never built here).
+// route() table, the lessons' table, that every lesson's pointer shows on every host (the phones' through their proxies),
+// the phone sheet's own tables (its heights, the drag's snap, the grabber's cycle and the bar's slots) and the landscape
+// drawer's (the pane's widths and their snap, the free map beside what stands at its foot, the HUD row's priority+).
+// Headless: no DOM (the Layout class is never built here).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
 import { LESSONS } from '../src/game/intro';
 import {
-  BAR_SLOTS, DEFAULT_DETENT, DETENTS, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, VISIBLE, aboveDefault, barSlot,
-  classify, cycleDetent, detentsOf, fitDetent, hostEntryDetent, inFrame, inputClass, keepDetent, lessonTarget, reveal, route, sheetHeights, shownAt,
-  slotTap, snapDetent, stepDown,
+  BAR_SLOTS, DEFAULT_DETENT, DETENTS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, VISIBLE, aboveDefault, barSlot,
+  classify, clearOf, cycleDetent, detentsOf, drawerWidths, fitDetent, hostEntryDetent, inFrame, inputClass, isPhone, keepDetent, lessonTarget,
+  priorityDrops, reveal, route, sheetHeights, shownAt, slotTap, snapDetent, stepDown,
 } from '../src/ui/layout';
 import type { Box, Detent, Host, Media, RouteCtx } from '../src/ui/layout';
 import { coveredArea, dodge, roomShift } from '../src/ui/inspector';
@@ -262,14 +263,19 @@ describe('reveal', () => {
     }
   });
 
-  it('the SHEET: the overlay bar glows the Mappae button, the Res Gestae the HUD, the ticker the voice line, Annales the menu', () => {
-    expect(reveal('#overlay-bar', 'sheet')).toBe('#map-mappae');
-    expect(reveal('#objective', 'sheet')).toBe('#hud');
-    expect(reveal('#ticker', 'sheet')).toBe('#counsel');
-    expect(reveal('#tab-annals', 'sheet')).toBe('#hud-menu');
-    for (const t of TABS.filter((x) => x !== 'annals')) expect(reveal(`#tab-${t}`, 'sheet')).toBe(`#tab-${t}`);   // on the bar
-    expect(reveal('#speed', 'sheet')).toBe('#speed');   // the [❚❚][1× ▾] pair is #speed itself
-    for (const host of ['drawer', 'dock', 'columns'] as const) expect(reveal('#overlay-bar', host)).toBe('#overlay-bar');
+  // P3 (IMPL §1 reveal): the DRAWER hides the overlay bar in its Mappae popover too, so it takes the SHEET's proxies
+  it('the phones: the overlay bar glows the Mappae button, the Res Gestae the HUD, the ticker the voice line, Annales the menu', () => {
+    for (const host of ['sheet', 'drawer'] as const) {
+      expect(reveal('#overlay-bar', host)).toBe('#map-mappae');
+      expect(reveal('#objective', host)).toBe('#hud');
+      expect(reveal('#ticker', host)).toBe('#counsel');
+      expect(reveal('#tab-annals', host)).toBe('#hud-menu');   // the DRAWER's spine icon glows itself when it shows (Layout.reveal)
+      for (const t of TABS.filter((x) => x !== 'annals')) expect(reveal(`#tab-${t}`, host)).toBe(`#tab-${t}`);   // on the bar, the spine
+      expect(reveal('#speed', host)).toBe('#speed');   // the [❚❚][1× ▾] pair is #speed itself
+      for (const tool of ['#map-via', '#map-mappae']) expect(VISIBLE[host]).toContain(tool);
+    }
+    for (const host of ['dock', 'columns'] as const) expect(reveal('#overlay-bar', host)).toBe('#overlay-bar');
+    expect(HOSTS.filter(isPhone)).toEqual(['sheet', 'drawer']);
   });
 
   it('tells frame targets from rows of a tab body', () => {
@@ -468,5 +474,92 @@ describe('dodge (a pinned target clear of what floats over the map)', () => {
     expect(half).toEqual({ dx: 60, dy: 0 });
     expect(coveredArea(at(t, half), [box(0, 0, 100, 150)])).toBe(4000);
     expect(dodge(t, [box(0, 0, 100, 150)], box(0, 0, 110, 100), 16)).toEqual({ dx: 0, dy: 0 });   // 10% is not worth a move
+  });
+});
+
+describe('the landscape drawer', () => {
+  // the harness's landscape phones (impl/measure.mjs) and the Home Screen window of platform.md, with the 56 px spine
+  const LAND: readonly [string, number, number][] = [['phone-land', 852, 393], ['phone-land-safari', 852, 340], ['iphone-land-pwa', 734, 372], ['se-land', 667, 375]];
+
+  it('the pane is clamp(280, 42% of #app, 360) at half and everything left of the spine at full; closed has none', () => {
+    expect(drawerWidths(852, 56)).toEqual({ closed: 0, half: 358, full: 796 });   // SPEC A §7: x438–796
+    expect(drawerWidths(734, 56)).toEqual({ closed: 0, half: 308, full: 678 });
+    expect(drawerWidths(667, 56)).toEqual({ closed: 0, half: 280, full: 611 });   // the floor
+    expect(drawerWidths(959, 56)).toEqual({ closed: 0, half: 360, full: 903 });   // the cap
+    expect(drawerWidths(300, 56)).toEqual({ closed: 0, half: 244, full: 244 });   // never wider than full
+    expect(drawerWidths(852, 0)).toEqual({ closed: 0, half: 358, full: 852 });    // no spine yet (a new colony)
+    expect(DRAWER).toMatchObject({ spine: 56, paneMin: 280, paneShare: 0.42, paneMax: 360 });
+  });
+
+  // a budget of the frame's sizes (the live free map is measured by the acceptance harness, impl/measure.mjs): what the
+  // opaque chrome takes, and on the two phones of the acceptance what floats over the map's corner too
+  it('the budget: the 56 px spine and the 44 px HUD leave over 70% of the window to the map, half a pane of 280 px or more', () => {
+    for (const [id, W, H] of LAND) {
+      expect(classify(W, H, TOUCH).host, id).toBe('drawer');
+      const ws = drawerWidths(W, DRAWER.spine);
+      expect(((W - DRAWER.spine) * (H - 44)) / (W * H), id).toBeGreaterThanOrEqual(0.7);
+      expect(ws.half, id).toBeGreaterThanOrEqual(280);
+      expect(ws.full - ws.half, id).toBeGreaterThanOrEqual(300);   // half keeps the map beside it
+    }
+    // closed on 852 × 393 and 852 × 340: less the floating voice line (380 × 48 at most) and the tool column (5 × 44 px
+    // and their gaps), still 70%
+    for (const [id, W, H] of LAND.slice(0, 2)) {
+      const voice = Math.min(380, W - DRAWER.spine - 8 - 68) * 48, column = 44 * (5 * 44 + 4 * 4);
+      expect(((W - DRAWER.spine) * (H - 44) - voice - column) / (W * H), id).toBeGreaterThanOrEqual(0.7);
+    }
+  });
+
+  it('a drag of the pane\'s edge comes to rest on the nearest width; a fling goes on to the next one its way', () => {
+    const ws = drawerWidths(852, 56), all = detentsOf('drawer', false);
+    expect(snapDetent(358, 0, ws, all)).toBe('half');
+    expect(snapDetent(170, 0, ws, all)).toBe('closed');     // dragged most of the way right
+    expect(snapDetent(200, 0, ws, all)).toBe('half');
+    expect(snapDetent(600, 0, ws, all)).toBe('full');
+    expect(snapDetent(380, FLING, ws, all)).toBe('full');   // a flick to the left: the next one wider
+    expect(snapDetent(340, -FLING, ws, all)).toBe('closed');
+    expect(snapDetent(700, -FLING, ws, all)).toBe('half');
+    expect(snapDetent(796, 3, ws, all)).toBe('full');        // nothing past full
+    expect(detentsOf('drawer', true)).toEqual(DETENTS);     // a short phone is tiny, and keeps its half
+  });
+
+  it('the spine: the open tab\'s icon closes an open pane, any other opens its tab at half (a switch at full stays full)', () => {
+    for (const d of ['half', 'full'] as const) expect(slotTap('people', 'people', d)).toBe('close');
+    expect(slotTap('people', 'people', 'closed')).toBe('open');
+    const c = (detent: Detent): RouteCtx => ({ host: 'drawer', detent, tiny: true });
+    expect(route({ kind: 'open', tab: 'trade', from: 'tab' }, c('closed')).detent).toBe('half');
+    expect(route({ kind: 'open', tab: 'trade', from: 'tab' }, c('full')).detent).toBe('full');
+    expect(route({ kind: 'open', tab: 'council', from: 'chip' }, c('closed')).detent).toBe('half');
+    expect(DEFAULT_DETENT.drawer).toBe('closed');
+    expect(aboveDefault('half', 'drawer')).toBe(true);    // half and full are Back layers
+    expect(aboveDefault('closed', 'drawer')).toBe(false);
+    expect(stepDown('full', 'drawer', true)).toBe('half');
+  });
+
+  it('clearOf: the free map above a wide, short thing at its foot, beside a tall one, whole when they do not meet', () => {
+    const map: Box = { left: 0, top: 44, right: 740, bottom: 393 };
+    // the floating voice line (8–388 × 341–385): above it
+    expect(clearOf(map, { left: 8, top: 341, right: 388, bottom: 385 }, 8)).toEqual({ left: 0, top: 44, right: 740, bottom: 333 });
+    // a context card 398 × 245 at the bottom-left: right of it
+    expect(clearOf(map, { left: 8, top: 140, right: 406, bottom: 385 }, 8)).toEqual({ left: 414, top: 44, right: 740, bottom: 393 });
+    // the one-row placing banner (8–736 × 329–385): above it
+    expect(clearOf(map, { left: 8, top: 329, right: 736, bottom: 385 }, 8)).toEqual({ left: 0, top: 44, right: 740, bottom: 321 });
+    // nothing in the way: the box itself (a copy)
+    const far = clearOf(map, { left: 760, top: 50, right: 790, bottom: 90 });
+    expect(far).toEqual(map);
+    expect(far).not.toBe(map);
+    // a tie goes above
+    expect(clearOf({ left: 0, top: 0, right: 100, bottom: 100 }, { left: 0, top: 50, right: 50, bottom: 100 })).toEqual({ left: 0, top: 0, right: 100, bottom: 50 });
+  });
+
+  it('priorityDrops: as many of the droppable figures go, in their order, as the row needs to fit; none while it fits', () => {
+    const w = [164, 56, 99, 104, 88, 120];   // the date, spirits, souls, coin, Aqua, Grain (with their gaps)
+    expect(priorityDrops(820, 848, w)).toBe(0);
+    expect(priorityDrops(848, 848, w)).toBe(0);
+    expect(priorityDrops(849, 848, w)).toBe(1);   // the date first
+    expect(priorityDrops(820, 678, w)).toBe(1);   // a 734 px Home Screen window less its pads: the date steps out
+    expect(priorityDrops(820, 640, w)).toBe(2);   // then spirits
+    expect(priorityDrops(820, 400, w)).toBe(4);   // … souls and coin, Aqua and Grain still in
+    expect(priorityDrops(2000, 100, w)).toBe(6);  // never more than there are
+    expect(priorityDrops(500, 600, [])).toBe(0);
   });
 });

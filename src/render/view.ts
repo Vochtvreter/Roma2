@@ -79,6 +79,7 @@ export class MapView {
   private _selected: number | null = null;
   private hoverTile: number | null = null;
   private hoverId: number | null = null;
+  private mouseGhost = false;   // the placing ghost is the mouse's (a hover moved it): the mouse leaving the map takes it away
   private flashes: { r: Rect; until: number; ms: number }[] = [];
   private time = 0;
   private doomed: { id: number; until: number; touch: boolean } | null = null;   // touch: the label says Tap, not Click
@@ -325,6 +326,7 @@ export class MapView {
     this._placing = p;
     this.doomed = null;
     this.dragFrom = null;
+    this.mouseGhost = p.kind !== 'building' || p.at === undefined;   // a pre-positioned ghost stays until a hover takes it
     this.place.start(p, s);
     if (p.kind === 'building' && p.at !== undefined) {
       // a pre-positioned ghost already in the free map leaves the camera where the eye is; one under the UI or off
@@ -477,15 +479,19 @@ export class MapView {
     this.hoverId = id;
     this.cb.onHover(tile, id);
     if (this._placing && tileChanged && this.dragFrom === null) {
+      this.mouseGhost = true;
       const check = this.place.hover(tile, s);
       if (this._placing.kind === 'building') this.cb.onPlacementPreview(check, tile);
     }
   }
 
+  /** The mouse left the map: the hover goes, and with it a ghost the mouse was moving. A pre-positioned ghost (startAt:
+   *  a remedy's plot, a finger's best plot) or one a tap moved stays: the mouse never had it (a banner or a card that
+   *  appears under a resting mouse makes it 'leave' the map without a move). */
   private onLeave(): void {
     this.hoverTile = this.hoverId = null;
     this.cb.onHover(null, null);
-    if (this._placing && this.s && this.dragFrom === null) {
+    if (this._placing && this.s && this.dragFrom === null && this.mouseGhost) {
       this.place.hover(null, this.s);
       if (this._placing.kind === 'building') this.cb.onPlacementPreview(null, null);
     }
@@ -497,7 +503,7 @@ export class MapView {
     if (!s || tile === null) return;
     const id = this.pickBuilding(x, y);
     const p = this._placing;
-    if (p && touch) this.place.hover(tile, s);
+    if (p && touch) { this.place.hover(tile, s); this.mouseGhost = false; }
     if (p?.kind === 'building' && touch) {
       // touch: a tap previews (ghost + verdict); the place banner's Place button confirms
       this.cb.onPlacementPreview(this.place.check, tile);

@@ -37,7 +37,8 @@ function show(text: string, kind: Kind, icon: string | undefined, ms: number, su
   el.addEventListener('click', () => remove(el));
   root.appendChild(el);
   const live = Array.from(root.children).filter((c) => !c.classList.contains('toast-out')) as HTMLElement[];
-  const max = document.getElementById('app')?.dataset.host === 'sheet' ? SHEET_MAX : B.ui.TOASTS_MAX;   // a phone's sheet: two
+  const host = document.getElementById('app')?.dataset.host;
+  const max = host === 'sheet' || host === 'drawer' ? SHEET_MAX : B.ui.TOASTS_MAX;   // a phone: two
   for (const old of live.slice(0, Math.max(0, live.length - max))) remove(old);
   window.setTimeout(() => expire(el), ms);
   return el;

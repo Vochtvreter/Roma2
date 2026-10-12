@@ -4,7 +4,10 @@
 // Every figure (data-fig: the tablets, coin, souls, spirits, dignitas, date, a material) opens the Breviarium there on a
 // tap or click (onFigure → tray.ts); a mouse still has the hover cards, but not one that would drop over the open tray.
 // On a portrait phone (the SHEET host) the same elements make one 52 px row (hud.css): the tablets with their strips, coin
-// over souls, the speed pair [❚❚][1× ▾] whose ▾ opens the speeds as a popover (a Back and Esc layer), and the menu.
+// over souls, the speed pair [❚❚][1× ▾] whose ▾ opens the speeds as a popover (a Back and Esc layer), and the menu. On a
+// landscape phone (the DRAWER host) one 44 px row of the tablets (days and trend), coin, souls, spirits, the date, the
+// speed pair and the menu: as the width runs out the date, then spirits, souls, coin, Aqua and Grain step out of the row
+// (priority+: fit), into the Breviarium, which holds every figure anyway.
 import type { ResId, Speed, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import type { IntroPart } from '../game/intro';
@@ -25,6 +28,7 @@ import { B } from '../game/balance';
 import { faceIcon, resIcon } from '../render/art/index';
 import { spriteURL } from '../render/sprites';
 import { present, shows } from './intro';
+import { currentHost, priorityDrops } from './layout';
 
 const DEV = typeof location !== 'undefined' && /[?&]dev\b/.test(location.search);
 const SPEEDS: readonly Speed[] = [...(B.time.SPEEDS as readonly Speed[]), ...(DEV ? [B.time.DEV_SPEED as Speed] : [])];
@@ -78,6 +82,8 @@ export class Hud {
   private readonly ratchet = new Ratchet('(max-width: 899px)');   // the phone rows share out their width themselves
   private speedEl: HTMLElement | null = null;
   private popOpen = false;                         // the phone's speed popover is open
+  private readonly drops: HTMLElement[] = [];      // the DRAWER's row, in the order its figures step out (fit)
+  private fitKey = '';                             // what the row was fitted for: its width and its figures' words
   /** A figure was tapped or clicked: the UI root opens the Breviarium there (tray.ts). */
   onFigure: ((fig: string, el: HTMLElement, viaKey: boolean) => void) | null = null;
   /** True for a figure whose hover card holds its tongue: the Breviarium is open beneath it (and shows the same). */
@@ -127,6 +133,9 @@ export class Hud {
     this.chips.splice(0, this.chips.length, ...chips, date);
     this.parts.splice(0, this.parts.length, [chips[0], 'coin'], [chips[1], 'souls'], [chips[2], 'souls'], [chips[3], 'dignitas'], [this.strip, 'materials']);
     this.root.append(this.brand(), this.vitals.el, ...chips, h('div', { class: 'hud-break' }), date, this.strip, this.speed(), this.menu());
+    const tablets = Array.from(this.vitals.el.children) as HTMLElement[];   // Grain, then Aqua
+    this.drops.splice(0, this.drops.length, date, chips[2], chips[1], chips[0], ...tablets.reverse());
+    this.fitKey = '';
     this.update();
   }
 
@@ -137,6 +146,26 @@ export class Hud {
     for (const u of this.up) u();
     this.updateStrip();
     this.ratchet.hold([...this.chips, ...(Array.from(this.strip.children) as HTMLElement[])]);
+    this.fit();
+  }
+
+  /** The DRAWER's one row, priority+ (hud.css): with every figure back in, as many step out (hud-drop) in their order
+   *  (the date, spirits, souls, coin, Aqua, Grain) as the row needs to fit its width (priorityDrops); the speed pair and
+   *  the menu always stay. Fitted again only when the row's width or its figures' words change; off the DRAWER every
+   *  figure is back. */
+  private fit(): void {
+    const els = this.drops;
+    if (currentHost() !== 'drawer') {
+      if (this.fitKey) { this.fitKey = ''; for (const el of els) el.classList.remove('hud-drop'); }
+      return;
+    }
+    const key = `${this.root.clientWidth}|${els.map((el) => `${+el.hidden}${el.textContent}`).join('|')}`;
+    if (key === this.fitKey) return;
+    this.fitKey = key;
+    for (const el of els) el.classList.remove('hud-drop');
+    const gap = parseFloat(getComputedStyle(this.root).columnGap) || 0;
+    const n = priorityDrops(this.root.scrollWidth, this.root.clientWidth, els.map((el) => (el.hidden ? 0 : el.offsetWidth + gap)));
+    for (let i = 0; i < n; i++) els[i].classList.add('hud-drop');
   }
 
   /** Closes the phone's speed popover (a host change: the speeds lie in the row again). */

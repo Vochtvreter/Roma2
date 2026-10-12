@@ -174,7 +174,7 @@
 .pop-st0 { background: #9ccc5a; } .pop-st1 { background: #d9c27a; } .pop-st2 { background: #c0623f; } .pop-st3 { background: #8fa3b5; }
 .pop-legend { font-size: 11px; color: var(--muted); }
 .pop-homes { display: flex; flex-direction: column; gap: 4px; }
-.pop-tier { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: start; }
+.pop-tier { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px; align-items: start; }
 .pop-tier-img { max-width: 32px; max-height: 32px; }
 .pop-tier-main b { font-weight: 400; }
 .pop-tier-n { float: right; color: var(--gold); font-size: 12px; }

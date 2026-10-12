@@ -1,7 +1,7 @@
 /* src/styles/hud.css — owner H (WP-H UI shell). The HUD bar (DESIGN §15.2) and the vital tablets (§11.11).
    Left to right: brand · Grain and Aqua tablets · coin · souls · spirits · dignitas · materials (2-row grid) · date · speed · menu.
    Every figure (data-fig) opens the Breviarium (tray.css). A portrait phone (the SHEET host) lays the same elements out
-   as one 52 px row: the last section. */
+   as one 52 px row, a landscape phone (the DRAWER host) as one 44 px row: the last two sections. */
 
 #hud {
   position: absolute; top: 0; left: 0; right: 0; height: var(--hud-h); z-index: var(--z-hud);
@@ -196,22 +196,75 @@
 #app[data-host='sheet'] #hud > :is(.hud-coin, .hud-souls) .hud-n { font-family: var(--font-body); font-size: 12px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; }
 #app[data-host='sheet'] #hud > :is(.hud-coin, .hud-souls) :is(.hud-sub, .hud-stages) { display: none; }
 
-/* the speed pair and its popover (a Back and Esc layer, hud.ts) */
-#app[data-host='sheet'] .hud-speed { grid-area: speed; position: relative; align-self: center; gap: 0; margin: 0; }
-#app[data-host='sheet'] .hud-sp { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 12px; }
-#app[data-host='sheet'] .hud-sp-pause { border-radius: 4px 0 0 4px; }   /* the pair reads as one control */
-#app[data-host='sheet'] .hud-sp-cur { border-radius: 0 4px 4px 0; border-left-width: 1px; }
-#app[data-host='sheet'] .hud-sp-cur { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
-#app[data-host='sheet'] .hud-sp-caret { font-family: var(--font-body); font-size: 12px; }
-#app[data-host='sheet'] .hud-sp-pop {
+/* the speed pair and its popover (a Back and Esc layer, hud.ts), on both phone hosts */
+#app[data-host='sheet'] .hud-speed { grid-area: speed; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-speed { position: relative; align-self: center; gap: 0; margin: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-pause { border-radius: 4px 0 0 4px; }   /* the pair reads as one control */
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-cur { border-radius: 0 4px 4px 0; border-left-width: 1px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-cur { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-caret { font-family: var(--font-body); font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-pop {
   display: none; position: absolute; top: calc(100% + 6px); right: 0; gap: 4px; padding: 4px;
   background: var(--panel-solid); border: 2px solid var(--line); border-radius: var(--r2);
   box-shadow: var(--ring-shadow), 0 10px 24px rgba(0, 0, 0, .5);
 }
-#app[data-host='sheet'] .hud-speed.open .hud-sp-pop { display: flex; }
-#app[data-host='sheet'] .hud-sp-pop .hud-sp { width: 52px; min-width: 52px; font-size: 13px; }
-#app[data-host='sheet'] #hud { z-index: var(--z-popup); }   /* the popover drops over the counsel card (21) below the row */
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-speed.open .hud-sp-pop { display: flex; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-pop .hud-sp { width: 52px; min-width: 52px; font-size: 13px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #hud { z-index: var(--z-popup); }   /* the popover drops over the counsel card (21) below the row */
 /* open, it stands over the toasts (23), the Breviarium (24) and the event card (25) too: the speed tapped is the one set */
-#app[data-host='sheet'] #hud:has(.hud-speed.open) { z-index: calc(var(--z-choice) + 1); }
+#app:is([data-host='sheet'], [data-host='drawer']) #hud:has(.hud-speed.open) { z-index: calc(var(--z-choice) + 1); }
 /* the menu is a full 44 px target from 375 px; on a 360 px phone it yields 4 px to the souls figure */
 #app[data-host='sheet'] .hud-menu { grid-area: menu; align-self: center; width: clamp(40px, calc(100vw - 331px), 44px); min-width: 0; height: 44px; margin: 0; padding: 0; font-size: 20px; }
+
+/* ───────── DRAWER (landscape phones, short windows, layout.ts): one 44 px row ───────── */
+/* Grain and Aqua (the days in 18 px with 'd' and the trend, no strip), coin over its trend, souls, spirits, the date, then
+   at the right the speed pair [❚❚][1× ▾] and the menu (five 44 px speeds and the date do not fit an 852 px phone beside
+   the figures). A flex row in the figures' own order (the narrow-screen order and wrap rules of mobile.css have nothing to
+   say here), 44 px tall with its 44 px targets: its rule below is a shadow over the map, not a border inside the row. As
+   the width runs out the figures step into the Breviarium,
+   which every figure opens and which holds them all: the date first, then spirits, souls, coin, Aqua and Grain (hud.ts
+   fit: .hud-drop); the speed pair and the menu never. The DRAWER's #app runs under the notch (drawer.css): the row pads
+   itself on the notch's side, and --hud-h counts the top pad. Nothing under 12 px. */
+#app[data-host='drawer'] { --hud-h: calc(44px + env(safe-area-inset-top, 0px)); }
+#app[data-host='drawer'] #hud {
+  display: flex; flex-wrap: nowrap; align-items: center; align-content: normal; gap: 4px; row-gap: 0; height: var(--hud-h);
+  padding: env(safe-area-inset-top, 0px) calc(4px + env(safe-area-inset-right, 0px)) 0 calc(4px + env(safe-area-inset-left, 0px));
+  border-bottom: 0; box-shadow: 0 2px 0 var(--line), 0 4px 0 var(--ring), 0 8px 18px rgba(0, 0, 0, .4);
+}
+#app[data-host='drawer'] #hud > * { order: 0; }
+#app[data-host='drawer'] #hud > :is(.hud-brand, .hud-dignitas, .hud-break, .hud-strip), #app[data-host='drawer'] #hud .hud-drop { display: none; }
+#app[data-host='drawer'] #hud::after { content: none; }
+
+/* the tablets: icon, days and the trend on one line */
+#app[data-host='drawer'] .hud-vitals { display: flex; gap: 4px; }
+#app[data-host='drawer'] .hud-vital {
+  width: auto; height: 40px; padding: 2px 6px 2px 3px; cursor: pointer;
+  grid-template-columns: 24px auto auto; grid-template-rows: minmax(0, 1fr); grid-template-areas: "ico main trend"; column-gap: 4px; row-gap: 0;
+  align-items: center;
+}
+#app[data-host='drawer'] .vit-ico { grid-area: ico; }
+#app[data-host='drawer'] .vit-head { display: contents; }
+#app[data-host='drawer'] .vit-label { display: none; }
+#app[data-host='drawer'] .vit-main { grid-area: main; gap: 1px; }
+#app[data-host='drawer'] .vit-days { font-family: var(--font-body); font-size: 18px; line-height: 20px; }
+#app[data-host='drawer'] .vit-unit { font-family: var(--font-body); font-size: 12px; margin-right: 0; }
+#app[data-host='drawer'] .vit-trend { grid-area: trend; font-family: var(--font-body); font-size: 12px; }
+#app[data-host='drawer'] .hud-vital :is(.vit-strip, .vit-seasons, .vit-sub) { display: none; }   /* in the Breviarium */
+
+/* coin (its trend under it), souls, spirits: 40 px chips */
+#app[data-host='drawer'] .hud-chip { height: 40px; min-width: 0; gap: 4px; padding: 2px 7px 2px 3px; cursor: pointer; }
+#app[data-host='drawer'] .hud-chip .hud-n { font-size: 13px; }
+#app[data-host='drawer'] .hud-chip .hud-sub { font-family: var(--font-body); font-size: 12px; line-height: 14px; }
+#app[data-host='drawer'] .hud-stages { display: none; }
+
+/* the date over its year and season */
+#app[data-host='drawer'] .hud-date { height: 40px; min-width: 0; gap: 4px; padding: 2px 8px 2px 6px; cursor: pointer; }
+#app[data-host='drawer'] .hud-date > img { display: none; }
+#app[data-host='drawer'] .hud-date-main { font-size: 12px; line-height: 14px; }
+#app[data-host='drawer'] .hud-date .hud-sub { font-family: var(--font-body); font-size: 12px; line-height: 14px; }
+#app[data-host='drawer'] .hud-seasonbar { margin-top: 2px; }
+
+/* the speed pair pushed to the right, and the menu */
+#app[data-host='drawer'] .hud-speed { margin-left: auto; }
+#app[data-host='drawer'] .hud-menu { width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; font-size: 20px; }

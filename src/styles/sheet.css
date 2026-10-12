@@ -4,12 +4,15 @@
    re-hosted); the map's tool column (#map-col) with its Via and Mappae popovers; the cards that stand in the sheet's slot
    (the context card: the inspector's popup; the event card); the 76 px placing banner; the build tray (Aedificia at
    half); the modals as full-screen sheets; the toasts.
-   Everything keys on #app[data-host='sheet']. The sheet's heights come from layout.ts (--sheet-closed, --sheet-half,
-   --sheet-full on #app; --sheet-now is the detent's own): sheet.ts slides between them with a transform and the height is
-   set at rest. --dock-h is what stands on the bar at rest (the sheet, a docked card, the banner: Layout.dockH), and
-   #app[data-card] is set while a card stands in the slot. Imported last, so it outranks the old portrait rules of
-   mobile.css and panels.css that still serve the landscape drawer and the 720–899 px tablets (P3, P4). Nothing under
-   12 px; touch targets 44 px. Prefixes sheet- voice- map-col- map-pop-. */
+   The SHEET's arrangement keys on #app[data-host='sheet']; what both phone hosts share (the voice line's look, the tool
+   column's buttons and popovers, the context card's brief, the event card, the banner's touch verbs, the 12 px floor of
+   the tab bodies, the modal sheets) on #app:is([data-host='sheet'], [data-host='drawer']), the same specificity; the
+   landscape DRAWER arranges the same nodes its own way in drawer.css, imported after this file. The sheet's heights come
+   from layout.ts (--sheet-closed, --sheet-half, --sheet-full on #app; --sheet-now is the detent's own): sheet.ts slides
+   between them with a transform and the height is set at rest. --dock-h is what stands on the bar at rest (the sheet, a
+   docked card, the banner: Layout.dockH), and #app[data-card] is set while a card stands in the slot. Imported after
+   mobile.css, so it outranks the old portrait rules there and in panels.css that still serve the 720–899 px tablets
+   (P4). Nothing under 12 px; touch targets 44 px. Prefixes sheet- voice- map-col- map-pop-. */
 
 /* ───────── the frame ───────── */
 .sheet-grip, .sheet-voice, #map-col { display: none; }
@@ -20,7 +23,7 @@
 }
 #app[data-host='sheet'][data-detent='half'] { --sheet-now: var(--sheet-half, 40%); }
 #app[data-host='sheet'][data-detent='full'] { --sheet-now: var(--sheet-full, 70%); }
-#app[data-host='sheet'] :is(#map-tools, #side-toggle) { display: none; }   /* the tool column holds the overlay bar and the zoom */
+#app:is([data-host='sheet'], [data-host='drawer']) :is(#map-tools, #side-toggle) { display: none; }   /* the tool column holds the overlay bar and the zoom */
 
 /* ───────── the sheet ───────── */
 /* It stands on the bar; its height is the detent's (sheet.ts sets an inline height and transform only while it moves) */
@@ -57,82 +60,85 @@
 /* ───────── the voice line: the counsel folded ───────── */
 /* Two rows: the portrait (32) beside the kicker (12 px) over the title (14 px, two lines at most); at the right the '+n'
    pip and the one action chip (or ▾). A tap on the line unfolds the card below it, inside the sheet */
-#app[data-host='sheet'] #counsel { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; gap: 0; }
-#app[data-host='sheet'] #counsel > .counsel-card {
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; gap: 0; }
+/* the portraits strip and the danger metric stay out of the line on any phone width (mobile.css hides them under 900 px;
+   a short window up to 959 px is a DRAWER too) */
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel :is(.counsel-strip, .counsel-metric) { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel > .counsel-card {
   flex: 0 1 auto; min-height: 0; padding: 0; cursor: default;
   background: none; border: 0; box-shadow: none; backdrop-filter: none; animation: none;
 }
-#app[data-host='sheet'] .counsel-head, #app[data-host='sheet'] .counsel-calm, #app[data-host='sheet'] .tick-box {
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-head, #app:is([data-host='sheet'], [data-host='drawer']) .counsel-calm, #app:is([data-host='sheet'], [data-host='drawer']) .tick-box {
   flex: none; min-height: 50px; padding: 1px 1px 1px 6px; color: var(--text);   /* never squeezed: a closed sheet is its height */
   background: linear-gradient(#2e221c, #231914); border: 2px solid var(--line); border-radius: var(--r2); box-shadow: var(--ring-shadow);
 }
-#app[data-host='sheet'] .counsel-head {
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-head {
   display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; cursor: pointer;
 }
-#app[data-host='sheet'] .counsel-card.enter .counsel-head { animation: counselIn .35s ease-out; }
-#app[data-host='sheet'] .counsel-card.tip .counsel-head { border-color: #a8873a; }
-#app[data-host='sheet'] .counsel-card.tip.urgent .counsel-head { border-color: var(--ember); }
-#app[data-host='sheet'] .counsel-card:is(.lesson, .offer) .counsel-head { border-color: var(--gold); }
-#app[data-host='sheet'] .counsel-card.adv.sev-1 .counsel-head { border-color: rgba(242, 201, 76, .55); }
-#app[data-host='sheet'] .counsel-card.adv.sev-2 .counsel-head { border-color: rgba(227, 132, 58, .8); }
-#app[data-host='sheet'] .counsel-card.adv.sev-3 .counsel-head { border-color: var(--bad); box-shadow: var(--ring-shadow), 0 0 14px rgba(229, 85, 74, .35); }
-#app[data-host='sheet'] .counsel-card.adv.opp .counsel-head { border-color: var(--gold); }
-#app[data-host='sheet'] .counsel-face { width: 32px; height: 32px; }
-#app[data-host='sheet'] .counsel-who { gap: 1px; padding: 1px 0; padding-right: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.enter .counsel-head { animation: counselIn .35s ease-out; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.tip .counsel-head { border-color: #a8873a; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.tip.urgent .counsel-head { border-color: var(--ember); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card:is(.lesson, .offer) .counsel-head { border-color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.sev-1 .counsel-head { border-color: rgba(242, 201, 76, .55); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.sev-2 .counsel-head { border-color: rgba(227, 132, 58, .8); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.sev-3 .counsel-head { border-color: var(--bad); box-shadow: var(--ring-shadow), 0 0 14px rgba(229, 85, 74, .35); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.adv.opp .counsel-head { border-color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-face { width: 32px; height: 32px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-who { gap: 1px; padding: 1px 0; padding-right: 0; }
 /* the kicker keeps to row 1, beside the chip: one line, cut short with an ellipsis (the office's short name helps: counsel.ts) */
-#app[data-host='sheet'] .counsel-krow { flex-wrap: nowrap; min-width: 0; min-height: 14px; }
-#app[data-host='sheet'] .counsel-krow > :not(.counsel-kicker) { flex: none; }
-#app[data-host='sheet'] .counsel-kicker {
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-krow { flex-wrap: nowrap; min-width: 0; min-height: 14px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-krow > :not(.counsel-kicker) { flex: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-kicker {
   flex: 0 1 auto; min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-#app[data-host='sheet'] .counsel-title {
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-title {
   font-size: 14px; line-height: 16px; white-space: normal; overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 /* a lesson: 'DISCIPLINA · I / X' and the job's count over the title; the job line heads the unfolded card, and its
    Show me is the line's chip */
-#app[data-host='sheet'] .voice-prog { font-size: 12px; line-height: 14px; color: var(--muted); white-space: nowrap; }
-#app[data-host='sheet'] .voice-prog.done { color: var(--good); }
-#app[data-host='sheet'] .counsel-body .lesson-show { display: none; }
-#app[data-host='sheet'] .counsel-body .lesson-job { margin: 0 0 6px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-prog { font-size: 12px; line-height: 14px; color: var(--muted); white-space: nowrap; }
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-prog.done { color: var(--good); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-body .lesson-show { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-body .lesson-job { margin: 0 0 6px; }
 
-#app[data-host='sheet'] .voice-acts { display: flex; align-items: center; gap: 2px; align-self: stretch; }
-#app[data-host='sheet'] .voice-pip { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0; background: none; }
-#app[data-host='sheet'] .voice-pip > span {
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-acts { display: flex; align-items: center; gap: 2px; align-self: stretch; }
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-pip { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0; background: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-pip > span {
   padding: 0 5px; border: 1px solid #4a372b; border-radius: 8px; background: rgba(0, 0, 0, .3);
   font-family: var(--font-caps); font-size: 12px; line-height: 16px; color: var(--muted);
 }
-#app[data-host='sheet'] .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: 15px; }
-#app[data-host='sheet'] .voice-fold {
+#app:is([data-host='sheet'], [data-host='drawer']) .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: 15px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-fold {
   display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0;
   background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 14px;
 }
-#app[data-host='sheet'] #counsel.open .voice-fold { transform: rotate(180deg); }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel.open .voice-fold { transform: rotate(180deg); }
 
 /* the unfolded card: the counsel's body under its line, scrolling inside; never on a closed sheet */
-#app[data-host='sheet'] #counsel > .counsel-card > .counsel-body {
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel > .counsel-card > .counsel-body {
   display: none; flex: 0 1 auto; min-height: 0; margin-top: 6px; padding: 6px 10px 8px; overflow-y: auto; overscroll-behavior: contain;
   background: var(--panel-2); border: var(--border-w) solid var(--line); border-radius: var(--r2);
 }
-#app[data-host='sheet'] #counsel.open > .counsel-card > .counsel-body { display: block; }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel.open > .counsel-card > .counsel-body { display: block; }
 #app[data-host='sheet'] #side[data-rest='closed']:not([data-moving]) #counsel .counsel-body { display: none; }
-#app[data-host='sheet'] #counsel .counsel-text { margin: 2px 0 8px; }
-#app[data-host='sheet'] #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: 12px; }
-#app[data-host='sheet'] .counsel-card.offer { max-height: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel .counsel-text { margin: 2px 0 8px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.offer { max-height: none; }
 
 /* calm: the ticker speaks in the line (its ORDO, AGENDA, saving and ACTA lines); the counsel's calm line until it comes */
-#app[data-host='sheet'] .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-right: 8px; }
-#app[data-host='sheet'] .counsel-calm .counsel-seal { width: 24px; height: 24px; margin: 0 4px; }
-#app[data-host='sheet'] #counsel.counsel-calm:has(~ #ticker:not([hidden])) { display: none; }
-#app[data-host='sheet'] #counsel:not(.counsel-calm) ~ #ticker { display: none; }
-#app[data-host='sheet'] #ticker { position: static; display: block; pointer-events: auto; }
-#app[data-host='sheet'] .tick-box {
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-right: 8px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-calm .counsel-seal { width: 24px; height: 24px; margin: 0 4px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel.counsel-calm:has(~ #ticker:not([hidden])) { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #counsel:not(.counsel-calm) ~ #ticker { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #ticker { position: static; display: block; pointer-events: auto; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tick-box {
   display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; column-gap: 8px; width: 100%; height: auto; padding-right: 8px; text-align: left;
 }
-#app[data-host='sheet'] .tick-seal { width: 32px; height: 32px; }
-#app[data-host='sheet'] .tick-lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 1px 0; }
-#app[data-host='sheet'] .tick-kicker { min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#app[data-host='sheet'] .tick-text {
+#app:is([data-host='sheet'], [data-host='drawer']) .tick-seal { width: 32px; height: 32px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tick-lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 1px 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tick-kicker { min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tick-text {
   font-size: 14px; line-height: 16px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 
@@ -175,21 +181,21 @@
   position: absolute; right: 8px; bottom: calc(var(--bar-h) + var(--dock-h, var(--sheet-now)) + 8px); z-index: var(--z-zoom);
   display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; transition: bottom .22s ease;
 }
-#app[data-host='sheet'] #map-col > * { pointer-events: auto; }
-#app[data-host='sheet'] .map-col-group { display: flex; flex-direction: column; gap: 4px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #map-col > * { pointer-events: auto; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-col-group { display: flex; flex-direction: column; gap: 4px; }
 /* too short a strip of map for one column (half on a short phone): Via and Mappae stand beside the zoom; shorter still,
    the zoom steps aside (fingers pinch) */
-#app[data-host='sheet'] #map-col.wrap { flex-direction: row-reverse; align-items: flex-end; }
-#app[data-host='sheet'] #map-col.tight #zoom-ctl { display: none; }
-#app[data-host='sheet'] #map-col.gone { display: none; }   /* no room at all: a tall card stands in the sheet's slot */
+#app:is([data-host='sheet'], [data-host='drawer']) #map-col.wrap { flex-direction: row-reverse; align-items: flex-end; }
+#app:is([data-host='sheet'], [data-host='drawer']) #map-col.tight #zoom-ctl { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #map-col.gone { display: none; }   /* no room at all: a tall card stands in the sheet's slot */
 #app[data-host='sheet'][data-detent='full']:not(.placing, [data-card]) #map-col { display: none; }
-#app[data-host='sheet'] #map-col #zoom-ctl { display: flex; flex-direction: column; gap: 4px; }
-#app[data-host='sheet'] #map-col .map-btn { width: 44px; height: 44px; font-size: 20px; }
-#app[data-host='sheet'] .map-col-btn img { width: 24px; height: 24px; }
-#app[data-host='sheet'] .map-col-btn.on { background: linear-gradient(var(--ember), #e07a35); }
+#app:is([data-host='sheet'], [data-host='drawer']) #map-col #zoom-ctl { display: flex; flex-direction: column; gap: 4px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #map-col .map-btn { width: 44px; height: 44px; font-size: 20px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-col-btn img { width: 24px; height: 24px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-col-btn.on { background: linear-gradient(var(--ember), #e07a35); }
 
 /* the popovers open to the column's left, from its foot up to the HUD (mapbar.ts caps their height), and scroll */
-#app[data-host='sheet'] .map-pop {
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop {
   position: absolute; right: calc(100% + 8px); bottom: 0; width: min(264px, calc(100vw - 76px)); overflow-y: auto; overscroll-behavior: contain;
   display: flex; flex-direction: column; gap: 4px; padding: 6px;
   background: var(--panel-solid); border: var(--border-w) solid var(--line); border-radius: var(--r2);
@@ -207,13 +213,13 @@
 .map-pop-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; font-size: 15px; }
 .map-pop-s { font-size: 12px; color: var(--muted); }
 /* Mappae: the overlay bar itself, its toggles in a column with their names, the Officia layers, then the legend */
-#app[data-host='sheet'] .map-pop #overlay-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
-#app[data-host='sheet'] .map-pop #overlay-bar > .map-ov-row { order: 0; display: flex; flex-direction: column; gap: 4px; max-width: none; padding: 0; background: none; border: 0; box-shadow: none; }
-#app[data-host='sheet'] .map-pop #overlay-bar > .map-ov-row.sub { order: 1; display: grid; grid-template-columns: 1fr 1fr; }
-#app[data-host='sheet'] .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: 12px; }
-#app[data-host='sheet'] .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: 14px; }
-#app[data-host='sheet'] .map-pop .map-ov span { display: inline; }
-#app[data-host='sheet'] .map-pop .map-ov.small { padding: 0 8px; font-size: 13px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar > .map-ov-row { order: 0; display: flex; flex-direction: column; gap: 4px; max-width: none; padding: 0; background: none; border: 0; box-shadow: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar > .map-ov-row.sub { order: 1; display: grid; grid-template-columns: 1fr 1fr; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: 14px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop .map-ov span { display: inline; }
+#app:is([data-host='sheet'], [data-host='drawer']) .map-pop .map-ov.small { padding: 0 8px; font-size: 13px; }
 
 /* ───────── what floats over the map ───────── */
 /* the hover inspector (a mouse on a phone): over the map, above what stands on the bar (a click's card is the context card, docked below) */
@@ -222,8 +228,8 @@
    everywhere. A full sheet has its grabber and voice line right under the HUD: there they stand over the bar instead */
 #app[data-host='sheet'] #toasts { top: calc(var(--hud-h) + 6px); gap: 4px; }
 #app[data-host='sheet'][data-detent='full'] #toasts { top: auto; bottom: calc(var(--bar-h) + 8px); }
-#app[data-host='sheet'] .toast { padding: 4px 10px 4px 5px; }
-#app[data-host='sheet'] .toast-sub { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .toast { padding: 4px 10px 4px 5px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .toast-sub { font-size: 12px; }
 /* ───────── the sheet's slot: the context card and the event card ───────── */
 /* One card at a time stands where the sheet was, over the bar, the full width less 6 px a side, at most 70% of the screen
    (and below the HUD), scrolling inside; the sheet steps aside behind it (#app[data-card]) and the tool column rides on it */
@@ -233,45 +239,45 @@
 }
 /* placing hides the context card, as everywhere (inspector.css; the rule above outranks that one): the banner takes the
    slot, and the card comes back when the placing ends */
-#app[data-host='sheet'].placing .ins-popup { display: none; }
-#app[data-host='sheet'] .ins-popup[data-docked]::before { display: none; }   /* no tail: it is docked, not beside its target */
-#app[data-host='sheet'] .ins-popup[data-docked] > .ins-card { flex: 0 1 auto; min-height: 0; padding: 6px 8px 8px; gap: 6px; font-size: 14px; border-color: var(--line-2); }
+#app:is([data-host='sheet'], [data-host='drawer']).placing .ins-popup { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-popup[data-docked]::before { display: none; }   /* no tail: it is docked, not beside its target */
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-popup[data-docked] > .ins-card { flex: 0 1 auto; min-height: 0; padding: 6px 8px 8px; gap: 6px; font-size: 14px; border-color: var(--line-2); }
 /* the context card's brief: its head and the parts briefParts picked (data-brief); More shows the rest */
-#app[data-host='sheet'] .ins-card.docked:not(.more) > :not(.ins-head):not([data-brief]) { display: none; }
-#app[data-host='sheet'] .ins-card.docked:not(.more) .ins-needs > li:not(.unmet),
-#app[data-host='sheet'] .ins-card.docked:not(.more) .ins-needs > li.unmet ~ li.unmet { display: none; }   /* the first want, with its fix */
-#app[data-host='sheet'] .ins-card.docked:not(.more) .ins-labour .tab-note { display: none; }
-#app[data-host='sheet'] .ins-card.docked .ins-head { grid-template-columns: 44px minmax(0, 1fr) auto; }
-#app[data-host='sheet'] .ins-card.docked .ins-img { width: 44px; height: 40px; }
-#app[data-host='sheet'] .ins-card.docked .ins-img img { max-width: 44px; max-height: 40px; }
-#app[data-host='sheet'] .ins-card.docked .ins-ctl { align-self: center; gap: 4px; }
-#app[data-host='sheet'] .ins-card.docked .ins-ctl .btn { min-width: 44px; min-height: 44px; }
-#app[data-host='sheet'] .ins-card.docked .ins-more { padding: 0 8px; font-size: 13px; color: var(--muted); }
-#app[data-host='sheet'] .ins-card.docked .ins-title { font-size: 17px; }
-#app[data-host='sheet'] .ins-card.docked .btn { min-height: 44px; }
-#app[data-host='sheet'] .ins-card.docked :is(.ins-small, .ins-hint, .ins-sub, .ins-why, .ins-good, .ins-bad) { font-size: 12px; }
-#app[data-host='sheet'] .ins-card.docked :is(.ins-head2, .kicker, .chip) { font-size: 12px; }
-#app[data-host='sheet'] .ins-card.docked .ins-labour .tab-lab { padding: 2px 6px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked:not(.more) > :not(.ins-head):not([data-brief]) { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked:not(.more) .ins-needs > li:not(.unmet),
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked:not(.more) .ins-needs > li.unmet ~ li.unmet { display: none; }   /* the first want, with its fix */
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked:not(.more) .ins-labour .tab-note { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-head { grid-template-columns: 44px minmax(0, 1fr) auto; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-img { width: 44px; height: 40px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-img img { max-width: 44px; max-height: 40px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-ctl { align-self: center; gap: 4px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-ctl .btn { min-width: 44px; min-height: 44px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-more { padding: 0 8px; font-size: 13px; color: var(--muted); }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-title { font-size: 17px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .btn { min-height: 44px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked :is(.ins-small, .ins-hint, .ins-sub, .ins-why, .ins-good, .ins-bad) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked :is(.ins-head2, .kicker, .chip) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-labour .tab-lab { padding: 2px 6px; }
 /* the Ordo holds labour: the line has no ±, and says who staffs it, with Mandata to take it back */
-#app[data-host='sheet'] .ins-card.docked .ins-ordo-lab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-ordo-lab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
 /* a dispatch waits while the card stands in the voice line's place: its row under the head, Read at the right */
-#app[data-host='sheet'] .ins-card.docked .btn.ins-dispatch {
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .btn.ins-dispatch {
   justify-content: flex-start; gap: 8px; width: 100%; padding: 0 10px; border-color: var(--ember); font-size: 14px; text-align: left;
 }
-#app[data-host='sheet'] .ins-dispatch .kicker { flex: none; color: var(--ember); }
-#app[data-host='sheet'] .ins-dispatch-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#app[data-host='sheet'] .ins-dispatch b { flex: none; font-weight: 400; color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-dispatch .kicker { flex: none; color: var(--ember); }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-dispatch-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-dispatch b { flex: none; font-weight: 400; color: var(--gold); }
 
 /* the event card: Read docks it here (choice.ts), its answers pinned at its foot; folded, the voice line carries it */
-#app[data-host='sheet'] #choice[data-docked] { pointer-events: none; }
-#app[data-host='sheet'] #choice[data-docked] > .choice-card { flex: 0 1 auto; min-height: 0; max-height: none; }
-#app[data-host='sheet'] #choice[data-docked]:has(> .choice-card.folded), #app[data-host='sheet'].placing #choice { display: none; }
-#app[data-host='sheet'] .choice-fold { min-width: 44px; min-height: 44px; }
-#app[data-host='sheet'] :is(.choice-opt-note, .choice-silent, .choice-gate) { font-size: 12px; }
-#app[data-host='sheet'] #choice[data-docked] :is(.choice-kicker, .chip, .choice-left, .choice-default) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked] { pointer-events: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked] > .choice-card { flex: 0 1 auto; min-height: 0; max-height: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked]:has(> .choice-card.folded), #app:is([data-host='sheet'], [data-host='drawer']).placing #choice { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .choice-fold { min-width: 44px; min-height: 44px; }
+#app:is([data-host='sheet'], [data-host='drawer']) :is(.choice-opt-note, .choice-silent, .choice-gate) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked] :is(.choice-kicker, .chip, .choice-left, .choice-default) { font-size: 12px; }
 /* the dispatch's voice line: its kicker and the days left over its title, and Read */
-#app[data-host='sheet'] .counsel-card.event .counsel-head { border-color: var(--ember); }
-#app[data-host='sheet'] .voice-days.bad { color: var(--bad); }
+#app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.event .counsel-head { border-color: var(--ember); }
+#app:is([data-host='sheet'], [data-host='drawer']) .voice-days.bad { color: var(--bad); }
 
 /* ───────── the placing banner: 76 px over the bar ───────── */
 /* Where the voice line was, the full width less 6 px a side (the tool column rides above it). The sprite; the name and
@@ -298,17 +304,17 @@
 #app[data-host='sheet'] .place-box.why > .place-main > .place-help { display: none; }
 #app[data-host='sheet'] .place-box.bad > .place-main > .place-verdict { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 #app[data-host='sheet'] .place-box.bad > .place-main > :is(.place-why, .place-help) { display: none; }
-#app[data-host='sheet'] .place-why { color: var(--gold); }
-#app[data-host='sheet'] .place-why::before { content: '✦ '; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-why { color: var(--gold); }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-why::before { content: '✦ '; }
 #app[data-host='sheet'] .place-box > .place-main > .place-help { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--muted); }
 #app[data-host='sheet'] .place-box > .place-btns { grid-column: 3; grid-row: 2 / span 2; display: flex; align-items: center; gap: 2px; }
 #app[data-host='sheet'] .place-box.tool > .place-main > .place-help { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-#app[data-host='sheet'] .place-btns .btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
-#app[data-host='sheet'] .place-btns .place-go { min-width: 64px; font-size: 15px; }
-#app[data-host='sheet'] .place-btns :is(.place-keep, .place-vert) { font-size: 20px; padding: 0; }
-#app[data-host='sheet'] .place-btns .place-x { font-size: 18px; padding: 0; }
-#app[data-host='sheet'] .place-x-t { display: none; }
-#app[data-host='sheet'] .place-x-i { display: inline; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-btns .btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-btns .place-go { min-width: 64px; font-size: 15px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-btns :is(.place-keep, .place-vert) { font-size: 20px; padding: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-btns .place-x { font-size: 18px; padding: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-x-t { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) .place-x-i { display: inline; }
 
 /* ───────── the build tray: Aedificia at half ───────── */
 /* AEDIFICIA · Build with Catalogue ⤢; the category chips (44 px, a sideways row); the works as 140 px cards in a row that
@@ -364,43 +370,44 @@
 #app[data-host='sheet'] .lesson-labour { margin: 0 0 6px; }
 #app[data-host='sheet'] .lesson-labour .tab-note { display: none; }   /* the idle hands' note: Populus has it */
 /* a card's labour line is the hands alone (− have / target · posts +): "First" (the 30-day priority) stays in Populus */
-#app[data-host='sheet'] :is(.lesson-labour, .ins-labour) .tab-lab-ctl > .btn:not(.tab-lab-pm) { display: none; }
+#app[data-host='sheet'] .lesson-labour .tab-lab-ctl > .btn:not(.tab-lab-pm),
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-labour .tab-lab-ctl > .btn:not(.tab-lab-pm) { display: none; }
 
 /* ───────── the tab body's dense rows (raised to the 12 px floor where the phone shows them) ───────── */
-#app[data-host='sheet'] :is(.tab-lab-prio, .bld-q-status, .bld-latin, .bld-meta, .tab-agenda-n) { font-size: 12px; }
-#app[data-host='sheet'] .tab-lab-count { font-size: 13px; }
-#app[data-host='sheet'] .tab-sec-latin { font-size: 12px; }
-#app[data-host='sheet'] .pop-k { font-size: 12px; letter-spacing: 0; line-height: 14px; }   /* Populus' census, under lesson I's card */
-#app[data-host='sheet'] .pop-legend { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) :is(.tab-lab-prio, .bld-q-status, .bld-latin, .bld-meta, .tab-agenda-n) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tab-lab-count { font-size: 13px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tab-sec-latin { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .pop-k { font-size: 12px; letter-spacing: 0; line-height: 14px; }   /* Populus' census, under lesson I's card */
+#app:is([data-host='sheet'], [data-host='drawer']) .pop-legend { font-size: 12px; }
 
 /* ───────── modals: full-screen sheets ───────── */
 /* Inset 0 within the safe areas: the head (✕, kicker, title) sticks to the top, the actions to the foot, and the body
    scrolls between them; a letter keeps its parchment, its meander and its pinned foot (modals.css) */
-#app[data-host='sheet'] ~ #modal-root .modal-back {
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-back {
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   align-items: stretch; justify-content: stretch;
 }
-#app[data-host='sheet'] ~ #modal-root .modal { width: 100%; max-width: none; height: 100%; max-height: 100%; border-radius: 0; padding: 0 14px 16px; }
-#app[data-host='sheet'] ~ #modal-root .modal.dark::before { display: none; }
-#app[data-host='sheet'] ~ #modal-root .modal-head {
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal { width: 100%; max-width: none; height: 100%; max-height: 100%; border-radius: 0; padding: 0 14px 16px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.dark::before { display: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head {
   position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; min-height: 56px;
   margin: 0 -14px 6px; padding: 8px 60px 6px 14px; background: var(--panel-solid); border-bottom: 2px solid var(--line);
 }
-#app[data-host='sheet'] ~ #modal-root .modal-head .modal-kicker { margin: 0; font-size: 12px; }
-#app[data-host='sheet'] ~ #modal-root .modal-head .modal-title { margin: 0; font-size: 21px; }
-#app[data-host='sheet'] ~ #modal-root .modal-head .modal-x { top: 50%; right: 6px; transform: translateY(-50%); width: 44px; height: 44px; min-width: 44px; min-height: 44px; font-size: 18px; }
-#app[data-host='sheet'] ~ #modal-root :is(.modal-actions, .modal-foot) {
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-kicker { margin: 0; font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-title { margin: 0; font-size: 21px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-x { top: 50%; right: 6px; transform: translateY(-50%); width: 44px; height: 44px; min-width: 44px; min-height: 44px; font-size: 18px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root :is(.modal-actions, .modal-foot) {
   position: sticky; bottom: -16px; z-index: 1; margin: 14px -14px -16px; padding: 10px 14px 16px; background: var(--panel-solid); border-top: 2px solid var(--line);
 }
 /* actions with a status line after them (Copy, Load: what they say) stick as one foot, the status under the buttons */
-#app[data-host='sheet'] ~ #modal-root .modal-foot { display: block; }
-#app[data-host='sheet'] ~ #modal-root .modal-foot > .modal-actions { position: static; margin: 0; padding: 0; background: none; border: 0; }
-#app[data-host='sheet'] ~ #modal-root .modal-row-text small, #app[data-host='sheet'] ~ #modal-root .modal-vol-n { font-size: 12px; }
-#app[data-host='sheet'] ~ #modal-root .modal-col .btn { min-height: 44px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-foot { display: block; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-foot > .modal-actions { position: static; margin: 0; padding: 0; background: none; border: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-row-text small, #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-vol-n { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-col .btn { min-height: 44px; }
 /* parchment: the letter fills the screen inside its meander; its head is the letter's own (no bar), its foot stays pinned */
-#app[data-host='sheet'] ~ #modal-root .modal.parchment { padding: 10px 16px 18px; border-width: 12px; }
-#app[data-host='sheet'] ~ #modal-root .modal.parchment .modal-head { position: static; min-height: 0; margin: 0; padding: 0; background: none; border: 0; }
-#app[data-host='sheet'] ~ #modal-root .modal.parchment .modal-head .modal-x { top: 0; right: -8px; transform: none; }
-#app[data-host='sheet'] ~ #modal-root .modal.parchment .modal-kicker { margin: 4px 36px 0; }
-#app[data-host='sheet'] ~ #modal-root .modal.parchment .modal-title { margin: 2px 36px 8px; }
-#app[data-host='sheet'] ~ #modal-root .modal.parchment .disp-foot { bottom: -18px; margin: 12px -16px -18px; padding: 10px 16px 18px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment { padding: 10px 16px 18px; border-width: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment .modal-head { position: static; min-height: 0; margin: 0; padding: 0; background: none; border: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment .modal-head .modal-x { top: 0; right: -8px; transform: none; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment .modal-kicker { margin: 4px 36px 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment .modal-title { margin: 2px 36px 8px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment .disp-foot { bottom: -18px; margin: 12px -16px -18px; padding: 10px 16px 18px; }

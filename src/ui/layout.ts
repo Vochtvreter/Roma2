@@ -13,8 +13,12 @@
 // grabber and the voice line over the 5-slot bar), half or full, its heights worked out here (sheetHeights) and slid by
 // sheet.ts; tabs, placing, the inspector and the lessons route through go(). One card at a time stands in the sheet's
 // slot instead (dock: the context card or the event card, P2c), and the placing banner over the bar while placing; the
-// free rect and --dock-h (what stands on the bar) follow whichever it is. The other hosts keep today's panel (full =
-// half until P3/P4 style them), their free rect measured from today's CSS (panels.css, mobile.css, left.css).
+// free rect and --dock-h (what stands on the bar) follow whichever it is. The DRAWER host (landscape phones and short
+// windows, P3; drawer.css) is the same nodes in another arrangement: the tab buttons a 56 px spine at the right edge, the
+// panel a pane beside it (its widths worked out here: drawerWidths, slid sideways by sheet.ts), the voice line afloat at
+// the bottom-left of the map while the pane is closed and the pane's head otherwise, the card slot and the placing banner
+// at the bottom-left of the free map. The other hosts keep today's panel (full = half until P4 styles them), their free
+// rect measured from today's CSS (panels.css, mobile.css, left.css).
 import { TABS } from '../game/types';
 import type { TabId } from '../game/types';
 import { LESSONS, lessonPointer } from '../game/intro';
@@ -43,6 +47,12 @@ export interface Box { left: number; top: number; right: number; bottom: number 
 
 export const HOSTS: readonly Host[] = ['sheet', 'drawer', 'dock', 'columns'];
 export const DETENTS: readonly Detent[] = ['closed', 'half', 'full'];
+
+/** The phone hosts: the portrait SHEET and the landscape DRAWER share the phone's widgets (the voice line, the tool column,
+ *  the card slot, the placing banner with ⟳, events through the voice line, modal sheets), arranged each its own way. */
+export function isPhone(host: Host | null): boolean {
+  return host === 'sheet' || host === 'drawer';
+}
 
 /** The thresholds, in CSS px of #app (SPEC A §1, platform.md §14). */
 export const BP = {
@@ -118,8 +128,9 @@ export function keepDetent(d: Detent, forced: boolean, host: Host, tiny: boolean
 
 /** The detent to keep when the classes change (pure; tests/layout.test.ts): `from`, the host before (null: the first
  *  measure, a load). Entering the SHEET (a load, a turn to portrait) shows the map, the sheet closed, unless a tab was
- *  opened just now (`justOpened`: its own detent stands); any other change keeps the player's detent (keepDetent). The
- *  other hosts keep it until P3 and P4 style them. */
+ *  opened just now (`justOpened`: its own detent stands); any other change keeps the player's detent (keepDetent): a
+ *  phone turned to landscape keeps its ledger in the DRAWER's pane at the detent it had (a colony entered on a phone
+ *  closes either panel: UI.hideTitle). The DOCK keeps it until P4 styles it. */
 export function hostEntryDetent(d: Detent, forced: boolean, from: Host | null, to: Host, tiny: boolean, justOpened: boolean): { detent: Detent; forced: boolean } {
   if (from !== to && to === 'sheet' && !justOpened) return keepDetent('closed', false, to, tiny);
   return keepDetent(d, forced, to, tiny);
@@ -176,10 +187,49 @@ export function cycleDetent(d: Detent, offered: readonly Detent[]): Detent {
   return offered[(i + 1) % offered.length];
 }
 
-/** A tap on a slot of the phone bar (pure): the open tab's own slot folds a sheet that is up; any other slot, or the
- *  open tab's while the sheet is closed, opens that tab (route: its detent). */
+/** A tap on a slot of the phone bar, or an icon of the drawer's spine (pure): the open tab's own slot folds a panel that
+ *  is up; any other slot, or the open tab's while the panel is closed, opens that tab (route: its detent). */
 export function slotTap(tab: TabId, cur: TabId, d: Detent): 'close' | 'open' {
   return tab === cur && d !== 'closed' ? 'close' : 'open';
+}
+
+// ───────────────────────────── the drawer (pure) ─────────────────────────────
+/** The DRAWER's spine and pane (SPEC A §1, DESIGN §15.7): a 56 px spine of tab icons at the right edge (and the right
+ *  safe area); beside it the pane, clamp(280 px, 42% of #app, 360 px) wide at half, everything left of the spine at full. */
+export const DRAWER = { spine: 56, paneMin: 280, paneShare: 0.42, paneMax: 360 } as const;
+
+/** The pane's width at each detent (pure): closed has none (the spine alone, the voice line afloat on the map); half is
+ *  DRAWER's clamp of #app's width `W`, never wider than full; full reaches #app's left edge from the spine (`spine` px). A
+ *  drag of the pane's left edge comes to rest on these (snapDetent over the widths, the finger's speed leftwards). */
+export function drawerWidths(W: number, spine: number): Record<Detent, number> {
+  const full = Math.max(0, Math.round(W - spine));
+  const half = Math.round(Math.min(DRAWER.paneMax, Math.max(DRAWER.paneMin, DRAWER.paneShare * W)));
+  return { closed: 0, half: Math.min(full, half), full };
+}
+
+/** The largest part of `box` clear of `ob` (pure), `gap` px off it: the part above, below, left or right of it, by area
+ *  (above on a tie); the box itself when they do not meet. The DRAWER's free map beside what stands at its bottom-left:
+ *  above a wide, short voice line or placing banner, right of a tall card. */
+export function clearOf(box: Box, ob: Box, gap = 0): Box {
+  if (ob.right <= box.left || ob.left >= box.right || ob.bottom <= box.top || ob.top >= box.bottom) return { ...box };
+  const parts: Box[] = [
+    { ...box, bottom: Math.min(box.bottom, ob.top - gap) },
+    { ...box, top: Math.max(box.top, ob.bottom + gap) },
+    { ...box, right: Math.min(box.right, ob.left - gap) },
+    { ...box, left: Math.max(box.left, ob.right + gap) },
+  ];
+  const area = (b: Box): number => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
+  return parts.reduce((best, b) => (area(b) > area(best) ? b : best));
+}
+
+/** How many of a row's droppable items must leave it (pure) for it to fit: `need`, the row's width with all of them;
+ *  `room`, the width it has; `widths`, each droppable item's width with its gap, in the order they go. The DRAWER's HUD
+ *  (hud.ts): the date, then spirits, souls, coin, Aqua and Grain step into the Breviarium, which shows them all; the speed
+ *  pair and the menu never do. */
+export function priorityDrops(need: number, room: number, widths: readonly number[]): number {
+  let over = need - room, n = 0;
+  while (over > 0.5 && n < widths.length) over -= widths[n++];
+  return n;
 }
 
 // ───────────────────────────── routing (pure) ─────────────────────────────
@@ -257,25 +307,29 @@ export function route(i: Intent, c: RouteCtx): Route {
 // ───────────────────────────── targets and proxies (pure) ─────────────────────────────
 /** The frame's targets a lesson or remedy can point at (ids the hosts place; a tab's button is #tab-<id>). */
 const FRAME: readonly string[] = ['#hud', '#hud-menu', '#speed', '#objective', '#counsel', '#ticker', '#overlay-bar', '#zoom-ctl', ...TABS.map((t) => `#tab-${t}`)];
-/** The SHEET's own frame: the tool column's Via and Mappae buttons (mapbar.ts MapColumn). */
+/** The phones' own frame: the tool column's Via and Mappae buttons (mapbar.ts MapColumn), on the SHEET and the DRAWER. */
 const SHEET_FRAME: readonly string[] = ['#map-via', '#map-mappae'];
-/** What the SHEET leaves out of today's frame: the Res Gestae (in the Breviarium), the overlay bar (in the Mappae
- *  popover), the ticker (in the voice line, and only in calm) and Annales' tab button (no slot on the bar). */
+/** What the phone hosts leave out of today's frame: the Res Gestae (in the Breviarium), the overlay bar (in the Mappae
+ *  popover), the ticker (in the voice line, and only in calm) and Annales' tab button (no slot on the SHEET's bar; on the
+ *  DRAWER's spine only while it is tall enough for six icons, so never counted on). */
 const SHEET_HIDES: readonly string[] = ['#objective', '#overlay-bar', '#ticker', '#tab-annals'];
 /** The map's own tools: they ride on the map, so a full panel (which covers it) hides them. */
 export const MAP_TOOLS: readonly string[] = ['#overlay-bar', '#zoom-ctl', '#ticker', ...SHEET_FRAME];
-/** The frame targets each host shows. The SHEET: its [❚❚][1× ▾] pair is #speed itself (it glows as it is); the tool
- *  column's buttons stand in for what it hides (SHEET_HIDES). P3 takes the overlay bar off the DRAWER too. */
+/** What a phone host shows of the frame: its [❚❚][1× ▾] pair is #speed itself (it glows as it is); the tool column's
+ *  buttons stand in for what it hides (SHEET_HIDES); the bar's slots or the spine's icons are the tab buttons. */
+const PHONE_VISIBLE: readonly string[] = [...FRAME.filter((x) => !SHEET_HIDES.includes(x)), ...SHEET_FRAME];
+/** The frame targets each host shows: the phones (SHEET and DRAWER) theirs, the others today's frame. */
 export const VISIBLE: Readonly<Record<Host, readonly string[]>> = {
-  sheet: [...FRAME.filter((x) => !SHEET_HIDES.includes(x)), ...SHEET_FRAME], drawer: FRAME, dock: FRAME, columns: FRAME,
+  sheet: PHONE_VISIBLE, drawer: PHONE_VISIBLE, dock: FRAME, columns: FRAME,
 };
-/** Per host, a hidden target → the visible proxy that glows instead. The SHEET: the Res Gestae glows the HUD, whose
- *  every figure opens the Breviarium that holds it; the overlay bar, the Mappae button that opens it ("Show me" opens
- *  the popover too: bringTarget); the ticker, the voice line that speaks its lines in calm; Annales, the menu, which
- *  has its row. P3: the DRAWER's overlay bar and its spine's slots. */
+/** On a phone host, a hidden target → the visible proxy that glows instead: the Res Gestae glows the HUD, whose every
+ *  figure opens the Breviarium that holds it; the overlay bar, the Mappae button that opens it ("Show me" opens the
+ *  popover too: bringTarget); the ticker, the voice line that speaks its lines in calm; Annales, the menu, which has its
+ *  row (on the DRAWER the spine's own icon glows itself whenever it shows: Layout.reveal). */
+const PHONE_REVEAL: Readonly<Record<string, string>> = { '#objective': '#hud', '#overlay-bar': '#map-mappae', '#ticker': '#counsel', '#tab-annals': '#hud-menu' };
+/** Per host, a hidden target → the visible proxy that glows instead (the phones: PHONE_REVEAL; P4 the DOCK's). */
 export const REVEAL: Readonly<Record<Host, Readonly<Record<string, string>>>> = {
-  sheet: { '#objective': '#hud', '#overlay-bar': '#map-mappae', '#ticker': '#counsel', '#tab-annals': '#hud-menu' },
-  drawer: {}, dock: {}, columns: {},
+  sheet: PHONE_REVEAL, drawer: PHONE_REVEAL, dock: {}, columns: {},
 };
 /** Per host, a row of a tab body that a lesson's card carries too (CARD_LESSONS) → the card's own copy, which glows
  *  instead: the job is done there, without the tab. */
@@ -305,12 +359,13 @@ export function shownAt(selector: string, host: Host, d: Detent): boolean {
 /** What "Show me" does for a lesson on a host (pure; tests/sheet.test.ts): lessonPointer's, except where the host's
  *  lesson card carries the job (CARD_LESSONS on the SHEET): no tab opens (`card`: the counsel's card unfolds instead),
  *  and the target glows on the card's own row (reveal: CARD_ROWS). A lesson that opens Aedificia on no row of it (VIII:
- *  "a work you choose") points the SHEET's build tray at its cards, every category (aedificia.ts focus), not at the one
- *  an earlier lesson left it on. */
+ *  "a work you choose") points a phone's Aedificia at its cards, every category (aedificia.ts focus): the SHEET's build
+ *  tray, the DRAWER's catalogue (its short pane would show the Agenda at the tab's top), not the category an earlier
+ *  lesson left it on. */
 export function hostPointer(l: Lesson, host: Host): { open: TabId | null; anchor?: string; glow: string | null; card: boolean } {
   const p = lessonPointer(l);
   if (host === 'sheet' && CARD_LESSONS.includes(l.id)) return { open: null, glow: p.glow, card: true };
-  if (host === 'sheet' && p.open === 'build' && p.anchor === undefined) return { ...p, anchor: 'cards', card: false };
+  if (isPhone(host) && p.open === 'build' && p.anchor === undefined) return { ...p, anchor: 'cards', card: false };
   return { ...p, card: false };
 }
 
@@ -336,11 +391,14 @@ export function lessonTarget(l: Lesson): string | null {
 /** What an onChange notice is about: the classes or host, the detent, or the free rect. */
 export type LayoutChange = 'classes' | 'detent' | 'free';
 
-/** What the SHEET host's own DOM (sheet.ts) does for the engine: the head's height (the grabber and the voice line: all
- *  a closed sheet shows) and the slide from one height to another, ending at rest on detent `to`. */
+/** What the phone hosts' own DOM (sheet.ts) does for the engine: the SHEET's head height (the grabber and the voice line:
+ *  all a closed sheet shows); the slide from one extent to another (the SHEET's height, the DRAWER pane's width), ending
+ *  at rest on detent `to`, which also puts the voice line where `to` wants it; and the DRAWER's voice line while it
+ *  floats on the map (the pane closed), else null. */
 export interface SheetHooks {
   head(): number;
   slide(fromH: number, toH: number, to: Detent, instant: boolean): void;
+  floating(): HTMLElement | null;
 }
 
 const QUERIES = ['(pointer: coarse)', '(any-pointer: fine)', '(any-pointer: coarse)'] as const;
@@ -371,6 +429,12 @@ export function revealTarget(selector: string): string {
 /** The current host, or null before the layout runs (headless tests): the widgets a phone's sheet shapes ask it. */
 export function currentHost(): Host | null {
   return active ? active.host : null;
+}
+
+/** The safe area (inside the notch, the rounded corners and the home indicator) in #app px, or null before the layout
+ *  runs: the DRAWER's #app runs under the insets, and what opens over its map (the tool column's popovers) keeps clear. */
+export function safeArea(): Box | null {
+  return active ? active.safeRect() : null;
 }
 
 /** The panel's detent, or null before the layout runs (headless tests): Aedificia is a build tray at the SHEET's half. */
@@ -428,11 +492,13 @@ export class Layout {
   private lifted: string | null = null;        // who raised a closed sheet to half for a while (lift, drop)
   private openedAt = -Infinity;                // when a tab was last opened (go): a host change just then keeps its detent
   private heights: Record<Detent, number> | null = null;   // the SHEET's height at each detent (sizeSheet)
+  private widths: Record<Detent, number> | null = null;    // the DRAWER pane's width at each detent (sizeDrawer)
   private sheetHooks: SheetHooks | null = null;
-  private card: HTMLElement | null = null;     // the card docked in the SHEET's slot (dock): the context card or the event card
+  private card: HTMLElement | null = null;     // the card docked in a phone's slot (dock): the context card or the event card
   private dockPx = -1;                         // what stands on the SHEET's bar, as written to --dock-h
   private free: Box = ZERO;
   private ins: Box = ZERO;                     // the free rect as canvas insets (CSS px), as given to the view
+  private safe: Box = ZERO;                    // the safe area in #app px (safeArea)
   private started = false;
   private readonly mq: MediaQueryList[];
   private readonly subs = new Set<(why: LayoutChange) => void>();
@@ -444,6 +510,11 @@ export class Layout {
   private readonly banner: HTMLElement | null;
   private readonly tabs: HTMLElement | null;   // the tab buttons: the SHEET's bar, wherever it is hosted
   private readonly column: HTMLElement | null; // the SHEET's map tool column (#map-col)
+  /** The window inside the safe-area insets (base.css #safe-box: fixed, invisible), whatever the host does with #app: the
+   *  classes are read from it, so a host that runs #app under the insets (the DRAWER, the SHEET's height) never changes
+   *  the size that chose it (a 900 × 490 window with a 20 px home indicator is a 900 × 470 DRAWER, not DRAWER and DOCK by
+   *  turns). #app's own box is the geometry. */
+  private readonly frame: HTMLElement;
 
   constructor(private readonly g: Game, private readonly app: HTMLElement, private readonly side: SidePanel) {
     this.hud = app.querySelector<HTMLElement>('#hud');
@@ -452,15 +523,19 @@ export class Layout {
     this.banner = app.querySelector<HTMLElement>('#place-banner');
     this.tabs = app.querySelector<HTMLElement>('#tabs');
     this.column = app.querySelector<HTMLElement>('#map-col');
+    this.frame = document.getElementById('safe-box') ?? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'safe-box' }));
+    this.frame.setAttribute('aria-hidden', 'true');
     this.mq = QUERIES.map((q) => matchMedia(q));
-    this.cls = classify(app.clientWidth, app.clientHeight, this.media());
+    const [cw, ch] = this.frameSize(app.clientWidth, app.clientHeight);
+    this.cls = classify(cw, ch, this.media());
     this.det = side.expanded ? 'half' : 'closed';
     side.layout = this;
     active = this;
     for (const m of this.mq) listen(m, () => this.update());
     if (typeof ResizeObserver === 'function') {
       this.ro = new ResizeObserver(() => this.update());
-      this.ro.observe(app);   // the content box: inside the safe-area insets (the SHEET's #app runs under them)
+      this.ro.observe(app);   // the geometry (the SHEET's and the DRAWER's #app run under the insets)
+      this.ro.observe(this.frame);   // the classes: the window inside the insets
       // the chrome growing, shown, hidden
       for (const el of [this.hud, this.sideEl, this.left, this.banner, this.tabs, this.column]) if (el) this.ro.observe(el);
     } else window.addEventListener('resize', () => this.update());
@@ -482,16 +557,21 @@ export class Layout {
   get offered(): readonly Detent[] { return detentsOf(this.cls.host, this.cls.tiny); }
   /** The SHEET's height above the bar at each detent (#app px, a copy), or null on any other host. */
   get sheetHeights(): Record<Detent, number> | null { return this.heights ? { ...this.heights } : null; }
+  /** The phone panel's extent at each detent (#app px, a copy): the SHEET's height above the bar, the DRAWER pane's width
+   *  beside the spine; null on any other host. sheet.ts drags and slides between these. */
+  get extents(): Record<Detent, number> | null { const e = this.extentsNow(); return e ? { ...e } : null; }
   /** What stands on the SHEET's bar at rest, in px (also --dock-h on #app): the placing banner while placing, a card
    *  docked in the sheet's slot, else the sheet at its detent; 0 on any other host. The tool column rides on it. */
   get dockH(): number { return Math.max(0, this.dockPx); }
-  /** The card docked in the sheet's slot, if any (dock). */
+  /** The card docked in the phone's slot, if any (dock). */
   get docked(): HTMLElement | null { return this.card; }
 
-  /** Docks a card in the SHEET's slot (null: none): the context card (the inspector's popup) or the event card. One at a
-   *  time (the UI root sees to it): while it shows, the sheet steps aside behind it (#app[data-card]; the bar stays), the
-   *  free rect ends above it and the tool column rides on it. Measured at once, so the camera call that follows (the
-   *  card's glide of its target clear above it) sees the free map it leaves; its own growth is observed. */
+  /** Docks a card in a phone's slot (null: none): the context card (the inspector's popup) or the event card. One at a
+   *  time (the UI root sees to it): while it shows, the voice line steps aside behind it (#app[data-card]: on the SHEET the
+   *  sheet, the bar staying; on the DRAWER the floating line) and the free rect ends clear of it (on the SHEET above it,
+   *  the tool column riding on it; on the DRAWER, where it stands at the bottom-left of the map, above or beside it).
+   *  Measured at once, so the camera call that follows (the card's glide of its target clear of it) sees the free map it
+   *  leaves; its own growth is observed. */
   dock(el: HTMLElement | null): void {
     if (el === this.card) { this.update(); return; }
     if (this.card) this.ro?.unobserve(this.card);
@@ -501,12 +581,13 @@ export class Layout {
   }
 
   /** Moves the panel to a detent: the host's own for `d` (a tiny sheet has no half), the panel written at once
-   *  (`instant`: no slide), then the camera insets for the detent's target (never mid-slide). On the SHEET the sheet
-   *  slides there (sheet.ts) from `fromH`, the height a drag let go at, else the detent it leaves. `user`: the player
-   *  moved it by hand (the grabber, the open tab's slot): what a remembering route kept is no longer the way back. */
+   *  (`instant`: no slide), then the camera insets for the detent's target (never mid-slide). On a phone the panel slides
+   *  there (sheet.ts: the SHEET up or down, the DRAWER's pane sideways) from `fromH`, the extent a drag let go at, else
+   *  the detent it leaves. `user`: the player moved it by hand (the grabber, the open tab's slot or spine icon): what a
+   *  remembering route kept is no longer the way back. */
   setDetent(d: Detent, opts: { instant?: boolean; fromH?: number; user?: boolean } = {}): void {
     const to = fitDetent(d, this.det, this.cls.host, this.cls.tiny);
-    const hs = this.cls.host === 'sheet' ? this.heights : null, sheet = hs ? this.sheetHooks : null;
+    const hs = this.extentsNow(), sheet = hs ? this.sheetHooks : null;
     this.lifted = null;   // whoever raised it for a while (lift), it is someone else's move now
     if (opts.user) this.kept = null;
     if (to === this.det && this.side.expanded === (to !== 'closed')) {
@@ -530,9 +611,9 @@ export class Layout {
   }
 
   /** Routes an intent (route()) and moves the panel there; a remembering route keeps the detent it left for restore().
-   *  The SHEET routes its tabs, the voice line's chips, placing, the inspector and the lessons through it; the other
-   *  hosts route their tabs (with today's result) until P3/P4 wire the rest. A tab opened is a new place to come back
-   *  from: a focus kept before it is no longer the way back. */
+   *  The phones (SHEET, DRAWER) route their tabs, the voice line's chips, placing, the inspector and the lessons through
+   *  it; the other hosts route their tabs (with today's result) until P4 wires the rest. A tab opened is a new place to
+   *  come back from: a focus kept before it is no longer the way back. */
   go(i: Intent): Route {
     const r = route(i, { host: this.cls.host, detent: this.det, tiny: this.cls.tiny });
     if (i.kind === 'open') { this.openedAt = performance.now(); this.kept = null; }
@@ -556,10 +637,11 @@ export class Layout {
   /** Drops what a remembering route kept: a work was placed, and the sheet stays where placing put it (closed). */
   forget(): void { this.kept = null; }
 
-  /** Raises a closed panel to half for a while (`why`: who, as the counsel unfolding its card on the SHEET); drop() with
-   *  the same `why` closes it again, unless anything else moved the panel since. */
+  /** Raises a closed panel to half for a while (`why`: who, as the counsel unfolding its card on a phone); drop() with
+   *  the same `why` closes it again, unless anything else moved the panel since. Not while a card stands in a phone's
+   *  slot: the panel stays closed behind it (and the counsel's card folded in its line). */
   lift(why: string): void {
-    if (this.det !== 'closed') return;
+    if (this.det !== 'closed' || this.cardShown()) return;
     this.setDetent('half');
     if (this.det !== 'closed') this.lifted = why;
   }
@@ -573,6 +655,10 @@ export class Layout {
 
   /** The #app-relative rect of map the UI leaves free, with the panel at its detent's target (a copy). */
   freeRect(): Box { return { ...this.free }; }
+
+  /** The safe area in #app px (a copy): all of #app where #app is inset already; on the DRAWER, inside the notch, the
+   *  rounded corners and the home indicator, which its #app runs under. */
+  safeRect(): Box { return { ...this.safe }; }
 
   /** The selector to glow for a lesson or remedy target here: its proxy where this host hides it, unless it shows after
    *  all (the SHEET's overlay bar in its open Mappae popover glows itself). */
@@ -596,13 +682,14 @@ export class Layout {
     this.update();
   }
 
-  /** The SHEET host's DOM (sheet.ts) registers itself: the engine asks it the head's height and has it slide. Its
-   *  elements are observed, so a voice line that grows a row resizes the closed sheet. */
+  /** The phone hosts' DOM (sheet.ts) registers itself: the engine asks it the SHEET's head height and the DRAWER's
+   *  floating voice line, and has it slide. Its elements are observed, so a voice line that grows a row resizes the closed
+   *  sheet (or moves the drawer's free map). */
   attachSheet(hooks: SheetHooks, observe: readonly HTMLElement[]): void {
     this.sheetHooks = hooks;
     for (const el of observe) this.ro?.observe(el);
     this.update();
-    const hs = this.heights;
+    const hs = this.extentsNow();
     if (hs) hooks.slide(hs[this.det], hs[this.det], this.det, true);   // at rest on the detent from the start
   }
 
@@ -628,10 +715,29 @@ export class Layout {
     return this.g.mode === 'game' && shown(this.sideEl) && aboveDefault(this.det, this.cls.host);
   }
 
+  /** The size the classes are read from: the window inside the safe-area insets (#safe-box), #app's own (`W` × `H`)
+   *  before it is laid out. */
+  private frameSize(W: number, H: number): [number, number] {
+    const f = this.frame;
+    return f.clientWidth && f.clientHeight ? [f.clientWidth, f.clientHeight] : [W, H];
+  }
+
+  /** The safe area in #app px: #safe-box's rect against #app's, within #app. */
+  private safeIn(W: number, H: number): Box {
+    const f = this.frame;
+    if (!f.clientWidth || !f.clientHeight) return { left: 0, top: 0, right: W, bottom: H };
+    const a = this.app.getBoundingClientRect(), r = f.getBoundingClientRect();
+    return {
+      left: Math.max(0, Math.round(r.left - a.left)), top: Math.max(0, Math.round(r.top - a.top)),
+      right: Math.min(W, Math.round(r.right - a.left)), bottom: Math.min(H, Math.round(r.bottom - a.top)),
+    };
+  }
+
   private update(): void {
     const W = this.app.clientWidth, H = this.app.clientHeight;
     if (!W || !H) return;   // not laid out (a hidden frame): keep what we have
-    const c = classify(W, H, this.media()), was = this.cls, first = !this.started;
+    const [cw, ch] = this.frameSize(W, H);
+    const c = classify(cw, ch, this.media()), was = this.cls, first = !this.started;
     this.started = true;
     const shape = first || c.w !== was.w || c.h !== was.h || c.input !== was.input || c.host !== was.host || c.tiny !== was.tiny;
     const host = !first && c.host !== was.host;
@@ -646,9 +752,10 @@ export class Layout {
     if (turned && k.detent !== 'closed') this.lastOpen = k.forced ? 'half' : k.detent;
     if (shape || turned) this.write();
     if (this.side.expanded !== (this.det !== 'closed')) this.side.show(this.det !== 'closed', true);
-    const hs = this.sizeSheet(H);
+    const sh = this.sizeSheet(H), dw = this.sizeDrawer(W), hs = sh ?? dw;   // (each drops its properties off its host)
     if (hs && (turned || host || first) && this.sheetHooks) this.sheetHooks.slide(hs[this.det], hs[this.det], this.det, true);   // at rest there
     this.writeDock(H);
+    this.safe = this.safeIn(W, H);
     const free = this.measure(W, H), ins = this.insets(free);
     const moved = !sameBox(free, this.free) || !sameBox(ins, this.ins);
     this.free = free;
@@ -670,14 +777,19 @@ export class Layout {
     return shown(this.tabs) ? this.tabs.offsetHeight : 0;
   }
 
-  /** The docked card while it shows on the SHEET (not while placing hides it, nor folded away), else null. */
+  /** The docked card while it shows on a phone (not while placing hides it, nor folded away), else null. */
   private cardShown(): HTMLElement | null {
-    return this.cls.host === 'sheet' && shown(this.card) ? this.card : null;
+    return isPhone(this.cls.host) && shown(this.card) ? this.card : null;
   }
 
-  /** Writes what stands on the SHEET's bar: #app[data-card] while a docked card shows (the sheet steps aside: sheet.css)
-   *  and --dock-h, the height of the banner, the card or the sheet at its detent (the tool column rides on it). Off the
-   *  SHEET both go. */
+  /** The phone panel's extents at each detent now: the SHEET's heights, the DRAWER's widths; null elsewhere. */
+  private extentsNow(): Record<Detent, number> | null {
+    return this.cls.host === 'sheet' ? this.heights : this.cls.host === 'drawer' ? this.widths : null;
+  }
+
+  /** Writes what stands in a phone's slot: #app[data-card] while a docked card shows (the voice line steps aside:
+   *  sheet.css, drawer.css), and on the SHEET --dock-h, the height of the banner, the card or the sheet at its detent
+   *  (the tool column rides on it). Off the phones both go, and off the SHEET --dock-h. */
   private writeDock(H: number): void {
     const a = this.app;
     const card = this.cardShown();
@@ -714,6 +826,25 @@ export class Layout {
     return this.heights;
   }
 
+  /** The DRAWER pane's width at each detent (drawerWidths over #app's width and the spine's), written on #app as
+   *  --drawer-half and --drawer-full for drawer.css (the pane, and the tool column and toasts beside it); null (and the
+   *  properties gone) on any other host. */
+  private sizeDrawer(W: number): Record<Detent, number> | null {
+    const st = this.app.style;
+    if (this.cls.host !== 'drawer') {
+      if (this.widths) { st.removeProperty('--drawer-half'); st.removeProperty('--drawer-full'); this.widths = null; }
+      return null;
+    }
+    const ws = drawerWidths(W, shown(this.tabs) ? this.tabs.offsetWidth : 0);
+    const was = this.widths;
+    if (!was || DETENTS.some((d) => ws[d] !== was[d])) {
+      this.widths = ws;
+      st.setProperty('--drawer-half', `${ws.half}px`);
+      st.setProperty('--drawer-full', `${ws.full}px`);
+    }
+    return this.widths;
+  }
+
   /** The free rect at rest, in #app px: below the HUD, then per host. The SHEET: above the sheet at its detent's height
    *  (sizeSheet: never its slide) and the bar under it, and left of the tool column; a card docked in the sheet's slot
    *  stands in the sheet's place (the free map ends above it); while placing the sheet steps aside and the placing
@@ -721,10 +852,14 @@ export class Layout {
    *  target (its box without the slide: offset* ignore transforms), a folded bottom sheet keeping its 52 px tab bar; right
    *  of the left column where it stands as one (narrower than half of #app: from 900 px, and on a landscape phone; below
    *  that it is a band of cards across the map). Everywhere, above the placing banner while placing, so a pre-positioned
-   *  ghost shows over it. What floats over the free map (the map's tools, the ticker, a band of cards off the SHEET) is
-   *  not taken out: the inspector steps a target clear of it. P3 and P4 replace the rest with their hosts' geometry. */
+   *  ghost shows over it. The DRAWER: inside the safe area (its #app runs under the insets), left of the spine, and of
+   *  the pane at its detent's width (drawerWidths: never its slide; none while placing or a docked card has it aside),
+   *  and of the tool column beside them; clear of what stands at the bottom-left of the map (clearOf: above it, or
+   *  beside a tall card): the docked card, else the floating voice line while the pane is closed (the banner while
+   *  placing, as everywhere). What floats over the free map (the map's tools, the ticker, a band of cards off the
+   *  phones) is not taken out: the inspector steps a target clear of it. P4 replaces the rest with the DOCK's geometry. */
   private measure(W: number, H: number): Box {
-    const box = { left: 0, top: 0, right: W, bottom: H };
+    let box = { left: 0, top: 0, right: W, bottom: H };
     if (this.app.classList.contains('in-title')) return box;   // the title hides the chrome: all of the map shows
     if (shown(this.hud)) box.top = Math.max(0, this.hud.offsetTop + this.hud.offsetHeight);
     const placing = this.app.classList.contains('placing');
@@ -735,6 +870,22 @@ export class Layout {
       if (card) box.bottom = Math.min(box.bottom, card.offsetTop - CARD_GAP);
       const col = this.column;
       if (shown(col)) box.right = Math.min(box.right, col.offsetLeft - COLUMN_GAP);
+    } else if (this.cls.host === 'drawer') {
+      // inside the safe area (#app runs under the notch and the home indicator), left of the spine and of the pane (which
+      // stays away while placing or a card stands in the slot: drawer.css)
+      const sa = this.safe;
+      box = { left: Math.max(box.left, sa.left), top: Math.max(box.top, sa.top), right: Math.min(box.right, sa.right), bottom: Math.min(box.bottom, sa.bottom) };
+      const card = placing ? null : this.cardShown();
+      const spine = shown(this.tabs) ? this.tabs.offsetLeft : W;
+      const pane = this.widths && shown(this.sideEl) && !placing && !card ? this.widths[this.det] : 0;
+      box.right = Math.min(box.right, spine - pane);
+      const col = this.column;
+      if (shown(col)) box.right = Math.min(box.right, col.offsetLeft - COLUMN_GAP);
+      const voice = placing || card || this.det !== 'closed' ? null : this.sheetHooks?.floating() ?? null;
+      const at = card ?? voice;
+      if (at && shown(at)) {
+        box = clearOf(box, { left: at.offsetLeft, top: at.offsetTop, right: at.offsetLeft + at.offsetWidth, bottom: at.offsetTop + at.offsetHeight }, CARD_GAP);
+      }
     } else {
       const side = this.sideEl;
       if (shown(side)) {

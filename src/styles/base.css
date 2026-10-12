@@ -30,6 +30,9 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 /* overflow: clip, not hidden: a hidden box can still be scrolled by script, and an element scrolled into view slid the
    whole interface up and off the screen (hidden stays as the fallback for engines without clip) */
 #app { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); overflow: hidden; overflow: clip; }
+/* the window inside the safe-area insets, which the layout reads its size classes from (layout.ts), whatever a host does
+   with #app's own box */
+#safe-box { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); visibility: hidden; pointer-events: none; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: var(--z-map); touch-action: none; cursor: crosshair; }
 /* Gestures: the chrome pans its own scroll boxes, but a pinch or a double tap there never zooms the page (iOS ignores
    user-scalable=no). Only #app's children other than the map: '#app *' would tie #map's specificity and, coming later,
