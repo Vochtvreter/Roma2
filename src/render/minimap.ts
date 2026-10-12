@@ -1,8 +1,9 @@
 // src/render/minimap.ts — the minimap (ARCHITECTURE §12.7). Owner: WP-F.
 // CSS 224 × 168 = 2 px per tile, backing × dpr: seasonal ground with the woods as they stand, roads, walls, building
 // footprints, the active overlay and the viewport rectangle (the free rect: the map the UI leaves in view, whose centre
-// a pick moves to). Redrawn at most every 500 ms (and at once on demand). Click or drag → onPick(world px). Hidden while
-// placing (CSS hides it below 1,100 px).
+// a pick moves to). Redrawn at most every 500 ms (and at once on demand); what the throttle held back stays owed
+// (pending) until a later draw() pays it. Click or drag → onPick(world px). Hidden while placing (CSS hides it below
+// 1,100 px).
 import type { GameState } from '../game/types';
 import { H, W, getMap } from '../game/map';
 import { derived } from '../game/derived';
@@ -24,6 +25,7 @@ const FOUNTAINS: readonly string[] = ['lacus', 'castellum'];
 export class Minimap {
   private last = -Infinity;
   private down = false;
+  private due = true;                       // a redraw was asked for (invalidate) or held back by the throttle
 
   constructor(private readonly cv: HTMLCanvasElement, private readonly onPick: (wx: number, wy: number) => void) {
     const go = (e: PointerEvent): void => {
@@ -45,13 +47,22 @@ export class Minimap {
   /** Forces a redraw on the next frame. */
   invalidate(): void {
     this.last = -Infinity;
+    this.due = true;
+  }
+
+  /** A redraw is owed: asked for, or held back by the 500 ms throttle. A view that skips its idle frames still calls
+   *  draw() until it is paid, so the rectangle and the footprints never stay a step behind the map. */
+  get pending(): boolean {
+    return this.due;
   }
 
   /** Redraws (throttled) from the 1 px/tile ground and overlay layers; hides itself while placing. */
   draw(s: GameState, cam: Camera, ground: HTMLCanvasElement, overlay: HTMLCanvasElement | null, placing: boolean, now: number, insets: Insets = NO_INSETS): void {
     this.cv.hidden = placing;
-    if (placing || now - this.last < REDRAW_MS) return;
+    if (placing) { this.due = false; return; }   // (placing ends with a redraw of the map: invalidate on its way back)
+    if (now - this.last < REDRAW_MS) { this.due = true; return; }
     this.last = now;
+    this.due = false;
     const dpr = canvasDpr(window.devicePixelRatio);
     const bw = Math.round(W * PX_PER_TILE * dpr), bh = Math.round(H * PX_PER_TILE * dpr);
     if (this.cv.width !== bw || this.cv.height !== bh) { this.cv.width = bw; this.cv.height = bh; }

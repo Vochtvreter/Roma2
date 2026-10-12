@@ -111,6 +111,12 @@ export class SheetHost implements SheetHooks {
       + (line?.offsetHeight ?? 0));
   }
 
+  /** The panel moves now: under the finger (a drag) or sliding to a detent. The layout counts no cover meanwhile, so the
+   *  map a drag down from full uncovers is drawn live, not the frame the cover left on the canvas. */
+  moving(): boolean {
+    return this.sliding;
+  }
+
   /** The DRAWER's voice line while it stands afloat on the map (the pane closed), or the DOCK's head while it floats
    *  top-right over the map (the pane at rest on its spine, or with no tab yet: dock.css), else null. */
   floating(): HTMLElement | null {

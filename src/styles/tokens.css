@@ -107,3 +107,9 @@
 /* Text size Large: everything × 1.25, Silkscreen at 16 px (whole font pixels at 1×, 2× and 3×, where 15 px is not) */
 #app[data-text='large'], #app[data-text='large'] ~ * { --ts: 1.25; --fs-caps: 16px; }
 
+/* ───────── battery (P7) ───────── */
+/* No backdrop blur on touch: behind a 95%-opaque panel it is barely seen, yet the browser blurs again whatever the map
+   canvas under it draws, every frame. Every panel takes its blur from --blur, so one token turns them all off (on #app
+   and the layers beside it: the modals, the veil) */
+#app[data-input='touch'], #app[data-input='touch'] ~ * { --blur: none; }
+

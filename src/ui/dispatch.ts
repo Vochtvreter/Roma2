@@ -7,6 +7,7 @@ import { fmt, fmtDays, h, img } from './dom';
 import type { Kid } from './dom';
 import { waxSeal } from './tipkit';
 import { exportDue, openExportImport, openModal } from './modals';
+import { keepCopyWhy, platform } from './platform';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
 import { forecast } from '../game/forecast';
 import { view } from '../game/sim';
@@ -128,7 +129,7 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     hl.length ? line('IN THE ANNALES', h('ul', { class: 'disp-list' }, hl.map((e) => h('li', null, h('span', { class: 'disp-date' }, formatRoman(e.day)), ' ', e.text)))) : null,
     line('LOWEST POINT', lowest(r)),
     exportDue(g.state) ? line('KEEP A COPY', h('div', { class: 'disp-await' }, h('span', { class: 'disp-mark' }, '◆'),
-      h('span', { class: 'disp-await-text' }, 'The colony lives only in this browser, and Safari forgets sites left unvisited for a week.'),
+      h('span', { class: 'disp-await-text' }, keepCopyWhy(platform())),   // Safari's week only in a Safari tab
       h('button', { class: 'btn small', onclick: () => openExportImport(g) }, 'Export a copy'))) : null,
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-note' }, 'Time away passes at half speed, up to five years.'),

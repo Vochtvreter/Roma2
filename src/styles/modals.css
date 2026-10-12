@@ -40,8 +40,9 @@
 .modal-text { font-family: var(--font-caps); font-size: var(--fs-caps); min-height: 96px; resize: vertical; word-break: break-all; }
 .modal-input { font-size: var(--fs-lead); }
 .modal-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.modal-menu > * { min-width: 0; }   /* a long entry wraps (below): it never widens its column past the screen */
 .modal-col { display: flex; flex-direction: column; gap: 7px; }
-.modal-col > .btn { justify-content: flex-start; }
+.modal-col > .btn { justify-content: flex-start; white-space: normal; text-wrap: balance; text-align: left; }
 .modal-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; padding: 4px 2px;
   border-bottom: 1px solid rgba(255, 236, 200, .06); cursor: pointer; }
 .modal-row-text { display: flex; flex-direction: column; }

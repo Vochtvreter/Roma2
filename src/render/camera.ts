@@ -211,6 +211,11 @@ export class Motion {
     this.vx = this.vy = this.gx = this.gy = 0;
   }
 
+  /** True while a fling, a glide or a zoom ease still moves the camera (the view keeps drawing, paused or not). */
+  get busy(): boolean {
+    return this.vx !== 0 || this.vy !== 0 || this.gx !== 0 || this.gy !== 0 || this.zoom !== null;
+  }
+
   /** Eases the next frames from scale `s0` to the camera's scale around a device-px anchor. */
   easeZoom(s0: number, ax: number, ay: number): void {
     this.zoom = { s0, ax, ay, t: 0 };

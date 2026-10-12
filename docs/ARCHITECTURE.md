@@ -153,6 +153,8 @@ index.html                         S
 package.json tsconfig.json vite.config.ts .gitignore README.md   S
 .github/workflows/ci.yml deploy.yml                              S
 public/favicon.svg                 S
+public/manifest.webmanifest public/icons/*.png public/sw.js      H   the installable app (§13.11)
+scripts/icons.mjs scripts/precache.ts                            H   the icons from f_aquila; the worker's build step (§13.11)
 src/main.ts                        H   App implements Game: loop, speeds, autosave, catch-up, title/game mode   (350)
 src/game/                          pure simulation — no DOM, no render, no ui imports
   types.ts                         S   frozen types (§4)                                         (620)
@@ -202,6 +204,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   trade.ts                         D   prices, market, caravans, contracts, merchant               (380)
   save.ts                          D   serialize, migrations, prefs, fasti, export/import          (190)
   offline.ts                       D   offlineRun, report                                          (150)
+  loop.ts                          H   the main loop's clock: wall µs in, whole ticks out (§13.8)  (60)
   advisors/engine.ts               E   evaluation, hysteresis, ordering, render, hush/mute        (260)
   advisors/rules-annonae.ts        E   rules 1–6                                                   (230)
   advisors/rules-aquarum.ts        E   rules 7–10                                                  (150)
@@ -258,6 +261,7 @@ src/ui/
   history.ts                       H   layers Back and Esc close (registerBack), the Back sentinel (110)
   pointer.ts                       H   the pointer in use: lastTouch, touchInput, finePointer      (50)
   textsize.ts                      H   Text size Normal/Large: UI-owned key, data-text on #app, onTextSize; parse/read/write pure (90)
+  platform.ts                      H   standalone, iOS, Safari; the Menu's and the title's platform entries; persist, clipboard, fullscreen, the worker (§13.11) (190)
   layout.ts                        H   size classes, hosts, detents, route, reveal; data-* on #app, free rect → view insets (§13.10) (420)
   panels.ts                        I   side panel host, tabs, badges, NEW markers, signatures      (170)
   tabs/edicta.ts                   I   Decisions tab                                               (330)
@@ -284,6 +288,7 @@ tests/
   advisors.test.ts guide.test.ts                                             E                 (260)
   art.test.ts                                                                G                 (50)
   camera.test.ts layout.test.ts sheet.test.ts voice.test.ts focusrow.test.ts   F H            (500)
+  loop.test.ts pwa.test.ts                                                     H              (300)
   autoplayer.ts balance.test.ts contract.test.ts determinism.test.ts perf.test.ts trace.test.ts   J   (900)
 ```
 Approximate total: game 11.0k incl. data, render 4.4k, ui 4.3k incl. CSS, tests 2.6k → ≈ 22k if every budget is maxed, so **budgets are ceilings, not targets**; aim for ≈ 70% of each (≈ 15.5k). Files stay under ~600 lines; split if needed (new files must stay within the owner's directory prefix and be listed in the PR note).
@@ -1550,7 +1555,16 @@ export function defaultLevel(cssSize: number): number;   // 3, or 2 below ZOOM_S
 - `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
 
 ### 12.2 Frame and draw order (`view.ts`)
-`frame()` is called every animation frame by `main.ts`. Order:
+`frame()` is called on every turn of `main.ts`'s loop (§13.8), and draws only when the frame can differ from the last
+(P7, battery): never while the UI covers all of the map (`suspend(true)`: the canvas keeps its last picture), and while
+paused (or under a modal) only when something moves by itself — a fling, glide or zoom ease (`Motion.busy`), a flash,
+the demolish warning, a particle in flight (`Particles.busy`), placing, the title's drift, a season's crossfade or a
+chunk in view waiting its bake (`TerrainPainter.busy`) — or something changed: `invalidate()` (Game.changed, the fonts
+arriving), an input (hover, tap, drag, wheel), a resize, the insets, an overlay, the selection, placing's end, an fx, or
+the state's `day`, `structEpoch` or `censusEpoch` (or the state object itself). What moves only with the clock holds
+still while paused: walkers and birds already did; the marks' bob and the selection ring's pulse now do too. An idle
+frame pays the minimap's held-back redraw (`Minimap.pending`) and bakes an off-screen chunk every third call
+(`TerrainPainter.bakeIdle`). `draws` counts the frames drawn (?dev). Order:
 1. **Terrain chunks**: 4 × 3 offscreen canvases of 28 × 28 tiles, baked per season (ground colours DESIGN §16.2, hash dither ±8% on 20% of pixels, river ripples and foam, clay banks, ore speckles, springs, fossa, survey chalk lines with peg dots for unbuilt active streets). Rebaked on season change (2 s crossfade from the old set), rank change (rings) and `structEpoch` changes that touch streets. Forest is **not** baked (trees are objects).
 2. **Ground layer** (per frame, culled): roads (dirt / paved autotile with kerbs, drawn by `linear.ts`), forum pavement, field furrows and olive rows of rural buildings (these sprites are drawn here, before y-sorting), staked/planned footprints (chalk outline, pegs).
 3. **Overlay** (if active): the overlay's 1 px/tile canvas scaled up **with smoothing on** at 45% alpha.
@@ -1655,8 +1669,16 @@ export class MapView {
   buildingTiles(id: number): Rect | null;             // its footprint as a tile rect
   titleDrift(dtMs: number, s: GameState): void;       // slow diagonal pan used behind the title
   setInputEnabled(on: boolean): void;                 // off under the catch-up veil and modals
+  suspend(on: boolean): void;                         // P7: the UI covers all of the map (layout.ts mapCovered): draw nothing
+  readonly suspended: boolean;
+  invalidate(): void;                                 // P7: something the map shows changed outside the view: draw next frame
+  readonly draws: number;                             // P7: map frames drawn since the page loaded (?dev battery checks)
 }
 ```
+Covered (`suspend(true)`), `frame()` returns at once and `handleFx` drops the bursts, flashes and columns (kept, they
+would all play at once when the map shows again), but keeps a `fire` (a building's flames for a while, not a burst: the
+building whose crackle was heard burns when the map shows); uncovered, the next frame draws, the particles and walkers
+going on from where they stood.
 Camera and the UI: every coordinate in and out is canvas CSS px; `mapRect()` places them in `#app`. `setInsets` never recentres, but clamps at once to the new free rect (at a map edge a wider free rect moves the limit: the step comes with the panel's slide, not with the next drag); with `host: true` (the layout changed shape) the default level is chosen again from the free map unless the player zoomed by hand since `attach`. `attach` picks the default level from min(free width, free height) (phones, landscape phones, docked tablets: 2), except on the COLUMNS host, where `setInsets({ canvasZoom: true })` keeps the canvas-width rule (desktops and 1366×768 laptops: 3) and centres the forum in the free rect. `startPlacing` with `at` glides the ghost into the free map (which ends above the placing banner) by the least it needs (`ensureVisible`, 64 px clear), never when it is there already. The inspector's popup (inspector.ts) glides a pinned target clear only when the UI covers it, when picked and again on a layout change (`Layout.onChange`): `ensureVisible` into the free rect, then `dodge()` (pure, tests/layout.test.ts) clear of what floats over it (the map's tools, the ticker, a phone's band of cards); a target already in view never moves.
 
 Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
@@ -1764,6 +1786,10 @@ hud.ts); on the DOCK `#objective` and `#counsel` move into `#sheet-voice` at the
 in), `#ticker` stays home, and from 960 px wide the wide pane takes `#tray` as its first child (tray.ts `column`).
 P5 (the desktop COLUMNS) added `#side-wide` (⤢, panels.ts: a child of `#side` after `#side-toggle`); on the COLUMNS
 `#view-ctl` stands in `#app` (at the top-left of the map), and the wide panel takes `#tray` as its first child too.
+P7 (the installable app, §13.11) added to `<head>`, no ids: `<link rel="manifest" href="manifest.webmanifest">`,
+`<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">` and the metas `apple-mobile-web-app-capable`,
+`mobile-web-app-capable`, `apple-mobile-web-app-title` (Castra) and `apple-mobile-web-app-status-bar-style`
+(black-translucent: the map runs under the status bar, the chrome inside the safe areas); every URL relative.
 DOM ownership: **H** fills `#hud`, `#tray`, `#objective`, `#counsel`, `#toasts`, `#banner`, `#place-banner`, `#ticker`, `#map-tools` (overlay bar and zoom buttons; the minimap canvas is drawn by F), `#map-col`, the phones' grabber and voice line in `#side` (sheet.ts), `#title-screen`, `#modal-root`, `#tooltip`, `#veil`. **I** fills `#side` (toggle, tabs, body), `#inspector`, `#choice`. Z-order is DESIGN §15.1 (set in CSS by the owner of each element).
 
 ### 13.2 `Game` (`src/ui/types.ts`, scaffold; implemented by `App` in `src/main.ts`, H)
@@ -1934,11 +1960,14 @@ Toasts are only for completions, evolutions, milestones, rank-ups and errors (DE
 ```
 boot: registerAllArt(); prefs = loadPrefs(); initTooltips(); view = new MapView(#map, #minimap, callbacks); ui = new UI(app); ui.build()
       hasSave() ? title (Continue) : title (Found a new colony); the title map = loadGame() ?? newGame({ seed: 42, now })
-frame(t): dt = min(DT_CLAMP, (t − last) / 1000)
+frame(t): schedule()                        // the next turn first: an animation frame, or the covered timer (below)
+  hidden → the clock moves on without counting (the catch-up counts the absence, onVisibility); return
+  turn = advance(clock, t, speed, { run: game & !paused & !modalOpen & !broken, clamp: covered ? COVERED_DT_CLAMP : DT_CLAMP })
+     // game/loop.ts (pure): whole wall µs (rounded timestamps telescope) × speed → owed; ticks = ⌊owed / 1 s⌋,
+     // at most MAX_STEPS (a larger backlog is dropped, as before); dt = the turn's clamped wall time
+  cover(): view.suspend(layout.covered(modalOpen))   // layout.ts mapCovered; uncovered → the timer turn goes back to rAF
   catchup → slice run (§11.5); view.frame; ui.frame; return
-  game & !paused & !modalOpen → acc += dt × speed; steps = 0
-     while acc ≥ 1 && steps < MAX_STEPS: ctx = newCtx(); tick(s, ctx); rates = ctx.rates; fxBuf.push(...ctx.fx); acc −= 1; steps++
-     if steps === MAX_STEPS: acc = 0          // drop the backlog
+  turn.ticks × { ctx = newCtx(); tick(s, ctx); rates = ctx.rates; fxBuf.push(...ctx.fx) }
   fxBuf.push(...drainActionFx()); if fxBuf.length: view.handleFx(fxBuf, s); ui.onFx(fxBuf); fxBuf = []
   view.frame(dt × 1000, s, speed, paused); ui.frame(t)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
@@ -1956,6 +1985,16 @@ focusTile(tile): centres the building on it (its whole footprint) or the tile in
 enter(s): the title comes down first (UI.hideTitle syncs the tab bar and refreshes the layout), then view.attach(s), so the
       default zoom and the forum's centring are for the map the HUD, the panel and the column leave free
 ```
+The loop turns on `requestAnimationFrame` while the map shows; while the UI covers all of it (`view.suspended`: the SHEET
+or the DRAWER full, the DOCK's wide pane under 960 px, a phone's modal sheet) it turns on a timer at `COVERED_HZ` (15,
+the floor is 12) so the browser may skip its frames, and its turns are clamped at `COVERED_DT_CLAMP` (0.25 s) instead
+of `DT_CLAMP` (0.1 s), so a late timer loses no sim time: the colony runs at the chosen speed whatever the rate
+(tests/loop.test.ts: 30 s at 12, 15, 60 and 120 Hz give the same ticks and the same state hash). A layout change
+(`Layout.onChange`) wakes a waiting timer turn onto the next animation frame; a catch-up always runs on animation
+frames. A panel that moves (under the finger, or sliding: `SheetHooks.moving`) covers nothing, so a drag down from a
+full sheet or drawer uncovers the live map (the next timer turn finds it and goes back to animation frames), not the
+picture the cover left on the canvas. `Game.changed()` also invalidates the map (a paused map draws what an action changed); the fonts' `loadingdone`
+does too.
 `?dev` exposes `window.cv = app` and `window.skip(days)` (runs `days` online ticks synchronously).
 
 ### 13.9 CSS ownership and conventions
@@ -1970,6 +2009,9 @@ the left column folds away for the wide panel or `[data-strip]` where the map gi
 spine, ⤢, wide panel and what moves with them (the view control's place, the map tools, the toasts, the event card) are
 `columns.css` (imported last; P5), today's desktop rules of hud.css, left.css, panels.css and map-ui.css standing as
 they were for the docked panel. The Breviarium as a wide pane's first column is tray.css's (`#side > #tray.tray-col`). Before: desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows; the SHEET host's own one-row HUD is `#app[data-host='sheet']` in hud.css, its sheet, bar, voice line, tool column, toasts and placing banner in `sheet.css`; the DRAWER's 44 px HUD row in hud.css and its spine, pane, floating voice line, tool column, card slot, one-row banner and toasts in `drawer.css`; both imported after mobile.css (drawer.css last) so they outrank the rules of mobile.css and panels.css that the 720–899 px tablets still use; the old phone HUD and Res Gestae rules of mobile.css stand under `:where(#app:not([data-host='sheet'], [data-host='drawer']))` and its short-window drawer under `:where(#app:not([data-host='drawer']))`, which keeps their specificity); compact < 560. Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width (a touch screen under 1,280 px gets the two-row HUD for them); `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- Battery (P7, tokens.css): every panel's `backdrop-filter` is `var(--blur)`, which is `none` on `#app[data-input='touch']`
+  and the layers beside it: behind a 95%-opaque panel the blur is barely seen, and it is computed again every frame the
+  map under it draws.
 - Page hygiene (base.css): `#app { overflow: clip }` (script can never scroll the frame; only `#tab-body` scrolls, through `dom.scrollWithin`, never `scrollIntoView`); `touch-action: pan-x pan-y` on `#app > :not(#map)`, `#modal-root`, `#title-screen`, `#veil` (never `#app *`, which would override `#map { touch-action: none }`); a `gesturestart` preventDefault (main.ts); `overscroll-behavior: none` and `text-size-adjust: 100%` on html, body; `-webkit-touch-callout: none` on img; fields of 16 px on touch; ligatures off everywhere (`font-variant-ligatures: no-common-ligatures`: Pixelify Sans draws 'fi' as one glyph that reads as 'A'). The canvas draws text in Silkscreen only, which has no ligatures.
 
 ### 13.10 Layout engine (`src/ui/layout.ts`, H)
@@ -1988,6 +2030,7 @@ export function hostPointer(l: Lesson, host: Host): { open; anchor?; glow; card 
 export function trayHolds(anchor?: string): boolean;                // the SHEET's build tray carries this Aedificia anchor (else: full)
 export function lessonFolds(l: Lesson, host: Host): boolean;        // the lesson arrives folded in the voice line (a tray card's job)
 export function isPhone(host: Host | null): boolean;                // SHEET or DRAWER: the phone widgets
+export function mapCovered(free: Box, host: Host, modal: boolean): boolean;   // P7: no map left at rest, or a phone's modal sheet → view.suspend
 export function drawerWidths(W: number, spine: number): Record<Detent, number>;   // the DRAWER pane's width per detent
 export function clearOf(box: Box, ob: Box, gap?: number): Box;      // the largest part of a box clear of what stands in it
 export function priorityDrops(need: number, room: number, widths: readonly number[]): number;   // the DRAWER's and the DOCK's HUD priority+
@@ -2014,6 +2057,7 @@ export class Layout {
   readonly offered: readonly Detent[]; readonly sheetHeights: Record<Detent, number> | null;
   readonly extents: Record<Detent, number> | null;            // the SHEET's heights, the DRAWER's, the DOCK's or the COLUMNS' widths
   freeRect(): { left: number; top: number; right: number; bottom: number };   // #app px of map the UI leaves free
+  covered(modal: boolean): boolean;                           // P7: mapCovered now, the panel at rest (main.ts asks every turn)
   reveal(selector: string): string;
   onChange(cb: (why: 'classes' | 'detent' | 'free') => void): () => void;
   refresh(): void;                                            // measure now (the title shown or hidden, placing)
@@ -2031,6 +2075,47 @@ export class Layout {
 - **The view control** (DOCK and COLUMNS): `VIEWS` (Urbs · City closed, Mensa · Map & ledger half, Tabularium · Ledgers full), `#view-ctl` (hud.ts: three segments, the one in use pressed and labelled with its Latin name; each one's tooltip and aria-label `Urbs · City`, `Mensa · Map & ledger`, `Tabularium · Ledgers` with its key) in the DOCK's HUD row and, on the COLUMNS, re-hosted into `#app` at the top-left of the map beside the left column (`Hud.mountView`, an `onMount`; columns.css), so the desktop's HUD row and its materials strip stay as they were, keys C, M, I and Shift+E/V/B/P/T/L (`keyAction`, pure; keys.ts) through `moveDetent` and `route` (`from: 'key'`, `shift`).
 - **The COLUMNS** (the desktop: a mouse from 1,280 px, anything from 1,440; P5; `columns.css`). Docked (Mensa, the default) is today's desktop: the 64 px HUD, the 300 px left column (`#left`: the Res Gestae, the counsel, the hover card) and the 380 px panel. `columnsWidths` (pure; `COLUMNS`) gives the panel's width per detent, written as `--cols-half|full` (`Layout.sizeColumns`), and `SheetHost` slides it sideways between them as the DOCK's (`data-rest`; its voice slot stays empty, the left column keeping the Res Gestae and the counsel). Closed (Urbs) it is a **64 px badge spine** at the right edge under the HUD, as tall as its six tab icons (40 px with a mouse, 44 for a finger) with their badges and NEW stickers at 12 px (`#side[data-rest='closed']`; a click opens that tab docked: `route` open from 'tab'; their names in an aria-label there only, `SidePanel.spineNames`: docked or wide the buttons' own words name them, badge and NEW included, as before), `#side-toggle` (◂ ▸) beside it expanding and folding it as before; the free rect ends at the spine (`W − 64`), the map tools, ticker, placing banner and event card keep clear of it (`--side-w` is `--cols-now`); the left column stays as it is. Wide (Tabularium) the panel covers the map but for **630 px of it** (`COLUMNS.map`: the view control, the map tools and the ticker as beside the docked panel), `#tray` its first grid column (`brevColumn`, `clamp(250px, 26%, 340px)`) and the page beside it (two columns from the tab body's 520 px query). `columnsRoom` says how the room is found, and the layout writes it on `#app` for columns.css: from 1,750 px (`left + map + brev + body`) the left column stays beside the map (`W − 940`); under that it folds away while the panel is wide (`[data-fold]`: columns.css hides `#left`, and `--cols-map-l`, where the map begins, is 0; the panel is `W − 630`: x 630–1440 at 1,440 px, a one-column page at 1,366 and 1,280); but never while the opening lessons run (`introRunning`: their card is the left column's counsel; `[data-strip]`: the map gives way to the panel instead, down to a 320 px strip with the minimap and the zoom, the overlay bar and the ticker stepping aside, O still cycling; the UI root has the layout measure again when they begin or end). Leaving wide, the Breviarium column stays until the slide rests (the UI root watches `#side`'s `data-rest`), so the page never lays out again across the wide panel without it. ⤢ (`#side-wide`, panels.ts) hangs under the ▸ toggle on the panel's edge, docked or wide (the 3 × 2 tabs need 365 of the docked header's 378 px): it widens the panel and docks it again (⤡), as I and M do (`aria-pressed` while wide: `SidePanel.syncWide`). Toasts stand clear of the handles and never reach the view control (wide, under it); the event card stands below the view control's row (`top` from its height: 44 px buttons for a finger), wide centred in the map the panel leaves (in the lessons' strip over the page, under the tabs). Placing from wide docks the panel (remembered); asking for wide while placing (I, ⤢, the view control, Shift with a tab's key) ends the placing first (`Layout.setDetent`, the DOCK's too); Esc and Back step wide → docked; the spine is no layer (Esc goes on to the menu). The HUD's materials strip shows each cell's amount, cap (from 90% full) and day's net on one 12 px line while it has the room; `Hud.fitColumns` measures it (refitted when the strip's room or its words change) and, when it overflows, hides the nets (`.no-rate`), then the caps (`.no-cap`), both in the hover cards and the Breviarium; past that the strip scrolls under its fade as before.
 - **The focus row** (`focusrow.ts`, the DOCK and the COLUMNS, `FOCUS_HOSTS`, `keepsFocus`: a click, never a hover): rows carry `data-focus` (`b:<id>` a building or site: works queue, gentes, an advisory with a centring remedy; `w:<type>:<tile>` an Agenda wish; `c:<cat>` a labour category; `decl` the declining homes), one capture-phase listener on `#tab-body` lights the row (`.focus-row`, repainted after rebuilds) and answers on the map: `route({ kind: 'focus' })` first (the medium wide pane docks), then one object centred and flashed, several brought into view (`ensureVisible` of their union) and each flashed. Pure `parseFocus`, `focusRects`, `unionRect`, `focusOfAdvisory`, `keepsFocus` (tests/focusrow.test.ts). On the COLUMNS a works-queue row's click also selects its site (the popup beside it in the free map); hovering a row does nothing.
+
+### 13.11 The installable app (P7: `public/`, `scripts/`, `ui/platform.ts`, H)
+- **Manifest** (`public/manifest.webmanifest`): name *Castra Valeria*, short name *Castra*, `display: standalone`,
+  `start_url` and `scope` `.` (the app's folder: the GitHub Pages sub-path; no `id`, which would resolve against the
+  origin every Pages repo of the account shares), background and theme `#15100d`; icons 192 and 512 (`any`), 512
+  `maskable`, and the favicon SVG. **Icons** (`public/icons/`): `apple-touch-icon-180.png` (iOS: opaque), `icon-192.png`,
+  `icon-512.png`, `icon-512-maskable.png`, painted by `node scripts/icons.mjs` from `f_aquila`'s 32 × 32 rows
+  (`sprites.ts spriteGrid`, loaded through Vite's SSR loader: no browser) at whole-number scales (×5, ×5, ×14; ×9 on the
+  maskable one, inside its 80% safe circle) on the chrome's ground, written with node's zlib and committed.
+- **Service worker** (`public/sw.js`): registered by `main.ts` in production builds only (`import.meta.env.PROD`,
+  `platform.ts registerWorker`, `./sw.js`: its scope is the app's folder). `vite.config.ts` runs `swPlugin()`
+  (`scripts/precache.ts`): after the build is written it lists `dist/` (`precacheFiles`: all but the worker, source
+  maps and a woff whose woff2 is there), hashes their bytes (`buildId`) and writes `BUILD` and `PRECACHE` into
+  `dist/sw.js` (`swSource`, which refuses a template without those lines). Install precaches the folder's page and every
+  listed file, fetched past the HTTP cache (`cache: 'reload'`: an older page Pages' `max-age` left there is never
+  stored beside the new build's files), in the cache `castra-<folder>-<BUILD>` (Cache Storage is the origin's, shared by
+  every Pages repo of the account: the name carries the folder); activate deletes this folder's other caches only and
+  claims the page. A navigation to the app's page (the folder, or its `index.html`) is network first, revalidated
+  (`cache: 'no-cache'`), the answer kept for offline under the folder's URL when it is HTML; a navigation to any other
+  file of the folder (`sw.js`, an icon) is left to the network and never kept as the page; anything else of the folder
+  is cache first; other origins and other folders are never touched (tests/pwa.test.ts runs the written worker over
+  stand-in caches and network). A new build is new bytes, so a new worker and a new cache. An online launch runs the
+  newest page at once; `controllerchange` (not the first install) toasts that the next launch runs the new version only
+  when this page is older than the worker that took over (its own script, main.ts's `import.meta.url`, is in no cache
+  once that worker is activated, the old cache deleted: a launch offline, or one served before the deploy; the
+  controller changes as the activation starts, so the check waits for `activated`).
+- **Platform** (`ui/platform.ts`, pure part tested in tests/pwa.test.ts over probes of `matchMedia` and `navigator`):
+  `isStandalone` (display-mode standalone, fullscreen or minimal-ui, or `navigator.standalone`), `isIOS` (also an
+  iPadOS 'MacIntel' with touch points), `isSafari` (no other browser's brand, HeadlessChrome included), `safariTab`,
+  `keepCopyWhy` (the keep-a-copy reminder: Safari's 7-day rule only in a Safari tab, "this app" in the app; the
+  export toast, the away letter's KEEP A COPY line, How to play), `menuEntries` (Copy save in a browser tab on iOS only,
+  whose Home Screen app keeps its storage apart: an installed app on Android or a desktop shares the browser's; Full
+  screen where `document.fullscreenEnabled`, not iOS, not a mouse; the storage line where `persisted()` exists),
+  `bringLabel` (an iOS Home Screen app with no save), `persistLine`. The app asks `navigator.storage.persist()` once at launch when standalone (and,
+  as before, after the first good save anywhere: `askPersist`, once a session). **The hand-off**: Menu → *Copy save for
+  the Home Screen app* writes `exportSave()` to the clipboard (recorded as an exported copy; with no clipboard the
+  Export / Import sheet opens); the app's title, standalone on iOS with no save, leads with *Bring your colony from
+  Safari*, which reads the clipboard (`pasteText`, waiting at most 10 s on the browser's prompt; a colony founded or
+  loaded meanwhile is left alone, and a second press waits on the first), checks it (`importText`) and loads it;
+  otherwise the Import sheet takes it pasted. *Full screen* (`toggleFullscreen` on
+  `document.documentElement`) reads *Leave full screen* while `document.fullscreenElement` is set.
 
 ---
 
@@ -2147,7 +2232,9 @@ export class Layout {
 | `art.test.ts` | G | always | `REQUIRED_SPRITES` registered, `validateArt()` clean |
 | `camera.test.ts` | F | always | camera insets at DPR 1, 2, 2.625, 3: screen ↔ world round trips, free-rect centring, the clamp keeps 25% of the free rect, `ensureVisibleDelta` 0 inside and minimal outside |
 | `voice.test.ts` | H | always | `awaitingItems` order and filters, the `remedyChip` table (Place for a building remedy, a row's first remedy, none), `voiceAction` per kind of item, `waitingBeyond` (the voice line's '+n') |
-| `layout.test.ts` | H | always | `classify` over the 35 measured window sizes and the design's own (touch, mixed, mouse; tiny), the `route` table, the lessons' table covers every `LessonId`, every lesson's pointer shows on every host and detent (the SHEET's through its `REVEAL` proxies), `keepDetent`, the SHEET's `sheetHeights` (half leaves the tab body 200 px, 160 on the SE in Safari), `snapDetent`, `cycleDetent`, `slotTap` and `BAR_SLOTS`, the inspector's `roomShift` and `dodge` |
+| `layout.test.ts` | H | always | `classify` over the 35 measured window sizes and the design's own (touch, mixed, mouse; tiny), the `route` table, the lessons' table covers every `LessonId`, every lesson's pointer shows on every host and detent (the SHEET's through its `REVEAL` proxies), `keepDetent`, the SHEET's `sheetHeights` (half leaves the tab body 200 px, 160 on the SE in Safari), `snapDetent`, `cycleDetent`, `slotTap` and `BAR_SLOTS`, the inspector's `roomShift` and `dodge`, `mapCovered` (P7: the SHEET and DRAWER full, the DOCK wide under 960 px, a phone's modal) |
+| `loop.test.ts` | H | always | the loop's clock (`game/loop.ts`): 30 s at 5× is 150 ticks and one state hash at 12 and 60 Hz; with speed changes and a pause, 124 ticks and one hash at 12, 15 (covered clamp), 60 and 120 Hz; uneven rates add up exactly; DT_CLAMP drops the time of 250 ms turns, the covered clamp does not; a paused colony keeps its part tick; MAX_STEPS drops a backlog; time never runs backwards |
+| `pwa.test.ts` | H | always | `platform.ts` probes (standalone, iOS, Safari over real user agents), the Safari reminder only in a Safari tab, the Menu's and the title's entries by platform; `scripts/precache.ts` (`precacheFiles`, `buildId`, `swSource` on `public/sw.js`); the written worker run over stand-in caches and network (install past the HTTP cache into `castra-<folder>-<BUILD>`, activate drops only the folder's older caches, the page network first and kept only when it is the app's HTML, another file opened in a tab left alone, offline the kept page); the manifest, `index.html`'s relative links, the icons' sizes, opaque ground and whole-number art (the maskable one inside its safe circle) |
 | `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |
 | `balance.test.ts` | J | `INTEGRATED`; full bands with `BAL_FULL=1` | DESIGN §18.5 |

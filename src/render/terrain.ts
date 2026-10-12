@@ -279,6 +279,7 @@ export class TerrainPainter {
   private mini: HTMLCanvasElement | null = null;
   private miniKey = '';
   private frameNo = 0;
+  private short = false;                                     // the last draw showed a chunk's placeholder (its bake waits)
 
   /** Forget every cache (new or loaded game). */
   reset(): void {
@@ -288,6 +289,20 @@ export class TerrainPainter {
     this.sigKey = this.miniKey = '';
     this.season = this.prev = -1;
     this.fade = 1;
+  }
+
+  /** The ground still changes by itself: a season crossfading, or a chunk in view drawn as its placeholder until its
+   *  bake (one a frame). The view keeps drawing while it does, paused or not. */
+  get busy(): boolean {
+    return this.fade < 1 || this.short;
+  }
+
+  /** While the view skips its idle frames (paused, nothing moving): paints one off-screen chunk of the season shown every
+   *  few calls, as draw() does in the background, so a pan after a long pause meets no placeholder. */
+  bakeIdle(s: GameState): void {
+    if (this.season < 0 || !this.sigs.length || ++this.frameNo % IDLE_BAKE_EVERY !== 0) return;
+    const cur = this.palettes.cur;
+    for (let c = 0; c < NCX * NCY; c++) if (!this.bases.has(`${cur}:${c}`)) { this.chunk(s, cur, c, { n: BAKES_PER_FRAME }); break; }
   }
 
   /** The season being shown, the one fading out (or −1) and the fade-in progress 0..1 (real seasons: snow is Hiems). */
@@ -324,6 +339,7 @@ export class TerrainPainter {
       for (let c = 0; c < NCX * NCY; c++) this.sigs.push(decalSig(s, this.rectOf(c)));
     }
     const budget = { n: BAKES_PER_FRAME };
+    this.short = false;
     const cx0 = Math.floor(vis.x / CH), cx1 = Math.floor((vis.x + vis.w - 1) / CH);
     const cy0 = Math.floor(vis.y / CH), cy1 = Math.floor((vis.y + vis.h - 1) / CH);
     const pass = (season: Pal, bake: boolean): void => {
@@ -331,7 +347,7 @@ export class TerrainPainter {
         for (let cx = Math.max(0, cx0); cx <= Math.min(NCX - 1, cx1); cx++) {
           const c = this.chunk(s, season, cy * NCX + cx, bake ? budget : null);
           if (c) g.drawImage(c, cx * CPX, cy * CPX);
-          else if (bake) g.drawImage(this.miniCanvas(s), cx * CH, cy * CH, CH, CH, cx * CPX, cy * CPX, CPX, CPX);
+          else if (bake) { g.drawImage(this.miniCanvas(s), cx * CH, cy * CH, CH, CH, cx * CPX, cy * CPX, CPX, CPX); this.short = true; }
         }
     };
     const { cur, prev, fade } = this.palettes;

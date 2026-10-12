@@ -1131,6 +1131,12 @@ AWAITING YOU  ▲ Rome would hear our petition for Oppidum.  ● Oil for the ins
 ```
 Awaiting You lists the ready petition first, then the top 3 advisories with their buttons.
 
+**Away from the map is not away** (P7): while a ledger covers the whole map (a phone's full sheet or drawer, a tablet's
+wide pane under 960 px, a phone's letter or menu) the map is not drawn, but the colony runs on at the chosen speed:
+time is counted in whole microseconds whatever the frame rate, so 30 s at 12 frames a second is the same colony as at
+60. **Offline launch**: once the game has loaded, an installed copy (from the Home Screen, or installed from the
+browser) and a browser tab both start without a network; online, a launch runs the newest version.
+
 ---
 
 ## 15. UI and UX
@@ -1212,11 +1218,11 @@ Panels rebuild only when their signature string changes; volatile text updates t
 
 ### 15.5 Modals and dispatches (modals pause the sim)
 - **Parchment dispatches** (light, *letters*): **Founding Dispatch** (new game), **Litterae Ordinis** (away report), **Victory**. Parchment `#eadfc4`, ink `#2b1e15`, code-drawn meander border, red wax seal sprite. *Letters are light, instruments are dark.*
-- **Utility modals** (dark): Menu (Resume · Save · How to play · Export/Import · Sound + volume · Tips on/off · Slow for news · Pause on Periculum · **Text size** *Normal · Large* (§16.1) · Save & quit to title · Abandon with two-click confirm) · Export/Import (base64 textarea, Copy, Load) · Rename · How to play (5 sections: *You decide, the Ordo acts* · *Grain and water in days* · *Build where you like* · *Seasons and the two crunches* · *Time away*).
+- **Utility modals** (dark): Menu (Resume · Save · How to play · Export/Import · *Copy save for the Home Screen app* (an iPhone's or iPad's browser tab, §15.11) · *Full screen* (Android-like touch devices) · Sound + volume · Tips on/off · Slow for news · Pause on Periculum · **Text size** *Normal · Large* (§16.1) · *Storage* (persistent or not) · Save & quit to title · Abandon with two-click confirm) · Export/Import (base64 textarea, Copy, Load) · Rename · How to play (5 sections: *You decide, the Ordo acts* · *Grain and water in days* · *Build where you like* · *Seasons and the two crunches* · *Time away*).
 - There is no defeat modal.
 
 ### 15.6 Title screen
-The live map of the save (or a fresh seed) drifts behind the title. Logo **CASTRA·VALERIA** in Silkscreen with a terracotta extrusion (`0 4px 0 #8a3b13, 0 8px 0 #0a0710, 0 0 40px rgba(242,201,76,.35)`) and a bobbing aquila; kicker `AB CASTRIS AD COLONIAM`; subtitle *From a legion's camp to a colonia of Rome*. Buttons: **Continue** (*"Castra Valeria · Vicus · Id. Mai. AUC DCCCII · 64 souls"*), **Found a new colony** (two-click confirm when a save exists; shows Legacy), **How to play**, **Import a save**. The **Fasti coloniarum** list if any colony is finished. Footer: *"A Roman city-builder · saves automatically · v1.0"*. An unreadable save shows an explanation and an *Export raw save* button.
+The live map of the save (or a fresh seed) drifts behind the title. Logo **CASTRA·VALERIA** in Silkscreen with a terracotta extrusion (`0 4px 0 #8a3b13, 0 8px 0 #0a0710, 0 0 40px rgba(242,201,76,.35)`) and a bobbing aquila; kicker `AB CASTRIS AD COLONIAM`; subtitle *From a legion's camp to a colonia of Rome*. Buttons: **Continue** (*"Castra Valeria · Vicus · Id. Mai. AUC DCCCII · 64 souls"*), **Found a new colony** (two-click confirm when a save exists; shows Legacy), **How to play**, **Import a save**. The **Fasti coloniarum** list if any colony is finished. Footer: *"A Roman city-builder · saves automatically · v1.0"*. An unreadable save shows an explanation and an *Export raw save* button. Opened from the Home Screen of an iPhone or iPad with no colony yet, the title leads with **Bring your colony from Safari** (§15.11).
 
 ### 15.7 Phones and tablets (the SHEET host on a portrait phone, the DRAWER on a landscape phone, the DOCK on a tablet)
 - **Portrait phones** (the bottom sheet of §15.10; the map runs under the notch and the home indicator): the HUD is **one 52 px row**: the Grain and Aqua tablets with their 6 px forecast strips back (days in 18 px with *d*, the trend arrow in its colour), coin over souls in one box, the speed pair **[❚❚][1× ▾]** (pause; the speed in use, whose ▾ opens 1× 2× 5× 10× as a popover that Back and Esc close; before the speed lesson it is the plain 1× button) and ☰. Spirits, dignitas, the date, the materials and the **whole Res Gestae** live in the Breviarium (§15.2), which every figure opens.
@@ -1249,6 +1255,22 @@ Space pause · 1–4 speeds · E/V/B/P/T/L tabs · on a tablet and the desktop *
 - The map is always the whole window; the HUD, the left column and the side panel float on it. The game reads the window as **size classes** (width compact < 600 · medium < 960 · expanded < 1440 · large; height short < 480 · regular < 760 · tall) and **the hands in use** (touch, mixed: a tablet with a trackpad or a touch laptop, mouse), and gives the panel the shape that fits: a **bottom sheet** on a portrait phone, a **right-hand drawer** on a landscape phone or a short window, a **docked pane** on tablets, foldables and small windows, today's **two columns** on a desktop (a mouse from 1280 px, anything from 1440 px). Each shape rests at three places: closed (the map), half (map and ledger), full (the ledger). Rotating a tablet keeps its shape.
 - **Things the game shows you land in the map you can see** (the camera knows the panel's resting place as soon as it starts to move, so its glide runs with the slide): centring on a building (a ledger row, an Annales line, a remedy), the ± zoom, the minimap's frame and a pre-positioned ghost all work in the free part of the map, between the HUD, the left column and the panel, never under them (a ghost also shows above the placing banner). A clicked building the UI covers (the panel, the HUD, the map's buttons, the ticker) glides into view and its card opens beside it, instead of the card hiding; so does one the panel comes over later. A building already in view never moves when clicked. The default zoom suits that free map's shorter side (3 from 700 px; 2 on phones, landscape phones and docked tablets; the desktop columns keep the window-width rule, so laptops and desktops start at 3), and is chosen again when the window changes shape, unless you have zoomed yourself.
 - A portrait phone has its own shape (§15.7: the sheet, the bar, the voice line, the tool column), and so has a landscape phone or a short window (§15.7: the spine, the pane beside it, the floating voice line, the tool column), and a tablet (§15.7: the docked pane headed by the Res Gestae and the counsel line, its spine, its wide pane with the Breviarium), and the desktop (§15.1: today's columns, the badge spine, the wide panel with the Breviarium): the same pieces, one of each, moved from one shape to the other when the device turns or the window changes. Tablets and the desktop name the three resting places (§15.1: *Urbs*, *Mensa*, *Tabularium*).
+### 15.11 Battery and the installed app (P7)
+- **Draw only what can be seen and only when it changes.** A ledger that covers the whole map stops its drawing (the
+  colony runs on: §14); a paused map is drawn again only when something moves (the camera, a flash, a particle, the
+  placing ghost, a season fading) or changes (an action, a hover, a click, a pan or zoom, the window): paused, the map
+  holds still, its marks' bob and the selection's pulse too. On touch screens the panels drop their backdrop blur
+  (95% opaque, it was barely seen and cost a blur every frame).
+- **Install it.** The game is a web app (a manifest, the aquila as its icon on the dark ground, an offline worker): Add
+  to Home Screen on an iPhone or iPad, Install on Android or a desktop browser. It opens without browser bars, offline.
+- **Your colony and the app.** On iPhone and iPad the Home Screen app keeps its own storage, apart from Safari's: a
+  colony begun in Safari is not in it. In Safari, **Menu → Copy save for the Home Screen app** copies the colony in one
+  tap; the app, empty, opens on **Bring your colony from Safari**, which reads it from the clipboard (or takes it
+  pasted). Safari tabs forget a site left unvisited for a week, so the keep-a-copy reminder mentions Safari only there;
+  the app asks once to keep its storage, and the Menu's *Storage* line says whether the browser keeps it. On Android
+  and on a desktop an installed app shares the browser's storage, so neither the copy nor the bring is offered there;
+  Android's Menu offers **Full screen**.
+
 ---
 
 ## 16. Art direction
@@ -1270,7 +1292,7 @@ Space pause · 1–4 speeds · E/V/B/P/T/L tabs · on a tablet and the desktop *
 | `--sev-2` Cave | `#e3843a` | `--sev-3` Periculum | `#e5554a` |
 | `--parchment` | `#eadfc4` | `--ink` | `#2b1e15` |
 
-- Panels: 2 px solid borders, radius 6, hard outer ring `0 0 0 2px #0a0710`, inset 2 px highlights, `backdrop-filter: blur(3px)`. Buttons: bevelled gradients; `.btn.primary` ember → ember-2; `.btn.legate` Tyrian purple gradient for petitions; `.btn.good`, `.btn.danger`. Inset wells `rgba(0,0,0,.24)` with 2 px `#2b1f18` borders.
+- Panels: 2 px solid borders, radius 6, hard outer ring `0 0 0 2px #0a0710`, inset 2 px highlights, `backdrop-filter: blur(3px)` (none on touch screens: §15.11). Buttons: bevelled gradients; `.btn.primary` ember → ember-2; `.btn.legate` Tyrian purple gradient for petitions; `.btn.good`, `.btn.danger`. Inset wells `rgba(0,0,0,.24)` with 2 px `#2b1f18` borders.
 - Major frames (modals, Crossroads card, rank banner, title) use a **code-drawn meander (Greek key) `border-image`** from a 12 × 12 sprite.
 - **Fonts**: Pixelify Sans 400/600 (body, 15 px base) and Silkscreen 400 (kickers, labels, numbers, inscriptions), bundled with @fontsource. Kickers in inscription caps with V for U (`CONSILIVM`, `RES GESTAE`, `NVNTIVS`); no running sentences in Silkscreen. Font smoothing off; `image-rendering: pixelated` on sprites and the map.
 - **The type floor: nothing under 12 px.** Every size is a token of one scale (tokens.css), or a size off it written as `calc(N px × --ts)`:

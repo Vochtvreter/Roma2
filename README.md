@@ -67,7 +67,24 @@ the hands your screen has (the keys with a mouse, the gestures on a touch screen
 The game saves by itself every 20 seconds, when you switch away and when you leave. The colony lives only in this
 browser's `localStorage`, and Safari forgets sites left unvisited for a week, so keep a copy now and then with
 **Menu → Export / Import**; **Import a save** on the title screen brings it back. One browser tab plays the colony at a
-time: when another tab continues it, the first one steps back to the title.
+time: when another tab continues it, the first one steps back to the title. **Menu → Storage** says whether the browser
+has promised to keep it (persistent storage).
+
+### Install as an app
+
+The game is an installable web app: **Share → Add to Home Screen** in Safari on an iPhone or iPad, **Install app** (or
+*Add to Home screen*) in Chrome on Android, the install button in the address bar of Chrome or Edge on a desktop. It
+opens full-window with the aquila as its icon, and once it has loaded it starts without a network (a service worker
+keeps the game's files; a launch with a network runs the newest version). On Android, **Menu → Full screen**
+hides the browser's bars in a tab too.
+
+**Saves in the app and in Safari.** On an iPhone or iPad the Home Screen app keeps its own storage, apart from
+Safari's, so a colony you began in Safari is not in it. To bring it over: in Safari, open the game and press
+**Menu → Copy save for the Home Screen app**; then open the app from the Home Screen and press **Bring your colony from
+Safari** on its title (it reads the clipboard; if the browser will not let it, paste the text into the box that opens
+and press Load). The app keeps its own storage for good (Safari's one-week rule does not apply to it, and it asks the
+browser to keep it), so play on there and keep exporting a copy now and then. On Android and on a desktop an installed
+app shares the browser's storage: nothing to bring over, and neither button shows there.
 
 ## Hosting on GitHub Pages
 
@@ -77,9 +94,10 @@ from the Actions tab. One-time setup in the repository:
 **Settings → Pages → Build and deployment → Source = GitHub Actions**
 
 With "Deploy from a branch" Pages would serve the raw `index.html`, and `/src/main.ts` would 404. The build uses a
-relative base (`./`), so it works under the `/Roma2/` sub-path or any other. Everything is static and client-only:
-there is no server and there are no network calls at runtime. Every sprite is drawn in code and every sound is
-synthesized.
+relative base (`./`), so it works under the `/Roma2/` sub-path or any other: the manifest, the icons and the service
+worker (`sw.js`, whose scope is the app's folder) are all addressed relatively. Everything is static and client-only:
+there is no server and there are no network calls at runtime beyond the game's own files. Every sprite is drawn in code
+and every sound is synthesized.
 
 ## Development
 
@@ -100,6 +118,7 @@ npm run dev        # open the printed URL; add ?dev for window.skip(days), windo
 | `npm run perf` | the wall-clock budgets of `tests/perf.test.ts`: a tick ≤ 1.5 ms median at 600 souls, a five-year absence ≤ 6 s, map generation ≤ 40 ms. Run it on a quiet machine; `PERF_SLACK=2` loosens them |
 | `npm run balance` | the full balance-bot run to the Capitolium on five seeds (`BAL_FULL=1`, slow) |
 | `npm run trace` | a tuning table per seed every 300 days: rank, souls, houses by tier, stores, coin, morale |
+| `node scripts/icons.mjs` | paint the app icons (`public/icons/`) from the aquila sprite again, after the art changes |
 
 CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck`, `npm test` and `npm run build` on every push and
 pull request.
@@ -108,13 +127,14 @@ pull request.
 
 | Path | What lives there |
 |---|---|
-| `src/main.ts` | the app: the fixed-step loop, speeds, autosave, offline catch-up, title and game modes |
+| `src/main.ts` | the app: the fixed-step loop (its clock in `src/game/loop.ts`), speeds, autosave, offline catch-up, title and game modes |
 | `src/game/` | the deterministic simulation, with no DOM, wall clock or ambient randomness: `sim.ts` (one tick), people, housing, economy, construction, events, trade, `save.ts` and `offline.ts` |
 | `src/game/ordo/`, `src/game/advisors/` | the council that governs, and the six advisors with their rules and remedies |
 | `src/game/data/`, `src/game/balance.ts` | content registries (buildings, tiers, ranks, paths, hubs, names) and every tuning number |
 | `src/game/world/` | seeded terrain and river, the castrum site, auto-roads and aqueduct routes |
 | `src/render/` | the canvas map view, overlays, minimap and input; `render/art/` draws every sprite in code |
 | `src/ui/`, `src/styles/` | HUD, side panels (`ui/tabs/`), inspector, advisor card, letters, title screen and keyboard; the CSS |
+| `public/`, `scripts/` | the favicon, the web app manifest, the icons and the offline worker (`sw.js`); the icon painter and the worker's build step (`scripts/precache.ts`, run by `vite.config.ts`) |
 | `tests/` | Vitest suites and the autoplayer bots behind the balance, trace and perf runs |
 | `docs/` | `DESIGN.md` (content and numbers) and `ARCHITECTURE.md` (the code contract) |
 

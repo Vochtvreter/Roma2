@@ -3,7 +3,9 @@
 // Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close. On the phone
 // hosts (the SHEET and the DRAWER) every modal is a full-screen sheet within the safe areas (sheet.css): its head (✕,
 // kicker, title) sticks to the top and its actions to the foot while the body scrolls between them; a letter keeps its
-// parchment and pinned foot.
+// parchment and pinned foot. The Menu carries the platform's entries (platform.ts menuEntries): in an iPhone's or an
+// iPad's browser tab, Copy save for the Home Screen app (that app's storage is apart from the tab's); on an Android-like
+// touch device, Full screen; everywhere the browser can say, whether it keeps the colony (persistent storage).
 import type { Game } from './types';
 import { h } from './dom';
 import type { Kid } from './dom';
@@ -16,6 +18,8 @@ import { finePointer, pressWord, touchInput } from './pointer';
 import { tabShown } from './intro';
 import type { InputClass } from './layout';
 import { TEXT_SIZES, TEXT_SIZE_LABEL, setTextSize, textSize } from './textsize';
+import { copyText, inFullscreen, keepCopyWhy, menuEntries, persistLine, platform, storagePersisted, toggleFullscreen } from './platform';
+import type { Hands } from './platform';
 
 /** A phone host is up, the SHEET or the DRAWER (layout.ts writes it on #app; read from there, as layout.ts reaches
  *  modals through history.ts). */
@@ -156,9 +160,50 @@ function textSizeRow(g: Game): HTMLElement {
     h('div', { class: 'modal-seg' }, btns));
 }
 
-/** The game menu: resume, save, how to play, export/import, sound and volume, prefs, text size, save & quit, abandon. */
+/** The hands the layout found (#app's data-input), else the last pointer's (How to play's words, the Menu's entries). */
+function hands(): Hands {
+  const v = typeof document !== 'undefined' ? document.getElementById('app')?.dataset.input : undefined;
+  return v === 'touch' || v === 'mixed' || v === 'mouse' ? v : touchInput() ? (finePointer() ? 'mixed' : 'touch') : 'mouse';
+}
+
+const COPY_LABEL = 'Copy save for the Home Screen app';
+const COPIED_MS = 4000;
+
+/** Menu → Copy save for the Home Screen app: the colony's text to the clipboard in one tap (counted as an exported copy),
+ *  the button saying so; with no clipboard (or a refusal) the Export / Import sheet shows the text to copy by hand. */
+async function copySave(g: Game, btn: HTMLButtonElement): Promise<void> {
+  g.sfx('click');
+  if (!(await copyText(g.exportSave()))) { openExportImport(g); return; }
+  markExported(Date.now());
+  btn.textContent = 'Copied: open the Home Screen app';   // (no longer than the label: the entry keeps its lines)
+  window.setTimeout(() => { btn.textContent = COPY_LABEL; }, COPIED_MS);
+}
+
+/** Menu → Full screen (Android-like touch devices: menuEntries): the whole page, or back; the words follow
+ *  document.fullscreenElement, also when the browser leaves it by itself (Back, a swipe). Returns the listener's undo. */
+function fullscreenButton(g: Game): { btn: HTMLButtonElement; off: () => void } {
+  const btn = h('button', { class: 'btn', onclick: () => { g.sfx('click'); void toggleFullscreen(); } });
+  const sync = (): void => { btn.textContent = inFullscreen() ? 'Leave full screen' : 'Full screen'; };
+  sync();
+  document.addEventListener('fullscreenchange', sync);
+  return { btn, off: () => document.removeEventListener('fullscreenchange', sync) };
+}
+
+/** The Menu's storage line: whether the browser keeps this colony (navigator.storage.persisted), filled in once it says. */
+function storageRow(): HTMLElement {
+  const sub = h('small', null, '…');
+  void storagePersisted().then((p) => { sub.textContent = persistLine(p); });
+  return h('div', { class: 'modal-row' }, h('span', { class: 'modal-row-text' }, h('span', null, 'Storage'), sub));
+}
+
+/** The game menu: resume, save, how to play, export/import (and in an iOS tab, copy the save for the Home Screen app;
+ *  on an Android-like device, full screen), sound and volume, prefs, text size, storage, save & quit, abandon. */
 export function openMenu(g: Game): void {
   let close: () => void = () => undefined;
+  const plat = menuEntries(platform(), hands(), typeof navigator !== 'undefined' && typeof navigator.storage?.persisted === 'function');
+  const copy = plat.copy ? h('button', { class: 'btn' }, COPY_LABEL) : null;
+  copy?.addEventListener('click', () => { void copySave(g, copy); });
+  const full = plat.fullscreen ? fullscreenButton(g) : null;
   const volLabel = h('span', { class: 'num modal-vol-n' }, `${Math.round(g.prefs.volume * 100)}%`);
   const vol = h('input', {
     type: 'range', min: '0', max: '1', step: '0.05', value: String(g.prefs.volume), class: 'modal-range', 'aria-label': 'Volume',
@@ -176,6 +221,8 @@ export function openMenu(g: Game): void {
       h('button', { class: 'btn', onclick: () => { if (g.save()) toast('Saved.', 'good', 'i_seal'); } }, 'Save'),
       h('button', { class: 'btn', onclick: () => openHowTo(g) }, 'How to play'),
       h('button', { class: 'btn', onclick: () => openExportImport(g) }, 'Export / Import'),
+      copy,
+      full?.btn ?? null,
       h('button', { class: 'btn', onclick: () => openRename(g) }, 'Rename the colony'),
       // a failed save never drops the colony silently: keep a copy first (R24); another tab owning the save is no failure
       h('button', { class: 'btn', onclick: () => { close(); if (g.save()) g.toTitle(); else if (g.mode === 'game') openUnsaved(g); } }, 'Save & quit to title'),
@@ -186,8 +233,9 @@ export function openMenu(g: Game): void {
       toggleRow('Mentor tips', 'Decimus Cassius explains new things', g.prefs.tips, (v) => g.setPref('tips', v)),
       toggleRow('Slow for news', '2× when a choice arrives', g.prefs.slowForNews, (v) => g.setPref('slowForNews', v)),
       toggleRow('Pause on Periculum', 'Stop the clock on a critical warning', g.prefs.pauseOnCritical, (v) => g.setPref('pauseOnCritical', v)),
-      textSizeRow(g)));
-  close = openModal(body, { kicker: 'MENV', title: g.state.name, wide: true });
+      textSizeRow(g),
+      plat.persist ? storageRow() : null));
+  close = openModal(body, { kicker: 'MENV', title: g.state.name, wide: true, onClose: () => full?.off() });
 }
 
 /** The export text area with its Copy button and status line; a copy (button or by hand) is recorded for the
@@ -258,8 +306,7 @@ const BUILD_TEXT: Readonly<Record<'touch' | 'mouse' | 'both', string>> = {
  *  VIEW_HOSTS, read off #app: layout.ts imports this module's Back chain). */
 export function openHowTo(_g: Game): void {
   const app = typeof document !== 'undefined' ? document.getElementById('app')?.dataset : undefined;
-  const input: InputClass = app?.input === 'touch' || app?.input === 'mixed' || app?.input === 'mouse' ? app.input
-    : touchInput() ? (finePointer() ? 'mixed' : 'touch') : 'mouse';
+  const input: InputClass = hands();
   const c = howToControls(input, ['dock', 'columns'].includes(app?.host ?? 'columns'));
   const build = BUILD_TEXT[c.build];
   const gestures = c.gestures ? [
@@ -280,7 +327,7 @@ export function openHowTo(_g: Game): void {
     sec('Grain and water in days', h('p', null, 'The two tablets count days on hand, with the year ahead beneath: green is safe, gold is thin, red is danger. Every warning comes with a remedy.')),
     sec('Build where you like', h('p', null, build)),
     sec('Seasons and the two crunches', h('p', null, 'Aestas dries the wells; Hiems starves the fields. Fill the cisterns in Ver and the horrea before the Kalends of December.')),
-    sec('Time away', h('p', null, 'Time away passes at half speed, up to five years. The Ordo governs and writes you a letter. Your colony lives only in this browser; Safari forgets sites left unvisited for a week, so keep a copy with Menu → Export.')),
+    sec('Time away', h('p', null, `Time away passes at half speed, up to five years. The Ordo governs and writes you a letter. ${keepCopyWhy(platform())} Keep a copy with Menu → Export.`)),
     sec('Controls', controls),
   ), { kicker: 'QVOMODO LVDITVR', title: 'How to play', wide: true });
 }

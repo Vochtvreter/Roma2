@@ -22,7 +22,8 @@
 .title-sub { margin: 18px 0 26px; font-size: calc(clamp(16px, 2.4vw, 21px) * var(--ts)); color: #eadfc4; text-shadow: 0 2px 0 var(--ring); font-style: italic; }
 .title-btns { display: flex; flex-direction: column; gap: 10px; width: min(340px, 100%); }
 .title-btns .btn { width: 100%; }
-.title-continue { flex-direction: column; gap: 3px; padding-top: 8px; padding-bottom: 8px; }
+.title-continue { flex-direction: column; gap: 3px; padding-top: 8px; padding-bottom: 8px; white-space: normal; }
+.title-continue > :first-child { text-wrap: balance; }   /* a long label (Bring your colony…) wraps at Text size Large */
 .title-info { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: .4px; color: #4a2a10; text-shadow: none; white-space: normal; }
 .title-row { display: flex; gap: 10px; }
 .title-row .btn { flex: 1; }

@@ -49,6 +49,11 @@ export class Particles {
     this.cap = coarse ? 300 : 600;
   }
 
+  /** True while any particle is in flight (the view keeps drawing until the last one fades, paused or not). */
+  get busy(): boolean {
+    return this.list.length > 0;
+  }
+
   /** Removes every particle and emitter. */
   clear(): void {
     this.list.length = 0;

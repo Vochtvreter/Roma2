@@ -5,11 +5,19 @@
 // marks → particles → birds → placement ghost → flashes. All coordinates passed in and out are CSS px.
 // The canvas stays full-bleed under the UI. The layout engine (ui/layout.ts) says what the UI covers (setInsets); the
 // rest is the free rect, where centring, the zoom anchor, the clamp, the minimap's rectangle and ensureVisible work.
+// Battery (P7): frame() draws only when a frame can differ from the last. While the UI covers all of the map (suspend:
+// the SHEET or the DRAWER full, the DOCK's wide pane under 960 px, a phone's modal sheet) it draws nothing and the
+// canvas keeps its last picture; the colony runs on (main.ts, loop.ts). While paused it skips the frames where nothing
+// moves (no fling, glide or zoom ease, no flash, particle, placing ghost, demolish warning, title drift or season fade,
+// no chunk waiting its bake) and nothing changed (invalidate: an action, an input, a resize, the insets, an overlay, the
+// selection or the hover; and the state's day and epochs): the paused map holds still, its marks' bob and the selection's
+// pulse with it.
 import type { BuildingId, CoverageLayerId, FxEvent, GameState, OverlayId, PlaceCheck, Rect } from '../game/types';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { H, W, getMap, inBounds } from '../game/map';
 import { derived } from '../game/derived';
 import { getBuilding } from '../game/state';
+import { censusEpoch, structEpoch } from '../game/memo';
 import type { Camera, Push, Xform } from './camera';
 import type { Insets } from './camera';
 import {
@@ -91,6 +99,11 @@ export class MapView {
   private insCss: Insets = NO_INSETS;                // CSS px the UI covers on each side of the canvas (setInsets)
   private zoomed = false;                            // the player zoomed by hand since attach: a new host keeps the level
   private canvasZoom = false;                        // desktop columns: the default zoom follows the canvas width (setInsets)
+  private dirty = true;                              // something the map shows changed since the last draw (invalidate)
+  private sig = '';                                  // the state as last drawn: its day and its structure and census epochs
+  private sigState: GameState | null = null;         // … and the state object itself
+  private covered = false;                           // the UI covers all of the map: nothing is drawn (suspend)
+  private drawn = 0;                                 // map frames drawn since the page loaded (draws)
   /** A road or paving drag turns after its vertical leg (the placing banner's ↕ toggle: a finger has no Shift); Shift
    *  turns it the other way again. */
   verticalFirst = false;
@@ -110,7 +123,7 @@ export class MapView {
       toolDrag: (phase, x, y, shift) => this.onToolDrag(phase, x, y, shift),
       cancel: () => this.cb.onCancel(),
     });
-    if (DEV_SHEET) this.sheet = sheetCanvas((dy) => { this.sheetY = Math.min(0, this.sheetY - dy * this.dpr); });
+    if (DEV_SHEET) this.sheet = sheetCanvas((dy) => { this.sheetY = Math.min(0, this.sheetY - dy * this.dpr); this.dirty = true; });
     this.resize();
   }
 
@@ -123,6 +136,10 @@ export class MapView {
   get overlayLayer(): CoverageLayerId { return this._layer; }
   /** The selected building id, or null. */
   get selected(): number | null { return this._selected; }
+  /** The UI covers all of the map: frame() draws nothing (suspend). */
+  get suspended(): boolean { return this.covered; }
+  /** Map frames drawn since the page loaded (?dev: the battery checks count them over a few seconds). */
+  get draws(): number { return this.drawn; }
 
   // ───────────────────────────── lifecycle ─────────────────────────────
   /** New or loaded game: drop caches, reset modes, the default zoom for the free map, centre on the forum. */
@@ -141,6 +158,7 @@ export class MapView {
     this._selected = this.hoverTile = this.hoverId = this.doomed = this.dragFrom = null;
     this.flashes = [];
     this.zoomed = false;
+    this.dirty = true;
     this.resize();
     this.setZoom(this.defaultLevel());
     this.centerOnForum();
@@ -163,6 +181,7 @@ export class MapView {
     this.cam.scale = scaleFor(this.cam.level, this.dpr);
     clampCamera(this.cam, this.ins);
     this.mini?.invalidate();
+    this.dirty = true;   // (setting the canvas size cleared it)
   }
 
   /** What the UI covers on each side of the canvas, in CSS px (ui/layout.ts, whenever its free rect changes). The camera
@@ -179,6 +198,7 @@ export class MapView {
     if (!same) {
       if (this.s) clampCamera(this.cam, this.ins);
       this.mini?.invalidate();
+      this.dirty = true;
     }
     if (opts?.host && !this.zoomed && this.s) {
       if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
@@ -201,12 +221,19 @@ export class MapView {
     return { left: r.left - a.left, top: r.top - a.top, width: r.width, height: r.height };
   }
 
-  /** Draws one frame (called every animation frame by main.ts). */
+  /** One turn of main.ts's loop (an animation frame; while suspended, its covered timer): draws the frame, unless the UI
+   *  covers all of the map (suspend) or the map is paused and idle (nothing moves, nothing changed: see the header). */
   frame(dtMs: number, s: GameState, speed: number, paused: boolean): void {
     this.s = s;
-    this.time += dtMs;
+    this.time += dtMs;   // (the flashes and the demolish warning run out in real time, drawn or not)
+    if (this.covered) return;
     if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
-    if (this.doomed && this.time > this.doomed.until) this.doomed = null;
+    if (this.doomed && this.time > this.doomed.until) { this.doomed = null; this.dirty = true; }
+    const sig = `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`;
+    if (sig !== this.sig || s !== this.sigState) { this.sig = sig; this.sigState = s; this.dirty = true; }
+    if (paused && !this.dirty && !this.animating()) { this.idle(s); return; }
+    this.dirty = false;
+    this.drawn++;
     if (this._placing) this.place.refresh(s);
     this.motion.step(this.cam, dtMs, this.ins);
     const xf = this.motion.xform(this.cam);
@@ -260,11 +287,39 @@ export class MapView {
     this.mini?.draw(s, this.cam, this.terrain.miniCanvas(s), ov, this._placing !== null, this.time, this.ins);
   }
 
-  /** Routes sim and action fx to particles, actors and flashes (§12.6); `season` crossfades on its own. */
+  /** Routes sim and action fx to particles, actors and flashes (§12.6); `season` crossfades on its own. While the map is
+   *  covered (suspend) the bursts, flashes and columns are dropped: nobody sees them, and kept they would all play at
+   *  once when it shows again. A fire is no burst but a building's state for a while (its flames and smoke): it is kept,
+   *  so the building whose crackle was heard burns when the map shows. */
   handleFx(events: FxEvent[], s: GameState): void {
+    if (events.some((e) => e.kind === 'built' || e.kind === 'ordoPlaced' || e.kind === 'rank')) this.mini?.invalidate();
+    this.dirty = true;
+    if (this.covered) {
+      const fires = events.filter((e) => e.kind === 'fire');
+      if (fires.length) this.particles.handleFx(fires, s, () => undefined);
+      return;
+    }
     this.particles.handleFx(events, s, (r) => this.flashes.push({ r, until: this.time + FLASH_MS, ms: FLASH_MS }));
     this.actors.handleFx(events, s);
-    if (events.some((e) => e.kind === 'built' || e.kind === 'ordoPlaced' || e.kind === 'rank')) this.mini?.invalidate();
+  }
+
+  /** The UI covers all of the map (main.ts asks layout.ts every turn: mapCovered), or no longer does. Covered, frame()
+   *  draws nothing and the canvas keeps its last picture (nothing of it shows); handleFx drops what would play. Shown
+   *  again, the next frame draws at once: the particles and walkers go on from where they stood, and no burst of what
+   *  happened meanwhile replays. */
+  suspend(on: boolean): void {
+    if (on === this.covered) return;
+    this.covered = on;
+    if (on) return;
+    this.flashes = [];
+    this.dirty = true;
+    this.mini?.invalidate();
+  }
+
+  /** Something the map shows changed outside the view (an action, a loaded or changed state, the fonts): the next frame
+   *  draws, paused or not. */
+  invalidate(): void {
+    this.dirty = true;
   }
 
   // ───────────────────────────── camera ─────────────────────────────
@@ -344,6 +399,8 @@ export class MapView {
     this.place.cancel();
     this.dragFrom = null;
     this.doomed = null;
+    this.dirty = true;
+    this.mini?.invalidate();   // (hidden while placing: it shows again with what was placed)
     if (this.prevOverlay) this.setOverlay(this.prevOverlay.o, this.prevOverlay.layer);
     this.prevOverlay = null;
   }
@@ -353,10 +410,12 @@ export class MapView {
     this._overlay = o;
     if (o === 'officia' && layer) this._layer = layer;
     this.mini?.invalidate();
+    this.dirty = true;
   }
 
   /** Selects a building (ring and chevron) or clears the selection. */
   select(id: number | null): void {
+    if (id !== this._selected) this.dirty = true;
     this._selected = id;
   }
 
@@ -421,10 +480,26 @@ export class MapView {
   /** Enables or disables map input (off under the catch-up veil and modals). */
   setInputEnabled(on: boolean): void {
     this.input.enabled = on;
-    if (!on) this.hoverTile = this.hoverId = null;
+    if (!on && (this.hoverTile !== null || this.hoverId !== null)) { this.hoverTile = this.hoverId = null; this.dirty = true; }
   }
 
   // ───────────────────────────── internals ─────────────────────────────
+  /** Something on the map moves by itself this frame, paused or not: the camera (a fling, a glide, a zoom ease), a flash,
+   *  the demolish warning, a particle in flight, the placing ghost and its plots, the title's drift, the ground (a season
+   *  fading, a chunk waiting its bake). What moves only with the clock (walkers, birds, smoke rising, the marks' bob, the
+   *  selection's pulse) holds still while paused. */
+  private animating(): boolean {
+    return this.motion.busy || this.flashes.length > 0 || this.doomed !== null || this._placing !== null || this.particles.busy
+      || this.time < this.titleUntil || this.terrain.busy;
+  }
+
+  /** A frame with nothing to draw: the canvas keeps its picture; the minimap pays a redraw its throttle held back, and
+   *  the ground paints an off-screen chunk now and then. */
+  private idle(s: GameState): void {
+    if (this.mini?.pending) this.mini.draw(s, this.cam, this.terrain.miniCanvas(s), this.overlays.canvas(s, this._overlay, this._layer), this._placing !== null, this.time, this.ins);
+    this.terrain.bakeIdle(s);
+  }
+
   /** The insets in device px (CSS × the canvas's device px per CSS px). */
   private get ins(): Insets {
     const i = this.insCss, k = this.ratio;
@@ -446,12 +521,14 @@ export class MapView {
     const ins = this.ins;
     centerOnFree(this.cam, wx, wy, ins);
     clampCamera(this.cam, ins);
+    this.dirty = true;
   }
 
   private drag(dxCss: number, dyCss: number): void {
     this.cam.x -= (dxCss * this.ratio) / this.cam.scale;
     this.cam.y -= (dyCss * this.ratio) / this.cam.scale;
     clampCamera(this.cam, this.ins);
+    this.dirty = true;
   }
 
   private applyLevel(level: number, anchor?: { sx: number; sy: number }): void {
@@ -465,6 +542,7 @@ export class MapView {
     this.cam.x += before.wx - after.wx;
     this.cam.y += before.wy - after.wy;
     clampCamera(this.cam, this.ins);
+    this.dirty = true;
     if (this.s) this.motion.easeZoom(s0, ax, ay);
   }
 
@@ -477,6 +555,7 @@ export class MapView {
     const tileChanged = tile !== this.hoverTile;
     this.hoverTile = tile;
     this.hoverId = id;
+    this.dirty = true;
     this.cb.onHover(tile, id);
     if (this._placing && tileChanged && this.dragFrom === null) {
       this.mouseGhost = true;
@@ -490,6 +569,7 @@ export class MapView {
    *  appears under a resting mouse makes it 'leave' the map without a move). */
   private onLeave(): void {
     this.hoverTile = this.hoverId = null;
+    this.dirty = true;
     this.cb.onHover(null, null);
     if (this._placing && this.s && this.dragFrom === null && this.mouseGhost) {
       this.place.hover(null, this.s);
@@ -503,6 +583,7 @@ export class MapView {
     if (!s || tile === null) return;
     const id = this.pickBuilding(x, y);
     const p = this._placing;
+    this.dirty = true;
     if (p && touch) { this.place.hover(tile, s); this.mouseGhost = false; }
     if (p?.kind === 'building' && touch) {
       // touch: a tap previews (ghost + verdict); the place banner's Place button confirms

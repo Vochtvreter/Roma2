@@ -546,18 +546,31 @@ export function lessonTarget(l: Lesson): string | null {
   return tab ? `#tab-${tab}` : null;
 }
 
+// ───────────────────────────── the covered map (pure) ─────────────────────────────
+/** The UI covers all of the map (pure; tests/layout.test.ts), so its drawing is suspended (main.ts → view.suspend) while
+ *  the colony runs on: the free rect at rest leaves no map (the SHEET full, from the HUD's foot to the bar; the DRAWER
+ *  full, from the left edge to the spine; the DOCK's wide pane under 960 px, the whole width), or a modal stands on a
+ *  phone host, where every modal is a full-screen sheet (sheet.css). Wide on a DOCK from 960 px or on the COLUMNS a strip
+ *  of live map stays, and a desktop's or a tablet's modal is a card over the dimmed map: drawn (paused, its idle frames
+ *  skipped). The title is no cover either: the map drifts behind its translucent veil. */
+export function mapCovered(free: Box, host: Host, modal: boolean): boolean {
+  return (modal && isPhone(host)) || free.right - free.left < 1 || free.bottom - free.top < 1;
+}
+
 // ───────────────────────────── the engine (DOM) ─────────────────────────────
 /** What an onChange notice is about: the classes or host, the detent, or the free rect. */
 export type LayoutChange = 'classes' | 'detent' | 'free';
 
 /** What the phone hosts' own DOM (sheet.ts) does for the engine: the SHEET's head height (the grabber and the voice line:
  *  all a closed sheet shows); the slide from one extent to another (the SHEET's height, the DRAWER pane's width), ending
- *  at rest on detent `to`, which also puts the voice line where `to` wants it; and the DRAWER's voice line while it
- *  floats on the map (the pane closed), or the DOCK's head afloat beside its spine, else null. */
+ *  at rest on detent `to`, which also puts the voice line where `to` wants it; the DRAWER's voice line while it
+ *  floats on the map (the pane closed), or the DOCK's head afloat beside its spine, else null; and whether the panel is
+ *  moving now (under the finger or sliding: the map it uncovers is live, whatever the detent's free rect says). */
 export interface SheetHooks {
   head(): number;
   slide(fromH: number, toH: number, to: Detent, instant: boolean): void;
   floating(): HTMLElement | null;
+  moving?(): boolean;
 }
 
 const QUERIES = ['(pointer: coarse)', '(any-pointer: fine)', '(any-pointer: coarse)'] as const;
@@ -847,6 +860,13 @@ export class Layout {
 
   /** The #app-relative rect of map the UI leaves free, with the panel at its detent's target (a copy). */
   freeRect(): Box { return { ...this.free }; }
+
+  /** The UI covers all of the map now (mapCovered over the free rect at rest, this host, and whether a modal is open),
+   *  and the panel is not moving (a drag down from full, or a slide, uncovers map the detent's rect does not count):
+   *  main.ts asks every turn and suspends the map's drawing while it does. */
+  covered(modal: boolean): boolean {
+    return this.started && !(this.sheetHooks?.moving?.() ?? false) && mapCovered(this.free, this.cls.host, modal);
+  }
 
   /** The safe area in #app px (a copy): all of #app where #app is inset already; on the DRAWER, inside the notch, the
    *  rounded corners and the home indicator, which its #app runs under. */

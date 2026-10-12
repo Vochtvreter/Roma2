@@ -189,6 +189,13 @@ export function hasSprite(name: string): boolean {
   return ART.has(name);
 }
 
+/** A grid sprite's rows and whether rasterising outlines them (data only, no canvas: the app icons are painted from
+ *  f_aquila's rows in node, scripts/icons.mjs), or null for a procedural or unknown sprite. */
+export function spriteGrid(name: string): { rows: Grid; outline: boolean } | null {
+  const e = ART.get(name);
+  return e?.kind === 'grid' ? { rows: e.rows, outline: e.outline } : null;
+}
+
 /** The declared size of a sprite (no canvas work); 16×16 for unknown names (the checker). */
 export function spriteSize(name: string): { w: number; h: number } {
   const e = ART.get(name);

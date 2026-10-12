@@ -1,5 +1,8 @@
 // src/main.ts — App implements Game: the fixed-step loop, speeds, autosave, offline catch-up, title/game modes
 // (ARCHITECTURE §11.4–11.5, §13.2, §13.8). Owner: WP-H.
+// The loop turns on animation frames while the map shows, and on a COVERED_HZ timer while the UI covers all of it
+// (layout.ts mapCovered → view.suspend: nothing is drawn, the browser may skip its frames); its clock (game/loop.ts)
+// counts whole wall µs either way, so the colony runs at the chosen speed whatever the rate.
 import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/600.css';
 import '@fontsource/silkscreen/400.css';
@@ -21,6 +24,8 @@ import {
 } from './game/save';
 import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
+import { COVERED_DT_CLAMP, COVERED_HZ, advance, startClock, zeroOwed } from './game/loop';
+import type { Clock } from './game/loop';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
 import { idx, tx, ty } from './game/map';
@@ -47,6 +52,7 @@ import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 import type { OpenFrom } from './ui/layout';
 import { isPhone, slimBanner } from './ui/layout';
+import { askPersist, keepCopyWhy, platform, registerWorker } from './ui/platform';
 
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
@@ -64,8 +70,8 @@ class App implements Game {
   mode: Mode = 'title';
   /** The UI root (public for ?dev inspection). */
   readonly ui: UI;
-  private acc = 0;
-  private last = 0;
+  private clock: Clock = startClock(0);
+  private timer = 0;   // the covered loop's next turn (schedule), 0 while the loop runs on animation frames
   private saveTimer = 0;
   private hiddenAt = 0;
   private fxBuf: FxEvent[] = [];
@@ -78,7 +84,6 @@ class App implements Game {
   private broken = false;
   private titleFailed = false;
   private nudged = false;
-  private persistAsked = false;
 
   constructor() {
     registerAllArt();
@@ -115,8 +120,16 @@ class App implements Game {
     // another tab entered a game: it owns the save now (R02); a page restored from the back-forward cache checks too
     window.addEventListener('storage', (e) => { if (e.key === KEYS.owner && this.mode !== 'title' && !ownsSave(this.sid)) this.yieldToOtherTab(); });
     window.addEventListener('pageshow', (e) => { if (e.persisted && this.mode !== 'title' && !ownsSave(this.sid)) this.yieldToOtherTab(); });
+    // the map shows again (a detent, the free map): a turn waiting on the covered timer runs at the next frame instead
+    this.ui.layout.onChange(() => this.wake());
+    // the map's labels are Silkscreen: a paused, idle map drawn before the face arrived draws again with it
+    try { document.fonts?.addEventListener?.('loadingdone', () => this.view.invalidate()); } catch { /* no font events */ }
+    // an app from the Home Screen asks at once to keep its storage (WebKit grants it there; the Menu shows the answer)
+    if (platform().standalone) askPersist();
+    // the offline worker (public/sw.js): built pages only, the dev server serves the sources
+    if (import.meta.env.PROD) registerWorker(import.meta.url, () => toast('A new version of the game is ready: it runs from the next launch.', 'info', 'i_seal', 8000));
     this.ui.showTitle();
-    requestAnimationFrame((t) => { this.last = t; this.frame(t); });
+    requestAnimationFrame((t) => { this.clock = startClock(t); this.frame(t); });
   }
 
   // ───────────────────────────── Game ─────────────────────────────
@@ -146,6 +159,7 @@ class App implements Game {
 
   changed(): void {
     this.ui.changed();
+    this.view.invalidate();   // a paused map draws what an action changed (view.frame skips its idle frames)
   }
 
   act(r: ActionResult, opts?: { okSfx?: SfxName; okToast?: string }): ActionResult {
@@ -347,7 +361,7 @@ class App implements Game {
     this.broken = false;
     claimSave(this.sid);
     setTitleNotice(null);
-    this.acc = 0;
+    this.clock = zeroOwed(this.clock);
     this.saveTimer = 0;
     this.fxBuf = [];
     drainActionFx();
@@ -396,6 +410,8 @@ class App implements Game {
       if (this.mode === 'game') this.write(false);
       return;
     }
+    // the loop's clock starts again from now: the time away is the catch-up's (below), never also the first turn's
+    this.clock = advance(this.clock, performance.now(), 0, { run: false, clamp: 0 }).clock;
     const away = this.hiddenAt > 0 ? Date.now() - this.hiddenAt : 0;
     this.hiddenAt = 0;
     if (this.mode === 'title') { this.ui.showTitle(); return; }   // another tab may have saved meanwhile: re-read the save
@@ -418,10 +434,7 @@ class App implements Game {
     if (!ok && (loud || !this.saveWarned)) toast(SAVE_FAIL, 'bad', undefined, 8000);
     this.saveWarned = !ok;
     this.saveTimer = 0;
-    if (ok && !this.persistAsked) {   // ask the browser not to evict the only copy (Safari drops idle sites' storage)
-      this.persistAsked = true;
-      try { void navigator.storage?.persist?.().catch(() => false); } catch { /* not offered */ }
-    }
+    if (ok) askPersist();   // ask the browser (once) not to evict the only copy (Safari drops idle sites' storage)
     return ok;
   }
 
@@ -446,7 +459,8 @@ class App implements Game {
   private remindExport(): void {
     if (this.nudged || this.mode !== 'game' || !exportDue(this.state)) return;
     this.nudged = true;
-    toast('Keep a copy of the colony: Menu → Export.', 'info', 'i_seal', 10_000, 'It lives only in this browser, and Safari forgets sites left unvisited for a week.');
+    // Safari's week only in a Safari tab: an app from the Home Screen keeps its own storage (platform.ts)
+    toast('Keep a copy of the colony: Menu → Export.', 'info', 'i_seal', 10_000, keepCopyWhy(platform()));
   }
 
   /** The state drifting behind the title when there is no readable save. */
@@ -509,19 +523,52 @@ class App implements Game {
   }
 
   // ───────────────────────────── the loop ─────────────────────────────
+  /** One turn of the loop at wall time `t` (ms): the clock (game/loop.ts) says how many ticks are due, then step(). */
   private frame(t: number): void {
-    requestAnimationFrame((n) => this.frame(n));   // queued first: a throw below cannot stop the loop
-    const dt = Math.min(B.time.DT_CLAMP, Math.max(0, (t - this.last) / 1000));
-    this.last = t;
+    this.schedule();   // queued first: a throw below cannot stop the loop
+    // hidden (only the covered timer still turns then): no time counts here, the catch-up counts it (onVisibility)
+    if (document.hidden) { this.clock = advance(this.clock, t, 0, { run: false, clamp: 0 }).clock; return; }
+    const run = this.mode === 'game' && !this.paused && !this.modalOpen && !this.broken;
+    const turn = advance(this.clock, t, this.speed, { run, clamp: this.view.suspended ? COVERED_DT_CLAMP : B.time.DT_CLAMP });
+    this.clock = turn.clock;
     try {
-      this.step(t, dt);
+      this.step(t, turn.dt, turn.ticks);
     } catch (e) {
       this.fail(e);
     }
   }
 
-  private step(t: number, dt: number): void {
+  /** Queues the next turn: the next animation frame while the map shows; while the UI covers all of it
+   *  (view.suspended), a timer at COVERED_HZ (≥ 12 Hz), which leaves the browser free to skip its frames (nothing on the
+   *  canvas changes) and still runs the colony at full rate (game/loop.ts: its turns lose no sim time). Not during a
+   *  catch-up: its slices run once a turn, and the time away should pass as fast as frames come. */
+  private schedule(): void {
+    if (this.view.suspended && this.mode !== 'catchup') this.timer = window.setTimeout(() => { this.timer = 0; this.frame(performance.now()); }, 1000 / COVERED_HZ);
+    else requestAnimationFrame((n) => this.frame(n));
+  }
+
+  /** The map shows again: a turn waiting on the covered timer runs at the next animation frame instead (one loop
+   *  only: the timer it replaces is the loop's next turn). */
+  private wake(): void {
+    if (!this.timer) return;
+    window.clearTimeout(this.timer);
+    this.timer = 0;
+    requestAnimationFrame((n) => this.frame(n));
+  }
+
+  /** Asks the layout whether the UI covers all of the map (layout.ts mapCovered: the SHEET or the DRAWER full, the DOCK's
+   *  wide pane under 960 px, a phone's modal sheet) and suspends the map's drawing while it does; shown again, the loop
+   *  goes back to animation frames at once. */
+  private cover(): void {
+    const on = this.ui.layout?.covered(this.modalOpen) ?? false;
+    if (on === this.view.suspended) return;
+    this.view.suspend(on);
+    if (!on) this.wake();
+  }
+
+  private step(t: number, dt: number, ticks: number): void {
     const s = this.state;
+    this.cover();
     if (this.mode === 'catchup' && this.run) {
       const run = this.run;
       const t0 = performance.now();
@@ -532,18 +579,12 @@ class App implements Game {
       if (done) this.finishCatchup(run);
       return;
     }
-    if (this.mode === 'game' && !this.paused && !this.modalOpen && !this.broken) {
-      this.acc += dt * this.speed;
-      let steps = 0;
-      while (this.acc >= 1 && steps < B.time.MAX_STEPS) {
-        const ctx = newCtx();
-        tick(s, ctx);
-        this.rates = ctx.rates;
-        for (const e of ctx.fx) this.fxBuf.push(e);
-        this.acc -= 1;
-        steps++;
-      }
-      if (steps === B.time.MAX_STEPS) this.acc = 0;
+    // the ticks the clock found due (game/loop.ts: a game, not paused, no modal, not broken)
+    for (let i = 0; i < ticks; i++) {
+      const ctx = newCtx();
+      tick(s, ctx);
+      this.rates = ctx.rates;
+      for (const e of ctx.fx) this.fxBuf.push(e);
     }
     if (this.mode === 'title') this.view.titleDrift(dt * 1000, s);
     for (const e of drainActionFx()) this.fxBuf.push(e);

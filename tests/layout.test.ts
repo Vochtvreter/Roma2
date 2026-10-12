@@ -6,7 +6,8 @@
 // tablet dock's (P4: the pane's widths, the map it leaves, Back and Esc, the Breviarium column, the tool column, the view
 // control's keys, every lesson's pointer at both of its widths), and the desktop columns' (P5: the spine, docked and wide
 // widths, 630 px of map left beside the wide panel and the left column folding for it under 1750 px, Back and Esc, the
-// lessons' strip of map, How to play's words by the hands in use).
+// lessons' strip of map, How to play's words by the hands in use), and when the UI covers all of the map (P7: the map's
+// drawing is suspended).
 // Headless: no DOM (the Layout class is never built here).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
@@ -14,7 +15,7 @@ import { LESSONS } from '../src/game/intro';
 import {
   BAR_SLOTS, COLUMNS, DEFAULT_DETENT, DETENTS, DOCK, DOCK_TOOLS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, TAB_KEYS, VIEWS,
   VIEW_HOSTS, VISIBLE, aboveDefault, backDetent, barSlot, brevColumn, classify, clearOf, columnsRoom, columnsWidths, cycleDetent, detentsOf, dockExpanded, dockWidths, drawerWidths,
-  fitDetent, hostEntryDetent, inFrame, inputClass, isLayer, isPhone, keepDetent, keyAction, lessonTarget, priorityDrops, reveal, revealOn, route,
+  fitDetent, hostEntryDetent, inFrame, inputClass, isLayer, isPhone, keepDetent, keyAction, lessonTarget, mapCovered, priorityDrops, reveal, revealOn, route,
   sheetHeights, shownAt, slimBanner, slotTap, snapDetent, stepDown, toolColumn, viewOf, visibleOn,
 } from '../src/ui/layout';
 import type { Box, Detent, Host, Media, RouteCtx } from '../src/ui/layout';
@@ -874,5 +875,36 @@ describe('the desktop columns (P5)', () => {
     expect(howToControls(classify(393, 852, TOUCH).input, false).keys).toBe(false);
     expect(howToControls(classify(1366, 1024, PAD_KB).input, true)).toMatchObject({ gestures: true, keys: true, views: true });
     expect(howToControls(classify(1440, 900, TOUCH_PC).input, true)).toMatchObject({ gestures: true, keys: true });
+  });
+});
+
+describe('the covered map (P7: its drawing suspended)', () => {
+  const box = (left: number, top: number, right: number, bottom: number): Box => ({ left, top, right: Math.max(left, right), bottom: Math.max(top, bottom) });
+
+  it('the SHEET full and the DRAWER full leave no map; their other detents do', () => {
+    const H = 852, top = 52, bar = 62, hs = sheetHeights({ H, top, bar, head: 80, h: 'tall' });
+    const sheet = (d: Detent): Box => box(0, top, 393 - 48, H - bar - hs[d]);   // (the tool column at the right)
+    expect(DETENTS.map((d) => mapCovered(sheet(d), 'sheet', false))).toEqual([false, false, true]);
+    const W = 852, ws = drawerWidths(W, DRAWER.spine);
+    const drawer = (d: Detent): Box => box(0, 44, W - DRAWER.spine - ws[d], 393);
+    expect(DETENTS.map((d) => mapCovered(drawer(d), 'drawer', false))).toEqual([false, false, true]);
+  });
+
+  it('the DOCK wide covers the map under 960 px, not from 960 (its strip of live map); the COLUMNS wide never', () => {
+    const dock = (W: number, w: 'medium' | 'expanded', d: Detent): Box => box(0, 56, W - dockWidths(W, w)[d], 1180);
+    expect(DETENTS.map((d) => mapCovered(dock(820, 'medium', d), 'dock', false))).toEqual([false, false, true]);
+    expect(DETENTS.map((d) => mapCovered(dock(744, 'medium', d), 'dock', false))).toEqual([false, false, true]);
+    expect(DETENTS.map((d) => mapCovered(dock(1180, 'expanded', d), 'dock', false))).toEqual([false, false, false]);
+    for (const W of [1280, 1440, 1920]) {
+      const cols = (d: Detent): Box => box(0, 64, W - columnsWidths(W)[d], 900);
+      expect(DETENTS.map((d) => mapCovered(cols(d), 'columns', false)), `${W}`).toEqual([false, false, false]);
+    }
+  });
+
+  it('a modal covers the map on a phone (a full-screen sheet), not on a tablet or a desktop (a card over the map)', () => {
+    const whole = box(0, 0, 800, 600);
+    expect(HOSTS.map((h) => mapCovered(whole, h, true))).toEqual([true, true, false, false]);
+    expect(HOSTS.map((h) => mapCovered(whole, h, false))).toEqual([false, false, false, false]);
+    expect(mapCovered(box(10, 10, 10.5, 600), 'columns', false)).toBe(true);   // under a pixel is no map
   });
 });
