@@ -136,10 +136,4 @@
 .btn:is(.place-keep, .place-vert) { min-width: 44px; font-size: 18px; }
 .btn:is(.place-keep, .place-vert):not(.on) { color: var(--muted); }
 
-/* ───────── the desktop's wide panel (COLUMNS at full: Tabularium) ───────── */
-/* it leaves a 320 px strip of live map beside the left column: the minimap and the zoom row stand there; the overlay
-   bar and the ticker fold away until the panel docks again (O still cycles the overlays; layout.ts MAP_TOOLS) */
-#app[data-host='columns'][data-detent='full'] :is(#overlay-bar, #ticker) { display: none; }
-#app[data-host='columns'][data-detent='full'] #map-tools { grid-template-areas: "mini" "zoom"; grid-template-columns: auto; }
-/* the toasts there stand under the view control (hud.css), which shares the strip's top */
-#app[data-host='columns'][data-detent='full'] #toasts { top: calc(var(--hud-h) + 66px); }
+/* (the desktop COLUMNS' spine and wide panel move these: columns.css) */

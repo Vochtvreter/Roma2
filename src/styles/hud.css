@@ -148,13 +148,7 @@
 .hud-view-btn.on .hud-view-label { display: inline; }
 .hud-view.bare .hud-view-label { display: none; }
 #app:not([data-input='mouse']) .hud-view-btn { min-width: 44px; height: 44px; }
-/* the desktop COLUMNS: not in the HUD (whose row and materials strip stay as they were) but at the top-left of the map
-   beside the left column, as the A-desk-columns mockup has it (hud.ts mountView); in the wide panel's strip of map too */
-#app[data-host='columns'] > #view-ctl {
-  position: absolute; top: calc(var(--hud-h) + 10px); left: 322px; z-index: var(--z-zoom); padding: 3px;
-  background: var(--panel); border: 2px solid var(--line); border-radius: 6px;
-  box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45); backdrop-filter: var(--blur);
-}
+/* (on the desktop COLUMNS it stands at the top-left of the map instead, beside the left column: columns.css) */
 
 /* Below 1760 px the full row no longer fits: the chips tighten, and once five or more materials are on the strip the
    brand shrinks to its aquila (name and rank in its tooltip); below 1440 px it steps aside, so the material strip keeps

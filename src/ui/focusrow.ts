@@ -1,5 +1,6 @@
-// src/ui/focusrow.ts — the focus row (SPEC A graft 3, DESIGN §15.7, ARCHITECTURE §13.10): in the tablet DOCK's docked or
-// wide pane, the last ledger row the player touched that names something on the map stays lit, and the map answers it:
+// src/ui/focusrow.ts — the focus row (SPEC A graft 3, DESIGN §15.7, ARCHITECTURE §13.10): in the docked or wide panel of
+// the tablet DOCK and the desktop COLUMNS, the last ledger row the player touched (a tap or a click: never a hover) that
+// names something on the map stays lit, and the map answers it:
 // one object centred in the free map and flashed, several (a labour category's works, the declining homes) brought into
 // view together and each flashed. Owner: WP-H.
 // Minimal and in one place: a row names its object in a data attribute (data-focus: focusOf* below build the value), and
@@ -7,7 +8,8 @@
 // in the capture phase, before a row's own handler (a works row also selects its site, opening the popup beside it), so a
 // wide pane under 960 px, which leaves no map, docks first (layout.route: focus) and the row's own centring lands in the
 // map that shows. A press on a control inside the row (±, ↑, ✕, a chip) is the control's alone. The highlight survives
-// the tab body's rebuilds (it is painted again after each). Off the DOCK the rows behave as they always did.
+// the tab body's rebuilds (it is painted again after each). On the phones the rows behave as they always did (their
+// focus is the context card).
 // Pure part (tests/focusrow.test.ts): the attribute's values, their parsing, and what tiles they name in a state.
 import type { BuildingId, GameState, LaborCat, Rect, Remedy } from '../game/types';
 import { LABOR_CATS } from '../game/types';
@@ -28,8 +30,13 @@ export type FocusSpec =
   | { kind: 'labour'; cat: LaborCat }
   | { kind: 'declining' };
 
-/** The hosts whose pane keeps a focus row: the tablet DOCK (docked or wide; the desktop's columns may follow in P5). */
-export const FOCUS_HOSTS: readonly Host[] = ['dock'];
+/** The hosts whose pane keeps a focus row: the tablet DOCK and the desktop COLUMNS (docked or wide: the map beside it). */
+export const FOCUS_HOSTS: readonly Host[] = ['dock', 'columns'];
+
+/** Whether a host keeps the focus row (pure); none before the layout runs. */
+export function keepsFocus(host: Host | null): boolean {
+  return host !== null && FOCUS_HOSTS.includes(host);
+}
 
 /** data-focus for a building or a site. */
 export function focusOfBuilding(id: number): string { return `b:${id}`; }
@@ -96,8 +103,8 @@ export function unionRect(rs: readonly Rect[]): Rect | null {
 const CONTROLS = 'button, input, select, textarea, summary, a[href], label';
 const MARGIN = 24;   // CSS px a group of objects keeps from the free map's edges
 
-/** The one listener on the tab body (#tab-body): a click on a row with data-focus, on the DOCK, lights the row and
- *  answers it on the map. */
+/** The one listener on the tab body (#tab-body): a click on a row with data-focus, on the DOCK or the COLUMNS, lights
+ *  the row and answers it on the map. A click only: hovering the rows does nothing. */
 export class FocusRow {
   private key: string | null = null;   // the data-focus of the row the player touched last
   private booked = 0;                  // a repaint is booked for the next frame (the body changed)
@@ -114,14 +121,14 @@ export class FocusRow {
 
   /** Lights the row of the last focus, if it is on the page, on a host that keeps one (and none elsewhere). */
   paint(): void {
-    const on = FOCUS_HOSTS.includes(currentHost() ?? 'columns') && this.key !== null;
+    const on = keepsFocus(currentHost()) && this.key !== null;
     const want = on ? this.body.querySelector<HTMLElement>(`[data-focus="${CSS.escape(this.key ?? '')}"]`) : null;
     for (const el of this.body.querySelectorAll<HTMLElement>('.focus-row')) if (el !== want) el.classList.remove('focus-row');
     if (want && !want.classList.contains('focus-row')) want.classList.add('focus-row');
   }
 
   private onClick(e: MouseEvent): void {
-    if (!FOCUS_HOSTS.includes(currentHost() ?? 'columns') || !(e.target instanceof Element)) return;
+    if (!keepsFocus(currentHost()) || !(e.target instanceof Element)) return;
     const row = e.target.closest<HTMLElement>('[data-focus]');
     if (!row || !this.body.contains(row)) return;
     const ctl = e.target.closest(CONTROLS);

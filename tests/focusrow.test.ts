@@ -1,11 +1,12 @@
 // tests/focusrow.test.ts — the focus row's pure part (src/ui/focusrow.ts, DESIGN §15.7): what a ledger row names on the
 // map (its data-focus value, built and read back), and the tile rects that resolves to in a state: a building's
 // footprint, an Agenda wish's, a labour category's works (the builders' sites), the homes in decline; and their union,
-// which the map brings into view. Headless: the module touches no DOM at import.
+// which the map brings into view; and the hosts whose panel keeps the row (the tablet DOCK, the desktop COLUMNS). Headless:
+// the module touches no DOM at import.
 import { describe, expect, it } from 'vitest';
 import type { Remedy } from '../src/game/types';
 import { LABOR_CATS } from '../src/game/types';
-import { FOCUS_HOSTS, focusOfAdvisory, focusOfBuilding, focusOfLabour, focusOfWish, focusRects, parseFocus, unionRect } from '../src/ui/focusrow';
+import { FOCUS_HOSTS, focusOfAdvisory, focusOfBuilding, focusOfLabour, focusOfWish, focusRects, keepsFocus, parseFocus, unionRect } from '../src/ui/focusrow';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { footprintOf } from '../src/game/derived';
 import { W, idx } from '../src/game/map';
@@ -18,7 +19,12 @@ describe('a row\'s data-focus', () => {
     for (const cat of LABOR_CATS) expect(parseFocus(focusOfLabour(cat))).toEqual({ kind: 'labour', cat });
     expect(parseFocus('decl')).toEqual({ kind: 'declining' });
     for (const junk of [undefined, '', 'b:', 'b:x', 'w:nothing:12', 'w:puteus:', 'c:sleep', 'x:1', 'b:1.5']) expect(parseFocus(junk), String(junk)).toBeNull();
-    expect(FOCUS_HOSTS).toEqual(['dock']);
+    expect(FOCUS_HOSTS).toEqual(['dock', 'columns']);   // (P5: the desktop's panel keeps one too)
+    expect(keepsFocus('columns')).toBe(true);
+    expect(keepsFocus('dock')).toBe(true);
+    expect(keepsFocus('sheet')).toBe(false);
+    expect(keepsFocus('drawer')).toBe(false);
+    expect(keepsFocus(null)).toBe(false);   // before the layout runs
   });
 
   it('an advisory names the building its remedy centres, the Aedilis\' decline every declining home, else nothing', () => {

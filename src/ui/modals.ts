@@ -14,6 +14,7 @@ import { lastExported, markExported } from '../game/save';
 import type { GameState } from '../game/types';
 import { finePointer, pressWord, touchInput } from './pointer';
 import { tabShown } from './intro';
+import type { InputClass } from './layout';
 
 /** A phone host is up, the SHEET or the DRAWER (layout.ts writes it on #app; read from there, as layout.ts reaches
  *  modals through history.ts). */
@@ -224,28 +225,43 @@ function openUnsaved(g: Game): void {
 const kbd = (k: string): HTMLElement => h('kbd', { class: 'kbd' }, k);
 const sec = (title: string, ...kids: Kid[]): HTMLElement => h('section', { class: 'modal-sec' }, h('h3', null, title), ...kids);
 
-/** How to play: five short sections and the controls (DESIGN §15.5). The words follow the hand in use (ui/pointer.ts): a
- *  finger gets the gestures, and the keyboard shortcuts show whenever a mouse or a trackpad is attached (an iPad with a
- *  Magic Keyboard gets both). */
+/** What How to play says about the controls (pure; tests/layout.test.ts), by the window's input class (#app's
+ *  data-input: layout.ts classify): a finger alone (touch) gets the gestures and tap-to-preview placing; a mouse the keys
+ *  and click placing; a tablet with a trackpad or a touch laptop (mixed) both. `views`: the host carries the view
+ *  control (the DOCK, the COLUMNS), so the keys include C, M, I and Shift with a panel's key. */
+export function howToControls(input: InputClass, views: boolean): { gestures: boolean; keys: boolean; views: boolean; build: 'touch' | 'mouse' | 'both' } {
+  const keys = input !== 'touch';
+  return { gestures: input !== 'mouse', keys, views: keys && views, build: input === 'touch' ? 'touch' : input === 'mouse' ? 'mouse' : 'both' };
+}
+
+const BUILD_TEXT: Readonly<Record<'touch' | 'mouse' | 'both', string>> = {
+  touch: 'Pick a work in Aedificia, tap a glowing plot to preview it, then press Place. Gold means a bonus; the laurel marks the Ordo’s own choice. Cancel (or a two-finger tap) stops placing.',
+  mouse: 'Pick a work in Aedificia and click a glowing plot. Gold means a bonus; the laurel marks the Ordo’s own choice. Shift-click places more; Esc or right-click cancels.',
+  both: 'Pick a work in Aedificia. With a finger, tap a glowing plot to preview it, then press Place; with a mouse, click it (Shift-click places more). Gold means a bonus; the laurel marks the Ordo’s own choice. Cancel, a two-finger tap, Esc or a right-click stops placing.',
+};
+
+/** How to play: five short sections and the controls (DESIGN §15.5). The words follow the window's input class
+ *  (howToControls: #app's data-input, written by the layout; the last pointer before it runs): the gestures for a
+ *  finger, the keys for a mouse, both for mixed hands; the views' keys wherever the view control stands (layout.ts
+ *  VIEW_HOSTS, read off #app: layout.ts imports this module's Back chain). */
 export function openHowTo(_g: Game): void {
-  const touch = touchInput();
-  const keys = !touch || finePointer();
-  const build = touch
-    ? 'Pick a work in Aedificia, tap a glowing plot to preview it, then press Place. Gold means a bonus; the laurel marks the Ordo’s own choice. Cancel (or a two-finger tap) stops placing.'
-    : 'Pick a work in Aedificia and click a glowing plot. Gold means a bonus; the laurel marks the Ordo’s own choice. Shift-click places more; Esc or right-click cancels.';
-  const gestures = touch ? [
+  const app = typeof document !== 'undefined' ? document.getElementById('app')?.dataset : undefined;
+  const input: InputClass = app?.input === 'touch' || app?.input === 'mixed' || app?.input === 'mouse' ? app.input
+    : touchInput() ? (finePointer() ? 'mixed' : 'touch') : 'mouse';
+  const c = howToControls(input, ['dock', 'columns'].includes(app?.host ?? 'columns'));
+  const build = BUILD_TEXT[c.build];
+  const gestures = c.gestures ? [
     h('li', null, 'Drag to pan · pinch to zoom'),
     h('li', null, 'Tap a building to inspect it · hold a control for its tooltip'),
     h('li', null, 'Two-finger tap to cancel placing')] : [];
-  const shortcuts = keys ? [
+  const shortcuts = c.keys ? [
     h('li', null, kbd('Space'), ' pause · ', kbd('1'), kbd('2'), kbd('3'), kbd('4'), ' speed'),
     h('li', null, kbd('E'), kbd('V'), kbd('B'), kbd('P'), kbd('T'), kbd('L'), ' panels · ', kbd('O'), ' overlays · ', kbd('R'), ' road'),
-    // the views of a tablet and a desktop (layout.ts VIEWS, VIEW_HOSTS: read off #app, layout.ts imports this module's
-    // Back chain): the panel folded, docked or wide; Shift with a panel's key: wide
-    ...(['dock', 'columns'].includes(document.getElementById('app')?.dataset.host ?? 'columns') ? [h('li', null, kbd('C'), ' Urbs · city · ', kbd('M'), ' Mensa · map & ledger · ', kbd('I'), ' Tabularium · ledgers · ',
+    // the views of a tablet and a desktop (layout.ts VIEWS): the panel folded, docked or wide; Shift with a panel's key: wide
+    ...(c.views ? [h('li', null, kbd('C'), ' Urbs · city · ', kbd('M'), ' Mensa · map & ledger · ', kbd('I'), ' Tabularium · ledgers · ',
       kbd('Shift'), '+', kbd('E'), '…', kbd('L'), ' a panel wide')] : []),
     h('li', null, kbd('W'), kbd('A'), kbd('S'), kbd('D'), ' pan · ', kbd('+'), kbd('−'), ' zoom · ', kbd('H'), ' the forum'),
-    h('li', null, kbd('Esc'), touch ? ' close · cancel · menu' : ' close · cancel · menu · touch: hold for a tooltip')] : [];
+    h('li', null, kbd('Esc'), c.views ? ' close · cancel · dock the panel · menu' : ' close · cancel · menu')] : [];
   const controls = h('ul', { class: 'modal-keys' }, gestures, shortcuts);
   openModal(h('div', { class: 'modal-howto' },
     sec('By your hand, then the Ordo\'s', h('p', null, 'You run a new camp by hand: who works where, what is raised, what is traded. Each chore you have done yourself becomes a duty you may hand to the Ordo Decurionum (Edicta → Mandata), or keep; it then does it every day, even while you are away, and says why on the ticker. Take a duty back whenever you like. You set its course with the charter, the paths, the focus and the edicts, and your own works are always raised first.')),

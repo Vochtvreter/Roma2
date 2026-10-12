@@ -8,12 +8,14 @@
 // five stable slots, on the landscape DRAWER its 56 px spine of icons at the right edge (labels in the long-press tip and
 // the aria-label), re-hosted into #app either way (mount), and a tab opens where layout.go() routes it. On the tablet DOCK
 // they stay in the pane, under its head: a 3×2 grid docked, one row wide, and the 56 px spine of icons when the pane is
-// folded (dock.css; their names in the aria-label there too).
+// folded (dock.css; their names in the aria-label there too). On the desktop COLUMNS the folded panel is a 64 px badge
+// spine of the same buttons (columns.css), and ⤢ (#side-wide, beside the ▸ toggle on the panel's edge) widens it to the
+// Tabularium and docks it again.
 import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
-import type { Host, Layout, OpenFrom } from './layout';
+import type { Detent, Host, Layout, OpenFrom } from './layout';
 import { isPhone, slotTap } from './layout';
 import { clear, h, img, scrollWithin, tip } from './dom';
 import { tabShown } from './intro';
@@ -60,6 +62,7 @@ export class SidePanel {
   private readonly tabsEl: HTMLElement;
   private readonly body: HTMLElement;
   private readonly toggleEl: HTMLButtonElement | null;
+  private readonly wideEl: HTMLButtonElement;   // ⤢ / ⤡: wide and docked (the COLUMNS' panel edge; columns.css)
   private readonly btns = new Map<TabId, { btn: HTMLButtonElement; badge: HTMLElement }>();
   private barKey = '';
   private known: Set<TabId> | null = null;     // revealed tabs the player has already been shown
@@ -92,6 +95,11 @@ export class SidePanel {
     this.toggleEl = root.querySelector<HTMLButtonElement>('#side-toggle');
     this.toggleEl?.addEventListener('click', () => { g.sfx('click'); this.toggle(); });
     this.toggleEl?.setAttribute('aria-expanded', 'true');
+    // ⤢ beside the toggle: the Tabularium (wide) and back to the Mensa (docked), as the view control's I and M do
+    this.wideEl = h('button', { class: 'side-wide', id: 'side-wide', type: 'button', 'aria-label': 'Wide panel (Tabularium · Ledgers)', onclick: () => { g.sfx('click'); this.widen(); } });
+    tip(this.wideEl, () => (this.layout?.detent === 'full' ? 'Mensa · Map & ledger: dock the panel   key M' : 'Tabularium · Ledgers: widen the panel   key I'));
+    root.insertBefore(this.wideEl, this.toggleEl ? this.toggleEl.nextSibling : root.firstChild);
+    this.syncWide('half');
     this.tabsEl.setAttribute('aria-label', 'Panels');
     this.body.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
     this.tabsEl.addEventListener('keydown', (e) => this.onKey(e));
@@ -218,6 +226,32 @@ export class SidePanel {
     this.open(t, undefined, 'tab');
   }
 
+  /** ⤢: the panel wide (the Tabularium), or docked again from wide (the player's own move, as the view control's). */
+  private widen(): void {
+    const L = this.layout;
+    if (!L) return;
+    L.setDetent(L.detent === 'full' ? 'half' : 'full', { user: true });
+    this.syncWide(L.detent);
+  }
+
+  /** The UI root calls it as the detent changes: ⤢ pressed while the panel is wide (columns.css draws ⤢ or ⤡, and its
+   *  tooltip says which way it goes), and the desktop's tab buttons named while they are its badge spine (spineNames). */
+  syncWide(d: Detent | null = this.layout?.detent ?? null): void {
+    this.wideEl.setAttribute('aria-pressed', String(d === 'full'));
+    this.spineNames(d);
+  }
+
+  /** The COLUMNS' tab buttons show their icons alone on the badge spine (closed: columns.css): an aria-label names them
+   *  there; docked or wide their name is their own words, the badge and NEW with them, as the desktop's always was. */
+  private spineNames(d: Detent | null): void {
+    if (this.named) return;   // the DRAWER's and the DOCK's carry theirs always
+    const spine = this.layout?.host === 'columns' && d === 'closed';
+    for (const [t, { btn }] of this.btns) {
+      if (spine) btn.setAttribute('aria-label', `${PANELS[t].label} · ${PANELS[t].sub}`);
+      else btn.removeAttribute('aria-label');
+    }
+  }
+
   /** Forces a signature check on the next frame (Game.changed). */
   poke(): void {
     this.last = -Infinity;
@@ -258,7 +292,7 @@ export class SidePanel {
       const btn = h('button', {
         class: `side-tab${on ? ' on' : ''}${isNew ? ' fresh' : ''}`, role: 'tab', id: `tab-${t}`, type: 'button',
         'aria-selected': String(on), 'aria-controls': 'tab-body', tabindex: on ? '0' : '-1', 'data-tab': t,
-        'aria-label': this.named ? `${p.label} · ${p.sub}` : null,   // the DRAWER's and the DOCK's spine show the icon alone
+        'aria-label': this.named ? `${p.label} · ${p.sub}` : null,   // the DRAWER's and the DOCK's spine show the icon alone (the COLUMNS': spineNames)
         onclick: () => { this.g.sfx('click'); this.tap(t); },
       },
       img(p.icon, 2, 'side-tab-ico'),
@@ -268,6 +302,7 @@ export class SidePanel {
       this.btns.set(t, { btn, badge });
       this.tabsEl.appendChild(btn);
     }
+    this.spineNames(this.layout?.detent ?? null);
     this.body.setAttribute('aria-labelledby', `tab-${this.cur}`);
   }
 

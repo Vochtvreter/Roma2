@@ -219,13 +219,7 @@
 #app[data-host='dock'] #side:has(> #tray.tray-col) > .sheet-voice { grid-column: 2; grid-row: 1; max-height: none; }
 #app[data-host='dock'] #side:has(> #tray.tray-col) > #tabs { grid-column: 2; grid-row: 2; }
 #app[data-host='dock'] #side:has(> #tray.tray-col) > #tab-body { grid-column: 2; grid-row: 3; }
-#app[data-host='dock'] #side > #tray.tray-col {
-  grid-column: 1; grid-row: 1 / -1; position: static; width: auto; max-height: none; min-height: 0;
-  border: 0; border-right: var(--border-w) solid var(--line); border-radius: 0; box-shadow: none; animation: none;
-  background: rgba(0, 0, 0, .16);
-}
-#app[data-host='dock'] #tray.tray-col :is(.tray-x, .tray-grip) { display: none; }
-#app[data-host='dock'] #tray.tray-col .tray-head { min-height: 44px; }
+/* (the column itself: tray.css) */
 
 /* ───────── what stands on the map ───────── */
 /* the phones' tool column under 960 px wide (sheet.css shares its buttons and popovers): at the right edge of the free

@@ -18,7 +18,9 @@
 // The DOCK is no phone (no grabber, no drag: its view control, spine and keys move it), but its pane slides sideways the
 // DRAWER's way between its widths (layout.dockWidths: the spine, docked, wide), and the same slot heads it: there it
 // holds the left column folded in, the Res Gestae panel (#objective, in its one-line form) over the counsel line, while
-// the ticker stays on the map; folded to the spine, dock.css floats the head top-right over the map.
+// the ticker stays on the map; folded to the spine, dock.css floats the head top-right over the map. The desktop COLUMNS'
+// panel slides the same way between its widths (layout.columnsWidths: the badge spine, today's 380 px, wide), its slot
+// empty (the left column keeps the Res Gestae and the counsel).
 import type { Game } from './types';
 import type { Detent, Host, Layout, SheetHooks } from './layout';
 import { DETENT_NAMES, cycleDetent, isPhone, snapDetent } from './layout';
@@ -142,14 +144,16 @@ export class SheetHost implements SheetHooks {
   }
 
   // ───────────────────────────── internals ─────────────────────────────
-  /** The panel slides between its extents on this host: the phones' sheet and drawer, the DOCK's pane. */
+  /** The panel slides between its extents on this host: the phones' sheet and drawer, the DOCK's pane, the COLUMNS'
+   *  panel (its spine, docked and wide widths). */
   private slides(): boolean {
-    return isPhone(this.hostNow) || this.hostNow === 'dock';
+    return this.hostNow !== null;
   }
 
-  /** The panel slides sideways (its extent a width): the DRAWER's pane and the DOCK's; the SHEET goes up and down. */
+  /** The panel slides sideways (its extent a width): the DRAWER's pane, the DOCK's and the COLUMNS'; the SHEET goes up
+   *  and down. */
   private sideways(): boolean {
-    return this.hostNow === 'drawer' || this.hostNow === 'dock';
+    return this.hostNow !== null && this.hostNow !== 'sheet';
   }
 
   /** The host changed: on a phone the counsel and the ticker move into the voice line's slot; on the DOCK the Res Gestae

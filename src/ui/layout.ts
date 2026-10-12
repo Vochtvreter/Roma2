@@ -21,12 +21,15 @@
 // right: its head the one-line Res Gestae and the counsel line (the left column folded in), then the tab bar and the body;
 // closed it folds to a 56 px spine of tab icons (the head afloat top-right over the map), full it is wide (the whole
 // width under 960 px, all but a 320 px strip of live map from 960, the Breviarium its first column there). Its widths are
-// worked out here (dockWidths) and slid sideways by sheet.ts; the inspector stays a popup beside its target. COLUMNS
-// keeps today's panel, measured from today's CSS (panels.css, left.css), wide at full. The DOCK and the COLUMNS carry the
-// three-way view control (VIEWS: Urbs, Mensa, Tabularium; keys C, M, I, keyAction).
+// worked out here (dockWidths) and slid sideways by sheet.ts; the inspector stays a popup beside its target. The COLUMNS
+// (the desktop, P5; columns.css) keep today's left column and 380 px panel; closed the panel folds to a 64 px badge spine
+// at the right edge, full it is wide over the map, leaving 630 px of it, with the Breviarium its first column (under
+// 1750 px there is no room for the left column beside them: it folds away while the panel is wide, columnsRoom): widths
+// worked out here (columnsWidths), slid sideways by sheet.ts as the DOCK's. The DOCK and the COLUMNS carry the three-way view control
+// (VIEWS: Urbs, Mensa, Tabularium; keys C, M, I, keyAction).
 import { TABS } from '../game/types';
 import type { TabId } from '../game/types';
-import { LESSONS, lessonPointer } from '../game/intro';
+import { LESSONS, introRunning, lessonPointer } from '../game/intro';
 import type { Lesson, LessonId } from '../game/intro';
 import type { Game } from './types';
 import type { SidePanel } from './panels';
@@ -150,7 +153,8 @@ export function aboveDefault(d: Detent, host: Host): boolean {
 }
 
 /** True when `d` is a layer Back and Esc close (history.ts; pure): a detent above the host's default; on the DOCK any
- *  detent but its docked pane, so the spine and the wide pane both come back to it (backDetent). */
+ *  detent but its docked pane, so the spine and the wide pane both come back to it (backDetent). The desktop COLUMNS'
+ *  spine is no layer: closed is a view the player chose there (Urbs), so Esc from it goes on to the menu. */
 export function isLayer(d: Detent, host: Host): boolean {
   return host === 'dock' ? d !== DEFAULT_DETENT.dock : aboveDefault(d, host);
 }
@@ -275,9 +279,44 @@ export function dockWidths(W: number, w: WClass): Record<Detent, number> {
   return { closed: Math.min(DOCK.spine, half), half, full };
 }
 
-/** Whether the Breviarium stands as the first column of the panel (pure): the DOCK's wide pane from 960 px wide. */
+// ───────────────────────────── the desktop columns (pure) ─────────────────────────────
+/** The desktop COLUMNS (SPEC A §1 DESKTOP, DESIGN §15.1): today's left column (10 + 300 px: x10–310) and 380 px panel;
+ *  folded, a 64 px badge spine at the right edge; wide (Tabularium), the panel over the map, its Breviarium column first
+ *  (at least `brev` px) and the page beside it, leaving `map` px of live map (SPEC A's "wide: 100% − 630 px": the view
+ *  control, the map tools, the ticker and the placing banner all fit there as beside the docked panel). Beside the left
+ *  column that takes `left + map + brev + body` = 1750 px for a page in two columns (`body`: the tab body's 520 px
+ *  container query, its padding, a thin scrollbar and the panel's border); a narrower window folds the left column away
+ *  while the panel is wide (its Res Gestae and what awaits you stand in the Breviarium), the map at the left edge, unless
+ *  the opening lessons speak in it: then the map gives way, down to a 320 px `strip` (columnsRoom). */
+export const COLUMNS = { left: 310, panel: 380, spine: 64, map: 630, strip: 320, brev: 250, body: 560 } as const;
+
+/** How the COLUMNS make room for the wide panel (pure; the layout writes data-fold or data-strip on #app for
+ *  columns.css): 'beside' from 1750 px wide, the left column, 630 px of map and the panel side by side; under that
+ *  'fold', the left column folds away while the panel is wide and the 630 px of map stand at the left edge; but never
+ *  while the opening lessons run (`lessons`), whose card speaks in the left column: 'strip', the map giving way to the
+ *  panel beside the left column, down to a 320 px strip (SPEC A §7's wide at 1440 px). */
+export type ColumnsRoom = 'beside' | 'fold' | 'strip';
+export function columnsRoom(W: number, lessons = false): ColumnsRoom {
+  if (W >= COLUMNS.left + COLUMNS.map + COLUMNS.brev + COLUMNS.body) return 'beside';
+  return lessons ? 'strip' : 'fold';
+}
+
+/** The COLUMNS panel's width at each detent (pure), for #app's width `W` (`lessons`: the opening lessons run): closed
+ *  the spine; half today's 380 px panel; full all but the 630 px of map (and the left column beside it, columnsRoom),
+ *  or, in a strip, the Breviarium and a two-column page as far as a 320 px strip of map allows; never narrower than half.
+ *  (The panel's width alone: a lesson begun or ended changes only how the room is found.) */
+export function columnsWidths(W: number, lessons = false): Record<Detent, number> {
+  const half = Math.min(Math.round(W), COLUMNS.panel), room = columnsRoom(W, lessons);
+  const full = room === 'fold' ? W - COLUMNS.map
+    : room === 'beside' ? W - COLUMNS.left - COLUMNS.map
+    : Math.min(COLUMNS.brev + COLUMNS.body, W - COLUMNS.left - COLUMNS.strip);
+  return { closed: Math.min(COLUMNS.spine, half), half, full: Math.max(half, Math.round(full)) };
+}
+
+/** Whether the Breviarium stands as the first column of the panel (pure): the wide pane of the DOCK from 960 px wide, and
+ *  of the COLUMNS. */
 export function brevColumn(host: Host, w: WClass, d: Detent): boolean {
-  return host === 'dock' && d === 'full' && dockExpanded(w);
+  return d === 'full' && (host === 'columns' || (host === 'dock' && dockExpanded(w)));
 }
 
 /** Whether the host carries the phones' tool column ([Via][Mappae][+][−][⌂], mapbar.ts MapColumn), the overlay bar in
@@ -384,7 +423,8 @@ function openDetent(tab: TabId, from: OpenFrom | undefined, shift: boolean, c: R
  *  docked layout's map (in a 320 px strip the banner lost its ✕), and cancelling goes wide again. A focus docks the
  *  DOCK's wide pane under 960 px, which leaves no map at all, and does not remember it (SPEC A §7: a row's "show on map"
  *  docks the pane and its popup shows; the pane stays docked, and Esc then closes the popup). A tab opens part-way on a
- *  phone (full for the long ledgers), docked elsewhere unless already wide. A lesson follows LESSON_VIEW. */
+ *  phone (full for the long ledgers), docked elsewhere unless already wide. A lesson follows LESSON_VIEW (on the COLUMNS
+ *  its card, in the left column, always shows: the left column never folds while the lessons run, columnsRoom). */
 export function route(i: Intent, c: RouteCtx): Route {
   const phone = c.host === 'sheet' || c.host === 'drawer';
   const keep: Route = { detent: c.detent, remember: false, card: false };
@@ -620,6 +660,9 @@ export class Layout {
   private heights: Record<Detent, number> | null = null;   // the SHEET's height at each detent (sizeSheet)
   private widths: Record<Detent, number> | null = null;    // the DRAWER pane's width at each detent (sizeDrawer)
   private dockW: Record<Detent, number> | null = null;     // the DOCK pane's width at each detent (sizeDock)
+  private colsW: Record<Detent, number> | null = null;     // the COLUMNS panel's width at each detent (sizeColumns)
+  private room: ColumnsRoom | null = null;     // how the COLUMNS make room for the wide panel (data-fold, data-strip)
+  private lessons = false;                     // the opening lessons run (their card is the left column's counsel)
   private sheetHooks: SheetHooks | null = null;
   private card: HTMLElement | null = null;     // the card docked in a phone's slot (dock): the context card or the event card
   private dockPx = -1;                         // what stands on the SHEET's bar, as written to --dock-h
@@ -687,8 +730,8 @@ export class Layout {
   /** The SHEET's height above the bar at each detent (#app px, a copy), or null on any other host. */
   get sheetHeights(): Record<Detent, number> | null { return this.heights ? { ...this.heights } : null; }
   /** The sliding panel's extent at each detent (#app px, a copy): the SHEET's height above the bar, the DRAWER pane's
-   *  width beside the spine, the DOCK pane's width at the right edge; null on the COLUMNS. sheet.ts slides between these
-   *  (and drags the phones'). */
+   *  width beside the spine, the DOCK pane's and the COLUMNS panel's width at the right edge. sheet.ts slides between
+   *  these (and drags the phones'). */
   get extents(): Record<Detent, number> | null { const e = this.extentsNow(); return e ? { ...e } : null; }
   /** What stands on the SHEET's bar at rest, in px (also --dock-h on #app): the placing banner while placing, a card
    *  docked in the sheet's slot, else the sheet at its detent; 0 on any other host. The tool column rides on it. */
@@ -717,6 +760,13 @@ export class Layout {
    *  remembering route kept is no longer the way back. */
   setDetent(d: Detent, opts: { instant?: boolean; fromH?: number; user?: boolean } = {}): void {
     const to = fitDetent(d, this.det, this.cls.host, this.cls.tiny);
+    // placing wants the docked layout's map (route: placing docks a wide pane): the DOCK's or the COLUMNS' pane going wide
+    // while placing (I, ⤢, the view control, Shift with a tab's key) ends the placing first, as the player turns to the
+    // ledgers; its end may have put back the wide pane placing had docked
+    if (to === 'full' && this.det !== 'full' && !isPhone(this.cls.host) && this.g.view.placing !== null) {
+      this.g.cancelPlacing();
+      if (this.detent === 'full') return;   // (the getter: cancelPlacing moved it)
+    }
     const hs = this.extentsNow(), sheet = hs ? this.sheetHooks : null;
     this.lifted = null;   // whoever raised it for a while (lift), it is someone else's move now
     if (opts.user) this.kept = null;
@@ -895,6 +945,14 @@ export class Layout {
     // the host's DOM in place before anything is measured (a DOCK turned from 820 to 1180 px wide trades its tool column
     // for the minimap: a change of width class remounts too)
     if (host || (!first && c.w !== was.w)) for (const m of this.mounts) this.runMount(m);
+    // how the COLUMNS make room for the wide panel (columnsRoom): under 1750 px the left column folds away while it is
+    // wide (data-fold), unless the opening lessons speak in it: the map then gives way to a strip (data-strip)
+    this.lessons = introRunning(this.g.state);
+    const room = c.host === 'columns' ? columnsRoom(W, this.lessons) : null;
+    if (room !== this.room) {
+      this.room = room;
+      for (const k of ['fold', 'strip'] as const) { if (room === k) this.app.dataset[k] = ''; else delete this.app.dataset[k]; }
+    }
     // the host's default (hostEntryDetent): entering the SHEET shows the map, the sheet closed, unless a tab was opened
     // just now. A tiny sheet has no half (full instead), and a full forced so goes back to half once the window allows it
     const k = hostEntryDetent(this.det, this.forced, first ? null : was.host, c.host, c.tiny, performance.now() - this.openedAt <= JUST_OPENED_MS);
@@ -904,9 +962,10 @@ export class Layout {
     if (turned && k.detent !== 'closed') this.lastOpen = k.forced ? 'half' : k.detent;
     if (shape || turned) this.write();
     if (this.side.expanded !== (this.det !== 'closed')) this.side.show(this.det !== 'closed', true);
-    const sh = this.sizeSheet(H), dw = this.sizeDrawer(W), kw = this.sizeDock(W), hs = sh ?? dw ?? kw;   // (each drops its properties off its host)
-    // at rest there (and on the DOCK when its width class changes: the pane's widths change with it)
-    if (hs && (turned || host || first || (kw && c.w !== was.w)) && this.sheetHooks) this.sheetHooks.slide(hs[this.det], hs[this.det], this.det, true);
+    const sh = this.sizeSheet(H), dw = this.sizeDrawer(W), kw = this.sizeDock(W), pw = this.sizeColumns(W);   // (each drops its properties off its host)
+    const hs = sh ?? dw ?? kw ?? pw;
+    // at rest there (and on the DOCK and the COLUMNS when the width class changes: the panel's widths change with it)
+    if (hs && (turned || host || first || ((kw || pw) && c.w !== was.w)) && this.sheetHooks) this.sheetHooks.slide(hs[this.det], hs[this.det], this.det, true);
     this.writeDock(H);
     this.safe = this.safeIn(W, H);
     const free = this.measure(W, H), ins = this.insets(free);
@@ -936,11 +995,11 @@ export class Layout {
     return isPhone(this.cls.host) && shown(this.card) ? this.card : null;
   }
 
-  /** The sliding panel's extents at each detent now: the SHEET's heights, the DRAWER's and the DOCK's widths; null on the
-   *  COLUMNS. */
+  /** The sliding panel's extents at each detent now: the SHEET's heights, the DRAWER's, the DOCK's and the COLUMNS'
+   *  widths. */
   private extentsNow(): Record<Detent, number> | null {
     const h = this.cls.host;
-    return h === 'sheet' ? this.heights : h === 'drawer' ? this.widths : h === 'dock' ? this.dockW : null;
+    return h === 'sheet' ? this.heights : h === 'drawer' ? this.widths : h === 'dock' ? this.dockW : this.colsW;
   }
 
   /** Writes what stands in a phone's slot: #app[data-card] while a docked card shows (the voice line steps aside:
@@ -1034,6 +1093,25 @@ export class Layout {
     return this.dockW;
   }
 
+  /** The COLUMNS panel's width at each detent (columnsWidths over #app's width and width class), written on #app as
+   *  --cols-half and --cols-full for columns.css (the panel, and what stands beside it on the map keeps clear of it);
+   *  null (and the properties gone) on any other host. */
+  private sizeColumns(W: number): Record<Detent, number> | null {
+    const st = this.app.style;
+    if (this.cls.host !== 'columns') {
+      if (this.colsW) { st.removeProperty('--cols-half'); st.removeProperty('--cols-full'); this.colsW = null; }
+      return null;
+    }
+    const ws = columnsWidths(W, this.lessons);
+    const was = this.colsW;
+    if (!was || DETENTS.some((d) => ws[d] !== was[d])) {
+      this.colsW = ws;
+      st.setProperty('--cols-half', `${ws.half}px`);
+      st.setProperty('--cols-full', `${ws.full}px`);
+    }
+    return this.colsW;
+  }
+
   /** The free rect at rest, in #app px: below the HUD, then per host. The SHEET: above the sheet at its detent's height
    *  (sizeSheet: never its slide) and the bar under it, and left of the tool column; a card docked in the sheet's slot
    *  stands in the sheet's place (the free map ends above it); while placing the sheet steps aside and the placing
@@ -1044,8 +1122,9 @@ export class Layout {
    *  beside a tall card): the docked card, else the floating voice line while the pane is closed (the banner while
    *  placing, as everywhere). The DOCK: left of the pane at its detent's width (dockWidths: the spine, the docked pane, or
    *  the wide one, which leaves no map under 960 px and a 320 px strip from 960); the pane stays while placing; clear of
-   *  the head afloat beside the spine (clearOf: below it, or left of a tall one). The COLUMNS, from today's CSS: left of
-   *  the panel unless it is folded (its box without the slide: offset* ignore transforms), right of the left column.
+   *  the head afloat beside the spine (clearOf: below it, or left of a tall one). The COLUMNS: left of the panel at its
+   *  detent's width (columnsWidths: the badge spine, today's 380 px panel, the wide one), right of the left column
+   *  unless it folds away for the wide panel (under 1750 px, columnsRoom: columns.css hides it, the map at the left edge).
    *  What floats over the free map (the map's tools, the ticker, the view control) is not taken out: the inspector steps
    *  a target clear of it. */
   private measure(W: number, H: number): Box {
@@ -1088,8 +1167,8 @@ export class Layout {
         box = clearOf(box, { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top }, CARD_GAP);
       }
     } else {
-      const side = this.sideEl;
-      if (shown(side) && this.det !== 'closed') box.right = Math.min(box.right, side.offsetLeft);
+      const pane = this.colsW && this.paneShown() ? this.colsW[this.det] : 0;
+      box.right = Math.min(box.right, W - pane);
       const col = this.left;
       if (shown(col) && col.offsetWidth < W / 2) box.left = Math.max(box.left, col.offsetLeft + col.offsetWidth);
     }

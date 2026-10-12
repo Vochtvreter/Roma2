@@ -1,7 +1,7 @@
 /* src/styles/tray.css — owner H (WP-H UI shell). The Breviarium, "the accounts" (#tray, tray.ts; DESIGN §15.2, §15.7): the
    pull-down under the HUD that every HUD figure opens. A 420 px panel under the HUD on the tapped figure's side (tray.ts
    places it); full width under a phone's HUD (the SHEET host). At most 70% of #app tall: the head and the grip stay,
-   the body scrolls inside and never hands its scroll to the page. Type floor 12 px here, the borrowed cards included.
+   the body scrolls inside and never hands its scroll to the page. A wide pane's first column on the DOCK and the COLUMNS. Type floor 12 px here, the borrowed cards included.
    Prefix tray-. */
 
 #tray {
@@ -26,6 +26,16 @@
 .tray-grip { flex: none; display: flex; align-items: center; justify-content: center; height: 22px; cursor: grab; touch-action: none;
   border-top: 1px solid rgba(255, 236, 200, .06); }
 .tray-grip > i { width: 40px; height: 5px; border-radius: 3px; background: var(--line-2); }
+
+/* the wide pane's first column (tray.ts column: the DOCK's from 960 px wide, dock.css; the desktop COLUMNS', columns.css):
+   the tray itself, in the panel's grid, its whole height, no ✕ and no grip */
+#side > #tray.tray-col {
+  grid-column: 1; grid-row: 1 / -1; position: static; width: auto; max-height: none; min-height: 0;
+  border: 0; border-right: var(--border-w) solid var(--line); border-radius: 0; box-shadow: none; animation: none;
+  background: rgba(0, 0, 0, .16);
+}
+#tray.tray-col :is(.tray-x, .tray-grip) { display: none; }
+#tray.tray-col .tray-head { min-height: 44px; }
 
 /* sections */
 .tray-sec { padding: 10px 0 12px; }

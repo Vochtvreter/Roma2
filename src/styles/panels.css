@@ -87,9 +87,5 @@
   .side-tab-label { font-size: 9px; letter-spacing: -.02em; }
 }
 
-/* ───────── the desktop's wide panel (the COLUMNS host at full: Tabularium, layout.ts VIEWS) ───────── */
-/* It widens over the map, leaving the left column and a strip of live map 320 px wide (630 px from the left edge, never
-   narrower than the docked 380 px), its tabs in one row of six; the tab body flows in columns (tabs.css container
-   queries). What floats right of the map (the map tools, the toasts, the event card) follows --side-w. */
-#app[data-host='columns'][data-detent='full'] { --side-w: max(380px, calc(100% - 630px)); }
-#app[data-host='columns'][data-detent='full'] #tabs { grid-template-columns: repeat(6, 1fr); }
+/* The desktop COLUMNS' badge spine (the panel folded), its ⤢ and its wide panel (the Tabularium): columns.css. */
+.side-wide { display: none; }

@@ -12,9 +12,10 @@
 // only then): each section rebuilds on its discrete signature (never within a click of the pointer, nor while the mouse
 // rests here), its updaters patch numbers in place, and the cards are redrawn once a game day (at most once a second);
 // the element in view keeps its place across a redraw that changes a height (steady.ts).
-// On the tablet DOCK's wide pane from 960 px wide (layout.ts brevColumn) the same tray stands as the pane's first column
-// (column(): re-hosted into #side, open for as long as the pane is wide; no ✕, no grip, no Back layer, and a press outside
-// leaves it; a HUD figure scrolls it to its section), and goes back under the HUD, closed, when the pane docks again.
+// On the tablet DOCK's wide pane from 960 px wide and the desktop COLUMNS' wide panel (layout.ts brevColumn) the same
+// tray stands as the pane's first column (column(): re-hosted into #side, open for as long as the pane is wide; no ✕, no
+// grip, no Back layer, and a press outside leaves it; a HUD figure scrolls it to its section), and goes back under the
+// HUD, closed, when the pane docks again.
 import type { Essential, GameState, LogEntry, LogKind, ResId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { Host } from './layout';

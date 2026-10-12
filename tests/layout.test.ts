@@ -4,19 +4,22 @@
 // the phone sheet's own tables (its heights, the drag's snap, the grabber's cycle and the bar's slots) and the landscape
 // drawer's (the pane's widths and their snap, the free map beside what stands at its foot, the HUD row's priority+), and the
 // tablet dock's (P4: the pane's widths, the map it leaves, Back and Esc, the Breviarium column, the tool column, the view
-// control's keys, every lesson's pointer at both of its widths).
+// control's keys, every lesson's pointer at both of its widths), and the desktop columns' (P5: the spine, docked and wide
+// widths, 630 px of map left beside the wide panel and the left column folding for it under 1750 px, Back and Esc, the
+// lessons' strip of map, How to play's words by the hands in use).
 // Headless: no DOM (the Layout class is never built here).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
 import { LESSONS } from '../src/game/intro';
 import {
-  BAR_SLOTS, DEFAULT_DETENT, DETENTS, DOCK, DOCK_TOOLS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, TAB_KEYS, VIEWS,
-  VIEW_HOSTS, VISIBLE, aboveDefault, backDetent, barSlot, brevColumn, classify, clearOf, cycleDetent, detentsOf, dockExpanded, dockWidths, drawerWidths,
+  BAR_SLOTS, COLUMNS, DEFAULT_DETENT, DETENTS, DOCK, DOCK_TOOLS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, TAB_KEYS, VIEWS,
+  VIEW_HOSTS, VISIBLE, aboveDefault, backDetent, barSlot, brevColumn, classify, clearOf, columnsRoom, columnsWidths, cycleDetent, detentsOf, dockExpanded, dockWidths, drawerWidths,
   fitDetent, hostEntryDetent, inFrame, inputClass, isLayer, isPhone, keepDetent, keyAction, lessonTarget, priorityDrops, reveal, revealOn, route,
   sheetHeights, shownAt, slimBanner, slotTap, snapDetent, stepDown, toolColumn, viewOf, visibleOn,
 } from '../src/ui/layout';
 import type { Box, Detent, Host, Media, RouteCtx } from '../src/ui/layout';
 import { coveredArea, dodge, roomShift } from '../src/ui/inspector';
+import { howToControls } from '../src/ui/modals';
 
 const TOUCH: Media = { coarse: true, anyFine: false, anyCoarse: true };    // a phone, a tablet
 const PAD_KB: Media = { coarse: true, anyFine: true, anyCoarse: true };    // an iPad with a Magic Keyboard or a trackpad
@@ -660,7 +663,7 @@ describe('the tablet dock (P4)', () => {
     expect(brevColumn('dock', 'expanded', 'full')).toBe(true);
     expect(brevColumn('dock', 'medium', 'full')).toBe(false);
     expect(brevColumn('dock', 'expanded', 'half')).toBe(false);
-    expect(brevColumn('columns', 'large', 'full')).toBe(false);
+    // (P5: the desktop's wide panel takes the Breviarium as its first column too: the columns' own test below)
     expect(toolColumn('dock', 'medium')).toBe(true);
     expect(toolColumn('dock', 'expanded')).toBe(false);
     expect(toolColumn('sheet', 'compact')).toBe(true);
@@ -765,5 +768,111 @@ describe('every lesson\'s pointer on the dock, at both widths (P4)', () => {
         }
       }
     }
+  });
+});
+
+describe('the desktop columns (P5)', () => {
+  // the harness's mouse desktops (impl/measure.mjs: laptop-1366, desktop) and a 1280 px mouse window, a 1920 px screen
+  const DESKS: readonly [number, number][] = [[1280, 800], [1366, 768], [1440, 900], [1920, 1080]];
+
+  it('a 64 px spine, today\'s 380 px panel, and wide leaving 630 px of map: beside the left column from 1750 px, the left column folded under that', () => {
+    expect(COLUMNS).toMatchObject({ left: 310, panel: 380, spine: 64, map: 630, strip: 320 });
+    // the budget: the left column, the map, the Breviarium and a two-column page (the tab body's 520 px query)
+    expect(COLUMNS.left + COLUMNS.map + COLUMNS.brev + COLUMNS.body).toBe(1750);
+    expect(COLUMNS.body).toBeGreaterThanOrEqual(520 + 24 + 12);   // the query's 520, the body's padding, a thin scrollbar
+    expect(columnsRoom(1749)).toBe('fold');
+    expect(columnsRoom(1750)).toBe('beside');
+    expect(columnsWidths(1440)).toEqual({ closed: 64, half: 380, full: 810 });   // the panel x630–1440, the map x0–630
+    expect(columnsWidths(1366)).toEqual({ closed: 64, half: 380, full: 736 });
+    expect(columnsWidths(1280)).toEqual({ closed: 64, half: 380, full: 650 });
+    expect(columnsWidths(1920)).toEqual({ closed: 64, half: 380, full: 980 });   // the left column, the map x310–940
+    for (const [W, H] of DESKS) {
+      const c = classify(W, H, MOUSE);
+      expect(c.host, `${W}`).toBe('columns');
+      const ws = columnsWidths(W), room = columnsRoom(W);
+      expect(ws.closed).toBeLessThanOrEqual(ws.half);
+      expect(ws.half).toBeLessThan(ws.full);
+      // wide leaves 630 px of map, beside the left column or, where the left column folds, at the left edge
+      expect(room, `${W}`).toBe(W >= 1750 ? 'beside' : 'fold');
+      expect(W - ws.full - (room === 'fold' ? 0 : COLUMNS.left), `${W}`).toBe(COLUMNS.map);
+      // and the Breviarium beside a page at least as wide as the docked panel's
+      expect(ws.full - COLUMNS.brev, `${W}`).toBeGreaterThanOrEqual(COLUMNS.panel);
+      // two columns in the page where the window is 1440 px or more
+      if (W >= 1440) expect(ws.full - COLUMNS.brev, `${W}`).toBeGreaterThanOrEqual(COLUMNS.body);
+      // the spine leaves all of the map but its 64 px beside the left column
+      expect(W - ws.closed - COLUMNS.left, `${W}`).toBe(W - 374);
+    }
+    // a touch screen from 1440 px is the columns too, the same widths
+    expect(classify(1440, 900, TOUCH).host).toBe('columns');
+  });
+
+  it('the Breviarium is the wide panel\'s first column at every desktop width', () => {
+    for (const w of ['expanded', 'large'] as const) {
+      expect(brevColumn('columns', w, 'full')).toBe(true);
+      expect(brevColumn('columns', w, 'half')).toBe(false);
+      expect(brevColumn('columns', w, 'closed')).toBe(false);
+    }
+  });
+
+  it('Back and Esc: wide docks again; docked and the spine are views of their own (Esc goes on to the menu)', () => {
+    expect(isLayer('full', 'columns')).toBe(true);
+    expect(backDetent('full', 'columns', false)).toBe('half');
+    expect(isLayer('half', 'columns')).toBe(false);
+    expect(isLayer('closed', 'columns')).toBe(false);   // the spine is a deliberate view on the desktop, not a layer
+    expect(DEFAULT_DETENT.columns).toBe('half');
+  });
+
+  it('the keys: C M I the views, Shift with a tab\'s key wide, its key alone docked from the spine', () => {
+    expect(keyAction('c', false, 'columns')).toEqual({ kind: 'view', detent: 'closed' });
+    expect(keyAction('m', false, 'columns')).toEqual({ kind: 'view', detent: 'half' });
+    expect(keyAction('i', false, 'columns')).toEqual({ kind: 'view', detent: 'full' });
+    expect(keyAction('B', true, 'columns')).toEqual({ kind: 'tab', tab: 'build', wide: true });
+    for (const w of ['expanded', 'large'] as const) {
+      const c = (detent: Detent): RouteCtx => ({ host: 'columns', detent, tiny: false, w });
+      expect(route({ kind: 'open', tab: 'build', from: 'key', shift: true }, c('closed')).detent).toBe('full');
+      expect(route({ kind: 'open', tab: 'build', from: 'tab' }, c('closed')).detent).toBe('half');   // a spine icon: docked
+      expect(route({ kind: 'open', tab: 'build', from: 'key' }, c('closed')).detent).toBe('half');
+      expect(route({ kind: 'open', tab: 'build', from: 'tab' }, c('full')).detent).toBe('full');     // a tab switch stays wide
+      expect(route({ kind: 'focus' }, c('full'))).toEqual({ detent: 'full', remember: false, card: false });   // the strip shows it
+      expect(route({ kind: 'place' }, c('full'))).toEqual({ detent: 'half', remember: true, card: false });
+    }
+  });
+
+  it('the left column never folds while the opening lessons run: their card is its counsel; the map gives way to a strip then', () => {
+    for (const W of [1280, 1366, 1440, 1600, 1749]) expect(columnsRoom(W, true), `${W}`).toBe('strip');
+    expect(columnsRoom(1920, true)).toBe('beside');
+    expect(columnsWidths(1440, true)).toEqual({ closed: 64, half: 380, full: 810 });   // SPEC A §7: x630–1440, a 320 px strip
+    expect(columnsWidths(1366, true)).toEqual({ closed: 64, half: 380, full: 736 });   // x630–1366: a one-column page
+    expect(columnsWidths(1280, true)).toEqual({ closed: 64, half: 380, full: 650 });
+    expect(columnsWidths(1600, true)).toEqual({ closed: 64, half: 380, full: 810 });   // the map 480 px: no more than the panel needs
+    expect(columnsWidths(1920, true)).toEqual(columnsWidths(1920));
+    for (const W of [1280, 1366, 1440, 1600, 1749]) {
+      const ws = columnsWidths(W, true);
+      expect(W - COLUMNS.left - ws.full, `${W}`).toBeGreaterThanOrEqual(COLUMNS.strip);
+      expect(ws.full, `${W}`).toBeLessThanOrEqual(COLUMNS.brev + COLUMNS.body);
+    }
+    // and every lesson's pointer shows where its route lands on the desktop, from any detent, at either width
+    for (const l of LESSONS) {
+      for (const w of ['expanded', 'large'] as const) {
+        for (const d of DETENTS) {
+          const to = route({ kind: 'lesson', lesson: l.id }, { host: 'columns', detent: d, tiny: false, w }).detent;
+          const sel = reveal(lessonTarget(l) ?? '', 'columns', w);
+          expect(shownAt(sel, 'columns', to, w), `${l.id} → ${sel} at ${to} (from ${d}, ${w})`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('How to play speaks to the hands in use: gestures to a finger, keys to a mouse, both to mixed hands', () => {
+    expect(howToControls('touch', true)).toEqual({ gestures: true, keys: false, views: false, build: 'touch' });
+    expect(howToControls('mouse', true)).toEqual({ gestures: false, keys: true, views: true, build: 'mouse' });
+    expect(howToControls('mixed', true)).toEqual({ gestures: true, keys: true, views: true, build: 'both' });
+    expect(howToControls('mouse', false)).toEqual({ gestures: false, keys: true, views: false, build: 'mouse' });   // no view control: no C M I
+    // the input class each window gets (classify), and so what it reads
+    expect(howToControls(classify(1440, 900, MOUSE).input, true).keys).toBe(true);
+    expect(howToControls(classify(393, 852, TOUCH).input, false).gestures).toBe(true);
+    expect(howToControls(classify(393, 852, TOUCH).input, false).keys).toBe(false);
+    expect(howToControls(classify(1366, 1024, PAD_KB).input, true)).toMatchObject({ gestures: true, keys: true, views: true });
+    expect(howToControls(classify(1440, 900, TOUCH_PC).input, true)).toMatchObject({ gestures: true, keys: true });
   });
 });

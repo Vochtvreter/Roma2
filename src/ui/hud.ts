@@ -241,7 +241,7 @@ export class Hud {
 
   /** Puts the view control where the host shows it (UI.build: Layout.onMount): in the HUD before the speeds on the DOCK
    *  (and hidden in the phones' rows); on the desktop COLUMNS at the top-left of the map beside the left column
-   *  (hud.css; the A-desk-columns mockup), so the HUD's row and its materials strip stay as they were. */
+   *  (columns.css; the A-desk-columns mockup), so the HUD's row and its materials strip stay as they were. */
   mountView(host: Host): void {
     const el = this.viewEl, app = this.root.parentElement;
     if (!el || !app) return;

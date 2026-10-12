@@ -9,7 +9,8 @@
 // the event card, docked by Layout.dock), and closing it puts the panel back as it was. On the tablet DOCK the same
 // SheetHost heads the docked pane with the Res Gestae and the counsel line (the left column folded in) and slides it; the
 // tool column serves it under 960 px wide; from 960 its wide pane takes the Breviarium as its first column (tray.ts
-// column); the ledger rows that name a map object answer on the map (focusrow.ts). Owner: WP-H.
+// column), as the desktop COLUMNS' wide panel does; on both the ledger rows that name a map object answer on the map
+// (focusrow.ts). Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -79,6 +80,7 @@ export class UI {
   private placedOk = false;                // the placing that ends now ended in a work placed (placed()): a phone's panel stays closed
   private unpinning = false;               // the pinned card closed this turn: its restore waits to see whether another opens
   private swapping = false;                // one card is giving the sheet's slot to the other: no restore in between
+  private lessonsUp: boolean | null = null;   // the opening lessons ran at the last frame (the desktop's left column folds only after)
 
   constructor(private readonly g: Game) {}
 
@@ -104,11 +106,20 @@ export class UI {
     this.layout.onMount((host) => this.side.mount(host));
     new SheetHost(g, this.layout, el('side'), el('counsel'), el('ticker'), el('objective'));
     this.layout.onMount((host) => this.tray.mount(host));
-    // the DOCK's wide pane from 960 px wide: the Breviarium is its first column (the tray itself, re-hosted)
-    const brev = (): void => { const L = this.layout; this.tray.column(brevColumn(L.host, L.classes.w, L.detent) ? el('side') : null); };
+    // the wide pane of the DOCK from 960 px wide and of the desktop COLUMNS: the Breviarium is its first column (the tray
+    // itself, re-hosted). Leaving it, the column stays until the pane comes to rest at its new width (#side's data-rest,
+    // sheet.ts): the page slides away as it was, never laid out again across the whole wide pane without it
+    const side = el('side');
+    const brev = (): void => {
+      const L = this.layout, w = L.classes.w;
+      const col = brevColumn(L.host, w, L.detent) || (side.dataset.rest === 'full' && brevColumn(L.host, w, 'full'));
+      this.tray.column(col ? side : null);
+    };
     this.layout.onChange((why) => { if (why !== 'free') brev(); });
+    new MutationObserver(brev).observe(side, { attributes: true, attributeFilter: ['data-rest'] });
     brev();
-    // the DOCK's focus row: the last ledger row touched that names a map object stays lit, and the map answers it
+    // the focus row of the DOCK and the COLUMNS: the last ledger row clicked that names a map object stays lit, and the map
+    // answers it
     const focus = new FocusRow(g, el('tab-body'));
     this.layout.onChange((why) => { if (why === 'classes') focus.paint(); });
     this.inspector = new Inspector(g, el('inspector'));
@@ -117,7 +128,7 @@ export class UI {
     this.layout.onMount((host) => this.hud.mountView(host));   // the view control: the DOCK's HUD, the COLUMNS' map
     this.layout.onChange((why) => {
       if (why === 'classes') this.hud.closePopover();
-      if (why !== 'free') this.hud.syncView();   // the view control follows the detent (and the row refits for its label)
+      if (why !== 'free') { this.hud.syncView(); this.side.syncWide(); }   // the view control and ⤢ follow the detent (the row refits for its label)
       this.tray.relayout();
     });
     // a phone's voice line: '+n' opens "Awaiting you", Read the dispatch; its unfolded card rides the panel (lift), and
@@ -222,6 +233,10 @@ export class UI {
     // the 'wants' tip asks the player to open the Domus overlay; seeing it (by any route: bar, key, remedy) reads it
     if (this.g.view.overlay === 'domus' && !this.g.state.guidance.tips.includes('wants')) this.g.act(dismissTip(this.g.state, 'wants'));
     this.showLesson();
+    // the lessons began or ended (a colony, Skip, the last one done): the desktop's wide panel folds the left column only
+    // once they are over (layout.ts columnsRoom), so the layout measures again
+    const up = introRunning(g.state);
+    if (up !== this.lessonsUp) { this.lessonsUp = up; this.layout.refresh(); }
     present(g, el('objective'), shows(g, 'goals'));
     present(g, el('ticker'), shows(g, 'ticker'));
     present(g, el('overlay-bar'), shows(g, 'overlays'));

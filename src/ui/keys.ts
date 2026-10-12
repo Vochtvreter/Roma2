@@ -2,8 +2,9 @@
 // Space pause · 1–4 speeds (5 = 20× in ?dev) · E V B P T L tabs (with Shift: wide, on a tablet's dock and the desktop) ·
 // C M I the views Urbs, Mensa and Tabularium (the panel folded, docked, wide; layout.ts keyAction) · O / Shift+O overlays
 // · R road · H forum · WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → the
-// panel above its host's default detent (on the dock: the spine or the wide pane, back to docked; layout.ts) → menu (the
-// layers of history.ts, which Back walks too). Ignored inside inputs and on the title (Esc still closes modals).
+// panel above its host's default detent (the desktop's wide panel back to docked, its spine being a view of its own; on
+// the dock the spine or the wide pane, back to docked; layout.ts isLayer) → menu (the layers of history.ts, which Back
+// walks too). Ignored inside inputs and on the title (Esc still closes modals).
 import { OVERLAYS } from '../game/types';
 import type { OverlayId, Speed } from '../game/types';
 import type { Game } from './types';

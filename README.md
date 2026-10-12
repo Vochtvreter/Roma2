@@ -45,16 +45,19 @@ next colony starts with a Legacy bonus.
 | `Space` | pause / resume |
 | `1` `2` `3` `4` | speed 1×, 2×, 5×, 10× |
 | `E` `V` `B` `P` `T` `L` | Edicta, Consiliarii (advisors), Aedificia (build), Populus, Commercium (trade), Annales, once revealed |
+| `C` `M` `I` | on a desktop or a tablet: *Urbs* (the panel folded to its icons), *Mensa* (map and ledger), *Tabularium* (the ledgers wide) |
+| `Shift` + `E` … `L` | that panel, wide |
 | `O` / `Shift+O` | next map overlay (Aqua, Domus, Officia, Dignitas loci, Terra) / overlay off |
 | `R` | lay a road |
 | `W` `A` `S` `D` or arrows | pan |
 | `+` `−` | zoom |
 | `H` | back to the forum |
-| `Esc` | close a window, cancel placing, clear the selection, or open the menu |
+| `Esc` | close a window, cancel placing, clear the selection, dock a wide panel, or open the menu |
 
 With a mouse: click a building or the ground to inspect it, click a glowing plot to place, `Shift`-click to place
 more, right-click to cancel. On a touch screen: drag to pan, pinch to zoom, tap to inspect, tap a plot and then
-**Place**, hold a control for its tooltip, tap with two fingers to cancel. **Menu → How to play** shows the same.
+**Place**, hold a control for its tooltip, tap with two fingers to cancel. **Menu → How to play** shows the same, for
+the hands your screen has (the keys with a mouse, the gestures on a touch screen, both on a tablet with a trackpad).
 
 ### Saves
 
