@@ -7,7 +7,7 @@ import type { GameState } from '../game/types';
 import { H, W, getMap } from '../game/map';
 import { derived } from '../game/derived';
 import type { Camera, Insets } from './camera';
-import { NO_INSETS, TILE, screenToWorld } from './camera';
+import { NO_INSETS, TILE, canvasDpr, screenToWorld } from './camera';
 import { buildingColor, footprintRect } from './buildings';
 import { OVERLAY_ALPHA } from './overlays';
 import { looks } from './decor';
@@ -52,7 +52,7 @@ export class Minimap {
     this.cv.hidden = placing;
     if (placing || now - this.last < REDRAW_MS) return;
     this.last = now;
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const dpr = canvasDpr(window.devicePixelRatio);
     const bw = Math.round(W * PX_PER_TILE * dpr), bh = Math.round(H * PX_PER_TILE * dpr);
     if (this.cv.width !== bw || this.cv.height !== bh) { this.cv.width = bw; this.cv.height = bh; }
     const g = this.cv.getContext('2d');

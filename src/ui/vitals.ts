@@ -13,6 +13,7 @@ import { activeAdvisories } from '../game/advisors/engine';
 import { MONTH_ABBR, formatRoman } from '../game/calendar';
 import { B } from '../game/balance';
 import { resIcon } from '../render/art/index';
+import { chartFontPx, textSize } from './textsize';
 
 const LABEL: Record<Essential, string> = { grain: 'GRAIN', water: 'AQVA' };
 const LATIN: Record<Essential, string> = { grain: 'Frumentum', water: 'Aqua' };
@@ -112,11 +113,12 @@ function paint(g: Game, t: Tablet, res: Essential, f: EssentialForecast): void {
   t.el.classList.toggle('peril', peril);
   const months = f.months.slice(0, t.cells.length);
   paintCells(t.cells, months);
-  paintSeasons(t, months);
+  paintSeasons(t, months, 3);
 }
 
-/** Season labels beneath the strip: one label per run of months in the same season. */
-export function paintSeasons(t: SeasonRow, months: MonthCell[]): void {
+/** Season labels beneath the strip: one label per run of months in the same season, its initial alone on a run shorter
+ *  than `full` months (the tablet's three months hold a 12 px 'Aest'; the Breviarium's wider strip two). */
+export function paintSeasons(t: SeasonRow, months: MonthCell[], full = 2): void {
   const key = months.map((m) => m.season).join('');
   if (key === t.seasonKey) return;
   t.seasonKey = key;
@@ -127,7 +129,7 @@ export function paintSeasons(t: SeasonRow, months: MonthCell[]): void {
     while (j < months.length && months[j].season === months[i].season) j++;
     const n = j - i;
     const label = SEASON_SHORT[months[i].season];
-    t.seasons.appendChild(h('span', { class: `vit-season s${months[i].season}`, style: { flexGrow: String(n) } }, n >= 2 ? label : label[0]));
+    t.seasons.appendChild(h('span', { class: `vit-season s${months[i].season}`, style: { flexGrow: String(n) } }, n >= full ? label : label[0]));
     i = j;
   }
 }
@@ -153,9 +155,11 @@ export function vitalTip(g: Game, res: Essential): HTMLElement {
   );
 }
 
-/** A small canvas line chart: end-of-month stock against the cap, with season bands and month initials. */
+/** A small canvas line chart: end-of-month stock against the cap, with season bands and month initials (Silkscreen at
+ *  the type floor, 12 px, or 16 under Text size Large: tokens.css --fs-caps). */
 export function chart(f: EssentialForecast, res: Essential): HTMLElement {
-  const W = 288, H = 92, PAD_B = 14, PAD_T = 6;
+  const FS = chartFontPx(textSize());
+  const W = 288, H = 80 + FS, PAD_B = FS + 4, PAD_T = 6;
   const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
   const c = h('canvas', { class: 'vit-chart', width: String(W * dpr), height: String(H * dpr) });
   c.style.width = `${W}px`;
@@ -167,19 +171,20 @@ export function chart(f: EssentialForecast, res: Essential): HTMLElement {
   const cw = W / Math.max(1, months.length);
   const top = Math.max(f.cap, f.stock, ...months.map((m) => m.endStock), 1);
   const y = (v: number): number => PAD_T + (H - PAD_B - PAD_T) * (1 - Math.max(0, v) / top);
-  g.font = '8px Silkscreen, monospace';
+  g.font = `${FS}px Silkscreen, monospace`;
   months.forEach((m, i) => {
     g.fillStyle = SEASON_TINT[m.season];
     g.fillRect(i * cw, 0, cw - 1, H - PAD_B);
     g.fillStyle = '#bba58b';
-    g.fillText(MONTH_ABBR[m.month - 1][0], i * cw + cw / 2 - 3, H - 3);
+    const ini = MONTH_ABBR[m.month - 1][0];
+    g.fillText(ini, Math.round(i * cw + (cw - g.measureText(ini).width) / 2), H - 3);
   });
   g.strokeStyle = 'rgba(244,234,214,.45)';
   g.setLineDash([3, 3]);
   g.beginPath(); g.moveTo(0, y(f.cap)); g.lineTo(W, y(f.cap)); g.stroke();
   g.setLineDash([]);
   g.fillStyle = 'rgba(244,234,214,.7)';
-  g.fillText('CAP', 2, Math.max(9, y(f.cap) - 3));
+  g.fillText('CAP', 2, Math.max(FS, y(f.cap) - 3));
   g.strokeStyle = res === 'grain' ? '#f2c94c' : '#62b0d6';
   g.lineWidth = 2;
   g.beginPath();

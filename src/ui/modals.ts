@@ -15,6 +15,7 @@ import type { GameState } from '../game/types';
 import { finePointer, pressWord, touchInput } from './pointer';
 import { tabShown } from './intro';
 import type { InputClass } from './layout';
+import { TEXT_SIZES, TEXT_SIZE_LABEL, setTextSize, textSize } from './textsize';
 
 /** A phone host is up, the SHEET or the DRAWER (layout.ts writes it on #app; read from there, as layout.ts reaches
  *  modals through history.ts). */
@@ -145,7 +146,17 @@ function toggleRow(label: string, sub: string, on: boolean, set: (v: boolean) =>
   return h('label', { class: 'modal-row' }, h('span', { class: 'modal-row-text' }, h('span', null, label), h('small', null, sub)), box);
 }
 
-/** The game menu: resume, save, how to play, export/import, sound and volume, prefs, save & quit, abandon. */
+/** The Text size row: Normal or Large, pressed in place (textsize.ts: a choice of this browser's, not the save's). */
+function textSizeRow(g: Game): HTMLElement {
+  const btns = TEXT_SIZES.map((t) => h('button', { class: 'btn small modal-seg-btn', type: 'button', onclick: () => { g.sfx('click'); setTextSize(t); sync(); } }, TEXT_SIZE_LABEL[t]));
+  const sync = (): void => btns.forEach((b, i) => { const on = TEXT_SIZES[i] === textSize(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+  sync();
+  return h('div', { class: 'modal-row modal-row-seg', role: 'group', 'aria-label': 'Text size' },
+    h('span', { class: 'modal-row-text' }, h('span', null, 'Text size'), h('small', null, 'Larger type in every panel and card')),
+    h('div', { class: 'modal-seg' }, btns));
+}
+
+/** The game menu: resume, save, how to play, export/import, sound and volume, prefs, text size, save & quit, abandon. */
 export function openMenu(g: Game): void {
   let close: () => void = () => undefined;
   const volLabel = h('span', { class: 'num modal-vol-n' }, `${Math.round(g.prefs.volume * 100)}%`);
@@ -174,7 +185,8 @@ export function openMenu(g: Game): void {
       h('label', { class: 'modal-row' }, h('span', { class: 'modal-row-text' }, h('span', null, 'Volume'), volLabel), vol),
       toggleRow('Mentor tips', 'Decimus Cassius explains new things', g.prefs.tips, (v) => g.setPref('tips', v)),
       toggleRow('Slow for news', '2× when a choice arrives', g.prefs.slowForNews, (v) => g.setPref('slowForNews', v)),
-      toggleRow('Pause on Periculum', 'Stop the clock on a critical warning', g.prefs.pauseOnCritical, (v) => g.setPref('pauseOnCritical', v))));
+      toggleRow('Pause on Periculum', 'Stop the clock on a critical warning', g.prefs.pauseOnCritical, (v) => g.setPref('pauseOnCritical', v)),
+      textSizeRow(g)));
   close = openModal(body, { kicker: 'MENV', title: g.state.name, wide: true });
 }
 

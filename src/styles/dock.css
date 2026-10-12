@@ -53,13 +53,14 @@
   grid-template-areas: "label label trend" "ico main main" "strip strip strip";
 }
 #app[data-host='dock'] .vit-head { display: contents; }
-#app[data-host='dock'] .vit-label { grid-area: label; align-self: center; font-size: 12px; line-height: 13px; letter-spacing: 1px; }
-#app[data-host='dock'] .vit-trend { grid-area: trend; justify-self: end; align-self: center; font-family: var(--font-body); font-size: 12px; line-height: 13px; overflow: hidden; }
+#app[data-host='dock'] .vit-label { grid-area: label; align-self: center; font-size: var(--fs-caps); line-height: 13px; letter-spacing: 1px; }
+#app[data-host='dock'] .vit-trend { grid-area: trend; justify-self: end; align-self: center; font-family: var(--font-body); font-size: var(--fs-xs); line-height: 13px; overflow: hidden; }
 #app[data-host='dock'] .vit-ico { grid-area: ico; align-self: center; }
 #app[data-host='dock'] .vit-main { grid-area: main; align-self: center; gap: 1px; }
-#app[data-host='dock'] .vit-days { font-family: var(--font-body); font-size: 18px; line-height: 20px; }
-#app[data-host='dock'] .vit-unit { font-family: var(--font-body); font-size: 12px; margin-right: 0; }
+#app[data-host='dock'] .vit-days { font-family: var(--font-body); font-size: var(--fs-lead); line-height: 20px; }
+#app[data-host='dock'] .vit-unit { font-family: var(--font-body); font-size: var(--fs-xs); margin-right: 0; }
 #app[data-host='dock'] .vit-strip { grid-area: strip; display: flex; }
+#app[data-host='dock'][data-text='large'] .hud-vital { width: 128px; }   /* Text size Large: 'GRAIN' (16 px) beside its trend */
 #app[data-host='dock'] .hud-vital :is(.vit-seasons, .vit-sub) { display: none; }   /* in the Breviarium */
 
 /* coin over souls: one box of two 24 px lines */
@@ -72,18 +73,18 @@
 #app[data-host='dock'] #hud > .hud-coin:not(:has(+ .hud-souls[hidden])) { border-bottom: 0; border-radius: 4px 4px 0 0; }
 #app[data-host='dock'] #hud > .hud-coin:not([hidden]) + .hud-souls { border-top: 0; border-radius: 0 0 4px 4px; }
 #app[data-host='dock'] #hud > :is(.hud-coin, .hud-souls) > img { width: 16px; height: 16px; }
-#app[data-host='dock'] #hud > :is(.hud-coin, .hud-souls) .hud-n { font-family: var(--font-body); font-size: 13px; line-height: 18px; }
+#app[data-host='dock'] #hud > :is(.hud-coin, .hud-souls) .hud-n { font-family: var(--font-body); font-size: var(--fs-small); line-height: 18px; }
 #app[data-host='dock'] #hud > :is(.hud-coin, .hud-souls) :is(.hud-sub, .hud-stages) { display: none; }
 
 /* spirits, dignitas, the date: 44 px chips */
 #app[data-host='dock'] .hud-morale { grid-area: spi; }
 #app[data-host='dock'] .hud-dignitas { grid-area: dig; }
 #app[data-host='dock'] #hud > :is(.hud-morale, .hud-dignitas) { height: 44px; min-width: 0; gap: 4px; padding: 2px 8px 2px 4px; cursor: pointer; }
-#app[data-host='dock'] #hud > :is(.hud-morale, .hud-dignitas) .hud-n { font-size: 13px; }
+#app[data-host='dock'] #hud > :is(.hud-morale, .hud-dignitas) .hud-n { font-size: var(--fs-small); }
 #app[data-host='dock'] .hud-date { grid-area: date; height: 44px; min-width: 0; gap: 4px; padding: 2px 8px 2px 6px; cursor: pointer; }
 #app[data-host='dock'] .hud-date > img { display: none; }
-#app[data-host='dock'] .hud-date-main { font-size: 12px; line-height: 14px; }
-#app[data-host='dock'] .hud-date .hud-sub { font-family: var(--font-body); font-size: 12px; line-height: 14px; }
+#app[data-host='dock'] .hud-date-main { font-size: var(--fs-caps); line-height: 14px; }
+#app[data-host='dock'] .hud-date .hud-sub { font-family: var(--font-body); font-size: var(--fs-xs); line-height: 14px; }
 #app[data-host='dock'] .hud-seasonbar { margin-top: 2px; }
 
 /* the materials: one row of 44 px cells (amount over the day's net), the strip taking what the row leaves; the cells it
@@ -91,29 +92,29 @@
 #app[data-host='dock'] .hud-strip { grid-area: mat; min-width: 132px; grid-template-rows: 44px; gap: 0 4px; }
 #app[data-host='dock'] .hud-res.hud-cut { display: none; }
 #app[data-host='dock'] .hud-res { min-width: 0; padding: 0 6px 0 2px; cursor: pointer; }
-#app[data-host='dock'] .hud-res-n { font-size: 12px; line-height: 14px; }
-#app[data-host='dock'] .hud-res-cap { font-size: 12px; }
-#app[data-host='dock'] .hud-res-r { font-family: var(--font-body); font-size: 12px; line-height: 14px; }
+#app[data-host='dock'] .hud-res-n { font-size: var(--fs-caps); line-height: 14px; }
+#app[data-host='dock'] .hud-res-cap { font-size: var(--fs-xs); }
+#app[data-host='dock'] .hud-res-r { font-family: var(--font-body); font-size: var(--fs-xs); line-height: 14px; }
 
 /* the view control (hud.css), the speeds, the menu */
 #app[data-host='dock'] .hud-view { grid-area: view; }
 #app[data-host='dock'] .hud-speed { grid-area: speed; position: relative; display: flex; gap: 2px; }
-#app[data-host='dock'] .hud-sp { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: 12px; }
-#app[data-host='dock'] .hud-menu { grid-area: menu; width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; font-size: 20px; }
+#app[data-host='dock'] .hud-sp { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: var(--fs-caps); }
+#app[data-host='dock'] .hud-menu { grid-area: menu; width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; font-size: var(--fs-title); }
 /* folded: the [❚❚][1× ▾] pair, its ▾ opening the speeds as a popover (a Back and Esc layer, hud.ts) */
 #app[data-host='dock'] .hud-speed.fold { gap: 0; }
 #app[data-host='dock'] .hud-speed.fold .hud-sp-pause { border-radius: 4px 0 0 4px; }
 #app[data-host='dock'] .hud-speed.fold .hud-sp-cur {
   display: inline-flex; align-items: center; justify-content: center; gap: 2px; border-radius: 0 4px 4px 0; border-left-width: 1px;
 }
-#app[data-host='dock'] .hud-speed.fold .hud-sp-caret { font-family: var(--font-body); font-size: 12px; }
+#app[data-host='dock'] .hud-speed.fold .hud-sp-caret { font-family: var(--font-body); font-size: var(--fs-xs); }
 #app[data-host='dock'] .hud-speed.fold .hud-sp-pop {
   display: none; position: absolute; top: calc(100% + 6px); right: 0; gap: 4px; padding: 4px;
   background: var(--panel-solid); border: 2px solid var(--line); border-radius: var(--r2);
   box-shadow: var(--ring-shadow), 0 10px 24px rgba(0, 0, 0, .5);
 }
 #app[data-host='dock'] .hud-speed.fold.open .hud-sp-pop { display: flex; }
-#app[data-host='dock'] .hud-speed.fold .hud-sp-pop .hud-sp { width: 52px; min-width: 52px; font-size: 13px; }
+#app[data-host='dock'] .hud-speed.fold .hud-sp-pop .hud-sp { width: 52px; min-width: 52px; font-size: var(--fs-small); }
 #app[data-host='dock'] #hud:has(.hud-speed.open) { z-index: calc(var(--z-choice) + 1); }
 
 /* ───────── the pane ───────── */
@@ -141,7 +142,7 @@
 #app[data-host='dock'] #counsel { max-height: 40cqh; }
 /* a lesson's job line in the narrow pane: the progress ('Hands on the fields: 1 of 4') under the job, not beside it */
 #app[data-host='dock'] #counsel .lesson-job { flex-wrap: wrap; row-gap: 2px; }
-#app[data-host='dock'] #counsel .lesson-prog { flex-basis: 100%; margin-left: 24px; white-space: normal; font-size: 12px; }
+#app[data-host='dock'] #counsel .lesson-prog { flex-basis: 100%; margin-left: 24px; white-space: normal; font-size: var(--fs-xs); }
 #app[data-host='dock'] #counsel .counsel-body { max-height: calc(40cqh - 56px); }
 
 /* the one-line Res Gestae: its kicker and the progress over the goal (cut to one line), the CTA under them; its ▾ (or a
@@ -151,18 +152,18 @@
   box-shadow: var(--ring-shadow); max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
 }
 #app[data-host='dock'] #objective:not(.obj-open) :is(.obj-hint, .obj-meter, .obj-unlocks, .obj-chips, .obj-laurel, .obj-cta-note) { display: none; }
-#app[data-host='dock'] #objective .obj-kicker { font-size: 12px; letter-spacing: 1.2px; }
-#app[data-host='dock'] #objective:not(.obj-open) .obj-kicker { white-space: nowrap; overflow: hidden; }
+#app[data-host='dock'] #objective .obj-kicker { font-size: var(--fs-caps); letter-spacing: 1.2px; }
+#app[data-host='dock'] #objective:not(.obj-open) .obj-kicker { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
 #app[data-host='dock'] #objective:not(.obj-open) .obj-kicker > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 #app[data-host='dock'] #objective:not(.obj-open) .obj-prog { display: none; }   /* (with the meter, once unfolded) */
-#app[data-host='dock'] #objective .obj-goal { font-size: 14px; line-height: 17px; margin: 2px 0 0; }
+#app[data-host='dock'] #objective .obj-goal { font-size: var(--fs-line); line-height: 17px; margin: 2px 0 0; }
 #app[data-host='dock'] #objective:not(.obj-open) .obj-goal > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-#app[data-host='dock'] #objective .obj-cta { margin-top: 6px; min-height: 44px; font-size: 14px; }
-#app[data-host='dock'] #objective :is(.obj-cta-k, .obj-hint, .obj-unlocks, .obj-chip, .obj-cta-note) { font-size: 12px; }
+#app[data-host='dock'] #objective .obj-cta { margin-top: 6px; min-height: 44px; font-size: var(--fs-line); }
+#app[data-host='dock'] #objective :is(.obj-cta-k, .obj-hint, .obj-unlocks, .obj-chip, .obj-cta-note) { font-size: var(--fs-caps); }
 #app[data-host='dock'] #objective .obj-chip { white-space: normal; max-width: 100%; }
 #app[data-host='dock'] .obj-fold {
   display: inline-flex; position: absolute; top: 0; right: 0; width: 44px; height: 44px; align-items: center; justify-content: center;
-  padding: 0; border: 0; background: none; color: var(--muted); font-size: 14px;
+  padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-line);
 }
 #app[data-host='dock'] #objective.obj-open .obj-fold { transform: rotate(180deg); }
 
@@ -176,15 +177,18 @@
 }
 #app[data-host='dock'] .side-tab-ico { width: 24px; height: 24px; }
 #app[data-host='dock'] .side-tab-text { align-items: center; max-width: 100%; }
-#app[data-host='dock'] .side-tab-label { font-size: 14px; line-height: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-#app[data-host='dock'] .side-tab-sub { display: none; font-size: 12px; line-height: 14px; white-space: nowrap; max-width: 100%; overflow: hidden; }
+/* a third of the pane: Text size Large grows the names to 15 px, what 'Commercium' fits there */
+#app[data-host='dock'] .side-tab-label { font-size: min(var(--fs-line), 15px); line-height: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#app[data-host='dock'] .side-tab-sub { display: none; font-size: var(--fs-xs); line-height: 14px; white-space: nowrap; max-width: 100%; overflow: hidden; }
 #app[data-host='dock'][data-w='expanded'] .side-tab-sub, #app[data-host='dock'] #side[data-rest='full'] .side-tab-sub { display: block; }
-#app[data-host='dock'] .side-badge { top: -6px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: 12px; line-height: 18px; }
-#app[data-host='dock'] .side-new { top: -7px; left: 2px; padding: 0 2px; font-size: 12px; line-height: 12px; }
+#app[data-host='dock'] .side-badge { top: -6px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: var(--fs-caps); line-height: 18px; }
+#app[data-host='dock'] .side-new { top: -7px; left: 2px; padding: 0 2px; font-size: var(--fs-caps); line-height: 12px; }
 #app[data-host='dock'] #side[data-rest='full'] > #tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 #app[data-host='dock'] #side[data-rest='full'] .side-tab-label { letter-spacing: -.04em; }   /* 'Commercium' whole in an 88 px sixth */
 @container dock-pane (max-width: 319px) {   /* and in a third of the 300 px pane (iPad mini, the Fold's inner screen) */
-  #app[data-host='dock'] .side-tab-label { letter-spacing: -.04em; }
+  #app[data-host='dock'] .side-tab-label { letter-spacing: -.04em; font-size: min(var(--fs-line), 14px); }   /* (14 px under Large) */
+  /* Text size Large: the head's kickers shed their tracking, so 'RES GESTAE · XI / XX' and 'MONITVM · AEDILIS' stay whole */
+  #app[data-host='dock'][data-text='large'] :is(#objective .obj-kicker, .counsel-kicker) { letter-spacing: 0; }
 }
 
 #app[data-host='dock'] #tab-body { order: 1; flex: 1 1 0; min-height: 0; padding: 6px 10px 20px; }
@@ -266,8 +270,8 @@
   width: auto; max-width: 470px; margin: 0 auto; transform: none;
 }
 #app#app[data-host='dock'][data-detent='full'] #choice { right: var(--dock-gap); }
-#app[data-host='dock'] :is(.choice-opt-note, .choice-silent, .choice-gate) { font-size: 12px; }
-#app[data-host='dock'] #choice :is(.choice-kicker, .chip, .choice-left, .choice-default) { font-size: 12px; }
+#app[data-host='dock'] :is(.choice-opt-note, .choice-silent, .choice-gate) { font-size: var(--fs-xs); }
+#app[data-host='dock'] #choice :is(.choice-kicker, .chip, .choice-left, .choice-default) { font-size: var(--fs-caps); }
 #app[data-host='dock'] .choice-fold { min-width: 44px; min-height: 44px; }
 
 /* the placing banner: the SHEET's 76 px box (sheet.css) at the foot of the free map, the docked pane beside it: the
@@ -279,11 +283,11 @@
 #app[data-host='dock'] .place-btns .btn { min-height: 44px; min-width: 44px; }
 
 /* the inspector's popup: its 12 px floor and 44 px buttons on a finger's tablet */
-#app[data-host='dock'] .ins-popup .ins-card :is(.ins-small, .ins-hint, .ins-head2, .kicker, .chip) { font-size: 12px; }
+#app[data-host='dock'] .ins-popup .ins-card :is(.ins-small, .ins-hint, .ins-head2, .kicker, .chip) { font-size: var(--fs-caps); }
 #app[data-host='dock']:not([data-input='mouse']) .ins-popup .ins-card .btn { min-height: 44px; }
 
 /* ───────── the 12 px floor of what the dock shows ───────── */
 /* the ticker on the map, and the tab bodies' smallest labels (as the phones raise them: sheet.css, drawer.css) */
-#app[data-host='dock'] .tick-kicker { font-size: 12px; letter-spacing: 1.2px; }
-#app[data-host='dock'] #tab-body :is(.kicker, .chip, .ed-opt-vis, .ed-chapter-auc, .pop-blocked) { font-size: 12px; }
+#app[data-host='dock'] .tick-kicker { font-size: var(--fs-caps); letter-spacing: 1.2px; }
+#app[data-host='dock'] #tab-body :is(.kicker, .chip, .ed-opt-vis, .ed-chapter-auc, .pop-blocked) { font-size: var(--fs-caps); }
 #app[data-host='dock'] #tab-body .chip { max-width: 100%; white-space: normal; }

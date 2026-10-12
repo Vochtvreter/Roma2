@@ -6,6 +6,7 @@
 // box only grows while it is on screen, so a shorter number or date never pulls its neighbours across.
 import { h } from './dom';
 import { B } from '../game/balance';
+import { onTextSize } from './textsize';
 
 /** Elements a scroll anchor can find again after a rebuild: section anchors and list rows with a stable key. */
 const KEYED = '[data-key],[data-anchor]';
@@ -174,7 +175,8 @@ export class ControlHold {
   }
 }
 
-/** Grow-only widths: each element keeps the widest box it has had, until reset (a resize or a new layout). */
+/** Grow-only widths: each element keeps the widest box it has had, until reset (a resize, a new layout, another Text
+ *  size: textsize.ts). */
 export class Ratchet {
   private readonly els = new Set<HTMLElement>();
   private readonly mq: MediaQueryList | null;
@@ -183,6 +185,7 @@ export class Ratchet {
   constructor(off?: string) {
     this.mq = off && typeof matchMedia === 'function' ? matchMedia(off) : null;
     if (typeof window !== 'undefined') window.addEventListener('resize', () => this.reset());
+    onTextSize(() => this.reset());
   }
 
   /** Widens each element's floor to its current width (call after the frame's text writes). */

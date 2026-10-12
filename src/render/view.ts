@@ -13,7 +13,7 @@ import { getBuilding } from '../game/state';
 import type { Camera, Push, Xform } from './camera';
 import type { Insets } from './camera';
 import {
-  Motion, NO_INSETS, TILE, ZOOM_LEVELS, centerOnFree, clampCamera, defaultLevel, ensureVisibleDelta, freeCentre, makeCamera, nearestLevel,
+  Motion, NO_INSETS, TILE, ZOOM_LEVELS, canvasDpr, centerOnFree, clampCamera, defaultLevel, ensureVisibleDelta, freeCentre, makeCamera, nearestLevel,
   scaleFor, screenToWorld, tilesIn, worldToScreen,
 } from './camera';
 import { Input } from './input';
@@ -152,7 +152,7 @@ export class MapView {
   resize(): void {
     const r = this.canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    this.dpr = Math.min(3, window.devicePixelRatio || 1);
+    this.dpr = canvasDpr(window.devicePixelRatio);
     this.cssW = r.width;
     this.cssH = r.height;
     this.canvas.width = Math.max(1, Math.round(this.cssW * this.dpr));
@@ -254,7 +254,7 @@ export class MapView {
     this.particles.ambient(dtMs, s, this.painter.drawn, cur, !paused);
     this.particles.draw(g, { x: vis.x * TILE, y: vis.y * TILE, w: vis.w * TILE, h: vis.h * TILE });
     this.actors.sky(g, vis);
-    this.place.drawOver(g, s, this.time, cur);
+    this.place.drawOver(g, s, this.time, cur, this.ins);
     this.drawFlashes(g, s, xf);
     g.setTransform(1, 0, 0, 1, 0, 0);
     this.mini?.draw(s, this.cam, this.terrain.miniCanvas(s), ov, this._placing !== null, this.time, this.ins);
@@ -562,7 +562,7 @@ export class MapView {
       const r = footprintRect(s, b);
       g.fillStyle = `rgba(229,85,74,${0.3 + 0.2 * Math.sin(this.time / 120)})`;
       g.fillRect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE);
-      label(g, `${this.doomed?.touch ? 'Tap' : 'Click'} again to demolish`, (r.x + r.w / 2) * TILE, r.y * TILE - 8 - 12 / xf.k, '#e5554a');
+      label(g, `${this.doomed?.touch ? 'Tap' : 'Click'} again to demolish`, (r.x + r.w / 2) * TILE, r.y * TILE - 8 - 12 / xf.k, '#e5554a', this.ins);
     }
   }
 

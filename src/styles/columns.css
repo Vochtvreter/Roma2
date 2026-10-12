@@ -40,7 +40,7 @@
   display: inline-flex; align-items: center; justify-content: center; position: absolute; left: -30px; top: 58px;
   width: 28px; height: 36px; padding: 0; z-index: var(--z-side-toggle); cursor: pointer;
   background: var(--panel-solid); border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2);
-  box-shadow: -2px 0 0 var(--ring); color: var(--muted); font-family: var(--font-body); font-size: 16px; line-height: 1;
+  box-shadow: -2px 0 0 var(--ring); color: var(--muted); font-family: var(--font-body); font-size: var(--fs-num); line-height: 1;
 }
 #app[data-host='columns'] .side-wide:hover { color: var(--ember); }
 #app[data-host='columns'] .side-wide::before { content: '⤢'; }
@@ -69,9 +69,12 @@
 }
 /* the badges and NEW at the type floor, as the tablet's spine has them (dock.css) */
 #app[data-host='columns'] #side[data-rest='closed'] .side-badge {
-  top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: 12px; line-height: 18px;
+  top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: var(--fs-caps); line-height: 18px;
 }
-#app[data-host='columns'] #side[data-rest='closed'] .side-new { top: -7px; left: 2px; padding: 0 2px; font-size: 12px; line-height: 12px; }
+#app[data-host='columns'] #side[data-rest='closed'] .side-new { top: -7px; left: 2px; padding: 0 2px; font-size: var(--fs-caps); line-height: 12px; }
+
+/* Text size Large (textsize.ts): the docked panel's tabs in two columns, their names whole at the larger size */
+#app[data-host='columns'][data-text='large'] #side[data-rest='half'] > #tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 /* ───────── Tabularium: the wide panel ───────── */
 /* the Breviarium first (at least 250 px: layout.ts COLUMNS.brev), the tabs and the page beside it (two columns from the

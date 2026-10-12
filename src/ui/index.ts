@@ -33,6 +33,7 @@ import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
 import { BACK_RANK, registerBack, syncBack } from './history';
 import { watchPointer } from './pointer';
+import { applyTextSize, onTextSize } from './textsize';
 import { getBuilding } from '../game/state';
 import { dismissTip } from '../game/actions';
 import { aucYear, formatRoman, toRoman } from '../game/calendar';
@@ -88,6 +89,7 @@ export class UI {
   build(): void {
     const g = this.g;
     installMeander();
+    applyTextSize(el('app'));   // the Text size (textsize.ts) before anything measures itself
     watchPointer();   // from the first press: placing and the help follow the hand in use (pointer.ts)
     this.hud = new Hud(g, el('hud'));
     this.hud.build();
@@ -126,6 +128,8 @@ export class UI {
     this.layout.onChange(() => this.inspector.reseek());   // the UI moved: a pinned target it now covers glides clear
     // new classes: the phone's speed popover folds into the row; an open tray follows the layout
     this.layout.onMount((host) => this.hud.mountView(host));   // the view control: the DOCK's HUD, the COLUMNS' map
+    // another Text size: the rows that measure themselves fit again (the ratchets reset themselves: steady.ts)
+    onTextSize(() => { this.hud.refit(); this.layout.refresh(); this.tray.relayout(); });
     this.layout.onChange((why) => {
       if (why === 'classes') this.hud.closePopover();
       if (why !== 'free') { this.hud.syncView(); this.side.syncWide(); }   // the view control and ⤢ follow the detent (the row refits for its label)

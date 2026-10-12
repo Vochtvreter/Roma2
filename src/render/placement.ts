@@ -17,7 +17,8 @@ import { LAYER_META } from '../game/data/housing';
 import { houseSprite, seasonal } from './art/index';
 import { makeCanvas, sprite } from './sprites';
 import type { PlacingState } from './view';
-import { TILE } from './camera';
+import type { Insets } from './camera';
+import { NO_INSETS, TILE, canvasDpr, labelLines, labelPx } from './camera';
 import { footprintRect, lookOf } from './buildings';
 import { drawSpan } from './linear';
 
@@ -44,17 +45,33 @@ export function lPath(a: number, b: number, verticalFirst: boolean): number[] {
   return out;
 }
 
-/** A line of pixel text on a dark plate, centred at (x, y) in world px. */
-export function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
-  g.font = '7px Silkscreen, monospace';
+/** The world-px size of the map's labels under the current draw transform (camera.ts labelPx: 12 CSS px or more), at
+ *  the pixel ratio the view's canvas draws at (canvasDpr: held to 3, as its transform is). */
+export function labelSize(g: CanvasRenderingContext2D): number {
+  return labelPx(g.getTransform().a / canvasDpr(typeof window !== 'undefined' ? window.devicePixelRatio : 1));
+}
+
+/** Pixel text on a dark plate, centred at (x, y) in world px, kept whole in the free map between the side insets `ins`
+ *  (device px: the panel, the tool column; camera.ts labelLines: slid in from an edge, or in two lines, the second at y,
+ *  when wider than that); returns the height a label stacked above it steps up by. */
+export function label(g: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, ins: Insets = NO_INSETS): number {
+  const px = labelSize(g), plate = px + 2, pad = Math.round(px * 0.75), step = plate + 1;
+  g.font = `${px}px Silkscreen, monospace`;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  const w = Math.ceil(g.measureText(text).width) + 6;
-  g.fillStyle = 'rgba(14,11,22,0.85)';
-  g.fillRect(Math.round(x - w / 2), Math.round(y) - 5, w, 10);
-  g.fillStyle = color;
-  g.fillText(text, Math.round(x), Math.round(y) + 0.5);
+  // the free map's edges in world px, 2 px in (the whole canvas when the UI would leave it under 64 px)
+  const t = g.getTransform(), k = t.a || 1, edge = 2, cw = g.canvas.width;
+  const [l, r] = cw - ins.left - ins.right >= 64 * k ? [ins.left, cw - ins.right] : [0, cw];
+  const lines = labelLines(text, x, (l - t.e) / k + edge, (r - t.e) / k - edge, (s) => Math.ceil(g.measureText(s).width) + pad);
+  lines.forEach((ln, i) => {
+    const w = Math.ceil(g.measureText(ln.text).width) + pad, ly = Math.round(y) - (lines.length - 1 - i) * step;
+    g.fillStyle = 'rgba(14,11,22,0.85)';
+    g.fillRect(Math.round(ln.x - w / 2), ly - plate / 2, w, plate);
+    g.fillStyle = color;
+    g.fillText(ln.text, Math.round(ln.x), ly + 0.5);
+  });
   g.textAlign = 'start';
+  return step * lines.length;
 }
 
 interface Slot { r: Rect; mult: number; rural: boolean }
@@ -217,7 +234,7 @@ export class Placement {
   }
 
   /** Over-layer (step 8): the ghost, verdict, bonus, felling yield, laurel, ↑ over houses that could evolve, costs. */
-  drawOver(g: CanvasRenderingContext2D, s: GameState, time: number, season: SeasonIndex): void {
+  drawOver(g: CanvasRenderingContext2D, s: GameState, time: number, season: SeasonIndex, ins: Insets = NO_INSETS): void {
     const p = this.state;
     if (!p) return;
     if (p.kind === 'building') {
@@ -233,12 +250,12 @@ export class Placement {
         for (const k of order) drawSpan(g, s, route, k);
         g.globalAlpha = 1;
       }
-      this.ghost(g, s, p.type, time, season);
+      this.ghost(g, s, p.type, time, season, ins);
     } else if ((p.kind === 'road' || p.kind === 'pave') && this.path?.length) {
       const d = derived(s), last = this.path[this.path.length - 1];
       const n = this.path.filter((t) => (p.kind === 'road' ? d.road[t] === 0 : d.road[t] === 1)).length;
       const text = p.kind === 'road' ? `${n} new · free` : `${n} × ${B.map.PAVE_STONE} stone`;
-      label(g, text, (last % W) * TILE + 8, Math.floor(last / W) * TILE - 8, C.white);
+      label(g, text, (last % W) * TILE + 8, Math.floor(last / W) * TILE - 8, C.white, ins);
     } else if (this.hoverTile !== null && p.kind === 'demolish') {
       const id = derived(s).buildingAt[this.hoverTile];
       const b = id ? s.buildings.find((x) => x.id === id) : undefined;
@@ -246,7 +263,7 @@ export class Placement {
     }
   }
 
-  private ghost(g: CanvasRenderingContext2D, s: GameState, type: BuildingId, time: number, season: SeasonIndex): void {
+  private ghost(g: CanvasRenderingContext2D, s: GameState, type: BuildingId, time: number, season: SeasonIndex, ins: Insets): void {
     const t = this.hoverTile;
     if (t === null) return;
     const c = this.check, ok = !!c && c.ok;
@@ -266,15 +283,15 @@ export class Placement {
     if (!ok) {
       g.fillStyle = C.bad;
       for (let k = -3; k <= 3; k++) { g.fillRect(cx + k, Y + (h * TILE) / 2 + k, 2, 2); g.fillRect(cx + k, Y + (h * TILE) / 2 - k, 2, 2); }
-      if (c && !c.ok) label(g, c.reason, cx, y, '#ff9b8f');
+      if (c && !c.ok) label(g, c.reason, cx, y, '#ff9b8f', ins);
       return;
     }
-    if (c.mult >= GOLD_MULT) { label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold); y -= 11; }
-    if (c.fell > 0) { label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok); y -= 11; }
-    if (c.route?.length) { label(g, `~${c.route.length} arches from the spring`, cx, y, C.spring); y -= 11; }
+    if (c.mult >= GOLD_MULT) y -= label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold, ins);
+    if (c.fell > 0) y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
+    if (c.route?.length) y -= label(g, `~${c.route.length} arches from the spring`, cx, y, C.spring, ins);
     const houses = this.preview?.houses ?? [];
     if (houses.length) {
-      label(g, `+${houses.length} ${houses.length === 1 ? 'house' : 'houses'} could evolve`, cx, y, C.ok);
+      label(g, `+${houses.length} ${houses.length === 1 ? 'house' : 'houses'} could evolve`, cx, y, C.ok, ins);
       const bob = Math.round(Math.sin(time / 200) * 2);
       for (const id of houses) {
         const b = s.buildings.find((x) => x.id === id);
@@ -284,7 +301,7 @@ export class Placement {
         g.fillStyle = C.ok; g.fillRect(ax - 3, ay + 2, 7, 1); g.fillRect(ax - 2, ay + 1, 5, 1); g.fillRect(ax - 1, ay, 3, 1); g.fillRect(ax - 1, ay + 3, 3, 5);
       }
     }
-    if (c.warn) label(g, c.warn, cx, bottom + 8, C.gold);
+    if (c.warn) label(g, c.warn, cx, bottom + 8, C.gold, ins);
   }
 }
 

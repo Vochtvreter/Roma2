@@ -59,6 +59,9 @@ more, right-click to cancel. On a touch screen: drag to pan, pinch to zoom, tap 
 **Place**, hold a control for its tooltip, tap with two fingers to cancel. **Menu → How to play** shows the same, for
 the hands your screen has (the keys with a mouse, the gestures on a touch screen, both on a tablet with a trackpad).
 
+**Menu → Text size** chooses *Normal* or *Large* (every letter a quarter larger; nothing in the game is drawn under
+12 px either way). The choice belongs to this browser, not to the save, and is kept when you reload.
+
 ### Saves
 
 The game saves by itself every 20 seconds, when you switch away and when you leave. The colony lives only in this

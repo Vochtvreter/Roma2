@@ -12,6 +12,8 @@ html, body {
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%; text-size-adjust: 100%;   /* a phone turned sideways keeps the type size */
 }
+/* #app and the layers beside it take the body size from their own type scale (tokens.css: Text size Large is set on #app) */
+#app, #app ~ * { font-size: var(--fs-body); }
 button, input, select, textarea { font: inherit; color: inherit; }
 /* Pixelify Sans draws its 'fi' ligature as one glyph that reads as a capital A ('Raise your Arst building'): ligatures
    off everywhere, form controls included (after their font shorthand, which would reset it) */
@@ -46,14 +48,14 @@ input, textarea { user-select: text; -webkit-user-select: text; }
   min-height: 34px; padding: 6px 14px; border: 2px solid var(--ring); border-radius: 4px;
   background: linear-gradient(#5b4334, #46332a);
   box-shadow: inset 0 2px 0 rgba(255, 236, 200, .16), inset 0 -3px 0 rgba(0, 0, 0, .28);
-  color: var(--text); font-size: 15px; line-height: 1.1; white-space: nowrap; text-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+  color: var(--text); font-size: var(--fs-body); line-height: 1.1; white-space: nowrap; text-shadow: 0 1px 0 rgba(0, 0, 0, .35);
   transition: transform .06s, filter .1s;
 }
 .btn:hover:not(:disabled) { filter: brightness(1.15); }
 .btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255, 236, 200, .12), inset 0 -1px 0 rgba(0, 0, 0, .28); }
 .btn:disabled { opacity: .45; cursor: not-allowed; filter: saturate(.6); }
-.btn.small { min-height: 28px; padding: 3px 9px; font-size: 13px; }
-.btn.big { min-height: 46px; padding: 10px 26px; font-size: 19px; }
+.btn.small { min-height: 28px; padding: 3px 9px; font-size: var(--fs-small); }
+.btn.big { min-height: 46px; padding: 10px 26px; font-size: calc(19px * var(--ts)); }
 .btn.primary { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; text-shadow: 0 1px 0 rgba(255, 255, 255, .35); }
 .btn.legate { background: linear-gradient(#9a3c78, var(--purple) 55%, #5e1f45); color: #ffe8a8; box-shadow: inset 0 2px 0 rgba(255, 210, 240, .22), inset 0 -3px 0 rgba(0, 0, 0, .3); }
 .btn.good { background: linear-gradient(#a6d86c, #5f9a3a); color: #10230a; text-shadow: none; }
@@ -68,7 +70,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .chip {
   display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; margin: 1px;
   border-radius: 3px; background: rgba(0, 0, 0, .28); border: 1px solid #3a2a22;
-  font-family: var(--font-caps); font-size: 10px; letter-spacing: .3px; color: var(--text); white-space: nowrap; line-height: 16px;
+  font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: .3px; color: var(--text); white-space: nowrap; line-height: 16px;
 }
 button.chip { cursor: pointer; }
 .chip.bad { color: #ffc4bd; background: rgba(229, 85, 74, .16); border-color: rgba(229, 85, 74, .55); }
@@ -83,7 +85,7 @@ button.chip { cursor: pointer; }
   box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 236, 200, .04);
   padding: var(--s3); backdrop-filter: var(--blur);
 }
-.kicker { font-family: var(--font-caps); font-size: 10px; letter-spacing: 1.5px; color: var(--ember); text-transform: uppercase; }
+.kicker { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1.5px; color: var(--ember); text-transform: uppercase; }
 .muted { color: var(--muted); }
 .dim { color: var(--dim); }
 .num { font-family: var(--font-caps); font-variant-numeric: tabular-nums; letter-spacing: .2px; }
@@ -101,10 +103,10 @@ button.chip { cursor: pointer; }
 .sev-2 { border-left: 3px solid var(--sev-2); } .sev-3 { border-left: 3px solid var(--sev-3); }
 .badge {
   display: inline-block; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; text-align: center;
-  font-family: var(--font-caps); font-size: 9px; line-height: 16px; background: var(--sev-0); color: #1d1410; box-shadow: 0 0 0 2px var(--ring);
+  font-family: var(--font-caps); font-size: var(--fs-caps); line-height: 16px; background: var(--sev-0); color: #1d1410; box-shadow: 0 0 0 2px var(--ring);
 }
 .badge.warn { background: var(--sev-2); } .badge.bad { background: var(--bad); color: #fff; } .badge.gold { background: var(--gold); }
-.new { font-family: var(--font-caps); font-size: 7px; color: #1d1410; background: var(--gold); border-radius: 2px; padding: 1px 2px; }
+.new { font-family: var(--font-caps); font-size: var(--fs-caps); color: #1d1410; background: var(--gold); border-radius: 2px; padding: 1px 2px; }
 .seal { display: inline-block; width: 16px; height: 16px; }
 
 /* ───────── frames ───────── */
@@ -124,6 +126,6 @@ button.chip { cursor: pointer; }
 }
 
 .kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin: 0 1px; border: 1px solid var(--line-2); border-bottom-width: 2px;
-  border-radius: 3px; background: rgba(255, 255, 255, .05); font-family: var(--font-caps); font-size: 10px; text-align: center; }
+  border-radius: 3px; background: rgba(255, 255, 255, .05); font-family: var(--font-caps); font-size: var(--fs-caps); text-align: center; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

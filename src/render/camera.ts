@@ -32,6 +32,52 @@ export interface Xform { k: number; ox: number; oy: number }
 /** Adds an object to the frame's y-sorted draw list (sort key: footprint bottom in world px, then x). */
 export type Push = (y: number, x: number, draw: (g: CanvasRenderingContext2D) => void) => void;
 
+/** The most device px per CSS px the map's canvas draws at: a sharper screen (or a browser zoomed past 150% on a 2×
+ *  one) still gets a 3× backing store, which is crisp enough and keeps the fill rate in bounds. */
+export const DPR_MAX = 3;
+
+/** The canvas's device px per CSS px for the window's `devicePixelRatio` (1 when it is missing): the view's backing
+ *  store and zoom scale, the minimap's and the labels' size all read this one, so they agree past 3×. */
+export function canvasDpr(raw: number | undefined): number {
+  return Math.min(DPR_MAX, raw || 1);
+}
+
+/** The map's labels (placement.ts label, the particles' floating words) are Silkscreen, drawn 8 font pixels to the em:
+ *  8 world px puts one font pixel on one world pixel, crisp at every whole zoom. */
+export const LABEL_GRID = 8;
+/** The type floor on the screen (DESIGN §16.1), in CSS px. */
+export const LABEL_MIN_CSS = 12;
+
+/** The world-px size of a map label at `cssPerWorld` CSS px per world px (the zoom level, or the transform's scale over
+ *  the dpr): the least multiple of the 8 px grid that stands at 12 CSS px or more on the screen. 8 from zoom 2 (16 CSS
+ *  px: the default zoom is 2 or 3), 16 at zoom 1. */
+export function labelPx(cssPerWorld: number): number {
+  return LABEL_GRID * Math.max(1, Math.ceil(LABEL_MIN_CSS / (LABEL_GRID * Math.max(cssPerWorld, 0.01)) - 1e-9));
+}
+
+/** A line of a map label: its words and the world-px x it is centred on. */
+export interface LabelLine { text: string; x: number }
+
+/** Lays out a map label meant to stand centred on `x`, between `lo` and `hi` (the view's edges, world px): its centre slid
+ *  in from an edge so the plate stays whole on the screen, and, when even the whole view is too narrow for it (a plot's
+ *  verdict at 16 CSS px on a 375 px phone), broken at the space that balances the two lines best. `width` gives a line's
+ *  plate width in world px. A line still wider than the view (one long word) is centred on the view. */
+export function labelLines(text: string, x: number, lo: number, hi: number, width: (s: string) => number): LabelLine[] {
+  const room = hi - lo;
+  let lines = [text];
+  if (width(text) > room) {
+    let best = Infinity;
+    for (let i = text.indexOf(' '); i > 0; i = text.indexOf(' ', i + 1)) {
+      const two = [text.slice(0, i), text.slice(i + 1)], w = Math.max(width(two[0]), width(two[1]));
+      if (w < best) { best = w; lines = two; }
+    }
+  }
+  return lines.map((t) => {
+    const w = width(t);
+    return { text: t, x: w >= room ? (lo + hi) / 2 : Math.min(Math.max(x, lo + w / 2), hi - w / 2) };
+  });
+}
+
 /** Device px per world px for a zoom level: max(1, round(level × dpr)). */
 export function scaleFor(level: number, dpr: number): number {
   return Math.max(1, Math.round(level * dpr));

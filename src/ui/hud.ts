@@ -13,7 +13,9 @@
 // materials step into the Breviarium, the speeds fold into the [❚❚][1× ▾] pair, the view control keeps its icons alone,
 // then spirits, coin and souls, Aqua and Grain go (fitDock). The view control (Urbs · Mensa · Tabularium: the panel
 // folded, docked or wide; layout.ts VIEWS) stands on the DOCK and on the desktop COLUMNS, the current view labelled: in
-// the DOCK's row, and on the COLUMNS at the top-left of the map (mountView), so the desktop's row stays as it was.
+// the DOCK's row, and on the COLUMNS at the top-left of the map (mountView), so the desktop's row stays as it was. The
+// desktop's materials strip shows each cell's day's net and cap while it has the room, and lets them go, nets first,
+// when it has not (fitColumns), so its amounts stay in view.
 import type { ResId, Speed, UnlockRef } from '../game/types';
 import type { Game } from './types';
 import type { IntroPart } from '../game/intro';
@@ -44,6 +46,7 @@ const FLASH_MIN = 10;          // a stock jump of max(10, 25%) flashes its chip
 const FLASH_SHARE = 0.25;
 const CAP_SHOW = 0.9;           // the store's cap shows beside the amount once it is 90% full
 const COIN_WARN = B.advisors.RULES.COIN_RUNOUT[2];   // "lasts N d" once the Quaestor would speak (Monitum)
+const SEASON_ABBR = ['Ver', 'Aest', 'Avt', 'Hiem'] as const;   // as the tablets' season row has them (vitals.ts, hud.css)
 const LAUREL_CREST: UnlockRef = { kind: 'cosmetic', id: 'laurelCrest', label: 'A laurel on the crest' };
 const PAIR_W = 88;      // the speed pair [❚❚][1× ▾]: two 44 px buttons (dock.css), what a folded speed group still takes
 const DOCK_GAP = 4;     // the DOCK row's gap after each item (dock.css: a right margin, so a hidden item leaves none)
@@ -171,6 +174,7 @@ export class Hud {
   private fit(): void {
     const els = this.drops, host = currentHost();
     if (host === 'dock') { this.fitDock(); return; }
+    if (host === 'columns') { this.fitColumns(); return; }
     if (host !== 'drawer') { if (this.fitKey) this.unfit(); return; }
     const key = `drawer|${this.root.clientWidth}|${els.map((el) => `${+el.hidden}${el.textContent}`).join('|')}`;
     if (key === this.fitKey) return;
@@ -181,13 +185,48 @@ export class Hud {
     for (let i = 0; i < n; i++) els[i].classList.add('hud-drop');
   }
 
+  /** Another Text size (textsize.ts): the widths held and the row's fit start again at the new type. */
+  refit(): void {
+    this.ratchet.reset();
+    this.fitKey = '';
+    this.update();
+  }
+
   /** Every figure back in the row, the speeds unfolded, the view control labelled. */
   private unfit(): void {
     this.fitKey = '';
     for (const el of [...this.drops, ...this.dockDrops.flat()]) el.classList.remove('hud-drop');
     this.speedEl?.classList.remove('fold');
     this.viewEl?.classList.remove('bare');
+    this.strip.classList.remove('no-rate', 'no-cap');
     for (const el of Array.from(this.strip.children)) el.classList.remove('hud-cut');
+  }
+
+  /** The desktop's materials strip (hud.css): each cell one line of the amount, its cap once the store is 90% full and
+   *  the day's net, every cell shown while they fit. When the strip has not the room, the nets step into the hover cards
+   *  and the Breviarium first (.no-rate), then the caps (.no-cap: the amount turns gold at the cap anyway), so the strip
+   *  keeps its amounts; past that it scrolls under its fade, as it always has. Fitted again only when the strip's room
+   *  (what the row leaves it) or its words change. */
+  private fitColumns(): void {
+    const st = this.strip, cells = Array.from(st.children) as HTMLElement[];
+    const key = `columns|${st.clientWidth}|${cells.map((el) => el.textContent).join('|')}`;
+    if (key === this.fitKey) return;
+    const step = (): string => `${+st.classList.contains('no-rate')}${+st.classList.contains('no-cap')}`;
+    const was = step();
+    this.unfit();
+    this.fitKey = key;
+    if (!st.offsetParent || !cells.length) return;
+    // measured at the cells' own widths: the floors the ratchet held while the nets showed would keep the strip as wide
+    const held = cells.map((el) => el.style.minWidth);
+    for (const el of cells) el.style.minWidth = '';
+    const over = (): boolean => st.scrollWidth > st.clientWidth + 1;
+    if (over()) {
+      st.classList.add('no-rate');
+      if (over()) st.classList.add('no-cap');
+    }
+    // the same step as before: the floors stand again (a shorter number still pulls no neighbour across)
+    if (step() === was) cells.forEach((el, i) => { el.style.minWidth = held[i]; });
+    this.markMore();
   }
 
   /** The DOCK's one row, priority+ (dock.css): with everything back in, as many steps are taken in their order as the
@@ -408,7 +447,11 @@ export class Hud {
   private date(): HTMLElement {
     const g = this.g;
     const main = h('span', { class: 'hud-date-main' });
-    const sub = h('span', { class: 'hud-sub' });
+    // the season by name, or (a desktop under 1760 px, hud.css) by the tablets' short name: the chip's widest line
+    const year = document.createTextNode('');
+    const seLong = h('span', { class: 'hud-se-long' });
+    const seShort = h('span', { class: 'hud-se-short' });
+    const sub = h('span', { class: 'hud-sub' }, year, seLong, seShort);
     const bar = h('i');
     const ico = img('i_season_0', 2, 'hud-season');
     const swap = spriteSwap(ico, 2);
@@ -419,7 +462,9 @@ export class Hud {
       const d = g.state.day;
       const se = seasonOf(d);
       main.textContent = formatRoman(d);
-      sub.textContent = `AUC ${toRoman(aucYear(d))} · ${SEASON_NAMES[se]}`;
+      year.textContent = `AUC ${toRoman(aucYear(d))} · `;
+      seLong.textContent = SEASON_NAMES[se];
+      seShort.textContent = SEASON_ABBR[se];
       bar.style.width = `${Math.round(seasonFrac(d) * 100)}%`;
       bar.className = `s${se}`;
       swap(`i_season_${se}`);

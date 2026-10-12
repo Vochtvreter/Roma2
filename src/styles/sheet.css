@@ -90,15 +90,15 @@
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-krow { flex-wrap: nowrap; min-width: 0; min-height: 14px; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-krow > :not(.counsel-kicker) { flex: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-kicker {
-  flex: 0 1 auto; min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 0 1 auto; min-width: 0; font-size: var(--fs-caps); line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-title {
-  font-size: 14px; line-height: 16px; white-space: normal; overflow: hidden; text-overflow: ellipsis;
+  font-size: var(--fs-line); line-height: 16px; white-space: normal; overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 /* a lesson: 'DISCIPLINA · I / X' and the job's count over the title; the job line heads the unfolded card, and its
    Show me is the line's chip */
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-prog { font-size: 12px; line-height: 14px; color: var(--muted); white-space: nowrap; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-prog { font-size: var(--fs-caps); line-height: 14px; color: var(--muted); white-space: nowrap; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-prog.done { color: var(--good); }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-body .lesson-show { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-body .lesson-job { margin: 0 0 6px; }
@@ -107,12 +107,12 @@
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-pip { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0; background: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-pip > span {
   padding: 0 5px; border: 1px solid #4a372b; border-radius: 8px; background: rgba(0, 0, 0, .3);
-  font-family: var(--font-caps); font-size: 12px; line-height: 16px; color: var(--muted);
+  font-family: var(--font-caps); font-size: var(--fs-caps); line-height: 16px; color: var(--muted);
 }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: 15px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: var(--fs-body); }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .voice-fold {
   display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0;
-  background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 14px;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: var(--fs-line);
 }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel.open .voice-fold { transform: rotate(180deg); }
 
@@ -124,11 +124,11 @@
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel.open > .counsel-card > .counsel-body { display: block; }
 #app[data-host='sheet'] #side[data-rest='closed']:not([data-moving]) #counsel .counsel-body { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel .counsel-text { margin: 2px 0 8px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: var(--fs-xs); }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-card.offer { max-height: none; }
 
 /* calm: the ticker speaks in the line (its ORDO, AGENDA, saving and ACTA lines); the counsel's calm line until it comes */
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-right: 8px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: var(--fs-small); color: var(--muted); padding-right: 8px; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .counsel-calm .counsel-seal { width: 24px; height: 24px; margin: 0 4px; }
 #app:is([data-host='sheet'], [data-host='drawer']) #counsel.counsel-calm:has(~ #ticker:not([hidden])) { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) #counsel:not(.counsel-calm) ~ #ticker { display: none; }
@@ -138,9 +138,9 @@
 }
 #app:is([data-host='sheet'], [data-host='drawer']) .tick-seal { width: 32px; height: 32px; }
 #app:is([data-host='sheet'], [data-host='drawer']) .tick-lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 1px 0; }
-#app:is([data-host='sheet'], [data-host='drawer']) .tick-kicker { min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#app:is([data-host='sheet'], [data-host='drawer']) .tick-kicker { min-width: 0; font-size: var(--fs-caps); line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #app:is([data-host='sheet'], [data-host='drawer']) .tick-text {
-  font-size: 14px; line-height: 16px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  font-size: var(--fs-line); line-height: 16px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
 }
 
 /* ───────── the bar: five stable slots ───────── */
@@ -167,10 +167,11 @@
 #app[data-host='sheet'] .side-tab-text { align-items: center; max-width: 100%; line-height: 13px; }
 /* 'Commercium' whole in a 360 px wide slot: the label set a little tighter (the slots, the gaps and the bar's sides leave
    it every pixel they can) */
-#app[data-host='sheet'] .side-tab-label { font-size: 12px; letter-spacing: -.07em; overflow: hidden; max-width: 100%; }
-#app[data-host='sheet'] .side-tab-sub { display: block; font-size: 12px; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; max-width: 100%; }
-#app[data-host='sheet'] .side-badge { top: -7px; right: 1px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: 12px; line-height: 18px; }
-#app[data-host='sheet'] .side-new { top: -12px; left: 1px; padding: 0 2px; font-size: 12px; line-height: 12px; }   /* above the slot, clear of its icon */
+/* the slots are a fifth of the bar: Text size Large grows their words to 13 px, what 'Commercium' fits in a 75 px slot */
+#app[data-host='sheet'] .side-tab-label { font-size: min(var(--fs-xs), 13px); letter-spacing: -.07em; overflow: hidden; max-width: 100%; }
+#app[data-host='sheet'] .side-tab-sub { display: block; font-size: min(var(--fs-xs), 13px); letter-spacing: -.02em; white-space: nowrap; overflow: hidden; max-width: 100%; }
+#app[data-host='sheet'] .side-badge { top: -7px; right: 1px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: var(--fs-caps); line-height: 18px; }
+#app[data-host='sheet'] .side-new { top: -12px; left: 1px; padding: 0 2px; font-size: var(--fs-caps); line-height: 12px; }   /* above the slot, clear of its icon */
 #app[data-host='sheet'][data-detent='closed'] .side-tab.on:not(.fresh) {
   color: var(--muted); border-color: var(--ring); background: linear-gradient(180deg, var(--panel-3), var(--panel-2));
 }
@@ -191,7 +192,7 @@
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col.gone { display: none; }   /* no room at all: a tall card stands in the sheet's slot */
 #app[data-host='sheet'][data-detent='full']:not(.placing, [data-card]) #map-col { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col #zoom-ctl { display: flex; flex-direction: column; gap: 4px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col .map-btn { width: 44px; height: 44px; font-size: 20px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) #map-col .map-btn { width: 44px; height: 44px; font-size: var(--fs-title); }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-col-btn img { width: 24px; height: 24px; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-col-btn.on { background: linear-gradient(var(--ember), #e07a35); }
 
@@ -202,8 +203,8 @@
   background: var(--panel-solid); border: var(--border-w) solid var(--line); border-radius: var(--r2);
   box-shadow: var(--ring-shadow), 0 10px 24px rgba(0, 0, 0, .5); animation: trayIn .16s ease-out;
 }
-.map-pop-h { display: flex; align-items: baseline; gap: 6px; padding: 2px 4px 2px; font-size: 14px; color: var(--muted); }
-.map-pop-k { font-family: var(--font-caps); font-size: 12px; letter-spacing: 1.5px; color: var(--ember); }
+.map-pop-h { display: flex; align-items: baseline; gap: 6px; padding: 2px 4px 2px; font-size: var(--fs-line); color: var(--muted); }
+.map-pop-k { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1.5px; color: var(--ember); }
 .map-pop-list { display: flex; flex-direction: column; gap: 4px; }
 .map-pop-row {
   display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 10px 4px 6px; text-align: left;
@@ -211,16 +212,16 @@
 }
 .map-pop-row:hover { background: rgba(255, 236, 200, .06); }
 .map-pop-row img { width: 24px; height: 24px; flex: none; }
-.map-pop-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; font-size: 15px; }
-.map-pop-s { font-size: 12px; color: var(--muted); }
+.map-pop-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; font-size: var(--fs-body); }
+.map-pop-s { font-size: var(--fs-xs); color: var(--muted); }
 /* Mappae: the overlay bar itself, its toggles in a column with their names, the Officia layers, then the legend */
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-ov-row { order: 0; display: flex; flex-direction: column; gap: 4px; max-width: none; padding: 0; background: none; border: 0; box-shadow: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-ov-row.sub { order: 1; display: grid; grid-template-columns: 1fr 1fr; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: 14px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: var(--fs-xs); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: var(--fs-line); }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov span { display: inline; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov.small { padding: 0 8px; font-size: 13px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .map-pop .map-ov.small { padding: 0 8px; font-size: var(--fs-small); }
 
 /* ───────── what floats over the map ───────── */
 /* the hover inspector (a mouse on a phone): over the map, above what stands on the bar (a click's card is the context card, docked below) */
@@ -230,7 +231,7 @@
 #app[data-host='sheet'] #toasts { top: calc(var(--hud-h) + 6px); gap: 4px; }
 #app[data-host='sheet'][data-detent='full'] #toasts { top: auto; bottom: calc(var(--bar-h) + 8px); }
 #app:is([data-host='sheet'], [data-host='drawer']) .toast { padding: 4px 10px 4px 5px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .toast-sub { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .toast-sub { font-size: var(--fs-xs); }
 /* ───────── the sheet's slot: the context card and the event card ───────── */
 /* One card at a time stands where the sheet was, over the bar, the full width less 6 px a side, at most 70% of the screen
    (and below the HUD), scrolling inside; the sheet steps aside behind it (#app[data-card]) and the tool column rides on it */
@@ -242,7 +243,7 @@
    slot, and the card comes back when the placing ends */
 #app:is([data-host='sheet'], [data-host='drawer']).placing .ins-popup { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-popup[data-docked]::before { display: none; }   /* no tail: it is docked, not beside its target */
-#app:is([data-host='sheet'], [data-host='drawer']) .ins-popup[data-docked] > .ins-card { flex: 0 1 auto; min-height: 0; padding: 6px 8px 8px; gap: 6px; font-size: 14px; border-color: var(--line-2); }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-popup[data-docked] > .ins-card { flex: 0 1 auto; min-height: 0; padding: 6px 8px 8px; gap: 6px; font-size: var(--fs-line); border-color: var(--line-2); }
 /* the context card's brief: its head and the parts briefParts picked (data-brief); More shows the rest */
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked:not(.more) > :not(.ins-head):not([data-brief]) { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked:not(.more) .ins-needs > li:not(.unmet),
@@ -253,17 +254,17 @@
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-img img { max-width: 44px; max-height: 40px; }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-ctl { align-self: center; gap: 4px; }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-ctl .btn { min-width: 44px; min-height: 44px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-more { padding: 0 8px; font-size: 13px; color: var(--muted); }
-#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-title { font-size: 17px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-more { padding: 0 8px; font-size: var(--fs-small); color: var(--muted); }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-title { font-size: calc(17px * var(--ts)); }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .btn { min-height: 44px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked :is(.ins-small, .ins-hint, .ins-sub, .ins-why, .ins-good, .ins-bad) { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked :is(.ins-head2, .kicker, .chip) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked :is(.ins-small, .ins-hint, .ins-sub, .ins-why, .ins-good, .ins-bad) { font-size: var(--fs-xs); }
+#app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked :is(.ins-head2, .kicker, .chip) { font-size: var(--fs-caps); }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-labour .tab-lab { padding: 2px 6px; }
 /* the Ordo holds labour: the line has no ±, and says who staffs it, with Mandata to take it back */
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .ins-ordo-lab { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
 /* a dispatch waits while the card stands in the voice line's place: its row under the head, Read at the right */
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-card.docked .btn.ins-dispatch {
-  justify-content: flex-start; gap: 8px; width: 100%; padding: 0 10px; border-color: var(--ember); font-size: 14px; text-align: left;
+  justify-content: flex-start; gap: 8px; width: 100%; padding: 0 10px; border-color: var(--ember); font-size: var(--fs-line); text-align: left;
 }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-dispatch .kicker { flex: none; color: var(--ember); }
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-dispatch-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -274,8 +275,8 @@
 #app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked] > .choice-card { flex: 0 1 auto; min-height: 0; max-height: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked]:has(> .choice-card.folded), #app:is([data-host='sheet'], [data-host='drawer']).placing #choice { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer']) .choice-fold { min-width: 44px; min-height: 44px; }
-#app:is([data-host='sheet'], [data-host='drawer']) :is(.choice-opt-note, .choice-silent, .choice-gate) { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked] :is(.choice-kicker, .chip, .choice-left, .choice-default) { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) :is(.choice-opt-note, .choice-silent, .choice-gate) { font-size: var(--fs-xs); }
+#app:is([data-host='sheet'], [data-host='drawer']) #choice[data-docked] :is(.choice-kicker, .chip, .choice-left, .choice-default) { font-size: var(--fs-caps); }
 /* the dispatch's voice line: its kicker and the days left over its title, and Read */
 #app:is([data-host='sheet'], [data-host='drawer']) .counsel-card.event .counsel-head { border-color: var(--ember); }
 #app:is([data-host='sheet'], [data-host='drawer']) .voice-days.bad { color: var(--bad); }
@@ -291,14 +292,14 @@
 #app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-ico { grid-row: 1 / -1; grid-column: 1; justify-self: center; max-width: 40px; max-height: 40px; }
 #app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main { display: contents; }
 #app:is([data-host='sheet'], [data-host='dock']) .place-name {
-  grid-row: 1; grid-column: 2 / -1; flex-wrap: nowrap; gap: 6px; min-width: 0; overflow: hidden; font-size: 15px; line-height: 20px; white-space: nowrap;
+  grid-row: 1; grid-column: 2 / -1; flex-wrap: nowrap; gap: 6px; min-width: 0; overflow: hidden; font-size: var(--fs-body); line-height: 20px; white-space: nowrap;
 }
 #app:is([data-host='sheet'], [data-host='dock']) .place-name .cost { flex-wrap: nowrap; }
-#app:is([data-host='sheet'], [data-host='dock']) .place-name .chip { font-size: 12px; line-height: 16px; }
-#app:is([data-host='sheet'], [data-host='dock']) .place-latin { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-name .chip { font-size: var(--fs-caps); line-height: 16px; }
+#app:is([data-host='sheet'], [data-host='dock']) .place-latin { font-size: var(--fs-xs); }
 /* rows 2 and 3: the verdict over the reason (or the help); a refusal takes both */
 #app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > :not(.place-name) {
-  grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 16px;
+  grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-small); line-height: 16px;
 }
 #app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > .place-verdict { grid-row: 2; }
 #app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > :is(.place-why, .place-help) { grid-row: 3; }
@@ -307,13 +308,13 @@
 #app:is([data-host='sheet'], [data-host='dock']) .place-box.bad > .place-main > :is(.place-why, .place-help) { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-why { color: var(--gold); }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-why::before { content: '✦ '; }
-#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > .place-help { font-family: var(--font-body); font-size: 12px; letter-spacing: 0; color: var(--muted); }
+#app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-main > .place-help { font-family: var(--font-body); font-size: var(--fs-xs); letter-spacing: 0; color: var(--muted); }
 #app:is([data-host='sheet'], [data-host='dock']) .place-box > .place-btns { grid-column: 3; grid-row: 2 / span 2; display: flex; align-items: center; gap: 2px; }
 #app:is([data-host='sheet'], [data-host='dock']) .place-box.tool > .place-main > .place-help { grid-row: 2 / span 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .btn { min-height: 44px; min-width: 44px; padding: 0 8px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .place-go { min-width: 64px; font-size: 15px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns :is(.place-keep, .place-vert) { font-size: 20px; padding: 0; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .place-x { font-size: 18px; padding: 0; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .place-go { min-width: 64px; font-size: var(--fs-body); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns :is(.place-keep, .place-vert) { font-size: var(--fs-title); padding: 0; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-btns .place-x { font-size: var(--fs-lead); padding: 0; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-x-t { display: none; }
 #app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .place-x-i { display: inline; }
 
@@ -322,13 +323,13 @@
    scrolls sideways, each with its sprite and cost, the Latin and English names, one benefit line and Place */
 .bld-tray { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 0; }
 .bld-tray-head { display: flex; align-items: center; gap: 8px; min-height: 22px; }
-.bld-tray-head .tab-sec-latin { font-size: 12px; }
-.bld-tray-full { margin-left: auto; min-height: 44px; margin-block: -11px; padding: 0 4px; border: 0; background: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+.bld-tray-head .tab-sec-latin { font-size: var(--fs-caps); }
+.bld-tray-full { margin-left: auto; min-height: 44px; margin-block: -11px; padding: 0 4px; border: 0; background: none; color: var(--muted); font-size: var(--fs-small); cursor: pointer; }
 .bld-tray-cats, .bld-tray-cards {
   display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -10px; padding: 0 10px;
 }
 .bld-tray-cats::-webkit-scrollbar, .bld-tray-cards::-webkit-scrollbar { display: none; }
-.bld-tray-cats .btn.bld-cat { flex: none; min-height: 44px; padding: 0 14px; border-radius: var(--r2); font-size: 14px; }
+.bld-tray-cats .btn.bld-cat { flex: none; min-height: 44px; padding: 0 14px; border-radius: var(--r2); font-size: var(--fs-line); }
 .bld-tray-cats .btn.bld-cat.on { color: #1d1410; background: linear-gradient(180deg, var(--ember), var(--ember-2)); border-color: #8a3b13; }
 .bld-tray-more { display: none; color: var(--muted); }
 .bld-tray-cards { gap: 8px; padding-bottom: 2px; scroll-snap-type: x proximity; scroll-padding-inline: 10px; }
@@ -342,13 +343,13 @@
 .bld-tcard-top .bld-img { width: 64px; height: 44px; flex: none; }
 .bld-tcard-top .bld-img img { max-width: 64px; max-height: 44px; }
 .bld-tcard-top .bld-cost .cost { flex-direction: column; align-items: flex-start; gap: 1px; }
-.bld-tcard-top .chip { font-size: 12px; line-height: 14px; padding: 0 4px; margin: 0; }
+.bld-tcard-top .chip { font-size: var(--fs-caps); line-height: 14px; padding: 0 4px; margin: 0; }
 .bld-tcard-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; white-space: nowrap; overflow: hidden; }
-.bld-tcard-name b { font-weight: 400; font-size: 15px; color: var(--gold); }
-.bld-tcard-name span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.bld-tcard .bld-benefit { font-size: 12px; line-height: 15px; min-height: 30px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.bld-tcard .bld-lock { font-size: 12px; margin-top: auto; }
-.btn.bld-tcard-go { margin-top: auto; min-height: 44px; width: 100%; font-size: 15px; }
+.bld-tcard-name b { font-weight: 400; font-size: var(--fs-body); color: var(--gold); }
+.bld-tcard-name span { font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.bld-tcard .bld-benefit { font-size: var(--fs-xs); line-height: 15px; min-height: 30px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.bld-tcard .bld-lock { font-size: var(--fs-xs); margin-top: auto; }
+.btn.bld-tcard-go { margin-top: auto; min-height: 44px; width: 100%; font-size: var(--fs-body); }
 /* one box across a wide sheet's two columns (tabs.css: the page flows in columns from 520 px of body) */
 .side-body > .bld-tray { column-span: all; }
 /* a short phone (Safari's 553–659 px): the head steps aside and Catalogue ⤢ ends the chips, held at the row's right end
@@ -375,11 +376,11 @@
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-labour .tab-lab-ctl > .btn:not(.tab-lab-pm) { display: none; }
 
 /* ───────── the tab body's dense rows (raised to the 12 px floor where the phone shows them) ───────── */
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) :is(.tab-lab-prio, .bld-q-status, .bld-latin, .bld-meta, .tab-agenda-n) { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .tab-lab-count { font-size: 13px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .tab-sec-latin { font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .pop-k { font-size: 12px; letter-spacing: 0; line-height: 14px; }   /* Populus' census, under lesson I's card */
-#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .pop-legend { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) :is(.tab-lab-prio, .bld-q-status, .bld-latin, .bld-meta, .tab-agenda-n) { font-size: var(--fs-xs); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .tab-lab-count { font-size: var(--fs-small); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .tab-sec-latin { font-size: var(--fs-caps); }
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .pop-k { font-size: var(--fs-caps); letter-spacing: 0; line-height: 14px; }   /* Populus' census, under lesson I's card */
+#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock']) .pop-legend { font-size: var(--fs-xs); }
 
 /* ───────── modals: full-screen sheets ───────── */
 /* Inset 0 within the safe areas: the head (✕, kicker, title) sticks to the top, the actions to the foot, and the body
@@ -394,16 +395,16 @@
   position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; min-height: 56px;
   margin: 0 -14px 6px; padding: 8px 60px 6px 14px; background: var(--panel-solid); border-bottom: 2px solid var(--line);
 }
-#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-kicker { margin: 0; font-size: 12px; }
-#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-title { margin: 0; font-size: 21px; }
-#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-x { top: 50%; right: 6px; transform: translateY(-50%); width: 44px; height: 44px; min-width: 44px; min-height: 44px; font-size: 18px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-kicker { margin: 0; font-size: var(--fs-caps); }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-title { margin: 0; font-size: calc(21px * var(--ts)); }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-head .modal-x { top: 50%; right: 6px; transform: translateY(-50%); width: 44px; height: 44px; min-width: 44px; min-height: 44px; font-size: var(--fs-lead); }
 #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root :is(.modal-actions, .modal-foot) {
   position: sticky; bottom: -16px; z-index: 1; margin: 14px -14px -16px; padding: 10px 14px 16px; background: var(--panel-solid); border-top: 2px solid var(--line);
 }
 /* actions with a status line after them (Copy, Load: what they say) stick as one foot, the status under the buttons */
 #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-foot { display: block; }
 #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-foot > .modal-actions { position: static; margin: 0; padding: 0; background: none; border: 0; }
-#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-row-text small, #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-vol-n { font-size: 12px; }
+#app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-row-text small, #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-vol-n { font-size: var(--fs-xs); }
 #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal-col .btn { min-height: 44px; }
 /* parchment: the letter fills the screen inside its meander; its head is the letter's own (no bar), its foot stays pinned */
 #app:is([data-host='sheet'], [data-host='drawer']) ~ #modal-root .modal.parchment { padding: 10px 16px 18px; border-width: 12px; }

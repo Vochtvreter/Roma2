@@ -37,10 +37,10 @@
   --border-w: 2px;
   --blur: blur(3px);
 
-  /* fonts (bundled via @fontsource in main.ts) */
+  /* fonts (bundled via @fontsource in main.ts); the type scale is below */
   --font-body: 'Pixelify Sans', system-ui, sans-serif;
   --font-caps: 'Silkscreen', 'Pixelify Sans', monospace;
-  --fs-base: 15px;
+  --ts: 1;   /* the text scale: 1, or 1.25 under the Text size setting's Large (ui/textsize.ts: #app[data-text='large']) */
 
   /* spacing */
   --s1: 4px;
@@ -82,3 +82,28 @@
   --z-tooltip: 100;
   --z-veil: 200;
 }
+
+/* ───────── the type scale (DESIGN §16.1) ───────── */
+/* Every font-size in src/styles is one of these, or calc(Npx * var(--ts)) off the scale; nothing under 12 px
+   (tests/css-floor.test.ts). Silkscreen is drawn 8 font pixels to the em: at 12 px a font pixel is 3 device px on a 2×
+   screen, and at 13.333 px it is 5 on a 3× one, so its stems stay even; Pixelify Sans is not on a grid and keeps 12.
+   Declared on #app and the layers beside it too (#title-screen, #modal-root, #tooltip, #veil), not only on :root: a
+   custom property's calc() is worked out where it is declared, so each of them reads its own --ts. */
+:root, #app, #app ~ * {
+  --fs-caps: calc(12px * var(--ts));    /* Silkscreen: labels, kickers, chips, badges, tags (never running sentences) */
+  --fs-xs: calc(12px * var(--ts));      /* Pixelify at the floor: sub-labels, rates, fine print */
+  --fs-small: calc(13px * var(--ts));   /* secondary lines: notes, rows, buttons .small */
+  --fs-line: calc(14px * var(--ts));    /* compact lines: the voice line's title, the ticker, row names */
+  --fs-body: calc(15px * var(--ts));    /* running text and buttons */
+  --fs-num: calc(16px * var(--ts));     /* figures and card titles */
+  --fs-lead: calc(18px * var(--ts));    /* big figures, the event title */
+  --fs-title: calc(20px * var(--ts));   /* the glyph buttons (☰ ⟳ ↕) and the Breviarium's days */
+  --fs-hero: calc(26px * var(--ts));    /* modal and veil titles */
+  --fs-base: var(--fs-body);
+}
+@media (min-resolution: 3dppx) {
+  :root, #app, #app ~ * { --fs-caps: calc(13.333px * var(--ts)); }
+}
+/* Text size Large: everything × 1.25, Silkscreen at 16 px (whole font pixels at 1×, 2× and 3×, where 15 px is not) */
+#app[data-text='large'], #app[data-text='large'] ~ * { --ts: 1.25; --fs-caps: 16px; }
+

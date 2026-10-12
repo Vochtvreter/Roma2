@@ -1,6 +1,6 @@
 /* src/styles/mobile.css — owner H (WP-H UI shell). The width breakpoints of the first phone and tablet layout
    (ARCHITECTURE §13.9, DESIGN §15.7): under 1100 px (minimap hidden, compact HUD), under 900 px (everything floating
-   above a 46vh bottom sheet), under 560 px; and the 44 px touch targets of any coarse pointer. Imported after the rest,
+   above a 46% bottom sheet), under 560 px; and the 44 px touch targets of any coarse pointer. Imported after the rest,
    before sheet.css, drawer.css and dock.css.
    The layout engine's hosts (layout.ts, #app[data-host]) have their own shapes now: the portrait phone's SHEET (sheet.css),
    the landscape phone's DRAWER (drawer.css) and the tablet's DOCK (dock.css; a desktop COLUMNS window is never under
@@ -39,9 +39,10 @@
 
 /* ───────── mobile: two-row HUD, widgets above the bottom sheet ───────── */
 @media (max-width: 899px) {
-  /* The open sheet is 46vh, but on a short phone it yields height so the Res Gestae line and the counsel chip still fit
-     between the HUD and the map tools (320 px: the column, the tools and the ticker). */
-  :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
+  /* The open sheet is 46% of #app, but on a short phone it yields height so the Res Gestae line and the counsel chip
+     still fit between the HUD and the map tools (320 px: the column, the tools and the ticker). Never vh: it is measured
+     against the large viewport, which Safari's toolbars cover (tests/css-floor.test.ts). */
+  :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46%, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
   #app:where(:not([data-host='dock'])):has(#side.collapsed) { --sheet: 56px; }
   #app:where(:not([data-host='dock'])):has(#side.empty) { --sheet: 0px; }
 
@@ -51,7 +52,7 @@
   :where(#app:not([data-host='dock'])) .counsel-card .counsel-body { display: none; }
   :where(#app:not([data-host='dock'])) #counsel.open .counsel-card .counsel-body { display: block; }
   :where(#app:not([data-host='dock'])) .counsel-face { width: 32px; height: 32px; }
-  :where(#app:not([data-host='dock'])) .counsel-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  :where(#app:not([data-host='dock'])) .counsel-title { font-size: var(--fs-line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   :where(#app:not([data-host='dock'])) #counsel.open .counsel-title { white-space: normal; }
   :where(#app:not([data-host='dock'])) .counsel-toggle { display: inline-flex; position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; align-items: center; justify-content: center;
     background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); z-index: 1; }
@@ -63,7 +64,7 @@
   :where(#app:not([data-host='dock'])) #left > #counsel { flex: none; }
   :where(#app:not([data-host='dock'])) #counsel:has(> .counsel-card.offer) { max-height: none; }
   :where(#app:not([data-host='dock'])) .counsel-card.offer { max-height: 50vh; max-height: 50dvh; }
-  :where(#app:not([data-host='dock'])) .counsel-calm { font-size: 11px; }
+  :where(#app:not([data-host='dock'])) .counsel-calm { font-size: var(--fs-xs); }
 
   :where(#app:not([data-host='dock'])) #map-tools { right: 8px; bottom: calc(var(--sheet) + 52px); }
   #app:where(:not([data-host='dock'])).placing #map-tools { display: none; }
@@ -98,7 +99,7 @@
   .disp-await .btn { grid-column: 2; }
   .disp { position: static; }   /* the seal sits in the letter's corner, clear of a title that wraps to two lines */
   .disp-seal { top: 2px; left: 2px; transform-origin: 0 0; transform: rotate(-10deg) scale(.6); }
-  .modal.parchment .modal-title { font-size: 21px; margin: 2px 36px 8px; }
+  .modal.parchment .modal-title { font-size: calc(21px * var(--ts)); margin: 2px 36px 8px; }
   .modal.parchment .modal-kicker { margin: 4px 36px 0; }
 }
 
@@ -107,8 +108,8 @@
   :root { --hud-h: 136px; }
   .title-logo { letter-spacing: 1px; }
   .title-row { flex-direction: column; }
-  .modal-title { font-size: 21px; }
-  .disp-body.letter, .disp-letter { font-size: 15px; }
+  .modal-title { font-size: calc(21px * var(--ts)); }
+  .disp-body.letter, .disp-letter { font-size: var(--fs-body); }
 }
 
 /* ───────── touch: targets of at least 44 px (DESIGN §15.7) ───────── */
@@ -118,7 +119,7 @@
   .btn, .btn.small, .btn.tab-seg-btn, .btn.bld-cat, .obj-cta, .side-tab, .modal-row, .tr-repeat, .tr-select, button.chip { min-height: 44px; }
   .hud-sp, .hud-menu { min-width: 44px; }
   /* iOS zooms the page into any field under 16 px when it takes focus */
-  .modal-text, .tr-select { font-size: 16px; }
+  .modal-text, .tr-select { font-size: var(--fs-num); }
   .btn.adv-f { min-height: 64px; }
   .btn.small, .btn.bld-cat { min-width: 44px; }
   .btn.adv-f { min-width: 0; }
@@ -161,7 +162,7 @@
 }
 
 /* ───────── short windows under 900 px off the phones: the sheet becomes a right-hand drawer ───────── */
-/* Every rule above assumes a portrait phone (a 46vh sheet under a two-row HUD), which leaves no map on a short window.
+/* Every rule above assumes a portrait phone (a 46% sheet under a two-row HUD), which leaves no map on a short window.
    Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit at the
    bottom right of the free map. A landscape phone is the DRAWER host now (drawer.css), a 720–899 px window the DOCK
    (dock.css): these rules stand off both, for what is left of them (a 480–520 px tall SHEET window, which sheet.css
