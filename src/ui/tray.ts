@@ -19,7 +19,7 @@ import { clear, fmt, fmtRate, h, img, scrollWithin } from './dom';
 import { caps } from './tipkit';
 import { PointerHold, ScrollAnchor } from './steady';
 import { BACK_RANK, registerBack } from './history';
-import { awaitAction, awaitingItems, pulseTarget } from './counsel';
+import { awaitAction, awaitingItems, showLesson } from './counsel';
 import type { AwaitItem, VoiceAction } from './counsel';
 import { daysText, emptyLine, paintCells, paintSeasons, stripCells, trendOf, vitalTip } from './vitals';
 import type { SeasonRow } from './vitals';
@@ -29,7 +29,7 @@ import { shows, tabShown } from './intro';
 import { btn } from './tabs/common';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
 import { currentMilestone, MILESTONES } from '../game/objectives';
-import { LESSONS, lessonPointer } from '../game/intro';
+import { LESSONS } from '../game/intro';
 import { forecast } from '../game/forecast';
 import { census } from '../game/census';
 import { getBuilding } from '../game/state';
@@ -391,14 +391,11 @@ export class Tray {
       this.close();
       switch (a.kind) {
         case 'remedy': g.applyRemedy(a.remedy); return;
-        case 'open': g.openTab(a.tab, a.anchor); return;
-        case 'event': if (!this.onRead?.()) g.openTab('council', 'choice'); return;
+        case 'open': g.openTab(a.tab, a.anchor, 'chip'); return;   // part-way: Review the Mandata, Petition
+        case 'event': if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); return;
         case 'lesson': {
           const l = LESSONS.find((x) => x.id === a.lesson);
-          if (!l) return;
-          const p = lessonPointer(l);
-          if (p.open) g.openTab(p.open, p.anchor);
-          if (p.glow) pulseTarget(p.glow);
+          if (l) showLesson(g, l);
           return;
         }
       }

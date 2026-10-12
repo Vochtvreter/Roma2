@@ -360,6 +360,7 @@ export class Hud {
 
   private menu(): HTMLElement {
     const g = this.g;
-    return h('button', { class: 'hud-menu', 'aria-label': 'Menu (Esc)', onclick: () => { g.sfx('click'); openMenu(g); } }, '☰');
+    // #hud-menu: on a phone's sheet it is also the Annales' way in (a menu row; layout.ts REVEAL)
+    return h('button', { class: 'hud-menu', id: 'hud-menu', 'aria-label': 'Menu (Esc)', onclick: () => { g.sfx('click'); openMenu(g); } }, '☰');
   }
 }

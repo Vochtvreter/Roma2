@@ -125,7 +125,7 @@ export class Objective {
     if (pn?.ready) this.root.append(this.cta(pn));
     const chips: HTMLElement[] = [];
     for (const a of danger) {
-      const chip = h('button', { class: 'chip bad obj-chip', onclick: () => { g.sfx('click'); g.openTab('advisors', a.advisor); } }, dangerLabel(a));
+      const chip = h('button', { class: 'chip bad obj-chip', onclick: () => { g.sfx('click'); g.openTab('advisors', a.advisor, 'chip'); } }, dangerLabel(a));
       tip(chip, `${ADVISOR_DEFS[a.advisor].office}: Periculum. Click for the remedy.`);
       this.up.push(() => { chip.textContent = dangerLabel(a); });
       chips.push(chip);

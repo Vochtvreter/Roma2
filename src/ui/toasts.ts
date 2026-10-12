@@ -1,5 +1,6 @@
 // src/ui/toasts.ts — toasts (ARCHITECTURE §13.4; DESIGN §15.1: completions, evolutions, milestones, rank-ups and errors
-// only — Annales lines go to the ticker). Max B.ui.TOASTS_MAX visible, the oldest dropped; repeats batch within 1.5 s.
+// only — Annales lines go to the ticker). Max B.ui.TOASTS_MAX visible (2 on a portrait phone), the oldest dropped;
+// repeats batch within 1.5 s.
 // A toast does not expire while the mouse rests on the stack, so the one being read or clicked never slides away.
 // Owner: WP-H.
 import { h, img } from './dom';
@@ -9,6 +10,8 @@ const DEFAULT_MS = 4000;
 const BATCH_MS = 1500;
 const FADE_MS = 300;
 const RETRY_MS = 500;
+/** At most this many toasts under a portrait phone's HUD (the SHEET host), so they never reach far down the map. */
+const SHEET_MAX = 2;
 const ICON: Record<Kind, string> = { info: 'i_seal', good: 'i_star', bad: 'i_unpaid', gold: 'i_laurel' };
 
 type Kind = 'info' | 'good' | 'bad' | 'gold';
@@ -34,7 +37,8 @@ function show(text: string, kind: Kind, icon: string | undefined, ms: number, su
   el.addEventListener('click', () => remove(el));
   root.appendChild(el);
   const live = Array.from(root.children).filter((c) => !c.classList.contains('toast-out')) as HTMLElement[];
-  for (const old of live.slice(0, Math.max(0, live.length - B.ui.TOASTS_MAX))) remove(old);
+  const max = document.getElementById('app')?.dataset.host === 'sheet' ? SHEET_MAX : B.ui.TOASTS_MAX;   // a phone's sheet: two
+  for (const old of live.slice(0, Math.max(0, live.length - max))) remove(old);
   window.setTimeout(() => expire(el), ms);
   return el;
 }

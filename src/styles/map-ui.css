@@ -61,6 +61,7 @@
 }
 .tick-box:hover { border-color: var(--line-2); }
 .tick-seal { width: 24px; height: 24px; flex: none; }
+.tick-lines { display: contents; }   /* the kicker and the line in one row; two rows in a phone's voice line (sheet.css) */
 .tick-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.5px; color: var(--ember); flex: none; }
 .tick-box[data-kind^="acta"] .tick-kicker { color: var(--gold); }
 .tick-box[data-kind="saving"] .tick-kicker { color: var(--water); }

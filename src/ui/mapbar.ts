@@ -1,11 +1,17 @@
 // src/ui/mapbar.ts — the map widgets of the shell (DESIGN §15.4, §11.9): the overlay bar (five toggles, the Officia
-// layer selector and a legend), the zoom buttons and the placement banner. Owner: WP-H (split from ui/index.ts).
+// layer selector and a legend), the zoom buttons, the phone SHEET's tool column (Via, Mappae, the zoom) and the placement
+// banner. Owner: WP-H (split from ui/index.ts).
 import { OVERLAYS } from '../game/types';
-import type { CoverageLayerId, OverlayId, PlaceCheck } from '../game/types';
+import type { CoverageLayerId, OverlayId, PlaceCheck, ToolId } from '../game/types';
 import type { Game, PlacingState } from './types';
+import type { Host, Layout } from './layout';
+import { registerBringer } from './layout';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
-import { overlayRevealed } from '../game/reveal';
+import { overlayRevealed, toolRevealed } from '../game/reveal';
+import { BACK_RANK, registerBack } from './history';
+import { present, shows } from './intro';
+import { Home } from './sheet';
 import { notePractice } from '../game/actions';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
@@ -81,6 +87,156 @@ export class MapTools {
     }
     const legend = cur === 'officia' ? [[LAYER_META[g.view.overlayLayer].color, 'covered'], ['#e5554a', 'unstaffed']] as [string, string][] : LEGEND[cur];
     if (legend) bar.appendChild(h('div', { class: 'map-legend' }, legend.map(([c, t]) => h('span', null, h('i', { class: 'map-sw', style: { background: c } }), t))));
+  }
+}
+
+/** The road tools a phone's Via button offers, as the Aedificia tool row names them (those revealed show). */
+const VIA: readonly { id: Exclude<ToolId, 'pin'>; label: string; sub: string }[] = [
+  { id: 'road', label: 'Road', sub: 'drag across the land' },
+  { id: 'pave', label: 'Pave', sub: 'basalt over built roads' },
+  { id: 'reserve', label: 'Reserve block', sub: 'the Ordo leaves it alone' },
+  { id: 'demolish', label: 'Demolish', sub: 'tap a work twice' },
+];
+const POP_GAP = 8;   // CSS px kept between a popover and the HUD
+const COL_EDGE = 8;  // CSS px the tool column keeps from the sheet and from the HUD
+const COL_BTN = 44;  // the column's buttons (sheet.css)
+const COL_GAP = 4;
+
+/** The phone SHEET's tool column in #map-col (DESIGN §15.7): [Via][Mappae][+][−][⌂], 44 px each, at the right edge 8 px
+ *  above the sheet (it rides up with half, hides at full) and left in view while placing. Via drops the road tools it
+ *  offers (Road, Pave, Reserve block, Demolish: those revealed, once the lessons open the catalogue); Mappae drops the
+ *  overlay bar itself (#overlay-bar, re-hosted, its labels and legend shown); + − ⌂ are the zoom buttons (#zoom-ctl,
+ *  re-hosted). Each popover is a Back and Esc layer and closes on a press outside it. Off the SHEET the column hides and
+ *  the bar and the zoom go home to #map-tools (layout.onMount). */
+export class MapColumn {
+  private readonly via: HTMLButtonElement;
+  private readonly mappae: HTMLButtonElement;
+  private readonly group: HTMLElement;   // Via and Mappae, one column (beside the zoom's when the map is short: fit)
+  private readonly viaPop: HTMLElement;
+  private readonly viaList: HTMLElement;
+  private readonly mapPop: HTMLElement;
+  private readonly bar: Home;
+  private readonly zoom: Home;
+  private openNow: 'via' | 'mappae' | null = null;
+  private hostNow: Host | null = null;
+  private toolsKey = '';
+
+  constructor(private readonly g: Game, private readonly root: HTMLElement, bar: HTMLElement, zoom: HTMLElement,
+    private readonly layout: Pick<Layout, 'sheetHeights' | 'detent'>) {
+    this.bar = new Home(bar);
+    this.zoom = new Home(zoom);
+    root.setAttribute('aria-label', 'Map tools');
+    const btn = (id: string, icon: string, label: string, which: 'via' | 'mappae'): HTMLButtonElement => {
+      const b = h('button', { class: 'map-btn map-col-btn', id, type: 'button', 'aria-label': label, 'aria-expanded': 'false',
+        onclick: () => { g.sfx('click'); this.toggle(which); } }, img(icon, 2));
+      tip(b, label);
+      return b;
+    };
+    this.via = btn('map-via', 'i_tool_road', 'Via: roads, paving, reserve, demolish', 'via');
+    this.mappae = btn('map-mappae', 'i_ov_aqua', 'Mappae: maps of the land (O)', 'mappae');
+    this.viaList = h('div', { class: 'map-pop-list' });
+    this.viaPop = h('div', { class: 'map-pop', id: 'via-pop', role: 'dialog', 'aria-label': 'Via: the road tools', hidden: true },
+      h('div', { class: 'map-pop-h' }, h('span', { class: 'map-pop-k' }, 'VIA'), 'Roads and tools'), this.viaList);
+    this.mapPop = h('div', { class: 'map-pop', id: 'mappae-pop', role: 'dialog', 'aria-label': 'Mappae: map overlays', hidden: true },
+      h('div', { class: 'map-pop-h' }, h('span', { class: 'map-pop-k' }, 'MAPPAE'), 'Maps of the land'));
+    this.group = h('div', { class: 'map-col-group' }, this.via, this.mappae);
+    clear(root);
+    root.append(this.viaPop, this.mapPop, this.group);
+    // a layer of the Back and Esc chain; a press anywhere outside the column closes the popover
+    registerBack({ rank: BACK_RANK.popover, open: () => this.openNow !== null, close: () => this.close() });
+    document.addEventListener('pointerdown', (e) => {
+      if (this.openNow && !(e.target instanceof Node && root.contains(e.target))) this.close();
+    }, true);
+    // "Show me" on the overlay bar (lesson IX, the wants and fork tips) opens the popover that holds it
+    registerBringer('#overlay-bar', () => {
+      if (this.hostNow !== 'sheet' || this.mappae.hidden) return false;
+      this.show('mappae');
+      return true;
+    });
+  }
+
+  /** The host changed (layout.onMount): on the SHEET the overlay bar moves into the Mappae popover and the zoom buttons
+   *  into the column; elsewhere they go home and any popover closes. */
+  mount(host: Host): void {
+    if (host === this.hostNow) return;
+    this.hostNow = host;
+    if (host === 'sheet') {
+      this.mapPop.append(this.bar.el);
+      this.root.append(this.zoom.el);
+    } else {
+      this.close();
+      this.bar.back();
+      this.zoom.back();
+    }
+  }
+
+  /** Throttled by the UI root: Via and Mappae come with what they hold (the catalogue's tools, the overlays lesson), the
+   *  Via list follows the tools revealed, and a popover whose button went away closes. */
+  update(): void {
+    if (this.hostNow !== 'sheet') return;
+    const g = this.g;
+    const tools = shows(g, 'catalog') ? VIA.filter((t) => toolRevealed(g.state, t.id)) : [];
+    present(g, this.via, tools.length > 0);
+    present(g, this.mappae, shows(g, 'overlays'));
+    const key = tools.map((t) => t.id).join(',');
+    if (key !== this.toolsKey) {
+      this.toolsKey = key;
+      clear(this.viaList);
+      for (const t of tools) {
+        this.viaList.append(h('button', { class: 'map-pop-row', type: 'button', dataset: { tool: t.id },
+          onclick: () => { this.close(); g.startPlacing({ kind: t.id }); } },
+        img(`i_tool_${t.id}`, 2), h('span', { class: 'map-pop-t' }, h('span', null, t.label), h('span', { class: 'map-pop-s' }, t.sub))));
+      }
+    }
+    if ((this.openNow === 'via' && this.via.hidden) || (this.openNow === 'mappae' && this.mappae.hidden)) this.close();
+    this.fit();
+  }
+
+  /** Fits the column to the strip of map between the HUD and the sheet at its detent's height (not mid-slide): one column
+   *  when it can, else Via and Mappae beside the zoom (wrap), else without the zoom (tight: fingers pinch). */
+  fit(): void {
+    const hs = this.layout.sheetHeights, app = this.root.parentElement;
+    if (this.hostNow !== 'sheet' || !hs || !app) return;
+    const bar = document.getElementById('tabs')?.offsetHeight ?? 0, hud = document.getElementById('hud');
+    const top = hud ? hud.offsetTop + hud.offsetHeight : 0;
+    const placing = app.classList.contains('placing');
+    const room = app.clientHeight - bar - (placing ? 0 : hs[this.layout.detent]) - COL_EDGE - top - COL_EDGE;
+    // the stacks' own heights, whatever fit() hid last time (so it never flips back and forth)
+    const stack = (el: HTMLElement): number => { const n = Array.from(el.children).filter((c) => !(c as HTMLElement).hidden).length; return n ? n * (COL_BTN + COL_GAP) - COL_GAP : 0; };
+    const a = stack(this.group), b = stack(this.zoom.el);
+    const one = a + (a && b ? COL_GAP : 0) + b;
+    const wrap = one > room, tight = wrap && Math.max(a, b) > room;
+    if (wrap !== this.root.classList.contains('wrap')) this.root.classList.toggle('wrap', wrap);
+    if (tight !== this.root.classList.contains('tight')) this.root.classList.toggle('tight', tight);
+  }
+
+  /** Opens a popover (the other one closes), sized to the map between the HUD and the column's foot. */
+  show(which: 'via' | 'mappae'): void {
+    this.openNow = which;
+    const pop = which === 'via' ? this.viaPop : this.mapPop;
+    for (const [p, b] of [[this.viaPop, this.via], [this.mapPop, this.mappae]] as const) {
+      p.hidden = p !== pop;
+      b.setAttribute('aria-expanded', String(p === pop));
+      b.classList.toggle('on', p === pop);
+    }
+    const hud = document.getElementById('hud')?.getBoundingClientRect(), col = this.root.getBoundingClientRect();
+    if (hud) pop.style.maxHeight = `${Math.max(120, Math.round(col.bottom - hud.bottom - POP_GAP))}px`;
+  }
+
+  /** Closes the open popover, if any. */
+  close(): void {
+    if (!this.openNow) return;
+    this.openNow = null;
+    for (const [p, b] of [[this.viaPop, this.via], [this.mapPop, this.mappae]] as const) {
+      p.hidden = true;
+      b.setAttribute('aria-expanded', 'false');
+      b.classList.remove('on');
+    }
+  }
+
+  private toggle(which: 'via' | 'mappae'): void {
+    if (this.openNow === which) this.close();
+    else this.show(which);
   }
 }
 

@@ -149,15 +149,19 @@ export function dodge(t: Box, over: readonly Box[], within: Box, m: number): { d
 
 const SEEK_MARGIN = 16;   // CSS px a covered target glides clear of the UI's edge
 const NUDGE = 96;         // CSS px a target may slide sideways so its card fits beside it (a narrow free map)
-/** What floats over the free map (the layout's free rect leaves it in): a target under it is covered too. TODO(P2): the
- *  hosts' voice line and tool column replace the ticker, the map tools and a phone's band of cards. */
-const FLOATING = ['objective', 'counsel', 'ticker', 'overlay-bar', 'zoom-ctl', 'minimap', 'side-toggle'] as const;
+/** What floats over the free map (the layout's free rect leaves it in): a target under it is covered too. On the phone
+ *  SHEET the counsel and the ticker are in the sheet's voice line (outside the free rect) and the tool column (map-col)
+ *  holds the zoom buttons and the Mappae and Via popovers; off it, the left column's cards and the map tools float. */
+const FLOATING = ['objective', 'counsel', 'ticker', 'overlay-bar', 'zoom-ctl', 'minimap', 'side-toggle', 'map-col'] as const;
 
 /** The inspector: hover cards in #inspector (bottom left); a clicked target opens a closable popup beside it on the map. */
 export class Inspector {
   private readonly hoverCard: InspectorCard;
   private readonly popup: InspectorCard;
   private hover: InspectTarget | null = null;
+  /** A clicked card opened (true) or closed (false): the UI root routes the phone's sheet for it (a focus clears the
+   *  map; closing puts the sheet back). Not told when one pinned card replaces another. */
+  onPin: ((on: boolean) => void) | null = null;
 
   constructor(g: Game, root: HTMLElement) {
     this.hoverCard = new InspectorCard(g, root, false);
@@ -175,14 +179,21 @@ export class Inspector {
 
   /** Shows a target: a sticky one (click) opens the popup until closed or replaced; a transient one (hover) shows bottom left. */
   show(t: InspectTarget | null, sticky: boolean): void {
-    if (sticky) this.popup.set(t); else this.hover = t;
+    if (sticky) {
+      const was = this.popup.target !== null;
+      this.popup.set(t);
+      if (was !== (this.popup.target !== null)) this.onPin?.(!was);
+    } else this.hover = t;
     this.hoverCard.set(same(this.hover, this.popup.target) ? null : this.hover);   // no second card for what the popup shows
   }
 
-  /** Every frame: throttled card refreshes; the popup follows its target on the map. */
+  /** Every frame: throttled card refreshes; the popup follows its target on the map. A pinned card whose building is gone
+   *  (demolished from the card) closes itself, and says so (onPin), as its ✕ would. */
   frame(now: number): void {
     this.hoverCard.frame(now);
+    const was = this.pinned;
     this.popup.frame(now);
+    if (was && !this.pinned) this.onPin?.(false);
   }
 }
 

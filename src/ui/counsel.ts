@@ -3,6 +3,9 @@
 // (prefs.tips) › Monitum / Opportunitas advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; the card is never rebuilt
 // under the pointer within B.ui.CLICK_GUARD_MS of a click, nor while the mouse rests on it (unless to answer a click
 // there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
+// On the phone SHEET (layout.ts, sheet.ts) the card is the voice line at the sheet's head: folded, its head is two rows
+// (portrait, kicker and title) with the one action chip of voiceAction and a '+n' pip for what else waits; a tap on the
+// line unfolds the card inside the sheet, at half (Layout.lift), and a closed sheet folds it again.
 import { ADVISORS } from '../game/types';
 import type { ActiveAdvisory, ActionResult, AdvisorId, BuildingId, DutyId, GameState, GuideStep, PathDecisionId, RankIndex, Remedy, TabId } from '../game/types';
 import type { Game } from './types';
@@ -27,7 +30,8 @@ import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { portrait } from '../render/art/index';
 import { shows, tabShown } from './intro';
-import { revealTarget } from './layout';
+import { bringTarget, currentHost, revealTarget, routeIntent } from './layout';
+import type { Layout } from './layout';
 
 /** The one item the card shows. */
 export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip'; t: GuideStep }
@@ -144,6 +148,13 @@ export function voiceAction(item: CounselItem | AwaitItem, s: GameState): VoiceA
   }
 }
 
+/** How many waiting items (awaitingItems) the voice line's '+n' pip counts beside the one it shows (pure;
+ *  tests/voice.test.ts): all of them, less the shown item when it is one of them (the same advisory, or the chores). */
+export function waitingBeyond(items: readonly AwaitItem[], shown: CounselItem): number {
+  const own = items.some((x) => (x.kind === 'advisory' && shown.kind === 'advisory' && x.a.rule === shown.a.rule) || (x.kind === 'offer' && shown.kind === 'offer'));
+  return items.length - (own ? 1 : 0);
+}
+
 /** An "Awaiting you" row's action (pure): an advisory offers its first remedy (a building one as Place); every other
  *  item the voice line's chip. */
 export function awaitAction(item: AwaitItem, s: GameState): VoiceAction | null {
@@ -164,7 +175,19 @@ export function counselSig(g: Game, item: CounselItem): string {
     const r = renderAdvisory(s, view(s), item.a);
     key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
   }
-  return `${strip}|${key}|${g.prefs.tips ? 1 : 0}`;
+  // the phone's voice line also counts what else waits ('+n'), and is built afresh for another host
+  const sheet = currentHost() === 'sheet' ? `|S${waitingBeyond(awaitingItems(s), item)}` : '';
+  return `${strip}|${key}|${g.prefs.tips ? 1 : 0}${sheet}`;
+}
+
+/** "Show me" for a lesson (its card's button, the voice line's chip, an "Awaiting you" row): its tab opens on its anchor
+ *  where the lessons' table routes it (or the panel makes way for the map: a map lesson), the host brings a target it
+ *  hides into view (the SHEET's Mappae popover for the overlay bar), and the target glows. */
+export function showLesson(g: Game, l: Lesson): void {
+  const ptr = lessonPointer(l);
+  if (ptr.open) g.openTab(ptr.open, ptr.anchor, 'lesson');
+  else routeIntent({ kind: 'lesson', lesson: l.id });
+  if (ptr.glow) { bringTarget(ptr.glow); pulseTarget(ptr.glow); }
 }
 
 /** Pulses a selector's element for 3 s (retries while a freshly opened tab builds); one in the side panel's body is
@@ -178,7 +201,18 @@ export function pulseTarget(target: string): void {
     if (!el) { if (++tries < PULSE_TRIES) window.setTimeout(go, 60); return; }
     el.classList.add('guide-glow');
     const body = el.closest<HTMLElement>('#tab-body');
-    if (body) scrollWithin(body, el, 'nearest', true);
+    // a frame later: the card that unfolds with a lesson (a phone's sheet, above its tab body) has taken its room by then.
+    // And again while it glows, whenever the body, the row or the tab's content changes size (the sheet coming to rest, a
+    // line the panel adds once the day turns): the row the lesson points at stays whole in view
+    if (body) {
+      const bring = (): void => { if (body.contains(el)) scrollWithin(body, el, 'nearest', true); };
+      requestAnimationFrame(bring);
+      if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(() => bring());
+        for (const x of [body, el, body.firstElementChild]) if (x) ro.observe(x);
+        window.setTimeout(() => ro.disconnect(), PULSE_MS);
+      }
+    }
     window.setTimeout(() => el.classList.remove('guide-glow'), PULSE_MS);
   };
   go();
@@ -194,6 +228,12 @@ export class Counsel {
   private open = false;                       // mobile: the card is expanded from its portrait chip
   private autoOpen = false;                   // … and it was a tip or lesson that unfolded it
   private skipArmed = false;                  // "Skip the lessons" asks once more before it skips
+  /** The layout (UI.build): on the SHEET an unfolded card raises a closed sheet to half and lets it drop again. */
+  layout: Pick<Layout, 'lift' | 'drop' | 'detent'> | null = null;
+  /** The voice line's '+n' pip: the UI root opens the Breviarium at "Awaiting you". */
+  onAwaiting: (() => void) | null = null;
+  /** The voice line's Read chip: the UI root unfolds the event card (false when none is pending). */
+  onRead: (() => boolean) | null = null;
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.hold = new PointerHold(root);
@@ -220,9 +260,19 @@ export class Counsel {
     }
   }
 
+  /** The sheet came down to closed (the player, Back, placing): the card folds into its line. */
+  fold(): void {
+    if (!this.open) return;
+    this.open = false;
+    this.autoOpen = false;
+    this.root.classList.remove('open');
+    this.root.querySelector('.voice-fold')?.setAttribute('aria-expanded', 'false');
+  }
+
   private build(item: CounselItem): void {
     clear(this.root);
     this.refresh = null;
+    const sheet = currentHost() === 'sheet';
     const key = item.kind === 'advisory' ? `a:${item.a.rule}:${item.a.memo.sev}` : item.kind === 'tip' ? `t:${item.t.id}`
       : item.kind === 'lesson' ? `l:${item.index}:${item.done ? 1 : 0}` : item.kind === 'offer' ? `o:${item.duties[0]}` : 'c';
     const enter = key !== this.shownKey;
@@ -234,6 +284,15 @@ export class Counsel {
     // brings the same offer back shorter: an unfolded card stays unfolded
     if (enter && (item.kind === 'tip' || item.kind === 'lesson')) { this.open = true; this.autoOpen = true; }
     else if (enter && ((item.kind === 'offer' && !wasOffer) || this.autoOpen)) { this.open = false; this.autoOpen = false; }
+    // on a phone's sheet the card unfolds inside the sheet: a new lesson raises a closed sheet to half (it is to be read
+    // and done), a tip waits folded in the voice line while the sheet is closed (the map first), and a card that folds
+    // lets the sheet it raised drop again
+    const L = sheet ? this.layout : null;
+    if (L) {
+      if (this.open && enter && item.kind === 'lesson') L.lift('counsel');
+      else if (this.open && L.detent === 'closed') { this.open = false; this.autoOpen = false; }
+      if (!this.open) L.drop('counsel');
+    }
     this.root.className = `counsel-${item.kind}${this.open ? ' open' : ''}`;
     // the portraits come with the advisors' tip (the paced introduction); until then the card stands alone
     if (shows(this.g, 'portraits')) this.root.appendChild(h('div', { class: 'counsel-strip' }, ADVISORS.map((a) => this.portraitBtn(a))));
@@ -241,14 +300,57 @@ export class Counsel {
     const card = item.kind === 'tip' ? this.tipCard(item.t) : item.kind === 'lesson' ? this.lessonCard(item)
       : item.kind === 'offer' ? this.offerCard(item.duties) : this.advisoryCard(item.a);
     if (enter) card.classList.add('enter');
-    const toggle = h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾');
-    card.prepend(toggle);
+    if (sheet) card.querySelector('.counsel-head')?.append(this.voiceActs(item));
+    else card.prepend(h('button', { class: 'counsel-toggle', 'aria-label': 'Show or hide the counsel', onclick: () => this.toggleOpen() }, '▾'));
     this.root.appendChild(card);
   }
 
   private toggleOpen(): void {
     this.open = !this.open;
     this.root.classList.toggle('open', this.open);
+    this.root.querySelector('.voice-fold')?.setAttribute('aria-expanded', String(this.open));
+    const L = currentHost() === 'sheet' ? this.layout : null;
+    if (L) { if (this.open) L.lift('counsel'); else L.drop('counsel'); }
+  }
+
+  /** The voice line's right end on the SHEET (DESIGN §15.7): the '+n' pip when more waits than the line says (it opens
+   *  the Breviarium at "Awaiting you"), then the item's one action chip (voiceAction: Place, Review, Show me, Read), or
+   *  ▾ to unfold the card when it has none. Their taps are theirs: the line's own tap unfolds the card. */
+  private voiceActs(item: CounselItem): HTMLElement {
+    const g = this.g;
+    const s = g.state;
+    const own = (fn: () => void) => (e: Event): void => { e.stopPropagation(); g.sfx('click'); fn(); };
+    const n = waitingBeyond(awaitingItems(s), item);
+    const pip = n > 0 ? h('button', { class: 'voice-pip', type: 'button', 'aria-label': `${n} more ${n === 1 ? 'matter waits' : 'matters wait'}: open the accounts`,
+      onclick: own(() => this.onAwaiting?.()) }, h('span', null, `+${n}`)) : null;
+    const act = voiceAction(item, s);
+    let chip: HTMLElement;
+    if (act) {
+      const off = act.kind === 'remedy' && !act.ok;
+      chip = h('button', { class: `btn small primary voice-chip${off ? ' is-off' : ''}`, type: 'button', 'aria-disabled': off ? 'true' : null,
+        onclick: own(() => this.runAction(act)) }, act.label);
+      if (off && act.kind === 'remedy') tip(chip, act.reason);
+    } else {
+      chip = h('button', { class: 'voice-fold', type: 'button', 'aria-label': 'Show or hide the counsel', 'aria-expanded': String(this.open),
+        onclick: (e: Event) => { e.stopPropagation(); this.toggleOpen(); } }, '▾');
+    }
+    return h('div', { class: 'voice-acts' }, pip, chip);
+  }
+
+  /** The voice line's chip: a remedy runs (one that cannot says why, as the tray's rows and the card's buttons do: a
+   *  dimmed chip's tap is a refusal with its reason, never a start), a tab opens part-way, a lesson shows, the dispatch
+   *  unfolds. */
+  private runAction(a: VoiceAction): void {
+    const g = this.g;
+    switch (a.kind) {
+      case 'remedy':
+        if (!a.ok) { g.act({ ok: false, code: 'locked', reason: a.reason }); return; }
+        g.applyRemedy(a.remedy);
+        return;
+      case 'open': g.openTab(a.tab, a.anchor, 'chip'); return;
+      case 'event': if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); return;
+      case 'lesson': { const l = LESSONS.find((x) => x.id === a.lesson); if (l) showLesson(g, l); return; }
+    }
   }
 
   private portraitBtn(a: AdvisorId): HTMLElement {
@@ -261,7 +363,7 @@ export class Counsel {
       return el;
     }
     const worst = activeAdvisories(s).filter((x) => x.advisor === a).reduce((m, x) => Math.max(m, x.memo.sev), -1);
-    const el = h('button', { class: 'counsel-pt', 'aria-label': `${def.office}: open the advisors`, onclick: () => { g.sfx('click'); g.openTab('advisors', a); } },
+    const el = h('button', { class: 'counsel-pt', 'aria-label': `${def.office}: open the advisors`, onclick: () => { g.sfx('click'); g.openTab('advisors', a, 'chip'); } },
       img(portrait(a, advisorMood(s, a)), 1), worst >= 1 ? h('i', { class: `pip sev-bg-${worst}` }) : null);
     tip(el, () => {
       const n = activeAdvisories(g.state).filter((x) => x.advisor === a).length;
@@ -295,8 +397,8 @@ export class Counsel {
     const done = (): void => { this.open = false; g.act(dismissTip(g.state, t.id), { okSfx: 'click' }); };
     const showMe = t.tab || t.target ? h('button', { class: 'btn small', onclick: () => {
       g.sfx('click');
-      if (t.tab) g.openTab(t.tab);
-      if (t.target) pulseTarget(t.target);
+      if (t.tab) g.openTab(t.tab, undefined, 'chip');
+      if (t.target) { bringTarget(t.target); pulseTarget(t.target); }
     } }, 'Show me') : null;
     return h('div', { class: `counsel-card tip${t.urgent ? ' urgent' : ''}`, role: 'note' },
       h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
@@ -320,9 +422,7 @@ export class Counsel {
       h('span', null, l.job), prog ? h('span', { class: 'lesson-prog' }, prog) : null);
     const show = (): void => {
       g.sfx('click');
-      const ptr = lessonPointer(l);
-      if (ptr.open) g.openTab(ptr.open, ptr.anchor);
-      if (ptr.glow) pulseTarget(ptr.glow);
+      showLesson(g, l);
     };
     const skip = h('button', { class: 'counsel-link', onclick: () => {
       if (!this.skipArmed) { this.skipArmed = true; skip.textContent = 'Skip every lesson?'; return; }
@@ -343,17 +443,23 @@ export class Counsel {
         skip);
     } else {
       acts = h('div', { class: 'counsel-actions' },
-        l.tab || l.target ? h('button', { class: 'btn small primary', onclick: show }, 'Show me') : null,
+        l.tab || l.target ? h('button', { class: 'btn small primary lesson-show', onclick: show }, 'Show me') : null,
         x.stuck ? h('button', { class: 'counsel-link', onclick: () => { g.act(skipLesson(g.state), { okSfx: 'click' }); } }, 'Skip this step') : null,
         skip);
     }
     const then = !x.done && next ? h('div', { class: 'lesson-then' }, `Then: ${next.title}`) : null;
     if (x.nudge && !x.done) { const glow = lessonPointer(l).glow ?? (l.tab ? `#tab-${l.tab}` : null); if (glow) pulseTarget(glow); }
     const notes = s.counters.mentorDiedDay !== null;
+    const kicker = h('span', { class: 'counsel-kicker' }, `DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`);
+    const title = h('span', { class: 'counsel-title' }, l.title);
+    // the phone's voice line: 'DISCIPLINA · I / X' and the job's count (1 of 4, 41%) over the title; the job line itself
+    // heads the unfolded card under it
+    const count = prog ? /\d+ of \d+|\d+%/.exec(prog)?.[0] : undefined;
+    const who = currentHost() === 'sheet'
+      ? h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, kicker, count ? h('span', { class: 'voice-prog' }, count) : x.done ? h('span', { class: 'voice-prog done' }, '✓') : null), title)
+      : h('div', { class: 'counsel-who' }, kicker, title);
     return h('div', { class: `counsel-card tip lesson${x.done ? ' done' : ''}${x.nudge ? ' nudge' : ''}`, role: 'note' },
-      h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'),
-        h('div', { class: 'counsel-who' }, h('span', { class: 'counsel-kicker' }, `DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`),
-          h('span', { class: 'counsel-title' }, l.title))),
+      h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(notes ? 'notes' : 'mentor'), 2, 'counsel-face'), who),
       h('div', { class: 'counsel-body' }, text, job, acts, then));
   }
 
@@ -400,7 +506,10 @@ export class Counsel {
       text.textContent = rr.text;
       if (metric) metric.textContent = dangerLabel(live);
     };
-    const kicker = `${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])} · ${caps(def.office)}`;
+    // the phone's voice line keeps its kicker to one row beside the chip: the office by its last word ('Praefectus
+    // Annonae' → ANNONAE, 'Curator Aquarum' → AQVARVM); sheet.css cuts what still does not fit
+    const office = currentHost() === 'sheet' ? def.office.split(' ').pop() ?? def.office : def.office;
+    const kicker = `${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])} · ${caps(office)}`;
     return h('div', { class: `counsel-card adv sev-${sev}${opp ? ' opp' : ''}`, role: sev >= 2 ? 'alert' : 'note' },
       h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),
         h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, kicker), metric), title)),

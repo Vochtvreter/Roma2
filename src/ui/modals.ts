@@ -10,6 +10,12 @@ import { B } from '../game/balance';
 import { lastExported, markExported } from '../game/save';
 import type { GameState } from '../game/types';
 import { finePointer, pressWord, touchInput } from './pointer';
+import { tabShown } from './intro';
+
+/** The phone SHEET host is up (layout.ts writes it on #app; read from there, as layout.ts reaches modals through history.ts). */
+function sheetHost(): boolean {
+  return typeof document !== 'undefined' && document.getElementById('app')?.dataset.host === 'sheet';
+}
 
 interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; close: () => void; prevFocus: Element | null }
 const stack: Entry[] = [];
@@ -144,6 +150,8 @@ export function openMenu(g: Game): void {
   const body = h('div', { class: 'modal-menu' },
     h('div', { class: 'modal-col' },
       h('button', { class: 'btn primary', onclick: () => close() }, 'Resume'),
+      // the phone bar has no Annales slot: the chronicle opens here too (and by key L, the ACTA lines, the Breviarium)
+      sheetHost() && tabShown(g.state, 'annals') ? h('button', { class: 'btn', onclick: () => { close(); g.openTab('annals'); } }, 'Annales · the chronicle') : null,
       h('button', { class: 'btn', onclick: () => { if (g.save()) toast('Saved.', 'good', 'i_seal'); } }, 'Save'),
       h('button', { class: 'btn', onclick: () => openHowTo(g) }, 'How to play'),
       h('button', { class: 'btn', onclick: () => openExportImport(g) }, 'Export / Import'),

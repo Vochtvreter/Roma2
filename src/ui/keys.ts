@@ -72,7 +72,7 @@ export function initKeys(g: Game, dev: boolean): void {
     if (k >= '1' && k <= '4') { g.setSpeed(SPEEDS[Number(k) - 1]); return; }
     if (k === '5' && dev) { g.setSpeed(B.time.DEV_SPEED as Speed); return; }
     const tab = TAB_KEYS[k];
-    if (tab) { if (tabShown(g.state, tab)) g.openTab(tab); return; }   // progressive reveal: no hotkey for a hidden tab
+    if (tab) { if (tabShown(g.state, tab)) g.openTab(tab, undefined, 'key'); return; }   // progressive reveal: no hotkey for a hidden tab
     if (k === 'o') {
       if (!shows(g, 'overlays')) return;   // the overlay bar is not introduced yet
       if (e.shiftKey) { g.view.setOverlay('none'); g.changed(); return; }

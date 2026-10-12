@@ -1,10 +1,12 @@
 /* src/styles/mobile.css — owner H (WP-H UI shell). Breakpoints (ARCHITECTURE §13.9, DESIGN §15.7): tablet 900–1099 px
    (minimap hidden, compact HUD), mobile < 900 px (two-row HUD, everything floats above the 46vh bottom sheet of WP-I),
-   compact < 560 px. Imported last. The bottom sheet itself (#side) is WP-I's; --sheet tracks its height here.
+   compact < 560 px. Imported after the rest, before sheet.css. The bottom sheet itself (#side) is WP-I's; --sheet tracks
+   its height here.
    The layout engine's hosts (layout.ts, #app[data-host]) take over host by host: a portrait phone (SHEET) has its one-row
-   HUD in hud.css and its Res Gestae in the Breviarium (tray.css), so the phone HUD and Res Gestae rules below stand under
-   :where(#app:not([data-host='sheet'])): the landscape phone and the small tablets keep them, at the specificity they had,
-   until their hosts land (P3, P4). */
+   HUD in hud.css, its Res Gestae in the Breviarium (tray.css) and its sheet, bar, voice line and tool column in sheet.css
+   (imported after this file, and outranking the portrait rules here that it does not want), so the phone HUD and Res
+   Gestae rules below stand under :where(#app:not([data-host='sheet'])): the landscape phone and the 720–899 px tablets
+   keep all of this, at the specificity it had, until their hosts land (P3, P4). */
 
 /* ───────── tablet and narrow desktop ───────── */
 /* The HUD wraps into two rows: tablets, chips, speed and menu above; the date and every material (one row) below. Also
@@ -39,9 +41,6 @@
   /* The open sheet is 46vh, but on a short phone it yields height so the Res Gestae line and the counsel chip still fit
      between the HUD and the map tools (320 px: the column, the tools and the ticker). */
   :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
-  /* A portrait phone's one-row HUD (the SHEET host, hud.css: 52 px on #app): the open sheet is worked out again with it,
-     since :root's figure above holds the two-row HUD's height (a custom property is resolved where it is declared). */
-  #app[data-host='sheet'] { --sheet-open: min(46vh, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
   #app:has(#side.collapsed) { --sheet: 56px; }
   #app:has(#side.empty) { --sheet: 0px; }
   :where(#app:not([data-host='sheet'])) #hud { flex-wrap: wrap; align-content: center; row-gap: 4px; padding: 4px 6px; gap: 4px; }
@@ -218,7 +217,7 @@
    screen. Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit
    at the bottom right of the free map. */
 @media (max-width: 899px) and (max-height: 520px) {
-  :root, #app[data-host='sheet'], #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
+  :root, #app:has(#side.collapsed), #app.placing { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
   #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
     border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
   #side.collapsed, #app.placing #side { transform: translateX(100%); }

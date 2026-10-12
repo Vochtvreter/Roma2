@@ -4,10 +4,14 @@
 // dropdown is focused (its list may be open) or a slider is being dragged. Either way the
 // element under the mouse (else the first in view) keeps its place on screen (steady.ts): a works row finishing or a
 // caravan coming home never slides the card the player is about to click.
+// The tab buttons (#tabs) head the panel on most hosts; on the phone SHEET (layout.ts) they are its fixed bottom bar of
+// five stable slots, re-hosted into #app (mount), and a tab opens where layout.go() routes it.
 import { TABS } from '../game/types';
 import type { GameState, TabId } from '../game/types';
 import type { Game, Updater } from './types';
 import type { TabPanel } from './tabs/common';
+import type { Host, Layout, OpenFrom } from './layout';
+import { slotTap } from './layout';
 import { clear, h, img, scrollWithin, tip } from './dom';
 import { tabShown } from './intro';
 import { notePractice } from '../game/actions';
@@ -64,13 +68,15 @@ export class SidePanel {
   private readonly control: ControlHold;   // an open dropdown or a dragged slider: rebuilds wait
   /** The 'choice' anchor names the event card, not a tab section: set by the UI root to unfold and pulse it (true when shown). */
   onChoiceAnchor: (() => boolean) | null = null;
-  /** The layout engine (ui/layout.ts), the one owner of the panel's detent: toggle() asks it, and it writes the panel
-   *  through show(). Set when UI.build() creates it; before that, toggle() writes the panel itself. */
-  layout: { panelToggle(open: boolean): void } | null = null;
+  /** The layout engine (ui/layout.ts), the one owner of the panel's detent: toggle() asks it, open() routes through it,
+   *  and it writes the panel through show(). Set when UI.build() creates it; before that, the panel writes itself. */
+  layout: Pick<Layout, 'panelToggle' | 'go' | 'setDetent' | 'detent' | 'host'> | null = null;
+  private readonly bodyHome: HTMLElement;   // where the tab buttons stand off the SHEET: before the body
 
   constructor(private readonly g: Game, private readonly root: HTMLElement) {
     this.tabsEl = root.querySelector<HTMLElement>('#tabs') ?? root.appendChild(h('nav', { id: 'tabs', role: 'tablist' }));
     this.body = root.querySelector<HTMLElement>('#tab-body') ?? root.appendChild(h('div', { id: 'tab-body', role: 'tabpanel' }));
+    this.bodyHome = this.body;
     this.steady = new ScrollAnchor(this.body);
     this.control = new ControlHold(this.body);
     this.toggleEl = root.querySelector<HTMLButtonElement>('#side-toggle');
@@ -112,15 +118,17 @@ export class SidePanel {
     safe('anchor', () => this.steady.restore(mark));   // a status line that wrapped or a line that appeared above
   }
 
-  /** Opens a tab (and the panel); an anchor focuses panel state and scrolls to `[data-anchor]`. */
-  open(tab: TabId, anchor?: string): void {
+  /** Opens a tab (and the panel, where layout.go routes it: `from` says who asked, a chip opening part-way); an anchor
+   *  focuses panel state and scrolls to `[data-anchor]`. */
+  open(tab: TabId, anchor?: string, from?: OpenFrom): void {
     if (anchor === 'choice' && this.onChoiceAnchor?.()) return;
     this.forced = tabShown(this.g.state, tab) ? null : tab;
     if (tab === 'advisors') notePractice(this.g.state, 'advisors');   // the lessons' jobs (§11.13)
     if (tab === 'people') notePractice(this.g.state, 'people');
     this.cur = tab;
     this.fresh.delete(tab);
-    this.toggle(true);
+    if (this.layout) this.layout.go({ kind: 'open', tab, from });
+    else this.toggle(true);
     safe('tabs', () => this.syncTabs());
     const p = PANELS[tab];
     if (anchor) safe(`${tab} focus`, () => p.focus?.(anchor));
@@ -152,6 +160,28 @@ export class SidePanel {
     return !this.root.classList.contains('collapsed');
   }
 
+  /** The host changed (layout.onMount): on the SHEET the tab buttons become the bar at the foot of #app, outside the
+   *  sheet that slides above it; anywhere else they go back to the panel's head. */
+  mount(host: Host): void {
+    const bar = this.tabsEl, app = this.root.parentElement;
+    if (host === 'sheet' && app) { if (bar.parentElement !== app) app.insertBefore(bar, this.root.nextSibling); }
+    else if (bar.parentElement !== this.root) this.root.insertBefore(bar, this.bodyHome);
+  }
+
+  /** A tab's button: on the SHEET the open tab's slot folds a sheet that is up (slotTap); any other press opens the tab
+   *  (at its own detent: route). A tap while placing ends the placing first: the player has moved on, and the sheet they
+   *  saw was closed, so the open tab's slot brings its tab back (where the end of placing restored it), never folds it. */
+  private tap(t: TabId): void {
+    const L = this.layout;
+    if (L && L.host === 'sheet') {
+      if (this.g.view.placing) {
+        this.g.cancelPlacing();
+        if (t === this.cur && L.detent !== 'closed') return;   // the restore put this tab back up
+      } else if (slotTap(t, this.cur, L.detent) === 'close') { L.setDetent('closed', { user: true }); return; }
+    }
+    this.open(t, undefined, 'tab');
+  }
+
   /** Forces a signature check on the next frame (Game.changed). */
   poke(): void {
     this.last = -Infinity;
@@ -178,7 +208,7 @@ export class SidePanel {
     const wasEmpty = this.root.classList.contains('empty');
     this.root.classList.toggle('empty', shown.length === 0);
     if (shown.length === 0) this.toggle(false);
-    else if (wasEmpty) this.toggle(true);
+    else if (wasEmpty && this.layout?.host !== 'sheet') this.toggle(true);   // a phone's sheet stays closed: the map first
     const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}`;
     if (key === this.barKey) return;
     this.barKey = key;
@@ -192,7 +222,7 @@ export class SidePanel {
       const btn = h('button', {
         class: `side-tab${on ? ' on' : ''}${isNew ? ' fresh' : ''}`, role: 'tab', id: `tab-${t}`, type: 'button',
         'aria-selected': String(on), 'aria-controls': 'tab-body', tabindex: on ? '0' : '-1', 'data-tab': t,
-        onclick: () => { this.g.sfx('click'); this.open(t); },
+        onclick: () => { this.g.sfx('click'); this.tap(t); },
       },
       img(p.icon, 2, 'side-tab-ico'),
       h('span', { class: 'side-tab-text' }, h('span', { class: 'side-tab-label' }, p.label), h('span', { class: 'side-tab-sub' }, p.sub)),
@@ -243,7 +273,7 @@ export class SidePanel {
     const i = ids.indexOf(this.cur);
     const next = ids[(i + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length];
     e.preventDefault();
-    this.open(next);
+    this.open(next, undefined, 'tab');
     this.btns.get(next)?.btn.focus();
   }
 }

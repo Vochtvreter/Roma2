@@ -152,12 +152,12 @@
    the date and the materials leave the row for the Breviarium, which every figure opens. A grid of named areas, so the
    narrow-screen order and flex rules have nothing to say here (mobile.css scopes them away besides). It fits 360 px with
    both tablets at 74 px and a roll of '308/320': the gaps narrow with the screen, and past that the coin-and-souls column
-   gives way first (an ellipsis on a long roll). #app keeps clear of the notch (base.css), so the row starts below it.
-   Nothing under 12 px. */
-#app[data-host='sheet'] { --hud-h: 52px; }
+   gives way first (an ellipsis on a long roll). The SHEET's #app runs under the notch (sheet.css): the row pads itself
+   below it, and --hud-h counts the pad. Nothing under 12 px. */
+#app[data-host='sheet'] { --hud-h: calc(52px + env(safe-area-inset-top, 0px)); }
 #app[data-host='sheet'] #hud {
   --hud-gap: clamp(2px, calc((100vw - 300px) / 25), 4px);   /* 2.4 px at 360, 3 px at 375, 3.7 px at 393 */
-  display: grid; height: var(--hud-h); padding: 4px 2px; column-gap: var(--hud-gap); row-gap: 0; align-items: stretch;
+  display: grid; height: var(--hud-h); padding: calc(4px + env(safe-area-inset-top, 0px)) 2px 4px; column-gap: var(--hud-gap); row-gap: 0; align-items: stretch;
   grid-template-columns: minmax(calc(148px + var(--hud-gap)), 1fr) minmax(0, max-content) max-content max-content;
   grid-template-rows: 22px 22px;
   grid-template-areas: "vit coin speed menu" "vit souls speed menu";
@@ -213,4 +213,5 @@
 #app[data-host='sheet'] #hud { z-index: var(--z-popup); }   /* the popover drops over the counsel card (21) below the row */
 /* open, it stands over the toasts (23), the Breviarium (24) and the event card (25) too: the speed tapped is the one set */
 #app[data-host='sheet'] #hud:has(.hud-speed.open) { z-index: calc(var(--z-choice) + 1); }
-#app[data-host='sheet'] .hud-menu { grid-area: menu; align-self: center; width: 40px; min-width: 40px; height: 44px; margin: 0; padding: 0; font-size: 20px; }
+/* the menu is a full 44 px target from 375 px; on a 360 px phone it yields 4 px to the souls figure */
+#app[data-host='sheet'] .hud-menu { grid-area: menu; align-self: center; width: clamp(40px, calc(100vw - 331px), 44px); min-width: 0; height: 44px; margin: 0; padding: 0; font-size: 20px; }

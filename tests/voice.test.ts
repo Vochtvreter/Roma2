@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AdvisoryMemo, GameState, Remedy, RuleId, Severity } from '../src/game/types';
 import type { Game } from '../src/ui/types';
-import { awaitAction, awaitingItems, pickCounsel, remedyChip, voiceAction } from '../src/ui/counsel';
+import { awaitAction, awaitingItems, pickCounsel, remedyChip, voiceAction, waitingBeyond } from '../src/ui/counsel';
 import type { AwaitItem, CounselItem, RenderedRemedy } from '../src/ui/counsel';
 import { checkRemedy } from '../src/game/advisors/remedies';
 import { DEFAULT_PREFS } from '../src/game/save';
@@ -154,5 +154,42 @@ describe('voiceAction', () => {
     const cave = awaitingItems(s).find((x) => x.kind === 'advisory' && x.a.rule === 'aedilis.declining')!;
     expect(voiceAction(cave, s)).toBeNull();
     expect(awaitAction(cave, s)).toMatchObject({ kind: 'remedy', remedy: { kind: 'overlay', overlay: 'domus' } });
+  });
+});
+
+describe('waitingBeyond (the voice line\'s +n pip)', () => {
+  it('counts what waits besides the item the line shows', () => {
+    const s = newGame({ seed: 42, now: 0, intro: true });
+    skipIntro(s);
+    s.guidance.advisories = {};
+    raise(s, 'aquarum.water.runout', 3, RUNOUT);
+    raise(s, 'aedilis.declining', 2, DECLINING);
+    const items = awaitingItems(s);
+    const peril = items.find((x) => x.kind === 'advisory' && x.a.memo.sev === 3);
+    expect(peril?.kind).toBe('advisory');
+    if (peril?.kind !== 'advisory') return;
+    expect(waitingBeyond(items, { kind: 'advisory', a: peril.a })).toBe(items.length - 1);   // the line shows the Periculum
+    expect(waitingBeyond(items, { kind: 'offer', duties: pendingOffers(s) })).toBe(items.length - 1);   // or the chores
+    expect(waitingBeyond(items, { kind: 'calm' })).toBe(items.length);                         // a tip, calm: all of them
+    expect(waitingBeyond([], { kind: 'calm' })).toBe(0);
+  });
+
+  it('counts every waiting item when the line shows an advisory "Awaiting you" does not list', () => {
+    const s = newGame({ seed: 42, now: 0, intro: true });
+    skipIntro(s);
+    s.guidance.advisories = {};
+    raise(s, 'aquarum.water.runout', 3, RUNOUT);
+    raise(s, 'aedilis.declining', 2, DECLINING);
+    const items = awaitingItems(s);
+    const peril = items.find((x) => x.kind === 'advisory' && x.a.memo.sev === 3);
+    if (peril?.kind !== 'advisory') throw new Error('no Periculum');
+    const as = (rule: RuleId, sev: Severity): CounselItem => ({ kind: 'advisory', a: { ...peril.a, rule, memo: { ...peril.a.memo, rule, sev } } });
+    // a Monitum (the mid save's line) and an Opportunitas wait on the card alone: the pip counts all that waits
+    expect(items.some((x) => x.kind === 'advisory' && x.a.rule === 'aedilis.favour')).toBe(false);
+    expect(waitingBeyond(items, as('aedilis.favour', 1))).toBe(items.length);
+    expect(waitingBeyond(items, as('augur.petition', 1))).toBe(items.length);
+    // an advisory of a rule none of the listed ones has (whatever its severity) is not one of them either
+    expect(waitingBeyond(items, as('annonae.famine', 3))).toBe(items.length);
+    expect(waitingBeyond(items, as('annonae.famine', 2))).toBe(items.length);
   });
 });

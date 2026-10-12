@@ -1,13 +1,15 @@
 // tests/layout.test.ts — the layout engine's pure part (src/ui/layout.ts, ARCHITECTURE §13.10): size classes, input
 // classes and the host for every window size the game was measured on (platform.md §0's 35 and the design's own), the
-// route() table, the lessons' table, and that every lesson's pointer shows on every host. Headless: no DOM (the Layout
-// class is never built here).
+// route() table, the lessons' table, that every lesson's pointer shows on every host (the SHEET's through its proxies),
+// and the phone sheet's own tables: its heights, the drag's snap, the grabber's cycle and the bar's slots. Headless: no
+// DOM (the Layout class is never built here).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
 import { LESSONS } from '../src/game/intro';
 import {
-  DEFAULT_DETENT, DETENTS, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET_FULL_TABS, VISIBLE, aboveDefault, classify, detentsOf,
-  fitDetent, inFrame, inputClass, keepDetent, lessonTarget, reveal, route, shownAt, stepDown,
+  BAR_SLOTS, DEFAULT_DETENT, DETENTS, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, VISIBLE, aboveDefault, barSlot,
+  classify, cycleDetent, detentsOf, fitDetent, hostEntryDetent, inFrame, inputClass, keepDetent, lessonTarget, reveal, route, sheetHeights, shownAt,
+  slotTap, snapDetent, stepDown,
 } from '../src/ui/layout';
 import type { Box, Detent, Host, Media, RouteCtx } from '../src/ui/layout';
 import { coveredArea, dodge, roomShift } from '../src/ui/inspector';
@@ -172,9 +174,7 @@ describe('route', () => {
       expect(open(tab, ctx('sheet', 'closed'), 'chip')).toBe('half');          // a chip: part-way
       expect(open(tab, ctx('sheet', 'full'), 'chip')).toBe('half');
       expect(open(tab, ctx('sheet', 'closed', true), 'chip')).toBe('full');
-      expect(open(tab, ctx('sheet', 'half'), 'tab')).toBe('half');             // switching tabs keeps the detent
-      expect(open(tab, ctx('sheet', 'full'), 'tab')).toBe('full');
-      expect(open(tab, ctx('sheet', 'closed'), 'tab')).toBe(want);
+      for (const d of DETENTS) expect(open(tab, ctx('sheet', d), 'tab')).toBe(want);   // a slot tap: the tab's own detent, from anywhere
     }
     expect(SHEET_FULL_TABS).toEqual(['council', 'trade', 'annals']);
   });
@@ -257,8 +257,19 @@ describe('reveal', () => {
         expect(VISIBLE[host], `${host}: ${proxy}`).toContain(proxy);
       }
       for (const sel of VISIBLE[host]) expect(reveal(sel, host)).toBe(sel);
-      for (const t of TABS) expect(VISIBLE[host]).toContain(`#tab-${t}`);   // every host can show every tab's button
+      // every host can show every tab's button, or its way in: the phone bar has no Annales slot, the menu has its row
+      for (const t of TABS) expect(VISIBLE[host]).toContain(reveal(`#tab-${t}`, host));
     }
+  });
+
+  it('the SHEET: the overlay bar glows the Mappae button, the Res Gestae the HUD, the ticker the voice line, Annales the menu', () => {
+    expect(reveal('#overlay-bar', 'sheet')).toBe('#map-mappae');
+    expect(reveal('#objective', 'sheet')).toBe('#hud');
+    expect(reveal('#ticker', 'sheet')).toBe('#counsel');
+    expect(reveal('#tab-annals', 'sheet')).toBe('#hud-menu');
+    for (const t of TABS.filter((x) => x !== 'annals')) expect(reveal(`#tab-${t}`, 'sheet')).toBe(`#tab-${t}`);   // on the bar
+    expect(reveal('#speed', 'sheet')).toBe('#speed');   // the [❚❚][1× ▾] pair is #speed itself
+    for (const host of ['drawer', 'dock', 'columns'] as const) expect(reveal('#overlay-bar', host)).toBe('#overlay-bar');
   });
 
   it('tells frame targets from rows of a tab body', () => {
@@ -267,8 +278,90 @@ describe('reveal', () => {
     expect(inFrame('.tab-lab[data-cat="food"]')).toBe(false);
     expect(inFrame('[data-anchor="b-area"]')).toBe(false);
     expect(shownAt('.path-card', 'columns', 'closed')).toBe(false);
-    expect(shownAt('#overlay-bar', 'sheet', 'full')).toBe(false);
-    expect(shownAt('#overlay-bar', 'sheet', 'half')).toBe(true);
+    // the SHEET's overlay bar lives in the Mappae popover: its button rides the tool column, hidden under a full sheet
+    expect(shownAt('#overlay-bar', 'sheet', 'half')).toBe(false);
+    expect(shownAt('#map-mappae', 'sheet', 'half')).toBe(true);
+    expect(shownAt('#map-mappae', 'sheet', 'closed')).toBe(true);
+    expect(shownAt('#map-mappae', 'sheet', 'full')).toBe(false);
+    expect(shownAt('#overlay-bar', 'dock', 'half')).toBe(true);
+    expect(shownAt('#overlay-bar', 'dock', 'full')).toBe(false);
+    expect(shownAt('#tab-advisors', 'sheet', 'full')).toBe(true);   // the bar stands at every detent
+  });
+});
+
+describe('the phone sheet', () => {
+  // the harness's portrait phones (impl/measure.mjs): #app's height, the one-row HUD (52) and the bar (60)
+  const PHONES: readonly [string, number, number][] = [['se-safari', 375, 553], ['iphone-15', 393, 852], ['iphone-15-safari', 393, 659], ['pixel-7', 412, 915]];
+  const HEAD = 64;   // the grabber strip and a one-line voice line
+
+  it('half is clamp(240, 44% of #app, 380), 50% on a regular-height phone; full reaches the HUD; closed is the head', () => {
+    const at = (w: number, H: number) => sheetHeights({ H, top: 52, bar: 60, head: HEAD, h: classify(w, H, TOUCH).h });
+    expect(at(375, 553)).toEqual({ closed: 64, half: 277, full: 441 });   // regular: 50%
+    expect(at(393, 659)).toEqual({ closed: 64, half: 330, full: 547 });   // regular: 50%
+    expect(at(393, 852)).toEqual({ closed: 64, half: 375, full: 740 });   // tall: 44%
+    expect(at(412, 915)).toEqual({ closed: 64, half: 380, full: 803 });   // tall: 44%, capped at 380
+    expect(at(360, 480)).toEqual({ closed: 64, half: 240, full: 368 });   // the floor
+    expect(SHEET).toMatchObject({ halfMin: 240, halfMax: 380, halfShare: 0.44, halfShareRegular: 0.5 });
+  });
+
+  it('never squeezes the head: a head taller than the room gives every detent the head', () => {
+    expect(sheetHeights({ H: 300, top: 52, bar: 60, head: 200, h: 'short' })).toEqual({ closed: 200, half: 200, full: 200 });
+    const hs = sheetHeights({ H: 700, top: 52, bar: 60, head: 90, h: 'regular' });
+    expect(hs.closed).toBeLessThanOrEqual(hs.half);
+    expect(hs.half).toBeLessThanOrEqual(hs.full);
+  });
+
+  it('half leaves the tab body 200 px on every phone of the harness, 160 on the SE in Safari (IMPL §4 P2b)', () => {
+    for (const [id, w, H] of PHONES) {
+      const hs = sheetHeights({ H, top: 52, bar: 60, head: HEAD, h: classify(w, H, TOUCH).h });
+      expect(hs.half - HEAD, id).toBeGreaterThanOrEqual(id === 'se-safari' ? 160 : 200);
+      expect(classify(w, H, TOUCH).host, id).toBe('sheet');
+    }
+  });
+
+  it('a released drag rests on the nearest detent; a fling goes on to the next one its way', () => {
+    const hs = { closed: 64, half: 375, full: 740 };
+    const all = detentsOf('sheet', false), tiny = detentsOf('sheet', true);
+    expect(snapDetent(64, 0, hs, all)).toBe('closed');
+    expect(snapDetent(210, 0, hs, all)).toBe('closed');     // nearer closed than half
+    expect(snapDetent(230, 0, hs, all)).toBe('half');
+    expect(snapDetent(600, 0, hs, all)).toBe('full');
+    expect(snapDetent(100, FLING, hs, all)).toBe('half');   // a flick up off closed: half, not past it
+    expect(snapDetent(400, FLING, hs, all)).toBe('full');
+    expect(snapDetent(740, 2, hs, all)).toBe('full');        // nothing above the top
+    expect(snapDetent(700, -FLING, hs, all)).toBe('half');
+    expect(snapDetent(350, -FLING, hs, all)).toBe('closed');
+    expect(snapDetent(64, -2, hs, all)).toBe('closed');
+    expect(snapDetent(300, FLING * 0.9, hs, all)).toBe('half');   // under the fling speed: the nearest
+    expect(snapDetent(100, FLING, hs, tiny)).toBe('full');   // a tiny sheet has no half
+    expect(snapDetent(380, 0, hs, tiny)).toBe('closed');
+  });
+
+  it('a tap on the grabber cycles closed → half → full → closed (a tiny sheet closed ↔ full)', () => {
+    const all = detentsOf('sheet', false), tiny = detentsOf('sheet', true);
+    expect([cycleDetent('closed', all), cycleDetent('half', all), cycleDetent('full', all)]).toEqual(['half', 'full', 'closed']);
+    expect([cycleDetent('closed', tiny), cycleDetent('full', tiny)]).toEqual(['full', 'closed']);
+  });
+
+  it('the bar: five stable slots, Annales on none; the open tab\'s slot folds a sheet that is up', () => {
+    expect(BAR_SLOTS).toEqual(['council', 'advisors', 'build', 'people', 'trade']);
+    expect(TABS.map(barSlot)).toEqual([1, 2, 3, 4, 5, 0]);
+    expect(BAR_SLOTS).toEqual(TABS.filter((t) => t !== 'annals'));   // the panels' order, one slot each
+    for (const d of ['half', 'full'] as const) expect(slotTap('people', 'people', d)).toBe('close');
+    expect(slotTap('people', 'people', 'closed')).toBe('open');
+    for (const d of DETENTS) expect(slotTap('build', 'people', d)).toBe('open');
+  });
+
+  it('a slot tap that opens routes as a tab: the tab\'s own detent (IMPL §1), whatever the sheet showed', () => {
+    const c = (detent: Detent): RouteCtx => ({ host: 'sheet', detent, tiny: false });
+    expect(route({ kind: 'open', tab: 'people', from: 'tab' }, c('closed')).detent).toBe('half');
+    expect(route({ kind: 'open', tab: 'council', from: 'tab' }, c('closed')).detent).toBe('full');
+    expect(route({ kind: 'open', tab: 'council', from: 'tab' }, c('half')).detent).toBe('full');   // Populus at half → Edicta
+    expect(route({ kind: 'open', tab: 'trade', from: 'tab' }, c('half')).detent).toBe('full');
+    expect(route({ kind: 'open', tab: 'people', from: 'tab' }, c('full')).detent).toBe('half');    // Edicta at full → Populus
+    expect(route({ kind: 'open', tab: 'council', from: 'chip' }, c('closed')).detent).toBe('half');   // Review: the Mandata part-way
+    expect(route({ kind: 'place' }, c('half'))).toEqual({ detent: 'closed', remember: true, card: false });
+    expect(DEFAULT_DETENT.sheet).toBe('closed');
   });
 });
 
@@ -289,6 +382,34 @@ describe('roomShift (the inspector popup on a strip of map)', () => {
     expect(roomShift(250, 314, 148, 452, 190, 285)).toBe(88);
     expect(roomShift(300, 364, 148, 452, 190, 285)).toBe(38);
     expect(roomShift(400, 460, 148, 652, 190, 285)).toBe(0);
+  });
+});
+
+describe('hostEntryDetent (a host change: entering the SHEET closes it)', () => {
+  it('a load or a turn to portrait shows the map; a tab opened just now keeps its detent', () => {
+    for (const d of DETENTS) {
+      expect(hostEntryDetent(d, false, 'drawer', 'sheet', false, false), d).toEqual({ detent: 'closed', forced: false });
+      expect(hostEntryDetent(d, false, 'dock', 'sheet', false, false), d).toEqual({ detent: 'closed', forced: false });
+      expect(hostEntryDetent(d, false, null, 'sheet', false, false), d).toEqual({ detent: 'closed', forced: false });   // a load
+    }
+    expect(hostEntryDetent('full', true, 'drawer', 'sheet', true, false)).toEqual({ detent: 'closed', forced: false });   // never a forced full
+    expect(hostEntryDetent('half', false, 'drawer', 'sheet', false, true)).toEqual({ detent: 'half', forced: false });  // just opened
+    expect(hostEntryDetent('full', false, 'drawer', 'sheet', false, true)).toEqual({ detent: 'full', forced: false });
+    expect(hostEntryDetent('half', false, 'drawer', 'sheet', true, true)).toEqual({ detent: 'full', forced: true });    // tiny: no half
+  });
+
+  it('every other change keeps the player\'s detent (keepDetent)', () => {
+    for (const d of DETENTS) {
+      for (const jo of [false, true]) {
+        expect(hostEntryDetent(d, false, 'sheet', 'drawer', false, jo), `sheet→drawer ${d}`).toEqual({ detent: d, forced: false });
+        expect(hostEntryDetent(d, false, 'dock', 'columns', false, jo), `dock→columns ${d}`).toEqual({ detent: d, forced: false });
+        expect(hostEntryDetent(d, false, 'columns', 'dock', false, jo), `columns→dock ${d}`).toEqual({ detent: d, forced: false });
+        expect(hostEntryDetent(d, false, 'sheet', 'sheet', false, jo), `a resize on the sheet ${d}`).toEqual({ detent: d, forced: false });
+        expect(hostEntryDetent(d, false, null, 'dock', false, jo), `a load on a dock ${d}`).toEqual({ detent: d, forced: false });
+      }
+    }
+    expect(hostEntryDetent('full', true, 'sheet', 'sheet', false, false)).toEqual({ detent: 'half', forced: false });   // un-tinied
+    expect(hostEntryDetent('half', false, 'sheet', 'sheet', true, false)).toEqual({ detent: 'full', forced: true });    // tinied
   });
 });
 

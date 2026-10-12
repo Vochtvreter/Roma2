@@ -1,5 +1,7 @@
 // src/ui/ticker.ts — the one ticker (DESIGN §15.1): the Ordo line and the Acta merged, rotating every B.ui.TICKER_S —
 // current Ordo action, next wish, saving line, latest Annales line (a new line shows at once). Click → the Agenda. Owner: WP-H.
+// On the phone SHEET the ticker is the voice line in calm (sheet.ts hosts it in the line's slot): an ACTA line opens the
+// Annales there (the bar has no Annales slot), any other line the Agenda part-way.
 import type { LogEntry, WishView } from '../game/types';
 import type { Game } from './types';
 import { clear, h, img, tip } from './dom';
@@ -9,6 +11,8 @@ import { formatRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { B } from '../game/balance';
 import { WISH_STATE, lacking, savingLine } from './tabs/common';
+import { currentHost } from './layout';
+import { tabShown } from './intro';
 
 interface Line { kicker: string; text: string; kind: string }
 
@@ -42,13 +46,20 @@ export class Ticker {
   private turnAt = 0;
   private lastLog: LogEntry | null = null;
   private shown = '';
+  private kind = '';
+  private named = '';
   private readonly kicker = h('span', { class: 'tick-kicker' });
   private readonly text = h('span', { class: 'tick-text' });
+  private readonly box: HTMLButtonElement;
 
   constructor(private readonly g: Game, root: HTMLElement) {
     clear(root);
-    const box = h('button', { class: 'tick-box', 'aria-label': 'The Ordo: open the Agenda', onclick: () => { g.sfx('click'); g.openTab('build', 'agenda'); } },
-      img('i_seal', 2, 'tick-seal'), this.kicker, this.text);
+    const box = (this.box = h('button', { class: 'tick-box', onclick: () => {
+      g.sfx('click');
+      if (this.toAnnals()) g.openTab('annals');
+      else g.openTab('build', 'agenda', 'chip');
+    } }, img('i_seal', 2, 'tick-seal'), h('span', { class: 'tick-lines' }, this.kicker, this.text)));
+    this.name();
     tip(box, () => {
       const all = lines(g);
       return all.length ? all.map((l) => `${l.kicker} · ${l.text}`).join('\n') : 'The Ordo Decurionum has nothing to report.';
@@ -67,8 +78,19 @@ export class Ticker {
       if (fresh && all.length) { this.k = all.length - 1; this.turnAt = now; }
     }
     if (now - this.turnAt >= B.ui.TICKER_S * 1000) { this.turnAt = now; this.k++; }
-    if (!all.length) { this.set({ kicker: 'ORDO', text: 'The council sits in session.', kind: 'ordo' }); return; }
-    this.set(all[this.k % all.length]);
+    this.set(all.length ? all[this.k % all.length] : { kicker: 'ORDO', text: 'The council sits in session.', kind: 'ordo' });
+    this.name();
+  }
+
+  /** A tap on an ACTA line opens the Annales on a phone's sheet (its bar has no Annales slot); else the Agenda. */
+  private toAnnals(): boolean {
+    return currentHost() === 'sheet' && this.kind.startsWith('acta') && tabShown(this.g.state, 'annals');
+  }
+
+  /** The button's name says where its tap goes now (the line shown, the host). */
+  private name(): void {
+    const n = this.toAnnals() ? 'Acta: open the Annales' : 'The Ordo: open the Agenda';
+    if (n !== this.named) { this.named = n; this.box.setAttribute('aria-label', n); }
   }
 
   private set(l: Line): void {
@@ -76,9 +98,10 @@ export class Ticker {
     if (key === this.shown) return;
     const sameKind = this.shown.startsWith(`${l.kicker}|`);
     this.shown = key;
+    this.kind = l.kind;
     this.kicker.textContent = l.kicker;
     this.text.textContent = l.text;
-    this.text.parentElement?.setAttribute('data-kind', l.kind);
+    this.text.closest('.tick-box')?.setAttribute('data-kind', l.kind);
     if (!sameKind) {
       this.text.classList.remove('tick-in');
       void this.text.offsetWidth;

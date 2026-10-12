@@ -1,0 +1,237 @@
+/* src/styles/sheet.css — owner H (WP-H UI shell). The phone SHEET host (layout.ts, sheet.ts, DESIGN §15.7): #app runs
+   under the notch and the home indicator (the HUD and the bar pad themselves), the bottom sheet (#side) with its grabber
+   strip, its voice line (the counsel and the ticker, re-hosted) and the tab body; the 5-slot bar under it (#tabs,
+   re-hosted); the map's tool column (#map-col) with its Via and Mappae popovers; the toasts and the placing banner.
+   Everything keys on #app[data-host='sheet']. The sheet's heights come from layout.ts (--sheet-closed, --sheet-half,
+   --sheet-full on #app; --sheet-now is the detent's own): sheet.ts slides between them with a transform and the height is
+   set at rest. Imported last, so it outranks the old portrait rules of mobile.css and panels.css that still serve the
+   landscape drawer and the 720–899 px tablets (P3, P4). Nothing under 12 px; touch targets 44 px.
+   Prefixes sheet- voice- map-col- map-pop-. */
+
+/* ───────── the frame ───────── */
+.sheet-grip, .sheet-voice, #map-col { display: none; }
+#app[data-host='sheet'] {
+  top: 0; bottom: 0;   /* full-bleed: the canvas runs under the notch and the home indicator (base.css insets #app elsewhere) */
+  --bar-h: calc(60px + env(safe-area-inset-bottom, 0px));
+  --sheet-now: var(--sheet-closed, 70px);
+}
+#app[data-host='sheet'][data-detent='half'] { --sheet-now: var(--sheet-half, 40%); }
+#app[data-host='sheet'][data-detent='full'] { --sheet-now: var(--sheet-full, 70%); }
+#app[data-host='sheet'] :is(#map-tools, #side-toggle) { display: none; }   /* the tool column holds the overlay bar and the zoom */
+
+/* ───────── the sheet ───────── */
+/* It stands on the bar; its height is the detent's (sheet.ts sets an inline height and transform only while it moves) */
+#app[data-host='sheet'] #side, #app[data-host='sheet'] #side.collapsed {
+  top: auto; left: 0; right: 0; bottom: var(--bar-h); width: auto; height: var(--sheet-now);
+  display: flex; flex-direction: column; transform: none; transition: none;
+  border: 0; border-top: var(--border-w) solid var(--line); border-radius: var(--r3) var(--r3) 0 0;
+  box-shadow: 0 -2px 0 var(--ring), 0 -10px 24px rgba(0, 0, 0, .4);
+}
+#app[data-host='sheet'] #side.empty { display: flex; }   /* no tab yet (a new colony): the voice line still speaks */
+#app[data-host='sheet'].placing #side { visibility: hidden; }   /* placing: the banner stands in its place */
+
+/* the grabber strip: drag here only. The visible grip is 40 × 5; its button reaches 34 px up over the map, so the hit area
+   is 44 px tall without the strip taking 44 px of the map */
+#app[data-host='sheet'] .sheet-grip { display: block; position: relative; flex: none; height: 10px; touch-action: none; cursor: grab; }
+/* full: no map above to reach over, so the strip itself is the hit area (the button's last 4 px lie on the line's border) */
+#app[data-host='sheet'] #side[data-rest='full'] .sheet-grip { height: 40px; }
+#app[data-host='sheet'] #side[data-rest='full'] .sheet-grab { bottom: auto; top: 0; padding: 0 0 4px; align-items: center; }
+#app[data-host='sheet'] .sheet-grab {
+  position: absolute; left: 50%; bottom: 0; width: 64px; height: 44px; margin-left: -32px; padding: 0 0 2px;
+  display: flex; align-items: flex-end; justify-content: center; border: 0; background: none; touch-action: none; cursor: grab;
+}
+#app[data-host='sheet'] .sheet-grab > i { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line-2); }
+#app[data-host='sheet'] .sheet-grab:hover > i { background: var(--muted); }
+#app[data-host='sheet'] .sheet-grab:focus-visible { outline: none; }
+#app[data-host='sheet'] .sheet-grab:focus-visible > i { outline: 2px solid var(--ember); outline-offset: 2px; }
+
+/* the voice line's slot: the line, and the counsel's unfolded card under it (at most 62% of the sheet; it scrolls) */
+#app[data-host='sheet'] .sheet-voice { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; max-height: 62%; padding: 0 6px 2px; }
+#app[data-host='sheet'] #tab-body { flex: 1 1 0; min-height: 0; padding: 4px 10px 20px; }
+#app[data-host='sheet'] #side[data-rest='closed']:not([data-moving]) #tab-body { display: none; }   /* closed: the voice line and the bar (a drag off it shows the body) */
+
+/* ───────── the voice line: the counsel folded ───────── */
+/* Two rows: the portrait (32) beside the kicker (12 px) over the title (14 px, two lines at most); at the right the '+n'
+   pip and the one action chip (or ▾). A tap on the line unfolds the card below it, inside the sheet */
+#app[data-host='sheet'] #counsel { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; gap: 0; }
+#app[data-host='sheet'] #counsel > .counsel-card {
+  flex: 0 1 auto; min-height: 0; padding: 0; cursor: default;
+  background: none; border: 0; box-shadow: none; backdrop-filter: none; animation: none;
+}
+#app[data-host='sheet'] .counsel-head, #app[data-host='sheet'] .counsel-calm, #app[data-host='sheet'] .tick-box {
+  flex: none; min-height: 50px; padding: 1px 1px 1px 6px; color: var(--text);   /* never squeezed: a closed sheet is its height */
+  background: linear-gradient(#2e221c, #231914); border: 2px solid var(--line); border-radius: var(--r2); box-shadow: var(--ring-shadow);
+}
+#app[data-host='sheet'] .counsel-head {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; cursor: pointer;
+}
+#app[data-host='sheet'] .counsel-card.enter .counsel-head { animation: counselIn .35s ease-out; }
+#app[data-host='sheet'] .counsel-card.tip .counsel-head { border-color: #a8873a; }
+#app[data-host='sheet'] .counsel-card.tip.urgent .counsel-head { border-color: var(--ember); }
+#app[data-host='sheet'] .counsel-card:is(.lesson, .offer) .counsel-head { border-color: var(--gold); }
+#app[data-host='sheet'] .counsel-card.adv.sev-1 .counsel-head { border-color: rgba(242, 201, 76, .55); }
+#app[data-host='sheet'] .counsel-card.adv.sev-2 .counsel-head { border-color: rgba(227, 132, 58, .8); }
+#app[data-host='sheet'] .counsel-card.adv.sev-3 .counsel-head { border-color: var(--bad); box-shadow: var(--ring-shadow), 0 0 14px rgba(229, 85, 74, .35); }
+#app[data-host='sheet'] .counsel-card.adv.opp .counsel-head { border-color: var(--gold); }
+#app[data-host='sheet'] .counsel-face { width: 32px; height: 32px; }
+#app[data-host='sheet'] .counsel-who { gap: 1px; padding: 1px 0; padding-right: 0; }
+/* the kicker keeps to row 1, beside the chip: one line, cut short with an ellipsis (the office's short name helps: counsel.ts) */
+#app[data-host='sheet'] .counsel-krow { flex-wrap: nowrap; min-width: 0; min-height: 14px; }
+#app[data-host='sheet'] .counsel-krow > :not(.counsel-kicker) { flex: none; }
+#app[data-host='sheet'] .counsel-kicker {
+  flex: 0 1 auto; min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#app[data-host='sheet'] .counsel-title {
+  font-size: 14px; line-height: 16px; white-space: normal; overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+/* a lesson: 'DISCIPLINA · I / X' and the job's count over the title; the job line heads the unfolded card, and its
+   Show me is the line's chip */
+#app[data-host='sheet'] .voice-prog { font-size: 12px; line-height: 14px; color: var(--muted); white-space: nowrap; }
+#app[data-host='sheet'] .voice-prog.done { color: var(--good); }
+#app[data-host='sheet'] .counsel-body .lesson-show { display: none; }
+#app[data-host='sheet'] .counsel-body .lesson-job { margin: 0 0 6px; }
+
+#app[data-host='sheet'] .voice-acts { display: flex; align-items: center; gap: 2px; align-self: stretch; }
+#app[data-host='sheet'] .voice-pip { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border: 0; background: none; }
+#app[data-host='sheet'] .voice-pip > span {
+  padding: 0 5px; border: 1px solid #4a372b; border-radius: 8px; background: rgba(0, 0, 0, .3);
+  font-family: var(--font-caps); font-size: 12px; line-height: 16px; color: var(--muted);
+}
+#app[data-host='sheet'] .btn.voice-chip { min-width: 60px; min-height: 44px; padding: 0 10px; font-size: 15px; }
+#app[data-host='sheet'] .voice-fold {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 14px;
+}
+#app[data-host='sheet'] #counsel.open .voice-fold { transform: rotate(180deg); }
+
+/* the unfolded card: the counsel's body under its line, scrolling inside; never on a closed sheet */
+#app[data-host='sheet'] #counsel > .counsel-card > .counsel-body {
+  display: none; flex: 0 1 auto; min-height: 0; margin-top: 6px; padding: 6px 10px 8px; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--panel-2); border: var(--border-w) solid var(--line); border-radius: var(--r2);
+}
+#app[data-host='sheet'] #counsel.open > .counsel-card > .counsel-body { display: block; }
+#app[data-host='sheet'] #side[data-rest='closed']:not([data-moving]) #counsel .counsel-body { display: none; }
+#app[data-host='sheet'] #counsel .counsel-text { margin: 2px 0 8px; }
+#app[data-host='sheet'] #counsel :is(.counsel-why, .counsel-name, .lesson-prog, .lesson-then) { font-size: 12px; }
+#app[data-host='sheet'] .counsel-card.offer { max-height: none; }
+
+/* calm: the ticker speaks in the line (its ORDO, AGENDA, saving and ACTA lines); the counsel's calm line until it comes */
+#app[data-host='sheet'] .counsel-calm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); padding-right: 8px; }
+#app[data-host='sheet'] .counsel-calm .counsel-seal { width: 24px; height: 24px; margin: 0 4px; }
+#app[data-host='sheet'] #counsel.counsel-calm:has(~ #ticker:not([hidden])) { display: none; }
+#app[data-host='sheet'] #counsel:not(.counsel-calm) ~ #ticker { display: none; }
+#app[data-host='sheet'] #ticker { position: static; display: block; pointer-events: auto; }
+#app[data-host='sheet'] .tick-box {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; column-gap: 8px; width: 100%; height: auto; padding-right: 8px; text-align: left;
+}
+#app[data-host='sheet'] .tick-seal { width: 32px; height: 32px; }
+#app[data-host='sheet'] .tick-lines { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 1px 0; }
+#app[data-host='sheet'] .tick-kicker { min-width: 0; font-size: 12px; line-height: 14px; letter-spacing: 1.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#app[data-host='sheet'] .tick-text {
+  font-size: 14px; line-height: 16px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+
+/* ───────── the bar: five stable slots ───────── */
+/* Edicta · Consiliarii · Aedificia · Populus · Commercium, each in its own column: a tab not yet revealed leaves its slot
+   empty. Annales has none (key L, the ACTA lines, the Breviarium, the menu). The open tab is lit only while the sheet is up */
+#app[data-host='sheet'] #tabs {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: calc(var(--z-side) + 1); height: var(--bar-h);
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); gap: 2px;
+  padding: 3px 2px calc(3px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel-solid); border: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring);
+}
+#app[data-host='sheet'] #tabs:empty { display: none; }
+#app[data-host='sheet'] .side-tab {
+  grid-row: 1; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; min-height: 0; height: 100%;
+  padding: 2px 0; text-align: center;
+}
+#app[data-host='sheet'] #tabs > [data-tab='council'] { grid-column: 1; }
+#app[data-host='sheet'] #tabs > [data-tab='advisors'] { grid-column: 2; }
+#app[data-host='sheet'] #tabs > [data-tab='build'] { grid-column: 3; }
+#app[data-host='sheet'] #tabs > [data-tab='people'] { grid-column: 4; }
+#app[data-host='sheet'] #tabs > [data-tab='trade'] { grid-column: 5; }
+#app[data-host='sheet'] #tabs > [data-tab='annals'] { display: none; }
+#app[data-host='sheet'] .side-tab-ico { width: 20px; height: 20px; }
+#app[data-host='sheet'] .side-tab-text { align-items: center; max-width: 100%; line-height: 13px; }
+/* 'Commercium' whole in a 360 px wide slot: the label set a little tighter (the slots, the gaps and the bar's sides leave
+   it every pixel they can) */
+#app[data-host='sheet'] .side-tab-label { font-size: 12px; letter-spacing: -.07em; overflow: hidden; max-width: 100%; }
+#app[data-host='sheet'] .side-tab-sub { display: block; font-size: 12px; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; max-width: 100%; }
+#app[data-host='sheet'] .side-badge { top: -7px; right: 1px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; font-size: 12px; line-height: 18px; }
+#app[data-host='sheet'] .side-new { top: -12px; left: 1px; padding: 0 2px; font-size: 12px; line-height: 12px; }   /* above the slot, clear of its icon */
+#app[data-host='sheet'][data-detent='closed'] .side-tab.on:not(.fresh) {
+  color: var(--muted); border-color: var(--ring); background: linear-gradient(180deg, var(--panel-3), var(--panel-2));
+}
+#app[data-host='sheet'][data-detent='closed'] .side-tab.on .side-tab-sub { color: var(--dim); }
+
+/* ───────── the tool column: [Via][Mappae][+][−][⌂] ───────── */
+/* At the right edge, 8 px above the sheet's detent (it rides up with half, hides at full); over the bar while placing */
+#app[data-host='sheet'] #map-col {
+  position: absolute; right: 8px; bottom: calc(var(--bar-h) + var(--sheet-now) + 8px); z-index: var(--z-zoom);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; transition: bottom .22s ease;
+}
+#app[data-host='sheet'] #map-col > * { pointer-events: auto; }
+#app[data-host='sheet'] .map-col-group { display: flex; flex-direction: column; gap: 4px; }
+/* too short a strip of map for one column (half on a short phone): Via and Mappae stand beside the zoom; shorter still,
+   the zoom steps aside (fingers pinch) */
+#app[data-host='sheet'] #map-col.wrap { flex-direction: row-reverse; align-items: flex-end; }
+#app[data-host='sheet'] #map-col.tight #zoom-ctl { display: none; }
+#app[data-host='sheet'][data-detent='full'] #map-col { display: none; }
+#app[data-host='sheet'].placing #map-col { bottom: calc(var(--bar-h) + 8px); }
+#app[data-host='sheet'] #map-col #zoom-ctl { display: flex; flex-direction: column; gap: 4px; }
+#app[data-host='sheet'] #map-col .map-btn { width: 44px; height: 44px; font-size: 20px; }
+#app[data-host='sheet'] .map-col-btn img { width: 24px; height: 24px; }
+#app[data-host='sheet'] .map-col-btn.on { background: linear-gradient(var(--ember), #e07a35); }
+
+/* the popovers open to the column's left, from its foot up to the HUD (mapbar.ts caps their height), and scroll */
+#app[data-host='sheet'] .map-pop {
+  position: absolute; right: calc(100% + 8px); bottom: 0; width: min(264px, calc(100vw - 76px)); overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--panel-solid); border: var(--border-w) solid var(--line); border-radius: var(--r2);
+  box-shadow: var(--ring-shadow), 0 10px 24px rgba(0, 0, 0, .5); animation: trayIn .16s ease-out;
+}
+.map-pop-h { display: flex; align-items: baseline; gap: 6px; padding: 2px 4px 2px; font-size: 14px; color: var(--muted); }
+.map-pop-k { font-family: var(--font-caps); font-size: 12px; letter-spacing: 1.5px; color: var(--ember); }
+.map-pop-list { display: flex; flex-direction: column; gap: 4px; }
+.map-pop-row {
+  display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 10px 4px 6px; text-align: left;
+  background: rgba(0, 0, 0, .25); border: 2px solid transparent; border-radius: 4px; color: var(--text);
+}
+.map-pop-row:hover { background: rgba(255, 236, 200, .06); }
+.map-pop-row img { width: 24px; height: 24px; flex: none; }
+.map-pop-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; font-size: 15px; }
+.map-pop-s { font-size: 12px; color: var(--muted); }
+/* Mappae: the overlay bar itself, its toggles in a column with their names, the Officia layers, then the legend */
+#app[data-host='sheet'] .map-pop #overlay-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+#app[data-host='sheet'] .map-pop #overlay-bar > .map-ov-row { order: 0; display: flex; flex-direction: column; gap: 4px; max-width: none; padding: 0; background: none; border: 0; box-shadow: none; }
+#app[data-host='sheet'] .map-pop #overlay-bar > .map-ov-row.sub { order: 1; display: grid; grid-template-columns: 1fr 1fr; }
+#app[data-host='sheet'] .map-pop #overlay-bar > .map-legend { order: 2; display: grid; max-width: none; padding: 4px 8px; font-size: 12px; }
+#app[data-host='sheet'] .map-pop .map-ov { width: auto; min-width: 0; height: 44px; padding: 0 10px 0 6px; justify-content: flex-start; gap: 8px; font-size: 14px; }
+#app[data-host='sheet'] .map-pop .map-ov span { display: inline; }
+#app[data-host='sheet'] .map-pop .map-ov.small { padding: 0 8px; font-size: 13px; }
+
+/* ───────── what floats over the map ───────── */
+/* the hover inspector (a mouse on a phone): over the map, above the sheet; P2c makes the card a context card in the sheet */
+#app[data-host='sheet'] #left { top: calc(var(--hud-h) + 6px); left: 8px; right: 60px; width: auto; bottom: calc(var(--bar-h) + var(--sheet-now) + 8px); }
+/* toasts: top centre under the HUD, two at most (toasts.ts), never down by the voice line; a tap dismisses one, as
+   everywhere. A full sheet has its grabber and voice line right under the HUD: there they stand over the bar instead */
+#app[data-host='sheet'] #toasts { top: calc(var(--hud-h) + 6px); gap: 4px; }
+#app[data-host='sheet'][data-detent='full'] #toasts { top: auto; bottom: calc(var(--bar-h) + 8px); }
+#app[data-host='sheet'] .toast { padding: 4px 10px 4px 5px; }
+#app[data-host='sheet'] .toast-sub { font-size: 12px; }
+/* the event card: under the HUD, above the sheet at its detent (the card's step-aside closes it: choice.onStage) and
+   clear of the tool column, so the voice line, the grabber and the column's buttons stay in reach while it is up */
+#app[data-host='sheet'] #choice { left: 8px; right: 60px; width: auto; transform: none; bottom: calc(var(--bar-h) + var(--sheet-now) + 8px); }
+#app[data-host='sheet'][data-detent='full'] #choice { visibility: hidden; }   /* no map left to stand on: back when the sheet comes down */
+/* the placing banner stands where the sheet was, over the bar, beside the tool column (the doubled id outranks
+   mobile.css's #app:has(#side.collapsed) #place-banner) */
+#app#app[data-host='sheet'] #place-banner { left: 8px; right: 60px; bottom: calc(var(--bar-h) + 8px); width: auto; max-width: none; transform: none; }
+/* the sprite, the name, cost and verdict, and Place over Cancel at the right (P2c brings the 76 px banner with ⟳) */
+#app[data-host='sheet'] .place-box {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 8px; row-gap: 4px; width: 100%; padding: 6px 8px;
+}
+#app[data-host='sheet'] .place-box > :is(.place-ico, .place-main) { grid-row: 1 / span 2; }
+#app[data-host='sheet'] .place-box > .btn { grid-column: 3; }
+#app[data-host='sheet'] .place-box > .btn:only-of-type { grid-row: 1 / span 2; }
+#app[data-host='sheet'] .place-help { font-size: 12px; letter-spacing: .5px; }

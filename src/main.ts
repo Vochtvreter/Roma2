@@ -42,6 +42,7 @@ import { toast } from './ui/toasts';
 import { closeAllModals, exportDue, modalCount } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
+import type { OpenFrom } from './ui/layout';
 
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
@@ -173,7 +174,7 @@ class App implements Game {
     const p = this.view.placing;
     if (!p || p.kind !== 'building') return;
     const r = this.act(actions.place(this.state, p.type, tile, { owner: 'player', replaceId: p.replaceId }), { okSfx: 'place' });
-    if (r.ok && !shift) this.cancelPlacing();
+    if (r.ok && !shift) { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's sheet stays closed (no spring back)
   }
 
   inspect(t: InspectTarget | null, sticky: boolean): void {
@@ -203,8 +204,8 @@ class App implements Game {
     }
   }
 
-  openTab(tab: TabId, anchor?: string): void {
-    this.ui.side.open(tab, anchor);
+  openTab(tab: TabId, anchor?: string, from?: OpenFrom): void {
+    this.ui.side.open(tab, anchor, from);
   }
 
   prefillContract(spec: ContractSpec): void {
@@ -220,7 +221,7 @@ class App implements Game {
       case 'place':   // a remedy's tile can be taken since it was rendered (the Ordo built there): the best slot instead
         this.startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) });
         return;
-      case 'open': this.openTab(r.tab, r.anchor); return;
+      case 'open': this.openTab(r.tab, r.anchor, 'remedy'); return;
       case 'overlay': this.view.setOverlay(r.overlay, r.layer); return;
       case 'contract': this.prefillContract(r.spec); return;
       case 'building':

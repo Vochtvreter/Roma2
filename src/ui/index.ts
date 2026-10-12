@@ -2,7 +2,9 @@
 // loop, turns FxEvents into toasts, sounds, banners and dispatches, and shows the catch-up veil. Map widgets live in
 // mapbar.ts; the side panel, inspector and event card are WP-I's classes; the layout engine (layout.ts) owns the panel's
 // detent, the data-* size classes on #app and the camera's insets; the Breviarium (tray.ts) drops from any HUD figure and
-// holds the Res Gestae panel on a phone's sheet. Owner: WP-H.
+// holds the Res Gestae panel on a phone's sheet. On the phone SHEET host, sheet.ts gives the sheet its grabber and voice
+// line (the counsel and the ticker re-hosted there), the tab buttons are its bar, and MapColumn (mapbar.ts) its tool
+// column; placing, the pinned inspector, the lessons and the voice line's chips route the sheet (layout.go). Owner: WP-H.
 import type { AwayReport, FxEvent, GameState, OfflineRun, PlaceCheck, RankIndex } from '../game/types';
 import type { Game, PlacingState } from './types';
 import { clear, fmt, h } from './dom';
@@ -15,9 +17,10 @@ import { TitleScreen } from './title';
 import { toast, toastBatch } from './toasts';
 import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
-import { MapTools, renderPlaceBanner } from './mapbar';
+import { MapColumn, MapTools, renderPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Layout } from './layout';
+import { SheetHost } from './sheet';
 import { Tray } from './tray';
 import type { Detent } from './layout';
 import { Inspector } from './inspector';
@@ -40,8 +43,8 @@ import { DUTY_DEFS } from '../game/ordo/duties';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
-/** The portrait phone of mobile.css, whose side panel is a bottom sheet (a landscape phone's is a right-hand drawer).
- *  P1 keeps today's CSS regime; P2 makes it layout.host === 'sheet' once the SHEET host styles the panel. */
+/** Off the SHEET host, today's portrait bottom sheet of mobile.css (a 720–899 px tablet until P4 docks it): the event
+ *  card's step-aside covers it as it covers the SHEET. */
 const SHEET_PHONE = '(max-width: 899px) and (min-height: 521px)';
 
 function el(id: string): HTMLElement {
@@ -69,8 +72,11 @@ export class UI {
   private lifeAt = -Infinity;
   private veil: { run: OfflineRun; bar: HTMLElement; label: HTMLElement; date: HTMLElement } | null = null;
   private tools!: MapTools;
+  private column!: MapColumn;
   private lessonShown: { s: GameState; i: number } | null = null;
   private lowered: Detent | null = null;   // the sheet was dropped for the event card (choice.onStage): its detent, to go back to
+  private placedOk = false;                // the placing that ends now ended in a work placed (placed()): the sheet stays closed
+  private unpinning = false;               // the pinned card closed this turn: its restore waits to see whether another opens
 
   constructor(private readonly g: Game) {}
 
@@ -90,24 +96,42 @@ export class UI {
     this.title = new TitleScreen(g, el('title-screen'));
     this.side = new SidePanel(g, el('side'));
     this.layout = new Layout(g, el('app'), this.side);   // from here SidePanel.toggle() goes through the layout
+    // per host, before the layout measures: the tab buttons (the SHEET's bar), the sheet's head (the counsel and the
+    // ticker in its voice line), the Res Gestae (in the tray on the SHEET)
+    this.layout.onMount((host) => this.side.mount(host));
+    new SheetHost(g, this.layout, el('side'), el('counsel'), el('ticker'));
+    this.layout.onMount((host) => this.tray.mount(host));
     this.inspector = new Inspector(g, el('inspector'));
     this.layout.onChange(() => this.inspector.reseek());   // the UI moved: a pinned target it now covers glides clear
-    // a new host: the Res Gestae panel moves in or out of the tray, and the phone's speed popover folds into the row
+    // new classes: the phone's speed popover folds into the row; an open tray follows the layout
     this.layout.onChange((why) => {
-      if (why === 'classes') { this.tray.mount(this.layout.host); this.hud.closePopover(); }
-      else this.tray.relayout();
+      if (why === 'classes') this.hud.closePopover();
+      this.tray.relayout();
     });
-    this.tray.mount(this.layout.host);
+    // the SHEET's voice line: '+n' opens "Awaiting you", Read the dispatch; its unfolded card rides the sheet (lift), and
+    // folds when the sheet comes down to closed
+    this.counsel.layout = this.layout;
+    this.counsel.onAwaiting = () => this.tray.show('awaiting');
+    this.counsel.onRead = () => this.readDispatch();
+    this.layout.onChange((why) => { if (why === 'detent' && this.layout.host === 'sheet' && this.layout.detent === 'closed') this.counsel.fold(); });
+    // focus (IMPL §1): on the SHEET a pinned card clears the map (the sheet closes, remembered) and closing it puts the
+    // sheet back; a card replaced by another in the same turn (a tap from one target to the next) keeps it closed
+    this.inspector.onPin = (on) => {
+      if (this.layout.host !== 'sheet') return;
+      if (on) { this.unpinning = false; this.layout.go({ kind: 'focus' }); return; }
+      this.unpinning = true;
+      queueMicrotask(() => { if (this.unpinning && !this.inspector.pinned) { this.unpinning = false; this.layout.restore(); } });
+    };
     this.choice = new ChoiceCard(g, el('choice'));
-    this.side.onChoiceAnchor = () => this.choice.reveal();   // "Read the dispatch" unfolds the event card itself
-    this.tray.onRead = () => this.choice.reveal();
+    this.side.onChoiceAnchor = () => this.readDispatch();   // "Read the dispatch" unfolds the event card itself
+    this.tray.onRead = () => this.readDispatch();
     // a portrait phone gives an unfolded event card the sheet's room: the sheet drops to its tab bar while the card is
     // up (its text and its pinned answers both show) and comes back once it is answered or folded. A tab tapped
     // meanwhile opens the sheet again; the card then scrolls in what is left
     this.choice.onStage = (up) => {
       const L = this.layout;
       if (up) {
-        if (L.detent !== 'closed' && typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches) { this.lowered = L.detent; L.setDetent('closed'); }
+        if (L.detent !== 'closed' && (L.host === 'sheet' || (typeof matchMedia === 'function' && matchMedia(SHEET_PHONE).matches))) { this.lowered = L.detent; L.setDetent('closed'); }
       } else if (this.lowered) {
         const d = this.lowered;
         this.lowered = null;
@@ -115,6 +139,9 @@ export class UI {
       }
     };
     this.tools = new MapTools(g, el('overlay-bar'), el('zoom-ctl'));
+    this.column = new MapColumn(g, el('map-col'), el('overlay-bar'), el('zoom-ctl'), this.layout);
+    this.layout.onMount((host) => this.column.mount(host));
+    this.layout.onChange(() => this.column.fit());   // a detent, a host, the free map: the column fits its strip again
     this.showPlaceBanner(null, null);
   }
 
@@ -154,6 +181,7 @@ export class UI {
     this.counsel.update();
     this.ticker.update(now);
     this.tools.update();
+    this.column.update();
   }
 
   /** An opening lesson's job was done (a lyre), the next lesson began (a tink), or the lessons ended (the cornu). */
@@ -165,14 +193,17 @@ export class UI {
   /** Show, don't tell: when a lesson begins (or a colony mid-lesson is entered), its tab opens on the work it asks for
    *  and its target glows, so the right action is the one in front of the player. */
   private showLesson(): void {
+    if (this.g.modalOpen) return;   // the founding letter first: the lesson begins once the standard is raised
     const s = this.g.state;
     const cur = currentLesson(s);
     const key = cur && !cur.done ? cur.index : -1;
     if (this.lessonShown?.s === s && this.lessonShown.i === key) return;
     this.lessonShown = { s, i: key };
     if (!cur || cur.done) return;
+    // where the lessons' table routes it (layout.ts LESSON_VIEW): its tab opens, or the panel makes way for the map
     const ptr = lessonPointer(cur.lesson);
-    if (ptr.open) this.g.openTab(ptr.open, ptr.anchor);
+    if (ptr.open) this.g.openTab(ptr.open, ptr.anchor, 'lesson');
+    else this.layout.go({ kind: 'lesson', lesson: cur.lesson.id });
     if (ptr.glow) pulseTarget(ptr.glow);
   }
 
@@ -268,6 +299,7 @@ export class UI {
     this.title.hide();
     this.changed();
     this.side.frame(performance.now());
+    if (this.layout.host === 'sheet') this.layout.setDetent('closed', { instant: true });   // a colony entered on a phone: the map
     this.layout.refresh();
   }
 
@@ -303,11 +335,34 @@ export class UI {
   }
 
   /** The placement banner: sprite, name, cost, verdict and the help line; a Place button on touch. Entering or leaving
-   *  placing changes the free map on a phone (today's sheet drops while placing): the layout measures it again before
-   *  view.startPlacing glides a pre-positioned ghost into it. */
+   *  placing changes the free map on a phone: on the SHEET placing routes the sheet to closed (remembered; the banner
+   *  stands in its place), and it comes back when placing is cancelled, but not after a work was placed (placed()): the
+   *  player is on the map. The layout measures again before view.startPlacing glides a pre-positioned ghost into it. */
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void {
     const app = document.getElementById('app'), was = app?.classList.contains('placing');
     renderPlaceBanner(this.g, el('place-banner'), p, check);
-    if (app && was !== app.classList.contains('placing')) this.layout?.refresh();
+    const now = app?.classList.contains('placing');
+    if (!app || was === now) return;
+    const L = this.layout;
+    if (L?.host === 'sheet') {
+      if (now) L.go({ kind: 'place' });
+      else if (this.placedOk) L.forget();
+      else L.restore();
+    }
+    this.placedOk = false;
+    L?.refresh();
+  }
+
+  /** Unfolds the event card (the voice line's Read, the Breviarium's, "Read the dispatch"): a full phone sheet, which
+   *  leaves the card no map to stand on (sheet.css hides it there), comes down first. False when no dispatch waits. */
+  private readDispatch(): boolean {
+    if (!this.g.state.choice) return false;
+    if (this.layout.host === 'sheet' && this.layout.detent === 'full') this.layout.setDetent('closed');
+    return this.choice.reveal();
+  }
+
+  /** A work was placed and the placing ends (App.placeAt): a phone's sheet stays where placing put it. */
+  placed(): void {
+    this.placedOk = true;
   }
 }
