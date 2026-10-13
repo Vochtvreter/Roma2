@@ -239,6 +239,9 @@
   top: auto; left: 6px; right: 6px; bottom: calc(var(--bar-h) + 4px); width: auto; transform: none;
   max-height: min(70%, calc(100% - var(--hud-h) - var(--bar-h) - 12px)); display: flex; flex-direction: column;
 }
+/* the context card's More: at most half the screen, scrolling inside, so the map keeps the other half and the tool column
+   its one column */
+#app[data-host='sheet'] .ins-popup[data-docked]:has(> .ins-card.more) { max-height: min(50%, calc(100% - var(--hud-h) - var(--bar-h) - 12px)); }
 /* placing hides the context card, as everywhere (inspector.css; the rule above outranks that one): the banner takes the
    slot, and the card comes back when the placing ends */
 #app:is([data-host='sheet'], [data-host='drawer']).placing .ins-popup { display: none; }

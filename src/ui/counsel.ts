@@ -52,10 +52,12 @@ export type CounselItem = { kind: 'advisory'; a: ActiveAdvisory } | { kind: 'tip
   | { kind: 'offer'; duties: DutyId[] } | { kind: 'event'; c: PendingChoice } | { kind: 'calm' };
 
 /** One thing that waits on the player: a row of the Breviarium's "Awaiting you" (tray.ts), and what the phone's voice
- *  line counts in its '+n' pip. A Periculum or Cave advisory, a dispatch to answer (s.choice), chores learned and not yet
- *  answered, or a petition Rome would hear. */
+ *  line counts in its '+n' pip. A Periculum or Cave advisory, a dispatch to answer (s.choice), the opening lesson under
+ *  way (a Periculum or a Cave can hold the line over it, and a phone has no other place for it), chores learned and not
+ *  yet answered, or a petition Rome would hear. */
 export type AwaitItem = { kind: 'advisory'; a: ActiveAdvisory }
   | { kind: 'event'; title: string; expires: number }
+  | { kind: 'lesson'; l: Lesson; index: number; done: boolean }
   | { kind: 'offer'; duties: DutyId[] }
   | { kind: 'petition'; decision: PathDecisionId; rank: RankIndex | null; affordable: boolean };
 
@@ -64,6 +66,7 @@ export type AwaitItem = { kind: 'advisory'; a: ActiveAdvisory }
 export type VoiceAction = { kind: 'remedy'; label: string; remedy: Remedy; ok: boolean; reason: string }
   | { kind: 'open'; label: string; tab: TabId; anchor?: string }
   | { kind: 'lesson'; label: string; lesson: LessonId }
+  | { kind: 'begin'; label: string }
   | { kind: 'event'; label: string };
 
 /** An advisory's remedies as renderAdvisory gives them (label and check). */
@@ -112,15 +115,20 @@ export function pickCounsel(g: Game, events = isPhone(currentHost())): CounselIt
 }
 
 /** What waits on the player, most pressing first (pure; tests/voice.test.ts): Periculum advisories, a dispatch to answer
- *  (it expires), Cave advisories, the chores learned and not yet answered, and a petition Rome would hear. The chores and
- *  the petition wait only once Edicta, where they are answered, is on the bar, and the chores once its Mandata are (the
- *  lessons bring both: a chore learned in lesson I waits for lesson IV). Opportunitas and the gentler counsel stay on the
- *  card alone. */
+ *  (it expires), the opening lesson under way, Cave advisories, the lesson's breather (its payoff and Begin now), the
+ *  chores learned and not yet answered, and a petition Rome would hear: the lesson where pickCounsel ranks it. The
+ *  chores and the petition wait only once Edicta, where they are answered, is on the bar, and the chores once its
+ *  Mandata are (the lessons bring both: a chore learned in lesson I waits for lesson IV). Opportunitas and the gentler
+ *  counsel stay on the card alone. */
 export function awaitingItems(s: GameState): AwaitItem[] {
   const adv = activeAdvisories(s, { forCard: true }).filter((a) => a.rule !== OPPORTUNITAS);
   const out: AwaitItem[] = adv.filter((a) => a.memo.sev === 3).map((a) => ({ kind: 'advisory', a }));
   if (s.choice) out.push({ kind: 'event', title: s.choice.title, expires: s.choice.expires });
+  const cur = currentLesson(s);
+  const lesson = cur ? { kind: 'lesson' as const, l: cur.lesson, index: cur.index, done: cur.done } : null;
+  if (lesson && !lesson.done) out.push(lesson);
   for (const a of adv) if (a.memo.sev === 2) out.push({ kind: 'advisory', a });
+  if (lesson?.done) out.push(lesson);
   const edicta = tabShown(s, 'council');
   const offers = edicta && introduced(s, 'mandates') ? pendingOffers(s) : [];
   if (offers.length) out.push({ kind: 'offer', duties: offers });
@@ -170,14 +178,15 @@ export function voiceAction(item: CounselItem | AwaitItem, s: GameState): VoiceA
  *  tests/voice.test.ts): all of them, less the shown item when it is one of them (the same advisory, or the chores). */
 export function waitingBeyond(items: readonly AwaitItem[], shown: CounselItem): number {
   const own = items.some((x) => (x.kind === 'advisory' && shown.kind === 'advisory' && x.a.rule === shown.a.rule) || (x.kind === 'offer' && shown.kind === 'offer')
-    || (x.kind === 'event' && shown.kind === 'event'));
+    || (x.kind === 'event' && shown.kind === 'event') || (x.kind === 'lesson' && shown.kind === 'lesson'));
   return items.length - (own ? 1 : 0);
 }
 
-/** An "Awaiting you" row's action (pure): an advisory offers its first remedy (a building one as Place); every other
- *  item the voice line's chip. */
+/** An "Awaiting you" row's action (pure): an advisory offers its first remedy (a building one as Place), a lesson's
+ *  breather Begin now (when a lesson follows); every other item the voice line's chip. */
 export function awaitAction(item: AwaitItem, s: GameState): VoiceAction | null {
   if (item.kind === 'advisory') return remedyChip(renderAdvisory(s, view(s), item.a).remedies, true, s);
+  if (item.kind === 'lesson' && item.done) return LESSONS[item.index + 1] ? { kind: 'begin', label: 'Begin now' } : null;
   return voiceAction(item, s);
 }
 
@@ -397,6 +406,7 @@ export class Counsel {
         return;
       case 'open': g.openTab(a.tab, a.anchor, 'chip'); return;
       case 'event': if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); return;
+      case 'begin': g.act(beginNextLesson(g.state)); return;
       case 'lesson': {
         const l = LESSONS.find((x) => x.id === a.lesson);
         if (!l) return;

@@ -35,6 +35,7 @@ import { btn } from './tabs/common';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
 import { currentMilestone, MILESTONES } from '../game/objectives';
 import { LESSONS } from '../game/intro';
+import { beginNextLesson } from '../game/actions';
 import { forecast } from '../game/forecast';
 import { census } from '../game/census';
 import { getBuilding } from '../game/state';
@@ -149,6 +150,9 @@ export class Tray {
         if (!this.shownNow || this.col || !(e.target instanceof Node) || root.contains(e.target)) return;
         const el = e.target instanceof Element ? e.target : e.target.parentElement;
         if (el?.closest('[data-fig], #modal-root, #tooltip')) return;
+        // a press on the map is the dismissing tap, as for any popover: it selects nothing under it (a tablet's tray
+        // covers most of the map, so that is where the tap lands); a drag that starts with it still pans
+        if (el?.id === 'map') g.view.muteTap(e.pointerId);
         this.close();
       }, true);
       window.addEventListener('resize', () => { if (this.shownNow) this.place(); });
@@ -370,6 +374,7 @@ export class Tray {
       if (x.kind === 'advisory') return `a:${x.a.rule}:${x.a.memo.sev}:${act}`;
       if (x.kind === 'event') return `e:${x.title}:${x.expires}`;
       if (x.kind === 'offer') return `o:${x.duties.join(',')}`;
+      if (x.kind === 'lesson') return `l:${x.index}:${x.done ? 1 : 0}:${act}`;
       return `p:${x.decision}:${x.affordable ? 1 : 0}`;
     };
     let list: { item: AwaitItem; act: VoiceAction | null; key: string }[] = [];
@@ -409,6 +414,12 @@ export class Tray {
       cls = 'gold';
       title.textContent = item.title;
       refresh = () => { sub.textContent = `${Math.max(0, item.expires - g.state.day)} d to answer`; };
+    } else if (item.kind === 'lesson') {
+      const l = item.l, done = item.done, next = LESSONS[item.index + 1];
+      kicker = `DISCIPLINA · ${toRoman(item.index + 1)} / ${toRoman(LESSONS.length)}`;
+      cls = 'gold';
+      title.textContent = done ? l.title : l.job;
+      refresh = () => { sub.textContent = done ? (next ? `Done. Next: ${next.title}` : 'The lessons are done.') : (l.progress?.(g.state) ?? l.title); };
     } else if (item.kind === 'offer') {
       kicker = 'MANDATA';
       title.textContent = item.duties.length === 1 ? `The Ordo can take up ${DUTY_DEFS[item.duties[0]].name.toLowerCase()}` : `The Ordo can take up ${item.duties.length} chores`;
@@ -435,6 +446,7 @@ export class Tray {
         case 'remedy': g.applyRemedy(a.remedy); return;
         case 'open': g.openTab(a.tab, a.anchor, 'chip'); return;   // part-way: Review the Mandata, Petition
         case 'event': if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); return;
+        case 'begin': g.act(beginNextLesson(g.state)); return;
         case 'lesson': {
           const l = LESSONS.find((x) => x.id === a.lesson);
           if (l) showLesson(g, l);

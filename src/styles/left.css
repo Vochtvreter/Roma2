@@ -110,7 +110,12 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
    chore learned (eight after 'skip the introduction', 19 buttons): it is capped at 60% of the column outright, with Hand
    over all / Keep them all pinned at its foot (mobile.css caps it by the screen instead). */
 #left > #counsel { flex: 0 1 auto; min-height: 0; }
-#left > #inspector { flex-shrink: 1000; }   /* gives way first: shrinking goes by factor × size */
+/* gives way first, all of it: shrinking goes by factor × size, and at 1000 the counsel still took a pixel of a hover
+   card's overflow, which brought up its scrollbar and rewrapped it on every hover in and out */
+#left > #inspector { flex-shrink: 1000000; }
+/* but a card keeps its name and a line (kicker, title, a row): on a window too short for all three (1280 x 649) the
+   counsel's body scrolls meanwhile, rather than a 20 px sliver of a card hanging off the column's foot */
+#left > #inspector:not(:empty) { min-height: calc(88px * var(--ts)); }
 #counsel:has(> .counsel-card.offer) { max-height: 60%; }
 .counsel-card { display: flex; flex-direction: column; min-height: 0; }
 .counsel-card > .counsel-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
@@ -125,12 +130,14 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 }
 .counsel-seal { width: 12px; height: 12px; flex: none; opacity: .8; }
 
-/* Short screens (tablet and desktop under 761 px tall) keep the Res Gestae to that compact form all the time, so the
-   counsel card and a hovered card still have room in the column (at 1000x700 a hover card got 29 px). */
-@media (min-width: 900px) and (max-height: 760px) {
-  .obj-hint, .obj-unlocks { display: none; }
-  .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
-  .obj-chip { flex: none; }
+/* Short desktop windows keep the Res Gestae to that compact form all the time, so the counsel card and a hovered card
+   still have room in the column (at 1000x700 a hover card got 29 px). The COLUMNS only: the DOCK's pane head and the
+   Breviarium re-host #objective and show it whole. Up to 860 px tall since the 12 px type floor (the card and the
+   counsel grew ~40 px: a 1366 x 768 screen, or a 1440 x 900 one less the browser's chrome, left a hover card 20 px) */
+@media (max-height: 860px) {
+  #app[data-host='columns'] :is(.obj-hint, .obj-unlocks) { display: none; }
+  #app[data-host='columns'] .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
+  #app[data-host='columns'] .obj-chip { flex: none; }
 }
 /* the same on the desktop under Text size Large up to 950 px tall (760 × 1.25): at 1280 × 800 the full card left the
    counsel's remedies below its fold */

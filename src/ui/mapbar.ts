@@ -22,6 +22,7 @@ import { view } from '../game/sim';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
 import { lastTouch, primaryCoarse, touchInput } from './pointer';
+import { textSize } from './textsize';
 
 // ───────────────────────────── placing a work (pure) ─────────────────────────────
 /** Where a building's ghost starts (pure; tests/sheet.test.ts): the tile it was given; else, for a finger or on a phone
@@ -55,6 +56,13 @@ export function placingWhy(s: GameState, type: BuildingId): string | null {
     if (r.remedies.some((x) => (x.remedy.kind === 'place' || x.remedy.kind === 'ask') && x.remedy.building === type)) return r.title;
   }
   return null;
+}
+
+/** The works ⟳ keep placing offers to place again (pure; tests/sheet.test.ts): the ones laid out by the dozen, house
+ *  plots and fields (roads are a drag of their own). A granary from a fix-it chip, or a well, is one: the setting, kept
+ *  for them all, never leaves a second ghost one tap from a second building. */
+export function keepable(type: BuildingId): boolean {
+  return type === 'area' || type === 'ager';
 }
 
 /** The ⟳ keep-placing toggle, kept per browser in a UI-owned key (never in Prefs, which the save carries). */
@@ -399,9 +407,9 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
     ? h('button', { class: 'btn small primary place-go', onclick: () => { if (check.ok) g.placeAt(idx(check.x, check.y), false); } }, 'Place') : null;
-  // ⟳: a finger's Place leaves the next ghost up (the touch Shift-click); not for a Move, which places one stake. On
-  // the slim banners (the phones', the tablet's); the desktop's keeps Shift-click
-  const keep = sheet && coarse && p.replaceId === undefined
+  // ⟳: a finger's Place leaves the next ghost up (the touch Shift-click), for house plots and fields (keepable); not
+  // for a Move, which places one stake. On the slim banners (the phones', the tablet's); the desktop's keeps Shift-click
+  const keep = sheet && coarse && p.replaceId === undefined && keepable(p.type)
     ? toggleBtn(g, 'place-keep', '⟳', 'Keep placing: after Place, the next plot is ready', keepPlacing(), setKeepPlacing) : null;
   const why = sheet ? placingWhy(g.state, p.type) : null;
   const box = root.appendChild(h('div', { class: `place-box${check && !check.ok ? ' bad' : ''}${why ? ' why' : ''}` },
@@ -411,7 +419,8 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       verdict,
       why ? h('div', { class: 'place-why' }, why) : null,
       // the words follow the hand, as Place does (a mouse in a narrow or short window is on a phone host too, and clicks)
-      h('div', { class: 'place-help' }, coarse ? (sheet ? 'Tap a plot, then Place' : 'TAP A GLOWING PLOT, THEN PLACE') : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
+      // (Text size Large: the short form, whole on a 744 px tablet's banner beside its pane)
+      h('div', { class: 'place-help' }, coarse ? (sheet ? (textSize() === 'large' ? 'Tap a plot · Place' : 'Tap a plot, then Place') : 'TAP A GLOWING PLOT, THEN PLACE') : 'CLICK A GLOWING PLOT · SHIFT-CLICK TO PLACE MORE · ESC / RIGHT-CLICK TO CANCEL')),
     h('div', { class: 'place-btns' }, keep, place, cancel)));
   if (!sheet) steadyBox(box, `${p.type}:${coarse}`);   // a slim banner has its own height whatever its words (sheet.css, drawer.css, dock.css)
 }

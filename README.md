@@ -46,13 +46,13 @@ next colony starts with a Legacy bonus.
 | `1` `2` `3` `4` | speed 1×, 2×, 5×, 10× |
 | `E` `V` `B` `P` `T` `L` | Edicta, Consiliarii (advisors), Aedificia (build), Populus, Commercium (trade), Annales, once revealed |
 | `C` `M` `I` | on a desktop or a tablet: *Urbs* (the panel folded to its icons), *Mensa* (map and ledger), *Tabularium* (the ledgers wide) |
-| `Shift` + `E` … `L` | that panel, wide |
+| `Shift` + `E` … `L` | on a desktop or a tablet: that panel, wide (on a phone, the same as the letter alone) |
 | `O` / `Shift+O` | next map overlay (Aqua, Domus, Officia, Dignitas loci, Terra) / overlay off |
 | `R` | lay a road |
 | `W` `A` `S` `D` or arrows | pan |
 | `+` `−` | zoom |
 | `H` | back to the forum |
-| `Esc` | close a window, cancel placing, clear the selection, dock a wide panel, or open the menu |
+| `Esc` | close a window, the Breviarium or a popover, cancel placing, clear the selection, step the panel back (a phone's sheet or drawer down one step; a wide panel, or a tablet's folded spine, back to docked), or open the menu |
 
 With a mouse: click a building or the ground to inspect it, click a glowing plot to place, `Shift`-click to place
 more, right-click to cancel. On a touch screen: drag to pan, pinch to zoom, tap to inspect, tap a plot and then
@@ -133,7 +133,7 @@ pull request.
 | `src/game/data/`, `src/game/balance.ts` | content registries (buildings, tiers, ranks, paths, hubs, names) and every tuning number |
 | `src/game/world/` | seeded terrain and river, the castrum site, auto-roads and aqueduct routes |
 | `src/render/` | the canvas map view, overlays, minimap and input; `render/art/` draws every sprite in code |
-| `src/ui/`, `src/styles/` | HUD, side panels (`ui/tabs/`), inspector, advisor card, letters, title screen and keyboard; the CSS |
+| `src/ui/`, `src/styles/` | HUD, side panels (`ui/tabs/`), inspector, advisor card, letters, title screen and keyboard; the layout engine (`ui/layout.ts`: size classes, the four hosts and their detents) and the sliding panel (`ui/sheet.ts`), the Breviarium (`ui/tray.ts`), Back (`ui/history.ts`), the focus row, Text size and the installed app's checks (`ui/platform.ts`); the CSS, one sheet per host (`sheet.css`, `drawer.css`, `dock.css`, `columns.css`) |
 | `public/`, `scripts/` | the favicon, the web app manifest, the icons and the offline worker (`sw.js`); the icon painter and the worker's build step (`scripts/precache.ts`, run by `vite.config.ts`) |
 | `tests/` | Vitest suites and the autoplayer bots behind the balance, trace and perf runs |
 | `docs/` | `DESIGN.md` (content and numbers) and `ARCHITECTURE.md` (the code contract) |

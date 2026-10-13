@@ -9,7 +9,7 @@ import type { GameState, PendingChoice } from '../src/game/types';
 import type { Game, PlacingState } from '../src/ui/types';
 import { BRIEF, BRIEF_LINES, briefParts } from '../src/ui/inspector';
 import type { CardKind } from '../src/ui/inspector';
-import { afterPlace, placingWhy, startAt } from '../src/ui/mapbar';
+import { afterPlace, keepable, placingWhy, startAt } from '../src/ui/mapbar';
 import { HOLD, holdSteps } from '../src/ui/tabs/labour';
 import { CARD_LESSONS, CARD_ROWS, HOSTS, REVEAL, detentsOf, hostPointer, lessonFolds, reveal, route, shownAt, trayHolds } from '../src/ui/layout';
 import type { OpenFrom } from '../src/ui/layout';
@@ -85,6 +85,12 @@ describe('placing a work on touch (startAt, afterPlace)', () => {
     expect(afterPlace({ ...o, touch: false, keep: true })).toBe('end');           // ⟳ is a finger's: a mouse has Shift
     expect(afterPlace({ ...o, touch: true, keep: true, moving: true })).toBe('end');
     expect(afterPlace({ ...o, shift: true, moving: true })).toBe('end');          // the stake it replaced is gone
+  });
+
+  it('offers ⟳ for the works laid out by the dozen (house plots, fields), never for one building such as a fix-it granary', () => {
+    expect(keepable('area')).toBe(true);
+    expect(keepable('ager')).toBe(true);
+    for (const t of ['horreum', 'puteus', 'cisterna', 'principia'] as const) expect(keepable(t)).toBe(false);
   });
 
   it('says why: the lesson that asks for the work, else nothing of its own accord', () => {

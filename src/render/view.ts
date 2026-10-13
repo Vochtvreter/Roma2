@@ -99,6 +99,7 @@ export class MapView {
   private insCss: Insets = NO_INSETS;                // CSS px the UI covers on each side of the canvas (setInsets)
   private zoomed = false;                            // the player zoomed by hand since attach: a new host keeps the level
   private canvasZoom = false;                        // desktop columns: the default zoom follows the canvas width (setInsets)
+  private labelEdge = 0;                             // CSS px more on the right the map's labels keep clear of (the COLUMNS' ▸ and ⤢ handles)
   private dirty = true;                              // something the map shows changed since the last draw (invalidate)
   private sig = '';                                  // the state as last drawn: its day and its structure and census epochs
   private sigState: GameState | null = null;         // … and the state object itself
@@ -190,8 +191,9 @@ export class MapView {
    *  panel's own slide, not with the next drag (which would snap the map against the drag). `host`: the layout changed
    *  shape (a rotation, a fold, a resized window): the default zoom is chosen again for the new free map, unless the
    *  player has zoomed by hand. */
-  setInsets(css: Insets, opts?: { host?: boolean; canvasZoom?: boolean }): void {
+  setInsets(css: Insets, opts?: { host?: boolean; canvasZoom?: boolean; labelEdge?: number }): void {
     if (opts?.canvasZoom !== undefined) this.canvasZoom = opts.canvasZoom;
+    if (opts?.labelEdge !== undefined && opts.labelEdge !== this.labelEdge) { this.labelEdge = opts.labelEdge; this.dirty = true; }
     const i ={ top: Math.max(0, css.top), right: Math.max(0, css.right), bottom: Math.max(0, css.bottom), left: Math.max(0, css.left) };
     const same = i.top === this.insCss.top && i.right === this.insCss.right && i.bottom === this.insCss.bottom && i.left === this.insCss.left;
     this.insCss = i;
@@ -204,6 +206,20 @@ export class MapView {
       if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
       this.applyLevel(this.defaultLevel());
     }
+    this.keepGhost();
+  }
+
+  /** A ghost the player set (pre-positioned, or the last tap), not the mouse's, glides back into the new free rect: a
+   *  rotation or a resized window moves the map under it, and Place must never stake a site the player cannot see. A
+   *  ghost still in view stays put (ensureVisible moves nothing). */
+  private keepGhost(): void {
+    const p = this._placing, c = this.place.check;
+    if (!p || p.kind !== 'building' || this.mouseGhost || !this.s) return;
+    const at = c?.ok ? c.y * W + c.x : this.place.hoverTile;
+    if (at === null) return;
+    if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
+    const [w, h] = BUILDING_DEFS[p.type].size;
+    this.ensureVisible({ x: at % W, y: Math.floor(at / W), w, h }, EDGE_CSS);
   }
 
   /** The free rect: the canvas less the insets, in canvas CSS px (the whole canvas when the insets would leave none). */
@@ -281,7 +297,8 @@ export class MapView {
     this.particles.ambient(dtMs, s, this.painter.drawn, cur, !paused);
     this.particles.draw(g, { x: vis.x * TILE, y: vis.y * TILE, w: vis.w * TILE, h: vis.h * TILE });
     this.actors.sky(g, vis);
-    this.place.drawOver(g, s, this.time, cur, this.ins);
+    const li = this.ins;
+    this.place.drawOver(g, s, this.time, cur, this.labelEdge ? { ...li, right: li.right + this.labelEdge * this.ratio } : li);
     this.drawFlashes(g, s, xf);
     g.setTransform(1, 0, 0, 1, 0, 0);
     this.mini?.draw(s, this.cam, this.terrain.miniCanvas(s), ov, this._placing !== null, this.time, this.ins);
@@ -475,6 +492,11 @@ export class MapView {
     this.titleUntil = this.time + dtMs + 50;
     const f = getMap(s.seed).survey.forum, a = this.titleT * DRIFT.rate;
     this.centerWorld((f.x + f.w / 2) * TILE + Math.sin(a) * DRIFT.r, (f.y + f.h / 2) * TILE + Math.sin(a * 0.7 + 1) * DRIFT.r * 0.5);
+  }
+
+  /** The press of this pointer on the map closes a layer above it (the Breviarium): it pans, but taps nothing. */
+  muteTap(pointerId: number): void {
+    this.input.muteTap(pointerId);
   }
 
   /** Enables or disables map input (off under the catch-up veil and modals). */

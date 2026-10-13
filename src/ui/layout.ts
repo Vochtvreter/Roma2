@@ -235,15 +235,33 @@ export function drawerWidths(W: number, spine: number): Record<Detent, number> {
  *  (above on a tie); the box itself when they do not meet. The DRAWER's free map beside what stands at its bottom-left:
  *  above a wide, short voice line or placing banner, right of a tall card. */
 export function clearOf(box: Box, ob: Box, gap = 0): Box {
-  if (ob.right <= box.left || ob.left >= box.right || ob.bottom <= box.top || ob.top >= box.bottom) return { ...box };
-  const parts: Box[] = [
+  const parts = clearParts(box, ob, gap);
+  return parts ? parts.reduce((best, b) => (boxArea(b) > boxArea(best) ? b : best)) : { ...box };
+}
+
+/** The part of `box` clear of `ob` that holds the point (x, y) (pure): of the four clearOf weighs, the largest that holds
+ *  it; clearOf's own choice when none does (the point under `ob`, or outside the box). The room a popup has beside a
+ *  target that stands beside what floats over the map (the DOCK's head left of it, top-right), not only in the larger
+ *  part the free rect keeps. */
+export function clearAround(box: Box, ob: Box, x: number, y: number, gap = 0): Box {
+  const holds = (clearParts(box, ob, gap) ?? []).filter((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom && boxArea(b) > 0);
+  return holds.length ? holds.reduce((best, b) => (boxArea(b) > boxArea(best) ? b : best)) : clearOf(box, ob, gap);
+}
+
+/** The parts of `box` above, below, left and right of `ob`, `gap` px off it (in that order: the tie goes above); null
+ *  when they do not meet. */
+function clearParts(box: Box, ob: Box, gap: number): Box[] | null {
+  if (ob.right <= box.left || ob.left >= box.right || ob.bottom <= box.top || ob.top >= box.bottom) return null;
+  return [
     { ...box, bottom: Math.min(box.bottom, ob.top - gap) },
     { ...box, top: Math.max(box.top, ob.bottom + gap) },
     { ...box, right: Math.min(box.right, ob.left - gap) },
     { ...box, left: Math.max(box.left, ob.right + gap) },
   ];
-  const area = (b: Box): number => Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
-  return parts.reduce((best, b) => (area(b) > area(best) ? b : best));
+}
+
+function boxArea(b: Box): number {
+  return Math.max(0, b.right - b.left) * Math.max(0, b.bottom - b.top);
 }
 
 /** How many of a row's droppable items must leave it (pure) for it to fit: `need`, the row's width with all of them;
@@ -626,9 +644,10 @@ export function currentFree(): Box | null {
   return active ? active.freeRect() : null;
 }
 
-/** The current classes, or null before the layout runs (headless tests). */
-export function currentClasses(): Classes | null {
-  return active ? active.classes : null;
+/** What floats over the map and the free map under it (Layout.floatingBox), or null (nothing floats, or before the layout
+ *  runs). */
+export function currentFloating(): { under: Box; box: Box } | null {
+  return active ? active.floatingBox() : null;
 }
 
 /** Registers how the host brings a target it hides into view on an explicit "Show me" (the SHEET's Mappae popover holds
@@ -681,7 +700,9 @@ export class Layout {
   private dockPx = -1;                         // what stands on the SHEET's bar, as written to --dock-h
   private freeVars = '';                       // the DOCK's free map as written to --dock-free-t and --dock-free-r
   private free: Box = ZERO;
+  private afloat: { under: Box; box: Box } | null = null;   // what floats over the free map and the map it stands on (measure)
   private ins: Box = ZERO;                     // the free rect as canvas insets (CSS px), as given to the view
+  private edge = 0;                            // what the map's labels keep clear of beside the COLUMNS' panel (view labelEdge)
   private safe: Box = ZERO;                    // the safe area in #app px (safeArea)
   private started = false;
   private readonly mq: MediaQueryList[];
@@ -861,6 +882,14 @@ export class Layout {
   /** The #app-relative rect of map the UI leaves free, with the panel at its detent's target (a copy). */
   freeRect(): Box { return { ...this.free }; }
 
+  /** What floats over the map, which the free rect keeps out of by taking the larger part beside it (clearOf): the
+   *  DRAWER's floating voice line or docked card, the DOCK's head afloat beside the spine. Its own box, and the free map
+   *  it stands on (the free rect before that clearing), in #app px; null when nothing floats. The inspector counts the
+   *  box as covering, not the whole band clearOf gave up (a target beside the head is in view). */
+  floatingBox(): { under: Box; box: Box } | null {
+    return this.afloat ? { under: { ...this.afloat.under }, box: { ...this.afloat.box } } : null;
+  }
+
   /** The UI covers all of the map now (mapCovered over the free rect at rest, this host, and whether a modal is open),
    *  and the panel is not moving (a drag down from full, or a slide, uncovers map the detent's rect does not count):
    *  main.ts asks every turn and suspends the map's drawing while it does. */
@@ -993,7 +1022,10 @@ export class Layout {
     this.free = free;
     this.ins = ins;
     this.writeFree(W);
-    if (moved || host) this.g.view.setInsets(ins, { host, canvasZoom: c.host === 'columns' });
+    // the COLUMNS' ▸ and ⤢ stand --cols-edge over the map beside the panel (columns.css): the map's labels keep clear
+    const edge = c.host === 'columns' && this.paneShown() ? parseFloat(getComputedStyle(this.app).getPropertyValue('--cols-edge')) || 0 : 0;
+    if (moved || host || edge !== this.edge) this.g.view.setInsets(ins, { host, canvasZoom: c.host === 'columns', labelEdge: edge });
+    this.edge = edge;
     if (shape && !first) this.emit('classes');
     if (turned && !first) this.emit('detent');
     if (moved && !first) this.emit('free');
@@ -1149,6 +1181,8 @@ export class Layout {
    *  a target clear of it. */
   private measure(W: number, H: number): Box {
     let box = { left: 0, top: 0, right: W, bottom: H };
+    let afloat: { under: Box; box: Box } | null = null;
+    this.afloat = null;
     if (this.app.classList.contains('in-title')) return box;   // the title hides the chrome: all of the map shows
     if (shown(this.hud)) box.top = Math.max(0, this.hud.offsetTop + this.hud.offsetHeight);
     const placing = this.app.classList.contains('placing');
@@ -1173,7 +1207,9 @@ export class Layout {
       const voice = placing || card || this.det !== 'closed' ? null : this.sheetHooks?.floating() ?? null;
       const at = card ?? voice;
       if (at && shown(at)) {
-        box = clearOf(box, { left: at.offsetLeft, top: at.offsetTop, right: at.offsetLeft + at.offsetWidth, bottom: at.offsetTop + at.offsetHeight }, CARD_GAP);
+        const fb = { left: at.offsetLeft, top: at.offsetTop, right: at.offsetLeft + at.offsetWidth, bottom: at.offsetTop + at.offsetHeight };
+        afloat = { under: { ...box }, box: fb };
+        box = clearOf(box, fb, CARD_GAP);
       }
     } else if (this.cls.host === 'dock') {
       const pane = this.dockW && this.paneShown() ? this.dockW[this.det] : 0;
@@ -1184,7 +1220,9 @@ export class Layout {
       const head = this.sheetHooks?.floating() ?? null;
       if (head && shown(head)) {
         const a = this.app.getBoundingClientRect(), r = head.getBoundingClientRect();
-        box = clearOf(box, { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top }, CARD_GAP);
+        const fb = { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top };
+        afloat = { under: { ...box }, box: fb };
+        box = clearOf(box, fb, CARD_GAP);
       }
     } else {
       const pane = this.colsW && this.paneShown() ? this.colsW[this.det] : 0;
@@ -1193,9 +1231,12 @@ export class Layout {
       if (shown(col) && col.offsetWidth < W / 2) box.left = Math.max(box.left, col.offsetLeft + col.offsetWidth);
     }
     const ban = this.banner;
-    if (placing && shown(ban)) box.bottom = Math.min(box.bottom, ban.offsetTop - BANNER_GAP);
-    if (box.bottom < box.top) box.bottom = box.top;
-    if (box.right < box.left) box.right = box.left;
+    for (const b of afloat ? [box, afloat.under] : [box]) {
+      if (placing && shown(ban)) b.bottom = Math.min(b.bottom, ban.offsetTop - BANNER_GAP);
+      if (b.bottom < b.top) b.bottom = b.top;
+      if (b.right < b.left) b.right = b.left;
+    }
+    this.afloat = afloat;
     return box;
   }
 

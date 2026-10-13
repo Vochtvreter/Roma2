@@ -315,7 +315,7 @@ export function openHowTo(_g: Game): void {
     h('li', null, 'Two-finger tap to cancel placing')] : [];
   const shortcuts = c.keys ? [
     h('li', null, kbd('Space'), ' pause · ', kbd('1'), kbd('2'), kbd('3'), kbd('4'), ' speed'),
-    h('li', null, kbd('E'), kbd('V'), kbd('B'), kbd('P'), kbd('T'), kbd('L'), ' panels · ', kbd('O'), ' overlays · ', kbd('R'), ' road'),
+    h('li', null, kbd('E'), kbd('V'), kbd('B'), kbd('P'), kbd('T'), kbd('L'), ' panels · ', kbd('O'), ' overlays (', kbd('Shift'), '+', kbd('O'), ' off) · ', kbd('R'), ' road'),
     // the views of a tablet and a desktop (layout.ts VIEWS): the panel folded, docked or wide; Shift with a panel's key: wide
     ...(c.views ? [h('li', null, kbd('C'), ' Urbs · city · ', kbd('M'), ' Mensa · map & ledger · ', kbd('I'), ' Tabularium · ledgers · ',
       kbd('Shift'), '+', kbd('E'), '…', kbd('L'), ' a panel wide')] : []),

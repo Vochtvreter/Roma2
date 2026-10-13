@@ -53,6 +53,16 @@ const DOCK_GAP = 4;     // the DOCK row's gap after each item (dock.css: a right
 
 type Up = () => void;
 
+/** The figure a press on `f` stands for, and its section: on the SHEET coin and souls stand as one 44 px box of two
+ *  22 px lines, one target for a finger, so either half is the coin's (the tray opens at the coin, the souls just below,
+ *  and a second press on either half closes it). */
+function figTarget(f: HTMLElement): [string, HTMLElement] {
+  const fig = f.dataset.fig ?? '';
+  if (fig !== 'souls' || currentHost() !== 'sheet') return [fig, f];
+  const coin = f.parentElement?.querySelector<HTMLElement>(':scope > .hud-coin:not([hidden])');
+  return coin ? ['coin', coin] : [fig, f];
+}
+
 /** The HUD figure an event landed on (data-fig), if any. */
 function figureOf(t: EventTarget | null): HTMLElement | null {
   return t instanceof Element ? t.closest<HTMLElement>('[data-fig]') : null;
@@ -108,13 +118,13 @@ export class Hud {
     this.vitals = new Vitals(g, (el) => this.quiet(el));
     root.addEventListener('click', (e) => {
       const f = figureOf(e.target);
-      if (f) this.onFigure?.(f.dataset.fig ?? '', f, false);
+      if (f) this.onFigure?.(...figTarget(f), false);
     });
     root.addEventListener('keydown', (e) => {
       const f = figureOf(e.target);
       if (e.key !== 'Enter' || !f || f !== e.target) return;
       e.preventDefault();
-      this.onFigure?.(f.dataset.fig ?? '', f, true);
+      this.onFigure?.(...figTarget(f), true);
     });
     // the speed popover is a layer: Back and Esc close it first; a press anywhere else closes it too
     registerBack({ rank: BACK_RANK.popover, open: () => this.popOpen, close: () => this.popover(false) });
@@ -130,6 +140,12 @@ export class Hud {
       e.preventDefault();
     }, { passive: false });
     strip.addEventListener('scroll', () => this.markMore());
+    // the bundled fonts arrive after the first fit, which measured the fallback's widths (and held them): fit again once
+    // they are in, so the same window and save always come out the same
+    if (typeof document !== 'undefined' && document.fonts) {
+      void document.fonts.ready.then(() => this.refit());
+      document.fonts.addEventListener('loadingdone', () => this.refit());
+    }
   }
 
   /** Fades the strip's right edge while more materials hide past it. */

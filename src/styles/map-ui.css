@@ -8,7 +8,6 @@
   display: grid; grid-template-columns: auto auto; grid-template-areas: "ov mini" "zoom zoom"; align-items: end; gap: 6px;
   pointer-events: none; transition: right .2s;
 }
-#app:has(#side.collapsed) #map-tools, #app:has(#side.collapsed) #toasts { right: 12px; }
 #map-tools > * { pointer-events: auto; }
 #overlay-bar { grid-area: ov; justify-self: end; display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
 #overlay-bar:empty { display: none; }
@@ -52,7 +51,6 @@
   position: absolute; bottom: 12px; left: 330px; right: calc(var(--side-w) + 150px); z-index: var(--z-ticker);
   display: flex; justify-content: center; pointer-events: none; transition: right .2s;
 }
-#app:has(#side.collapsed) #ticker { right: 150px; }
 #ticker > * { pointer-events: auto; }
 .tick-box {
   display: flex; align-items: center; gap: 8px; max-width: 100%; height: 34px; padding: 0 14px 0 6px; text-align: left;
@@ -111,7 +109,6 @@
 /* Centred in the free map between the left column (330 px) and the icon-only overlay column (62 px) while placing. */
 #place-banner { position: absolute; bottom: 60px; left: calc((100% - var(--side-w) + 268px) / 2); transform: translateX(-50%); z-index: var(--z-place-banner);
   width: max-content; max-width: calc(100% - var(--side-w) - 400px); }
-#app:has(#side.collapsed) #place-banner { left: calc((100% + 268px) / 2); max-width: calc(100% - 400px); }
 #app.placing .map-ov span, #app.placing .map-legend, #app.placing .map-ov-row.sub { display: none; }
 #app.placing .map-ov { padding: 0 3px; }
 .place-box {

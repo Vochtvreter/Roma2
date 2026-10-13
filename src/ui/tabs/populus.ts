@@ -197,16 +197,16 @@ export const panel: TabPanel = {
     const s = g.state;
     const census_ = section('Census', 'Souls, beds and spirits', { anchor: 'census' });
     census_.append(stats(g, up));
-    body.append(census_);
     const w = watch(s);
     const sec = section('Custodia', 'Watch', { anchor: 'watch' });   // always drawn: advisors open it by its anchor
     sec.append(w.length ? h('ul', { class: 'pop-watch' }, w.map((x) => h('li', null, x)))
       : h('div', { class: 'tab-quiet' }, 'No group is hungry or parched, and no one is sick or without a roof.'));
-    body.append(sec);
     const labour = section('Operae', s.ordo.on.labour ? 'Labour: hands at work / wanted · posts' : 'Labour: your targets', { anchor: 'labour',
       note: s.ordo.on.labour ? 'The Ordo staffs every post daily, water first, then food, and says why.' : null });
     labour.append(labourEl(g, up));
-    body.append(labour);
+    // while the labour is the player's, its targets come first: what a phone's half sheet shows without a scroll
+    if (s.ordo.on.labour) body.append(census_, sec, labour);
+    else body.append(labour, census_, sec);
     const domus = section('Domus', 'Homes by tier, and what they wait for', { anchor: 'homes' });
     domus.append(homes(g, up));
     body.append(domus);

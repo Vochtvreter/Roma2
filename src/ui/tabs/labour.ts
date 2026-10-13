@@ -32,19 +32,27 @@ export function holdSteps(ms: number): number {
   return ms < HOLD.LONG_MS ? 0 : 1 + Math.floor((ms - HOLD.LONG_MS) / HOLD.REPEAT_MS);
 }
 
-/** A ± button: a tap (or Enter) steps by one, Shift by five; a press held past the long press steps by five, again and
- *  again while held, and its click is then no tap. The widget around it holds its rebuilds while the press lasts
+/** Writes a line only when its words change: the lines refresh on every UI tick, and an unchanged write is still a DOM
+ *  mutation (the phones' voice line observes its slot for them, and would measure the layout again five times a
+ *  second while lesson I's card carries this block). */
+function put(el: HTMLElement, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
+/** A ± button: a tap (or Enter) steps by one, Shift by five; a finger's or a pen's press held past the long press steps
+ *  by five, again and again while held, and its click is then no tap (a mouse's press is a click, however long). The widget around it holds its rebuilds while the press lasts
  *  (steady.ts PointerHold, the side panel's own guard), so the button stays under the finger. */
 function stepBtn(g: Game, cat: LaborCat, dir: 1 | -1): HTMLButtonElement {
   const fire = (n: number): void => {
     const s = g.state;
     g.act(A.setManualTarget(s, cat, Math.max(0, s.ordo.manual[cat] + dir * n)), { okSfx: 'click' });
   };
-  let t0 = 0, done = 0, timer = 0, long = false;
+  let t0 = 0, done = 0, timer = 0, long = false, mouse = false;
   const stop = (): void => { window.clearInterval(timer); timer = 0; };
   const b = h('button', { class: 'btn small ghost tab-lab-pm', type: 'button', 'aria-label': `${dir < 0 ? 'Fewer' : 'More'} ${CAT_LABEL[cat][1]} hands` }, dir < 0 ? '−' : '+');
   b.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    mouse = e.pointerType === 'mouse';
+    if (e.button !== 0 || mouse) return;   // a finger's or a pen's hold: a mouse clicks ±1, Shift ±5
     stop();
     t0 = performance.now();
     done = 0;
@@ -56,7 +64,7 @@ function stepBtn(g: Game, cat: LaborCat, dir: 1 | -1): HTMLButtonElement {
     }, HOLD_POLL_MS);
   });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) b.addEventListener(ev, stop);
-  b.addEventListener('contextmenu', (e) => e.preventDefault());   // a long press is the button's, not the browser's menu
+  b.addEventListener('contextmenu', (e) => { if (!mouse) e.preventDefault(); });   // a long press is the button's, not the browser's menu (a mouse's right-click keeps it)
   b.addEventListener('click', (e) => {
     e.stopPropagation();
     if (long) { long = false; return; }   // the long press has stepped already
@@ -102,12 +110,12 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
       const line = rep.labour.find((l) => l.cat === cat);
       const have = c.catStaffed[cat];
       const target = manual ? s.ordo.manual[cat] : line?.target ?? have;
-      count.textContent = cat === 'builders' ? `${have} / ${target}` : `${have} / ${target} · ${c.catSlots[cat]}`;
+      put(count, cat === 'builders' ? `${have} / ${target}` : `${have} / ${target} · ${c.catSlots[cat]}`);
       count.classList.toggle('short', have < target);
       const would = rep.would.labour[cat];
-      why.textContent = manual ? (would !== undefined ? `The Ordo would assign ${would}.` : '') : line ? reasonText(line.reason) : '';
+      put(why, manual ? (would !== undefined ? `The Ordo would assign ${would}.` : '') : line ? reasonText(line.reason) : '');
       const p = s.ordo.priorities.find((x) => x.cat === cat && x.until > s.day);
-      prio.textContent = p ? `first, ${p.until - s.day} d` : '';
+      put(prio, p ? `first, ${p.until - s.day} d` : '');
     };
     refresh();
     up.push(refresh);
@@ -116,7 +124,7 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
   const idle = h('div', { class: 'tab-note' });
   const refreshIdle = (): void => {
     const n = census(g.state).idle.length;
-    idle.textContent = n ? `${n} able ${n === 1 ? 'hand stands' : 'hands stand'} idle: they forage a little grain and help the builders.` : 'No able hand stands idle.';
+    put(idle, n ? `${n} able ${n === 1 ? 'hand stands' : 'hands stand'} idle: they forage a little grain and help the builders.` : 'No able hand stands idle.');
   };
   refreshIdle();
   up.push(refreshIdle);

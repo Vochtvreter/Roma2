@@ -22,7 +22,8 @@
 .tray-x:hover { color: var(--text); background: rgba(255, 255, 255, .06); }
 #app:not([data-input='mouse']) .tray-x { width: 44px; height: 44px; }
 
-.tray-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 12px 8px; }
+.tray-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 12px 8px;
+  container: tray-body / inline-size; }   /* the materials lay out by the tray's own width (the pull-down, a wide pane's column) */
 .tray-grip { flex: none; display: flex; align-items: center; justify-content: center; height: 22px; cursor: grab; touch-action: none;
   border-top: 1px solid rgba(255, 236, 200, .06); }
 .tray-grip > i { width: 40px; height: 5px; border-radius: 3px; background: var(--line-2); }
@@ -92,8 +93,12 @@
 .tray-seasons { display: flex; gap: 2px; font-family: var(--font-caps); font-size: var(--fs-caps); line-height: 15px; overflow: hidden; }
 .tray-empty { margin-top: 4px; font-family: var(--font-caps); font-size: var(--fs-caps); color: #ff8b80; }
 
-/* materials: three to a row */
+/* materials: three to a row where an amount over its cap fits whole ('1,048/1,100' is 89 px at Normal, 118 at Large),
+   else two, else one: never ellipsised (the wide pane's column is 250 to 400 px, the pull-down 420) */
 .tray-mats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+@container tray-body (max-width: 329px) { .tray-mats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container tray-body (max-width: 419px) { #app[data-text='large'] .tray-mats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container tray-body (max-width: 279px) { #app[data-text='large'] .tray-mats { grid-template-columns: minmax(0, 1fr); } }
 .tray-mat { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 4px 6px 5px;
   background: rgba(0, 0, 0, .22); border: 1px solid #2f231c; border-radius: 4px; }
 .tray-mat-top { display: flex; align-items: center; gap: 4px; min-width: 0; }

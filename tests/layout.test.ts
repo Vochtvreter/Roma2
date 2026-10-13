@@ -14,7 +14,7 @@ import { TABS } from '../src/game/types';
 import { LESSONS } from '../src/game/intro';
 import {
   BAR_SLOTS, COLUMNS, DEFAULT_DETENT, DETENTS, DOCK, DOCK_TOOLS, DRAWER, FLING, HOSTS, LESSON_VIEW, MAP_TOOLS, REVEAL, SHEET, SHEET_FULL_TABS, TAB_KEYS, VIEWS,
-  VIEW_HOSTS, VISIBLE, aboveDefault, backDetent, barSlot, brevColumn, classify, clearOf, columnsRoom, columnsWidths, cycleDetent, detentsOf, dockExpanded, dockWidths, drawerWidths,
+  VIEW_HOSTS, VISIBLE, aboveDefault, backDetent, barSlot, brevColumn, classify, clearAround, clearOf, columnsRoom, columnsWidths, cycleDetent, detentsOf, dockExpanded, dockWidths, drawerWidths,
   fitDetent, hostEntryDetent, inFrame, inputClass, isLayer, isPhone, keepDetent, keyAction, lessonTarget, mapCovered, priorityDrops, reveal, revealOn, route,
   sheetHeights, shownAt, slimBanner, slotTap, snapDetent, stepDown, toolColumn, viewOf, visibleOn,
 } from '../src/ui/layout';
@@ -562,6 +562,16 @@ describe('the landscape drawer', () => {
     expect(aboveDefault('half', 'drawer')).toBe(true);    // half and full are Back layers
     expect(aboveDefault('closed', 'drawer')).toBe(false);
     expect(stepDown('full', 'drawer', true)).toBe('half');
+  });
+
+  it('clearAround: the part clear of what floats that holds a point, else clearOf\'s larger part', () => {
+    const map: Box = { left: 0, top: 56, right: 764, bottom: 1180 };   // 820 x 1180, the DOCK's spine
+    const head: Box = { left: 418, top: 64, right: 758, bottom: 175 }; // its head afloat top-right
+    expect(clearOf(map, head, 8)).toEqual({ left: 0, top: 183, right: 764, bottom: 1180 });             // the free rect: below it
+    expect(clearAround(map, head, 200, 120, 8)).toEqual({ left: 0, top: 56, right: 410, bottom: 1180 }); // a house left of it
+    expect(clearAround(map, head, 600, 600, 8)).toEqual({ left: 0, top: 183, right: 764, bottom: 1180 }); // below it: the larger
+    expect(clearAround(map, head, 500, 100, 8)).toEqual(clearOf(map, head, 8));                          // under it: clearOf's
+    expect(clearAround(map, { left: 800, top: 0, right: 820, bottom: 50 }, 10, 10)).toEqual(map);         // nothing in the way
   });
 
   it('clearOf: the free map above a wide, short thing at its foot, beside a tall one, whole when they do not meet', () => {

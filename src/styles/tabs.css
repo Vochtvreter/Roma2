@@ -204,6 +204,9 @@
 .tr-form-head b { font-weight: 400; }
 .tr-field { display: grid; grid-template-columns: 52px 1fr; gap: 6px; align-items: center; }
 .tr-field:has(.ed-slider) { grid-template-columns: 52px 1fr 28px auto; }
+/* Text size Large: 'MARKET' is 70 px at 16 px Silkscreen, 'GOODS' 60: the label column follows them */
+#app[data-text='large'] .tr-field { grid-template-columns: 72px 1fr; }
+#app[data-text='large'] .tr-field:has(.ed-slider) { grid-template-columns: 72px 1fr 28px auto; }
 .tr-lab { font-family: var(--font-caps); font-size: var(--fs-caps); color: var(--muted); }
 .tr-select { width: 100%; min-width: 0; min-height: 30px; padding: 2px 6px; background: var(--panel-2); color: var(--text); border: var(--border-w) solid var(--line); border-radius: var(--r1); }
 .tr-goods { display: flex; flex-wrap: wrap; gap: 2px; }
@@ -284,7 +287,7 @@
   #app[data-text='large'] .tr-row { grid-template-columns: 26px minmax(0, 1fr); }
   #app[data-text='large'] .tr-row > .tr-btns { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
   #app[data-text='large'] :is(.tr-top, .tr-goods, .tr-quick) { flex-wrap: wrap; }
-  #app[data-text='large'] .tr-field:has(.ed-slider) { grid-template-columns: 52px minmax(0, 1fr) 28px; }
+  #app[data-text='large'] .tr-field:has(.ed-slider) { grid-template-columns: 72px minmax(0, 1fr) 28px; }
   #app[data-text='large'] .tr-field:has(.ed-slider) > :last-child { grid-column: 1 / -1; }
   #app[data-text='large'] :is(.ed-row, .ed-would-row) { flex-wrap: wrap; }
   #app[data-text='large'] .ed-row > .ed-row-main { flex: 1 1 100%; }

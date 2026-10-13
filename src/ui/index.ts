@@ -370,9 +370,12 @@ export class UI {
   hideTitle(): void {
     document.getElementById('app')?.classList.remove('in-title');
     this.title.hide();
+    this.hud.refit();   // a colony's own figures: the widths the last one's held (its longer date) go, and the row fits again
     this.changed();
     this.side.frame(performance.now());
-    if (isPhone(this.layout.host)) this.layout.setDetent('closed', { instant: true });   // a colony entered on a phone: the map
+    // a colony entered on a phone: the map, and nothing the last colony kept is the way back (user: an import over a
+    // pinned card would else reopen its half sheet as the card's unpinning restores it)
+    if (isPhone(this.layout.host)) this.layout.setDetent('closed', { instant: true, user: true });
     else this.layout.settle();   // on a tablet or the desktop: docked, never the last colony's wide pane
     this.layout.refresh();
   }

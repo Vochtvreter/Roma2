@@ -185,6 +185,15 @@
 #app[data-host='dock'] .side-new { top: -7px; left: 2px; padding: 0 2px; font-size: var(--fs-caps); line-height: 12px; }
 #app[data-host='dock'] #side[data-rest='full'] > #tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 #app[data-host='dock'] #side[data-rest='full'] .side-tab-label { letter-spacing: -.04em; }   /* 'Commercium' whole in an 88 px sixth */
+/* beside the Breviarium's column (from 960 px) the tabs keep 3 × 2 until their column holds six such sixths: a pane of
+   860 px at Normal (1180 px wide, its column 292), 900 at Large's 92 px sixths */
+#app[data-host='dock'][data-w='expanded'] #side[data-rest='full'] > #tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@container dock-pane (min-width: 860px) {
+  #app[data-host='dock'][data-w='expanded']:not([data-text='large']) #side[data-rest='full'] > #tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@container dock-pane (min-width: 900px) {
+  #app[data-host='dock'][data-w='expanded'][data-text='large'] #side[data-rest='full'] > #tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 @container dock-pane (max-width: 319px) {   /* and in a third of the 300 px pane (iPad mini, the Fold's inner screen) */
   #app[data-host='dock'] .side-tab-label { letter-spacing: -.04em; font-size: min(var(--fs-line), 14px); }   /* (14 px under Large) */
   /* Text size Large: the head's kickers shed their tracking, so 'RES GESTAE · XI / XX' and 'MONITVM · AEDILIS' stay whole */

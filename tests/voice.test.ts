@@ -69,6 +69,32 @@ describe('awaitingItems', () => {
     expect(awaitingItems(lessons).some((x) => x.kind === 'petition')).toBe(true);
   });
 
+  it('lists the lesson under way where the voice line ranks it, so a Periculum or a Cave holding the line never hides it', () => {
+    const s = newGame({ seed: 42, now: 0, intro: true });
+    s.guidance.advisories = {};
+    s.decisions.paths.charter = 'veterani';
+    const first = LESSONS[0];
+    expect(awaitingItems(s)).toEqual([{ kind: 'lesson', l: first, index: 0, done: false }]);
+    expect(waitingBeyond(awaitingItems(s), pickCounsel(fakeGame(s)))).toBe(0);   // the line shows it: no pip
+    raise(s, 'aedilis.declining', 2, DECLINING);
+    raise(s, 'aquarum.water.runout', 3, RUNOUT);
+    const items = awaitingItems(s);
+    expect(items.map((x) => (x.kind === 'advisory' ? `${x.kind}:${x.a.memo.sev}` : x.kind))).toEqual(['advisory:3', 'lesson', 'advisory:2']);
+    const shown = pickCounsel(fakeGame(s));
+    expect(shown.kind).toBe('advisory');               // the Periculum holds the line
+    expect(waitingBeyond(items, shown)).toBe(2);       // the pip counts the lesson and the Cave
+    const row = items[1];
+    expect(awaitAction(row, s)).toEqual(voiceAction(row, s));   // its row: Show me, as the line's chip
+    s.guidance.intro.done = true;                      // the breather: after the Cave, with Begin now
+    const later = awaitingItems(s);
+    expect(later.map((x) => x.kind)).toEqual(['advisory', 'advisory', 'lesson']);
+    expect(awaitAction(later[2], s)).toEqual({ kind: 'begin', label: 'Begin now' });
+    s.guidance.intro.lesson = LESSONS.length - 1;     // the last lesson's breather: nothing to begin
+    expect(awaitAction(awaitingItems(s)[2], s)).toBeNull();
+    skipIntro(s);
+    expect(awaitingItems(s).some((x) => x.kind === 'lesson')).toBe(false);
+  });
+
   it('keeps a chore learned in lesson I waiting until the lessons bring the Mandata (lesson IV), as the card and Edicta do', () => {
     const s = newGame({ seed: 42, now: 0, intro: true });
     s.ordo.learned = ['labour'];   // lesson I's manual labour target learns the chore (ordo/actions.ts setManualTarget)

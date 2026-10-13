@@ -122,6 +122,7 @@
 .disp-start { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .disp-skip { background: none; border: 0; padding: 2px 0; font-size: var(--fs-xs); color: #6f5639; cursor: pointer; }
 .disp-skip:hover, .disp-skip:focus-visible { color: #3d2b18; text-decoration: underline; }
+#app:not([data-input='mouse']) ~ #modal-root .disp-skip { display: inline-flex; align-items: center; min-height: 44px; }   /* a finger's target */
 .disp-body.letter { font-size: var(--fs-num); }
 .disp-salute { margin: 0 0 6px; font-style: italic; color: #5a4430; }
 .disp-letter { margin: 0 0 10px; font-size: var(--fs-num); line-height: 1.55; text-indent: 1.4em; }

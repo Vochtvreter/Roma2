@@ -108,8 +108,9 @@
 #app[data-text='large'], #app[data-text='large'] ~ * { --ts: 1.25; --fs-caps: 16px; }
 
 /* ───────── battery (P7) ───────── */
-/* No backdrop blur on touch: behind a 95%-opaque panel it is barely seen, yet the browser blurs again whatever the map
-   canvas under it draws, every frame. Every panel takes its blur from --blur, so one token turns them all off (on #app
-   and the layers beside it: the modals, the veil) */
-#app[data-input='touch'], #app[data-input='touch'] ~ * { --blur: none; }
+/* No backdrop blur on touch: the browser would blur again whatever the map canvas under a panel draws, every frame.
+   Every panel takes its blur from --blur, so one token turns them all off (on #app and the layers beside it: the
+   modals, the veil). Without the blur a 95% panel lets the map read through behind its text, so the panels go solid
+   there too (--panel), which also spares the compositor the blending */
+#app[data-input='touch'], #app[data-input='touch'] ~ * { --blur: none; --panel: var(--panel-solid); }
 

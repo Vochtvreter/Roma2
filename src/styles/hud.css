@@ -10,6 +10,7 @@
   background: linear-gradient(rgba(29, 21, 17, .97), rgba(36, 26, 21, .94));
   border-bottom: 2px solid var(--line); box-shadow: 0 2px 0 var(--ring), 0 6px 18px rgba(0, 0, 0, .4);
 }
+#app[data-input='touch'] #hud { background: linear-gradient(#1d1511, #241a15); }   /* solid where the blur is off (tokens.css) */
 #hud > * { flex: 0 0 auto; }
 #hud [data-fig] { cursor: pointer; }   /* a tap or click opens the Breviarium there; hover keeps the card */
 .hud-break { display: none; }

@@ -39,7 +39,7 @@ import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
 import { confirm2 } from './modals';
 import { PointerHold } from './steady';
-import { currentFree, currentHost, isPhone } from './layout';
+import { clearAround, currentFloating, currentFree, currentHost, isPhone } from './layout';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
 import { houseView } from './tabs/house';
 import { labourEl } from './tabs/labour';
@@ -189,6 +189,7 @@ export function dodge(t: Box, over: readonly Box[], within: Box, m: number): { d
 }
 
 const SEEK_MARGIN = 16;   // CSS px a covered target glides clear of the UI's edge
+const CARD_GAP = 8;       // CSS px between what floats over the map and the room a card has beside it (layout.ts clearOf)
 const NUDGE = 96;         // CSS px a target may slide sideways so its card fits beside it (a narrow free map)
 /** What floats over the free map (the layout's free rect leaves it in): a target under it is covered too. On a phone
  *  the counsel and the ticker are in the voice line (outside the free rect: the SHEET's head, the DRAWER's pane head or
@@ -313,11 +314,30 @@ class InspectorCard {
    *  only its cards are, and the map shows in the gap below them. */
   private cover(m: { left: number; top: number; width: number; height: number }, app: DOMRect): Box[] {
     const f = this.g.view.freeRect(), W = app.width, H = app.height, out: Box[] = [];
-    const top = f.top + m.top, right = f.right + m.left, bottom = f.bottom + m.top;
+    let top = f.top + m.top, right = f.right + m.left, bottom = f.bottom + m.top;
+    // what floats over the map (the DRAWER's line or card, the DOCK's head beside the spine) covers its own box, not the
+    // band of map the free rect gave up beside it: a target beside the head is in view, and a click on it never pans
+    const fl = currentFloating();
+    if (fl) {
+      ({ top, right, bottom } = fl.under);
+      out.push(fl.box);
+    }
     if (top > E) out.push({ left: 0, top: 0, right: W, bottom: top });
     if (right < W - E) out.push({ left: right, top: 0, right: W, bottom: H });
     if (bottom < H - E) out.push({ left: 0, top: bottom, right: W, bottom: H });
     for (const id of FLOATING) {
+      const el = document.getElementById(id), b = el?.getBoundingClientRect();
+      if (el && b && b.width && b.height && getComputedStyle(el).visibility !== 'hidden') {
+        out.push({ left: b.left - app.left, top: b.top - app.top, right: b.right - app.left, bottom: b.bottom - app.top });
+      }
+    }
+    return out;
+  }
+
+  /** The map's own tools as they stand over the map, in #app px: what a popup should keep clear of where it can. */
+  private tools(app: DOMRect): Box[] {
+    const out: Box[] = [];
+    for (const id of ['zoom-ctl', 'map-col', 'overlay-bar', 'minimap', 'ticker']) {
       const el = document.getElementById(id), b = el?.getBoundingClientRect();
       if (el && b && b.width && b.height && getComputedStyle(el).visibility !== 'hidden') {
         out.push({ left: b.left - app.left, top: b.top - app.top, right: b.right - app.left, bottom: b.bottom - app.top });
@@ -365,7 +385,11 @@ class InspectorCard {
     const M = 8, GAP = 10, MAX_H = 560, MIN_H = 180;
     // the free map at rest, in #app px: the panel where it comes to rest, not mid-slide (none at all under the medium
     // DOCK's wide pane: the card hides, as for a target panned away)
-    const vf = view.freeRect(), fr = currentFree() ?? { left: vf.left + m.left, top: vf.top + m.top, right: vf.right + m.left, bottom: vf.bottom + m.top };
+    const vf = view.freeRect(), fl = currentFloating();
+    // beside what floats over the map (the DOCK's head beside the spine): the card's room is the part of the map clear of
+    // it that holds the target (a house left of the head keeps its card there), else the free rect's own larger part
+    const fr = fl && r ? clearAround(fl.under, fl.box, (r.left + r.right) / 2, (r.top + r.bottom) / 2, CARD_GAP)
+      : currentFree() ?? { left: vf.left + m.left, top: vf.top + m.top, right: vf.right + m.left, bottom: vf.bottom + m.top };
     const bx0 = Math.max(0, fr.left) + M, bx1 = Math.min(app.width, fr.right) - M;
     const by0 = Math.max(0, fr.top) + M, by1 = Math.min(app.height, fr.bottom) - M;
     const card = pop.firstElementChild as HTMLElement | null;
@@ -412,20 +436,29 @@ class InspectorCard {
     const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
     const fullH = Math.min(MAX_H, by1 - by0), need = Math.min(natural, fullH);
     const below = by1 - (r.bottom + GAP), above = r.top - GAP - by0;
+    type Side = 'l' | 'r' | 't' | 'b' | '';
+    const at = (side: Side): { left: number; top: number; maxH: number } => {
+      if (side === 't' || side === 'b') {
+        const maxH = Math.min(MAX_H, side === 't' ? below : above);
+        return { maxH, top: side === 't' ? r.bottom + GAP : r.top - GAP - Math.min(natural, maxH), left: clamp(cx - w / 2, bx0, Math.max(bx0, bx1 - w)) };
+      }
+      return { maxH: fullH, top: clamp(cy - need / 2, by0, by1 - need),
+        left: side === 'l' ? r.right + GAP : side === 'r' ? r.left - GAP - w : bx1 - r.right >= r.left - bx0 ? Math.max(bx0, bx1 - w) : bx0 };
+    };
     // beside the target (right first), else below or above it where the whole card fits, else where there is more room;
-    // a target too big for any of these (the forum close up) gets the card over its emptier edge, with no tail
-    const side: 'l' | 'r' | 't' | 'b' | '' = r.right + GAP + w <= bx1 ? 'l' : r.left - GAP - w >= bx0 ? 'r'
-      : need <= below ? 't' : need <= above ? 'b' : Math.max(below, above) >= MIN_H ? (below >= above ? 't' : 'b') : '';
-    let left: number, top: number, maxH: number;
-    if (side === 't' || side === 'b') {
-      maxH = Math.min(MAX_H, side === 't' ? below : above);
-      top = side === 't' ? r.bottom + GAP : r.top - GAP - Math.min(natural, maxH);
-      left = clamp(cx - w / 2, bx0, Math.max(bx0, bx1 - w));
-    } else {
-      maxH = fullH;
-      top = clamp(cy - need / 2, by0, by1 - need);
-      left = side === 'l' ? r.right + GAP : side === 'r' ? r.left - GAP - w : bx1 - r.right >= r.left - bx0 ? Math.max(bx0, bx1 - w) : bx0;
+    // a target too big for any of these (the forum close up) gets the card over its emptier edge, with no tail. Of the
+    // places where it fits whole, the one that covers least of the map's own tools (the zoom and the tool column, the
+    // overlay bar, the minimap, the ticker), so − and ⌂ stay in reach while it is open
+    const fits = ([['l', r.right + GAP + w <= bx1], ['r', r.left - GAP - w >= bx0], ['t', need <= below], ['b', need <= above]] as const)
+      .filter(([, ok]) => ok).map(([k]) => k as Side);
+    let side: Side = fits[0] ?? (Math.max(below, above) >= MIN_H ? (below >= above ? 't' : 'b') : '');
+    if (fits.length > 1) {
+      const tools = this.tools(app);
+      const hit = (k: Side): number => { const p = at(k), hh = Math.min(natural, p.maxH); return coveredArea({ left: p.left, top: p.top, right: p.left + w, bottom: p.top + hh }, tools); };
+      let least = hit(side);
+      for (const k of fits.slice(1)) { const a = hit(k); if (a < least - E) { least = a; side = k; } }
     }
+    const { left, top, maxH } = at(side);
     const hh = Math.min(natural, maxH);
     const tail = side === 't' || side === 'b' ? clamp(cx - left, 14, w - 14) : clamp(cy - top, 14, hh - 14);
     const key = `${Math.round(left)},${Math.round(top)},${Math.round(maxH)},${side},${Math.round(tail)}`;

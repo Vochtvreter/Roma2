@@ -47,7 +47,7 @@ import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
 import { closeAllModals, exportDue, modalCount } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
-import { afterPlace, keepPlacing, startAt } from './ui/mapbar';
+import { afterPlace, keepPlacing, keepable, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 import type { OpenFrom } from './ui/layout';
@@ -202,7 +202,7 @@ class App implements Game {
     const touch = lastTouch();   // the press of this Place: a finger's Place button, or a mouse's click
     // ⟳ is the slim banners' (the phones' and the tablet's, mapbar.ts): on the desktop a finger's Place ends the placing,
     // as it always did
-    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && slimBanner(this.ui.layout.host), moving: p.replaceId !== undefined });
+    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && keepable(p.type) && slimBanner(this.ui.layout.host), moving: p.replaceId !== undefined });
     if (next === 'end') { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's panel stays closed (no spring back)
     else if (next === 'more' && touch) {
       // ⟳ on touch: the ghost goes on to the free plot nearest the one just taken (a mouse's ghost follows the mouse)

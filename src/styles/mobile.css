@@ -4,8 +4,8 @@
    before sheet.css, drawer.css and dock.css.
    The layout engine's hosts (layout.ts, #app[data-host]) have their own shapes now: the portrait phone's SHEET (sheet.css),
    the landscape phone's DRAWER (drawer.css) and the tablet's DOCK (dock.css; a desktop COLUMNS window is never under
-   1280 px). The rules that only ever served the 720–1279 px tablets are gone; what is left of the width blocks the
-   phones still lean on (the hosts' own rules outrank the rest), and it stands off the DOCK under
+   1280 px). The rules that only ever served the 720–1279 px tablets are gone, and the short-window drawer (a landscape
+   phone is the DRAWER); what is left of the width blocks the hosts mostly outrank, and it stands off the DOCK under
    :where(#app:not([data-host='dock'])) (or #app:where(...): the same specificity it had). The modal and letter rules
    apply to every narrow window, and the touch block to every coarse pointer, the DOCK's included. */
 
@@ -162,33 +162,3 @@
 }
 
 /* ───────── short windows under 900 px off the phones: the sheet becomes a right-hand drawer ───────── */
-/* Every rule above assumes a portrait phone (a 46% sheet under a two-row HUD), which leaves no map on a short window.
-   Here the side panel slides in from the right as on desktop, the left column narrows, and the map tools sit at the
-   bottom right of the free map. A landscape phone is the DRAWER host now (drawer.css), a 720–899 px window the DOCK
-   (dock.css): these rules stand off both, for what is left of them (a 480–520 px tall SHEET window, which sheet.css
-   outranks). */
-@media (max-width: 899px) and (max-height: 520px) {
-  #app:not([data-host='drawer'], [data-host='dock']), #app:not([data-host='drawer'], [data-host='dock']):has(#side.collapsed), #app.placing:not([data-host='drawer'], [data-host='dock']) { --sheet: 0px; --drawer: min(340px, 42vw); --side-w: var(--drawer); }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side { top: var(--hud-h); bottom: 0; left: auto; right: 0; width: var(--drawer); height: auto;
-    border-top: 0; border-left: var(--border-w) solid var(--line); box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0, 0, 0, .35); }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side.collapsed, #app.placing:not([data-host='drawer'], [data-host='dock']) #side { transform: translateX(100%); }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side-toggle { left: -30px; right: auto; top: 10px; width: 28px; height: 44px;
-    border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2); }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side-toggle::before { content: '▸'; }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side.collapsed #side-toggle::before { content: '◂'; }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #tabs { grid-template-columns: repeat(3, 1fr); }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #left { right: auto; width: min(260px, 32vw); bottom: 8px; }
-  /* here the column reaches the screen's foot: an unfolded card takes what it leaves and scrolls inside */
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #left > #counsel { flex: 0 1 auto; }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) .counsel-card.offer { max-height: none; }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #inspector { max-height: none; }   /* the column bounds it; 30vh would be a 117 px sliver */
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #map-tools { bottom: 8px; }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])):not(:has(#side.collapsed)) #map-tools { right: calc(var(--drawer) + 8px); }
-  /* the overlay toggles fold into rows of three so the tools fit the free map beside the left column */
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) .map-ov-row:not(.sub) { flex-wrap: wrap; justify-content: flex-end; max-width: calc(3 * 44px + 2 * 2px + 10px); }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #ticker { display: none; }
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #place-banner, #app:not([data-host='drawer'], [data-host='dock']):has(#side.collapsed) #place-banner { bottom: 8px; }
-}
-@media (pointer: coarse) and (max-width: 899px) and (max-height: 520px) {
-  :where(#app:not([data-host='drawer'], [data-host='dock'])) #side-toggle { left: -46px; width: 44px; }
-}

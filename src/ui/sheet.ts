@@ -124,8 +124,8 @@ export class SheetHost implements SheetHooks {
     return this.hostNow === 'drawer' && this.voice.parentElement === this.app ? this.voice : null;
   }
 
-  /** Slides the panel from `fromH` to `toH` (its extent: the SHEET's height, the DRAWER's or the DOCK pane's width) and
-   *  leaves it at rest on `to`; the voice line goes where `to` wants it first (placeVoice). The box takes the larger of
+  /** Slides the panel from `fromH` to `toH` (its extent: the SHEET's height, the DRAWER's, the DOCK pane's or the
+   *  COLUMNS panel's width: every host slides) and leaves it at rest on `to`; the voice line goes where `to` wants it first (placeVoice). The box takes the larger of
    *  the two extents for the slide and moves by a transform alone (no reflow of the tab body per frame): the sheet's part
    *  below the bar hidden by the bar, the pane's right of the spine under the spine (the DOCK's off #app's right edge); at
    *  rest the inline size and transform go, and the CSS gives the detent's own. Opening, the body shows from the start
@@ -136,7 +136,7 @@ export class SheetHost implements SheetHooks {
     const st = this.side.style, x = this.sideways();
     const from = this.sliding ? this.visualE() : fromH;
     window.clearTimeout(this.endT);
-    if (instant || Math.abs(from - toH) < 1 || !this.slides() || matchMedia(REDUCED).matches) { this.rest(to); return; }
+    if (instant || Math.abs(from - toH) < 1 || matchMedia(REDUCED).matches) { this.rest(to); return; }
     const hi = Math.max(from, toH);
     if (toH > from) this.side.dataset.rest = to;
     this.sliding = true;
@@ -150,12 +150,6 @@ export class SheetHost implements SheetHooks {
   }
 
   // ───────────────────────────── internals ─────────────────────────────
-  /** The panel slides between its extents on this host: the phones' sheet and drawer, the DOCK's pane, the COLUMNS'
-   *  panel (its spine, docked and wide widths). */
-  private slides(): boolean {
-    return this.hostNow !== null;
-  }
-
   /** The panel slides sideways (its extent a width): the DRAWER's pane, the DOCK's and the COLUMNS'; the SHEET goes up
    *  and down. */
   private sideways(): boolean {
