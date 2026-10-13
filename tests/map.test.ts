@@ -206,13 +206,27 @@ describe('survey geometry (ARCHITECTURE §8.2)', () => {
     expect(sv.sacredWay.length).toBe(4);
   });
 
-  it('has 24 + 32 + 40 blocks; 18 interior blocks are urban at Castra', () => {
-    expect(sv.blocks.length).toBe(96);
+  it('has 24 + 32 + 40 blocks, then the 24 of the castrum\'s wall line; 18 interior blocks are urban at Castra', () => {
+    expect(sv.blocks.length).toBe(120);
     expect(sv.blocks.filter((b) => b.ring === 0).length).toBe(24);
     expect(sv.blocks.filter((b) => b.ring === 1).length).toBe(32);
     expect(sv.blocks.filter((b) => b.ring === 2).length).toBe(40);
+    expect(sv.blocks.filter((b) => b.ring === 3).length).toBe(24);
+    expect(sv.blocks.slice(96).every((b) => b.ring === 3 && !b.masked && b.district === 'vallum')).toBe(true);   // appended: older ids stand
     expect(sv.blocks.filter((b) => isActiveBlock(sv, b, 0)).length).toBe(18);
+    expect(sv.blocks.filter((b) => isActiveBlock(sv, b, 4)).length).toBe(sv.blocks.filter((b) => b.ring < 3 && !b.masked && !b.reserved).length);
+    expect(sv.blocks.filter((b) => isActiveBlock(sv, b, 4, true)).length).toBe(sv.blocks.filter((b) => !b.masked && !b.reserved).length);
     expect(activeRings(2)).toEqual([0, 1, 2]);
+    expect(activeRings(2, true)).toEqual([0, 1, 2, 3]);
+    // the wall line's blocks fill the castrum's wall and ditch exactly, and the pitch lines across them are ring-3 streets
+    for (const b of sv.blocks.filter((k) => k.ring === 3)) {
+      for (let y = b.y; y < b.y + 4; y++) for (let x = b.x; x < b.x + 4; x++) expect(sv.wall[idx(x, y)] || sv.fossa[idx(x, y)]).toBeTruthy();
+    }
+    for (const k of [1, 2, 3, 4]) {
+      expect(sv.streetRing[idx(ix + 5, iy - k)]).toBe(3);
+      expect(sv.streetRing[idx(ix - k, iy + 5)]).toBe(3);
+      expect(sv.streetRing[idx(ix + 15, iy - k)]).toBe(k === 1 ? 3 : 0);   // the causeway keeps ring 0, the gate is the wall line's
+    }
     for (const b of sv.blocks) {
       expect(sv.blocks[b.id]).toBe(b);
       if (b.ring === 0) expect(b.masked).toBe(false);

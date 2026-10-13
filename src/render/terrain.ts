@@ -12,6 +12,7 @@ import { H, W, getMap, idx, woodAt } from '../game/map';
 import { hash2 } from '../game/rng';
 import { seasonOf } from '../game/calendar';
 import { structEpoch } from '../game/memo';
+import { isRazed } from '../game/survey';
 import { makeCanvas } from './sprites';
 import { TILE } from './camera';
 import { decalSig, paintDecals } from './linear';
@@ -100,8 +101,9 @@ function tileRgb(map: WorldMap, i: number, season: Pal): RGB {
   return c;
 }
 
-/** Paints one chunk's ground for a season (no decals, no trees). */
-function paintBase(map: WorldMap, season: Pal, cx: number, cy: number): HTMLCanvasElement {
+/** Paints one chunk's ground for a season (no decals, no trees); the castrum's fossa while it is open (`fossa`), filled
+ *  earth like the land around once the castrum is razed. */
+function paintBase(map: WorldMap, season: Pal, cx: number, cy: number, fossa = true): HTMLCanvasElement {
   const cv = makeCanvas(CPX, CPX);
   const g = cv.getContext('2d');
   if (!g) return cv;
@@ -110,7 +112,7 @@ function paintBase(map: WorldMap, season: Pal, cx: number, cy: number): HTMLCanv
   const x0 = cx * CH, y0 = cy * CH, x1 = Math.min(W, x0 + CH), y1 = Math.min(H, y0 + CH);
   const sv = map.survey;
   const water = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && map.terrain[idx(x, y)] === T.river;
-  const fos = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && sv.fossa[idx(x, y)] === 1;
+  const fos = (x: number, y: number): boolean => fossa && x >= 0 && y >= 0 && x < W && y < H && sv.fossa[idx(x, y)] === 1;
   // soft value noise at tile corners (one octave per tile, one per 4 tiles) plus a little hill shade from the elevation
   const G = CH + 1, ng = new Float32Array(G * G), hg = new Float32Array(G * G);
   const e = (xx: number, yy: number): number => map.elev[idx(Math.max(0, Math.min(W - 1, xx)), Math.max(0, Math.min(H - 1, yy)))];
@@ -132,13 +134,13 @@ function paintBase(map: WorldMap, season: Pal, cx: number, cy: number): HTMLCanv
     for (let tx = x0; tx < x1; tx++) {
       const i = idx(tx, ty), t = map.terrain[i], feat = map.feature[i];
       const base = tileRgb(map, i, season);
-      const isW = t === T.river, isF = sv.fossa[i] === 1;
+      const isW = t === T.river, isF = fossa && sv.fossa[i] === 1;
       // neighbours whose land colour differs: their colour bleeds 0–2 px into this tile, dithered
       const nb: (RGB | null)[] = [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([dx, dy]) => {
         const nx = tx + dx, ny = ty + dy;
         if (isW || isF || nx < 0 || ny < 0 || nx >= W || ny >= H) return null;
         const j = idx(nx, ny);
-        if (map.terrain[j] === t || map.terrain[j] === T.river || sv.fossa[j]) return null;
+        if (map.terrain[j] === t || map.terrain[j] === T.river || (fossa && sv.fossa[j])) return null;
         return tileRgb(map, j, season);
       });
       const deep = isW && water(tx - 1, ty) && water(tx + 1, ty) && water(tx, ty - 1) && water(tx, ty + 1);
@@ -273,6 +275,8 @@ export class TerrainPainter {
   private chunks = new Map<string, Chunk>();                 // `${season}:${chunk}` → composite
   private sigs: number[] = [];
   private sigKey = '';
+  private traffic: object | null = null;                    // the footfall record the decal signatures were taken on
+  private fossa = true;                                      // the bases were painted with the castrum's fossa open
   private season = -1;
   private prev = -1;
   private fade = 1;
@@ -319,6 +323,8 @@ export class TerrainPainter {
   /** Advances the crossfade; call once per frame before drawing. */
   update(s: GameState, dtMs: number): void {
     if (s.seed !== this.seed) { this.reset(); this.seed = s.seed; }
+    const fossa = !isRazed(s);
+    if (fossa !== this.fossa) { this.fossa = fossa; this.bases.clear(); this.chunks.clear(); this.miniKey = ''; }   // the ditch is filled
     const season = paletteOf(s);
     if (season !== this.season) {
       if (this.season >= 0) { this.prev = this.season; this.fade = 0; }
@@ -333,8 +339,9 @@ export class TerrainPainter {
   /** Draws the ground under the visible tiles (crossfading the previous season while it fades). */
   draw(g: CanvasRenderingContext2D, s: GameState, vis: Rect): void {
     const key = `${structEpoch(s)}|${s.rank}`;
-    if (key !== this.sigKey) {
+    if (key !== this.sigKey || s.urbs.traffic !== this.traffic) {   // a new month's footfall wears the roads anew
       this.sigKey = key;
+      this.traffic = s.urbs.traffic;
       this.sigs = [];
       for (let c = 0; c < NCX * NCY; c++) this.sigs.push(decalSig(s, this.rectOf(c)));
     }
@@ -376,7 +383,7 @@ export class TerrainPainter {
       let c = tileRgb(map, i, season);
       const max = map.woodMax[i];
       if (max > 0) c = lerp(c, rgbOf(map.terrain[i] === T.dense ? MAP_COLORS.pine : GROUND.oak[season]), 0.75 * Math.min(1, woodAt(s, i) / max));
-      if (map.survey.fossa[i]) c = rgbOf(MAP_COLORS.fossa);
+      if (this.fossa && map.survey.fossa[i]) c = rgbOf(MAP_COLORS.fossa);
       const f = 1 + (hash2(i % W, Math.floor(i / W), s.seed) - 0.5) * 0.06;
       img.data.set([c[0] * f, c[1] * f, c[2] * f, 255], i * 4);
     }
@@ -399,7 +406,7 @@ export class TerrainPainter {
     if (!base) {
       if (!budget || budget.n <= 0) return have?.cv ?? null;
       budget.n--;
-      base = paintBase(getMap(s.seed), season, c % NCX, Math.floor(c / NCX));
+      base = paintBase(getMap(s.seed), season, c % NCX, Math.floor(c / NCX), this.fossa);
       this.bases.set(key, base);
     }
     const cv = have?.cv ?? makeCanvas(CPX, CPX);

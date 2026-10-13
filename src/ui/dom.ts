@@ -1,4 +1,4 @@
-// src/ui/dom.ts — DOM helpers: h, img, number formatting, cost chips, tooltips (ARCHITECTURE §13.4). Owner: S (scaffold).
+// src/ui/dom.ts — DOM helpers: h, img, scrollWithin (scrolling into view), number formatting, cost chips, tooltips (ARCHITECTURE §13.4). Owner: S (scaffold).
 // Game text is data: never use innerHTML or title= with it; build with h() (text nodes) and tip().
 import { RESOURCES } from '../game/types';
 import type { Cost, GameState, ResId } from '../game/types';

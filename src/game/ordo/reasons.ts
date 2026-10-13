@@ -72,6 +72,8 @@ const TEXT: Record<ReasonCode, string> = {
   emergencyImport: 'Lex de annona: {qty} grain bought from {hub}, arriving in {days} days.',
   relief: 'Lex de annona: grain runs out in {days} days and our coin cannot buy more; we ask the Legate for the legion\'s grain.',
   saving: 'Saving {qty} {res} for the {for}[ (≈ {eta} days)].',
+  aquae: '{n} great houses draw no running water: {a:type} brings the aqueduct\'s water to {reach} of them.',
+  renewal: '{n} homes wait for {want} and no block is free: the Ordo buys out {cottages} homes, rehouses their families and raises {a:type} there.',
 };
 
 const SHORT: Record<ReasonCode, string> = {
@@ -97,6 +99,7 @@ const SHORT: Record<ReasonCode, string> = {
   emergencyWater: 'Lex de annona: concrete works and baths paused', emergencyHands: 'Lex de annona: {n} more hands to the fields and wells',
   emergencyImport: 'Lex de annona: {qty} grain from {hub}',
   relief: 'Lex de annona: the Legate\'s relief', saving: 'Saving: {qty} {res}[ (≈ {eta} d)]',
+  aquae: '{Type} — {n} great houses want running water', renewal: '{Type} — {cottages} homes bought out for it',
 };
 
 /** Sentences for the other side of a flag: a lifted emergency measure, a hand-set labour line. */

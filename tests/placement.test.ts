@@ -7,7 +7,7 @@ import { BUILDINGS, F, T } from '../src/game/types';
 import type { Building, BuildingId, GameState, Owner, PlaceFail, PlaceOpts, RankIndex } from '../src/game/types';
 import { H, W, getMap, idx, tx, ty } from '../src/game/map';
 import { blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
-import { blockOfTile, classAt, derived, sizeOf } from '../src/game/derived';
+import { classAt, derived, sizeOf } from '../src/game/derived';
 import { invalidate, structEpoch } from '../src/game/memo';
 import {
   buildRoad, canPlace, ceremonyPaving, demolish, pave, placeBuilding, placementCost, roadPathFor, routeAqueduct,
@@ -207,7 +207,7 @@ describe('canPlace: the twelve checks with their exact codes and reasons', () =>
     atRank(s, 2);
     expect(findFail(s, 'fodina', 'terrain', 'Must stand on an iron vein.')).toBeGreaterThanOrEqual(0);
     atRank(s, 3);
-    expect(findFail(s, 'lacus', 'noCastellum', 'No castellum within 18 paces.')).toBeGreaterThanOrEqual(0);
+    expect(findFail(s, 'lacus', 'noCastellum', 'No castellum within 18 paces, nor the aqueduct within 8 in the town.')).toBeGreaterThanOrEqual(0);
     expect(findFail(s, 'thermae', 'noCastellum', 'No castellum within 18 paces.')).toBeGreaterThanOrEqual(0);
     expect(validSlots(s, 'castellum', 'player').size).toBeGreaterThan(0);
     for (const f of getMap(42).fontes) insert(s, 'hortus', tx(f), ty(f));       // springs built over: nothing to draw from
@@ -632,23 +632,6 @@ describe('resolvePlaceAt: where a placement the player starts puts its ghost', (
     expect(next).not.toBe(at);
     expect(next).toBe(bestSlot(s, 'puteus', { owner: 'player' })?.tile);
     expect(canPlace(s, 'puteus', next!, { owner: 'player' }).ok).toBe(true);
-  });
-
-  it('a tapped block: a free plot in that block, the best slot when it lies there', () => {
-    const s = fresh(42);
-    const slots = [...validSlots(s, 'area', 'player').keys()].sort((a, b) => a - b);
-    const best = bestSlot(s, 'area', { owner: 'player' })!;
-    const bestBlock = blockOfTile(s, best.tile)!.id;
-    expect(resolvePlaceAt(s, 'area', undefined, 'player', { block: bestBlock })).toBe(best.tile);
-    const other = slots.map((t) => blockOfTile(s, t)!.id).find((b) => b !== bestBlock);
-    expect(other).toBeDefined();
-    const at = resolvePlaceAt(s, 'area', undefined, 'player', { block: other })!;
-    expect(blockOfTile(s, at)?.id).toBe(other);
-    expect(at).toBe(slots.find((t) => blockOfTile(s, t)!.id === other));
-    expect(canPlace(s, 'area', at, { owner: 'player' }).ok).toBe(true);
-    // a still valid tile wins over the block; a block with no free plot falls back to the best slot
-    expect(resolvePlaceAt(s, 'area', best.tile, 'player', { block: other })).toBe(best.tile);
-    expect(resolvePlaceAt(s, 'area', undefined, 'player', { block: -1 })).toBe(best.tile);
   });
 
   it('near a house: the valid slot whose centre is nearest, the lowest tile on a tie', () => {

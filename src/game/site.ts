@@ -429,21 +429,14 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
 }
 
 /** Where a placement the player starts puts its ghost first (DESIGN §15.4): `at` while it is still a valid slot (a
- *  remedy's tile can be taken between the card's render and the tap: the Ordo built there); else a free slot of
- *  `prefer.block` (the block whose card was tapped: the best slot when it lies there, else the block's first free one);
- *  else the valid slot whose centre is nearest `prefer.near` (the house whose want it answers); else the best slot.
+ *  remedy's tile can be taken between the card's render and the tap: the Ordo built there); else the valid slot whose
+ *  centre is nearest `prefer.near` (the plot just taken, for ⟳ keep placing); else the best slot.
  *  Undefined when the type has no valid slot at all. Pure: reads the memoised slot maps only. */
 export function resolvePlaceAt(s: GameState, type: BuildingId, at?: number, owner: Owner = 'player',
-  prefer?: { block?: number; near?: Rect }): number | undefined {
+  prefer?: { near?: Rect }): number | undefined {
   if (at !== undefined && canPlace(s, type, at, { owner }).ok) return at;
   const slots = validSlots(s, type, owner);
   if (slots.size === 0) return undefined;
-  const best = bestSlot(s, type, { owner });
-  if (prefer?.block !== undefined) {
-    const inBlock = sortedTiles(slots).filter((t) => blockOfTile(s, t)?.id === prefer.block);
-    if (best && inBlock.includes(best.tile)) return best.tile;
-    if (inBlock.length) return inBlock[0];
-  }
   const near = prefer?.near;
   if (near) {
     const cx = near.x + near.w / 2, cy = near.y + near.h / 2;
@@ -456,7 +449,7 @@ export function resolvePlaceAt(s: GameState, type: BuildingId, at?: number, owne
     }
     if (pick >= 0) return pick;
   }
-  return best?.tile;
+  return bestSlot(s, type, { owner })?.tile;
 }
 
 /** Everything a fast type's scores read besides its own slot parts: the structure (rank, footprints, the slot set),

@@ -303,6 +303,17 @@ export class UI {
         case 'learned':
           toast(`Learned: ${DUTY_DEFS[e.duty].name}`, 'good', 'i_seal', 5000, 'The Ordo can take it up for you whenever you choose.');
           break;
+        case 'walls':
+          if (e.stage === 'surveyed') {
+            toast('The town wall is laid out', 'gold', 'i_stake', 7000, 'The builders raise it round the whole town with the work they spare.');
+            g.sfx('place');
+          } else {
+            showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))} · MOENIA`, title: `${caps(s.name)}: MOENIA PERFECTA`,
+              sub: 'The old camp\'s rampart comes down and its ditch is filled: the camp becomes the inner city', icon: 'i_laurel' });
+            g.sfx('cornu');
+          }
+          break;
+        case 'renewed': g.sfx('build'); break;
         case 'rank': this.rankBanner(e.rank); g.sfx('cornu'); break;
         case 'stage':
           showBanner({ kicker: `AUC ${toRoman(aucYear(s.day))} · CAPITOLIVM`, title: `Capitolium: ${STAGE_NAMES[e.stage] ?? `stage ${e.stage}`}`,

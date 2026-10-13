@@ -18,10 +18,12 @@ import { clear, fmt, fmtRunway, h, img, plural } from './dom';
 import * as A from '../game/actions';
 import { getBuilding } from '../game/state';
 import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
-import { derived } from '../game/derived';
-import { canPlace } from '../game/place';
+import { derived, inCamp } from '../game/derived';
+import { WALL_RING, ringsOf } from '../game/survey';
+import { footfall, wearOf } from '../game/urbs';
+import { canPlace, freePlot } from '../game/place';
 import { worksQueue } from '../game/construction';
-import { resolvePlaceAt, siteMult } from '../game/site';
+import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
@@ -57,8 +59,9 @@ const TERRAIN: Record<number, string> = {
   [T.dense]: 'Dense forest', [T.hills]: 'Hills', [T.rock]: 'Rock', [T.crag]: 'Crag', [T.river]: 'River',
 };
 const FEATURE: Record<number, string> = { [F.clay]: 'a clay bank', [F.ore]: 'an iron vein', [F.fons]: 'a spring', [F.lucus]: 'a sacred grove', [F.ruins]: 'old ruins' };
-const DISTRICT = { praetentura: 'Praetentura', latera: 'Latera', retentura: 'Retentura', canabae: 'Canabae' } as const;
-const RING = ['inside the castrum', 'in the canabae ring', 'in the outer ring'] as const;
+const DISTRICT = { praetentura: 'Praetentura', latera: 'Latera', retentura: 'Retentura', canabae: 'Canabae', vallum: 'Vetus vallum' } as const;
+const RING = ['inside the castrum', 'in the canabae ring', 'in the outer ring', 'on the old camp wall'] as const;
+const WEAR_WORD = ['a grassy track', 'a track', 'a busy road', 'a highway'] as const;
 const NOTE: Record<SiteNote['code'], (v?: number) => string> = {
   river: (v) => `beside the river${v ? ` (${pct(1 + v)})` : ''}`, loam: () => 'on river loam', fields: (v) => `next to ${v ?? 1} fields`,
   forum: (v) => `${v ?? '?'} steps from the forum`, woods: (v) => `woods ${v !== undefined ? `×${fmt(v)}` : 'nearby'}`, rock: () => 'on hills and rock',
@@ -100,13 +103,13 @@ export type CardKind = 'house' | 'works' | 'site' | 'block' | 'tile';
  *  decline first, then what it waits for (its first want, with the button that fixes it), beds and its tier. A work: its
  *  hands and its category's labour line (staffed in place), else what it stores, serves or yields; Close it and the
  *  staffing priority. A site: how far it has come and why; ↑ Build first and Cancel. A block: its plots; Place a house
- *  plot and Reserve. Ground: what it is; what could be built on it. */
+ *  plot and Reserve. Ground: what it is and the wall on it; Lay out the town wall and what could be built on it. */
 export const BRIEF: Readonly<Record<CardKind, { lines: readonly string[]; acts: readonly string[] }>> = {
   house: { lines: ['declining', 'needs', 'renovating', 'beds', 'sub', 'finest'], acts: [] },
   works: { lines: ['staff', 'labour', 'benefit', 'stores', 'service', 'passive', 'chain'], acts: ['controls'] },
   site: { lines: ['progress', 'why', 'notes'], acts: ['queue'] },
   block: { lines: ['status', 'reserved', 'plots'], acts: ['actions'] },
-  tile: { lines: ['facts'], acts: ['buildable'] },
+  tile: { lines: ['facts', 'wall'], acts: ['walls', 'buildable'] },
 };
 export const BRIEF_LINES = 3;
 
@@ -743,23 +746,54 @@ class InspectorCard {
     const blk = getMap(s.seed).survey.blocks[id];
     if (!blk) return;
     const reserved = s.ordo.reserved.includes(id);
-    this.head(card, 'i_tool_reserve', `INSVLA · ${caps(DISTRICT[blk.district])}`, `A block ${RING[blk.ring]}`, sticky);
+    const razed = s.urbs.razed !== null;                    // once the castrum is razed the canabae are the outer city
+    const district = razed && blk.district === 'canabae' ? 'Urbs exterior' : DISTRICT[blk.district];
+    const ring = razed ? (blk.ring === 0 ? 'in the inner city' : blk.ring === WALL_RING ? 'on the old wall line' : 'in the outer city') : RING[blk.ring];
+    this.head(card, 'i_tool_reserve', `INSVLA · ${caps(district)}`, `A block ${ring}`, sticky);
     if (this.collapsed && !this.docked) return;
-    const active = RANK_DEFS[s.rank].rings.includes(blk.ring);
+    const active = ringsOf(s).includes(blk.ring);
     const plots = [0, 1, 2, 3].map((i) => derived(s).plotOwner[id * 4 + i]);
     const free = plots.filter((p) => !p).length;
     const status = blk.masked ? 'The surveyors left this block to the fields.' : blk.reserved ? `Kept by the groma for the ${blk.reserved}.`
+      : !active && blk.ring === WALL_RING ? 'The camp\'s vallum and fossa stand here. They come down once a town wall rings the whole town, and the line becomes house plots.'
       : !active ? `Surveyed for later: it joins the pomerium at ${RANK_DEFS[blk.ring].name}.` : `${free} of 4 plots free.`;
     card.append(part(h('div', { class: 'ins-line' }, status), 'status'));
     const usable = !blk.masked && !blk.reserved && active;
     if (usable) card.append(part(h('div', { class: 'ins-small muted' }, plots.map((p, i) => `plot ${i + 1}: ${p ? BUILDING_DEFS[getBuilding(s, p)?.type ?? 'area'].name.toLowerCase() : 'free'}`).join(' · ')), 'plots'));
     if (reserved) card.append(part(h('div', { class: 'ins-good' }, 'Reserved: the Ordo leaves it alone.'), 'reserved'));
     card.append(part(h('div', { class: 'ins-btns' },
-        // the ghost starts on a free plot of this very block (resolvePlaceAt)
-        btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area', at: resolvePlaceAt(g.state, 'area', undefined, 'player', { block: id }) }); },
+        btn(g, 'Place a house plot', () => { g.startPlacing({ kind: 'building', type: 'area', at: freePlot(g.state, id, 'player') ?? undefined }); },
           { cls: 'primary', reason: usable && free ? null : 'No free plot to build on here.' }),
         btn(g, reserved ? 'Release the block' : 'Reserve the block', () => A.toggleReserveBlock(g.state, id),
           { tip: 'The Ordo never builds in a reserved block.', reason: blk.masked || blk.reserved ? 'Only surveyed house blocks can be reserved.' : !toolRevealed(s, 'reserve') ? 'The Reserve-block tool comes with Oppidum.' : null })), 'actions'));
+  }
+
+  /** The fortifications on a tile: the castrum's rampart and ditch (and when they will come down), or the town wall. */
+  private walls(card: HTMLElement, tile: number): void {
+    const g = this.g;
+    const s = g.state;
+    const mo = s.urbs.moenia;
+    const rising = mo !== null && mo.done === null;
+    const share = mo ? `${Math.round(mo.progress * 100)}%` : '';
+    if (inCamp(s, tile)) {
+      const what = getMap(s.seed).survey.wall[tile] === 2 ? 'A gate of the camp' : getMap(s.seed).survey.wall[tile] ? `The camp's ${s.rank >= 2 ? 'murus' : 'vallum'}` : 'The camp\'s fossa';
+      const when = rising ? `The town wall is rising (${share}); when it stands, this rampart comes down and the old wall line becomes house plots.`
+        : s.rank < B.urbs.MOENIA.RANK ? 'Once the colony is a Municipium you may ring the whole town with a wall (the Ordo does it as a Colonia, once the outer town outgrows the camp), and this rampart will come down.'
+        : 'Lay out a town wall round the whole town and this rampart comes down once it stands: the camp becomes the inner city, its wall line house plots. As a Colonia the Ordo does it, once the outer town outgrows the camp.';
+      card.append(part(h('div', { class: 'ins-head2' }, what), 'wall'), part(h('div', { class: 'ins-small' }, when), 'wall'));
+      if (!mo) {
+        const reason = s.rank < B.urbs.MOENIA.RANK ? 'Rome lets a Municipium wall the whole town.' : null;
+        card.append(part(h('div', { class: 'ins-btns' }, btn(g, 'Lay out the town wall', () => g.act(A.commissionWalls(g.state), { okSfx: 'place' }),
+          { cls: 'primary', reason, tip: `About ${B.urbs.MOENIA.WORK} builder-days, ${B.urbs.MOENIA.MAT.stone} stone and ${B.urbs.MOENIA.MAT.denarii} denarii a pace, drawn as it rises from what the Ordo is not saving.` })), 'walls'));
+      }
+      return;
+    }
+    if (!mo) return;
+    const gate = mo.gates.includes(tile);
+    card.append(part(h('div', { class: 'ins-head2' }, gate ? 'A gate of the town wall' : 'The town wall'), 'wall'),
+      part(h('div', { class: 'ins-small' }, mo.done !== null
+        ? `Finished ${formatRoman(mo.done)}: ${mo.tiles.length} paces of stone and ${mo.gates.length} gates ring the whole town.`
+        : `Rising: ${share} of ${mo.tiles.length} paces and ${mo.gates.length} gates, from the work the builders spare.`), 'wall'));
   }
 
   private tile(card: HTMLElement, tile: number, sticky: boolean): void {
@@ -777,7 +811,10 @@ class InspectorCard {
     if (map.vein[tile] > 0) facts.push(`ore quality ×${fmt(map.vein[tile])}`);
     if (map.waterTable[tile]) facts.push('on the water table');
     facts.push(d.pomerium[tile] ? 'inside the pomerium' : d.territory[tile] ? 'in our territory' : 'beyond our territory');
+    const road = d.road[tile] ? footfall(s, tile) : 0;
+    if (road > 0) facts.push(`${WEAR_WORD[wearOf(road)]}: about ${fmt(road)} walkers a day`);
     card.append(part(h('div', { class: 'ins-line' }, facts.join(' · ')), 'facts'), part(h('div', { class: 'ins-small muted' }, `(${tx(tile)}, ${ty(tile)})`), 'coords'));
+    if (d.wall[tile]) this.walls(card, tile);
     if (!sticky) { card.append(h('div', { class: 'ins-small muted' }, 'Click the ground to see what could be built here.')); return; }
     const can = BUILD_ORDER.filter((type) => buildingVisible(s, type) && !rankReason(s, type))
       .map((type) => ({ type, c: canPlace(s, type, tile, { owner: 'player' }) }))

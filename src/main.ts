@@ -47,7 +47,7 @@ import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
 import { closeAllModals, exportDue, modalCount } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
-import { afterPlace, keepPlacing, keepable, startAt } from './ui/mapbar';
+import { afterPlace, keepPlacing, keepable, openPlacing, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
 import type { OpenFrom } from './ui/layout';
@@ -181,13 +181,12 @@ class App implements Game {
   }
 
   /** Placing starts (or goes on to the next plot: placeAt). A finger's ghost, or any on a phone host, starts on the
-   *  best plot when none was given (startAt), so Place shows at once. The banner first: a pre-positioned ghost reports
-   *  its verdict from view.startPlacing (onPlacementPreview), and on touch that verdict carries the Place button, which a
-   *  banner drawn after it would wipe. */
+   *  best plot when none was given (startAt), so Place shows at once. The banner opens first (mapbar.openPlacing): a
+   *  pre-positioned ghost reports its verdict from view.startPlacing (onPlacementPreview), and on touch that verdict
+   *  carries the Place button, which a banner drawn after it would wipe. */
   private beginPlacing(p: PlacingState): void {
     const at = startAt(p, touchInput(), isPhone(this.ui.layout.host), () => (p.kind === 'building' ? resolvePlaceAt(this.state, p.type) : undefined));
-    this.ui.showPlaceBanner(at, null);
-    this.view.startPlacing(at, this.state);
+    openPlacing(this.view, (q, check) => this.ui.showPlaceBanner(q, check), at, this.state);
   }
 
   cancelPlacing(): void {

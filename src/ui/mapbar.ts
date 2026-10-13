@@ -362,6 +362,15 @@ function toggleBtn(g: Game, cls: string, label: string, aria: string, on: boolea
   return b;
 }
 
+/** Enters a placing mode on the map and opens its banner. The banner opens first because the map may answer at once:
+ *  a pre-positioned placement (`p.at`: an advisor's "Place it myself", "Could be built here") centres on its tile and
+ *  previews it as it starts, and that verdict, with the touch Place button, must not be overwritten by an empty one. */
+export function openPlacing(view: Pick<Game['view'], 'startPlacing'>, banner: (p: PlacingState, check: PlaceCheck | null) => void,
+  p: PlacingState, s: GameState): void {
+  banner(p, null);
+  view.startPlacing(p, s);
+}
+
 /** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. On a
  *  phone it carries the reason (the lesson job or the advisory that asked for the work: placingWhy; else the help) and
  *  at the right ⟳ keep placing, Place and ✕ (DESIGN §15.7): the SHEET's is the 76 px banner over the bar (the name and

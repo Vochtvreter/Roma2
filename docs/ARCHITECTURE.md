@@ -183,6 +183,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   people.ts                        B   names, jobs assignment, aging, births, deaths, marriage, immigration (460)
   housing.ts                       B   needs, evolution, renovation, decline, goods                (360)
   construction.ts                  B   works queue, stakes, plans, Capitolium                      (300)
+  urbs.ts                          U   the growing town: footfall, the town wall, the castrum razed, renewal (DESIGN §3.9) (450)
   civic.ts                         B   morale, dignitas, taxes, upkeep, Kalends ledger             (230)
   forecast.ts                      B   Forecast and the 12-month prospectus                        (200)
   sim.ts                           S→B tick order, view(), emptyRates                              (140)
@@ -421,12 +422,12 @@ export interface Rect { x: number; y: number; w: number; h: number }
 
 export interface Block {
   id: number;                    // index in Survey.blocks
-  ring: 0 | 1 | 2;               // 0 = castrum interior
+  ring: 0 | 1 | 2 | 3;           // 0 = castrum interior; 3 = the castrum's wall and ditch, urban once the walls are razed
   bx: number; by: number;        // block grid coords (castrum interior bx 0..5, by 0..3)
   x: number; y: number;          // top-left map tile of the 4×4 block
   masked: boolean;               // river/crag/rock/lucus/ruins/>4 loam/off-map
   reserved: 'forum' | 'capitolium' | null;
-  district: 'praetentura' | 'latera' | 'retentura' | 'canabae';
+  district: 'praetentura' | 'latera' | 'retentura' | 'canabae' | 'vallum';
   touchesVia: boolean;           // a block side lies on the via/decumanus line
   touchesForum: boolean;
 }
@@ -440,7 +441,7 @@ export interface Survey {
   blocks: Block[];
   blockAt: Int16Array;           // tile → block id or −1
   street: Uint8Array;            // 1 = survey street-line tile (rings 0–2, not masked water)
-  streetRing: Int8Array;         // ring of the street tile (0..2) or −1
+  streetRing: Int8Array;         // ring of the street tile (0..3; 3 = across the castrum's wall and ditch) or −1
   wall: Uint8Array;              // 1 wall, 2 gate
   fossa: Uint8Array;             // 1 = ditch tile
   gates: { id: GateId; tile: number }[];
@@ -587,7 +588,7 @@ export type ReasonCode =
   | 'needWater' | 'needFood' | 'reserveTopup' | 'requiredService' | 'builderShare' | 'monument' | 'pendingInput'
   | 'winterStock' | 'tools' | 'luxuryStaff' | 'serviceFull' | 'focusSplit' | 'leftover' | 'priority'
   | 'deficitImport' | 'luxuryImport' | 'wishImport' | 'surplusExport' | 'merchantDeal'
-  | 'emergencyRations' | 'emergencyWater' | 'emergencyImport' | 'relief' | 'saving';
+  | 'emergencyRations' | 'emergencyWater' | 'emergencyHands' | 'emergencyImport' | 'relief' | 'saving' | 'aquae' | 'renewal';
 export interface Reason { code: ReasonCode; params: Record<string, number | string> }
 
 export interface DecisionState {
@@ -690,6 +691,23 @@ export interface Stats {
   denariiTaxed: number; playMs: number; startedAt: number; victoryDay: number | null;
 }
 
+// ───────────────────────────── the growing town (urbs.ts) ─────────────────────────────
+/** The town wall: surveyed around the whole town (Colonia; the player from Municipium), raised by the builders, then the castrum is razed. */
+export interface Moenia {
+  tiles: number[];                                   // wall tiles in building order (from the Porta Praetoria round the town)
+  gates: number[];                                   // gate tiles (sorted): where a road crosses the line, and the posterns
+  surveyed: number;                                  // day the groma laid the line
+  work: number; progress: number;                    // total builder-days and the share done (0..1)
+  matUsed: Cost;                                     // stone and coin drawn so far
+  done: number | null;                               // day finished
+}
+export interface UrbsState {
+  traffic: Record<number, number>;                   // sparse: road tile → footfall (walkers a day, monthly average)
+  moenia: Moenia | null;                             // the town wall, once surveyed
+  razed: number | null;                              // day the castrum's vallum came down and its fossa was filled
+  renewed: number;                                   // last day the Ordo renewed a quarter (a well filled in, homes bought out)
+}
+
 // ───────────────────────────── the save ─────────────────────────────
 export interface GameState {
   version: number; seed: number; rng: number; nextId: number;
@@ -701,6 +719,7 @@ export interface GameState {
   buildings: Building[];                             // sorted by id
   roads: number[]; paved: number[];                  // sorted tile indices (paved ⊆ roads)
   wood: Record<number, number>;                      // sparse: forest tiles below their max
+  urbs: UrbsState;                                   // footfall, the town wall and the castrum's fate
   needs: { hunger: Quad; thirst: Quad };             // per stage group, 0..100
   fed: number;                                       // fed index (30-day EMA), 0..1
   morale: number;
@@ -742,6 +761,9 @@ export type FxEvent =
   | { kind: 'event'; id: EventId }
   | { kind: 'advisory'; rule: RuleId; sev: Severity }
   | { kind: 'ordoPlaced'; id: number }
+  | { kind: 'learned'; duty: DutyId }
+  | { kind: 'walls'; stage: 'surveyed' | 'raised' }
+  | { kind: 'renewed'; tiles: number[] }
   | { kind: 'victory' };
 export interface TickContext { fx: FxEvent[]; rates: Rates; offline: boolean }
 
@@ -752,6 +774,7 @@ export interface Derived {
   pomerium: Uint8Array;              // 1 = tile of an active (current-rank ring) unmasked block or active street
   territory: Uint8Array;             // 1 = inside current territory
   reservedTile: Uint8Array;          // 1 = reserved (aqueduct route under construction, Area Capitolina)
+  wall: Uint8Array;                  // standing or surveyed fortifications: 1 wall or ditch, 2 gate (castrum until razed; town wall)
   plotOwner: Int32Array;             // (blockId*4 + plot) → building id or 0
   counts: Partial<Record<BuildingId, number>>;   // finished buildings
   all: Partial<Record<BuildingId, number>>;      // including plans and sites
@@ -1298,7 +1321,7 @@ export function declineOffer(s: GameState, offerId: number): ActionResult;   // 
 export function buyNow(s: GameState, res: TradeRes, qty: number): ActionResult;   // emergency purchase from the cheapest open hub, arrives after its one-way days
 export function emergencyImport(s: GameState, ctx: TickContext, qty: number): boolean;
 // save.ts
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 export const KEYS: { save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1' };
 export const MIGRATIONS: Record<number, (raw: any) => any>;          // version n → n+1
 export const DEFAULT_PREFS: Prefs;
@@ -1415,6 +1438,8 @@ export function tick(s: GameState, ctx: TickContext): void {
   constructionDay(s, ctx);       // builders along worksQueue(); Capitolium crew cap and materials; completions;
                                  // Capitolium completion sets s.victory, stats.victoryDay, fx victory
   housingDay(s, ctx);            // houses with id % CHECK_EVERY == day % CHECK_EVERY: needs, evolution, renovation, decline
+  urbsDay(s, ctx, v, kalends);   // the growing town (DESIGN §3.9): footfall census and a needless well on the Kalends;
+                                 // the town wall surveyed on a build day once due (its work is in constructionDay)
   // 6 · people
   peopleDay(s, ctx, rng);        // aging logs, deaths, widowing, marriages, births, homeless, emigration
   immigrationDay(s, ctx, rng);   // Rome's roll, one Bernoulli roll
@@ -1464,7 +1489,7 @@ Rules around the tick:
 
 ### 11.1 Save format
 - `serialize(s)` = `JSON.stringify(s)`. Expected size ≤ 600 KB at pop 1,500 (well under the 5 MB origin quota). Written to `castravaleria.save.v1` by `saveGame(s, now)`, which sets `s.lastSave = now` first. Every storage access is wrapped in `try/catch`; a failed write returns `false` and `main.ts` shows one toast: *"Could not save: storage is full or blocked. Use Menu → Export."*
-- `SAVE_VERSION = 1`; `s.version` is written by `newGame`. The key's `.v1` suffix only changes if the format becomes incompatible (it should never).
+- `SAVE_VERSION = 2` (2: the growing town, `urbs`, inserted after `wood` by `MIGRATIONS[1]`); `s.version` is written by `newGame`. The key's `.v1` suffix only changes if the format becomes incompatible (it should never).
 
 ### 11.2 Load, migration, sanitising
 `deserialize(json)`:

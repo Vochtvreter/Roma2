@@ -1,7 +1,7 @@
 // src/ui/tabs/house.ts — the house part of the inspector: tier, household, beds and tax, the next tier's needs with
 // icons (✔/○) and how to fix each ○, renovation, decline countdown, the insula/domus preference (DESIGN §7, §15.4). Owner: WP-I.
 import { HOUSE_TIERS, HUBS, TRADE_RES } from '../../game/types';
-import type { Building, BuildingId, HousePref, HouseTierId, HubId, NeedId, TradeRes } from '../../game/types';
+import type { Building, BuildingId, GameState, HousePref, HouseTierId, HubId, NeedId, TradeRes } from '../../game/types';
 import type { Game, Updater } from '../types';
 import { costEl, fmt, h, img, plural } from '../dom';
 import type { Kid } from '../dom';
@@ -10,9 +10,10 @@ import { houseBeds, residents } from '../../game/census';
 import { crowds, houseTax, nextTier, unmetNeeds, firstWant } from '../../game/housing';
 import { getBuilding } from '../../game/lookup';
 import { houseDesir } from '../../game/coverage';
-import { classAt, derived, sizeOf } from '../../game/derived';
-import { resolvePlaceAt } from '../../game/site';
+import { derived } from '../../game/derived';
 import { hubOpen, price } from '../../game/trade';
+import { bestSlot } from '../../game/site';
+import { liftSlot, serveSlot } from '../../game/advisors/util';
 import { personName } from '../../game/people';
 import { overlayRevealed } from '../../game/reveal';
 import { B } from '../../game/balance';
@@ -60,7 +61,16 @@ function crowdHint(g: Game, b: Building, next: HouseTierId): string | null {
   return `Its own street suffices, but ${aTier(next)} here would push ${who} below the desirability ${c.length > 1 ? 'they need' : 'it needs'}: it waits until a garden or a fountain lifts ${c.length > 1 ? 'their' : 'that'} street.`;
 }
 
-/** How to fix one unmet need of house `b`: a hint and the buttons that do it. */
+/** Where a want's Place button sets the ghost down, as the advisors' remedies do: the free slot that serves house `id`
+ *  (a well or shrine reaching it along the streets, a garden lifting its street), else none and the player picks one.
+ *  Oil comes by the market hall from anywhere, so a grove goes to the best slot. */
+export function fixSlot(s: GameState, id: number, need: NeedId, type: BuildingId): number | undefined {
+  if (need === 'desirability') return liftSlot(s, 'player', [id])?.tile;
+  if (need === 'oil') return bestSlot(s, type, { owner: 'player' })?.tile;
+  return serveSlot(s, type, 'player', need, [id])?.tile;
+}
+
+/** How to fix one of house `b`'s unmet needs: a hint and the buttons that do it. */
 function fix(g: Game, b: Building, need: NeedId): Kid[] {
   const s = g.state;
   let type = SERVICE[need];
@@ -69,13 +79,8 @@ function fix(g: Game, b: Building, need: NeedId): Kid[] {
   if (type) {
     const reason = rankReason(s, type);
     if (s.ordo.on.build) out.push(btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason, tip: `The Ordo raises ${BUILDING_DEFS[type].name.toLowerCase()} at its best site.` }));
-    // the ghost starts on the free slot nearest this house, the one most likely to reach it (resolvePlaceAt)
-    const place = (t: BuildingId): void => {
-      const st = g.state;
-      const [w, ht] = sizeOf(b.type, classAt(st, b.type, b.x, b.y));
-      g.startPlacing({ kind: 'building', type: t, at: resolvePlaceAt(st, t, undefined, 'player', { near: { x: b.x, y: b.y, w, h: ht } }) });
-    };
-    out.push(btn(g, `Place ${article(BUILDING_DEFS[type].name.toLowerCase())}`, () => place(type), { cls: 'primary', reason }));
+    out.push(btn(g, `Place ${article(BUILDING_DEFS[type].name.toLowerCase())}`,
+      () => { g.startPlacing({ kind: 'building', type, at: fixSlot(g.state, b.id, need, type) }); }, { cls: 'primary', reason }));
   }
   if (need === 'desirability' && overlayRevealed(s, 'desir')) out.push(btn(g, 'Show on map', () => { g.view.setOverlay('desir'); }, { cls: 'ghost' }));
   if (need === 'fed') out.push(btn(g, 'Rations', () => { g.openTab('council', 'edict-rationes'); }, { cls: 'ghost' }));
