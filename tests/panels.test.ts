@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
 import type { GameState } from '../src/game/types';
 import type { Game } from '../src/ui/types';
-import { PANELS } from '../src/ui/panels';
+import { PANELS, panelTokens } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
 import { DEFAULT_PREFS } from '../src/game/save';
 import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
@@ -237,5 +237,22 @@ describe('text slips (R48)', () => {
     expect(sentence(`You asked for a well on ${d}`)).toBe(`You asked for a well on ${d}`);
     expect(sentence('Hiems in 3 days')).toBe('Hiems in 3 days.');
     expect(plural(1, 'house', 'houses')).toBe('1 house');
+  });
+});
+
+describe('panelTokens (#app[data-panel], what the stylesheets key on instead of #app:has(#side…))', () => {
+  it('names each state that holds, in a fixed order, and nothing when none does', () => {
+    expect(panelTokens(false, false, false)).toBe('');
+    expect(panelTokens(true, false, false)).toBe('collapsed');
+    expect(panelTokens(false, true, false)).toBe('empty');
+    expect(panelTokens(false, false, true)).toBe('notabs');
+    expect(panelTokens(true, true, true)).toBe('collapsed empty notabs');
+    // each a whole token for [data-panel~='…']
+    for (const [c, e, n] of [[true, false, true], [false, true, true], [true, true, false]] as const) {
+      const toks = panelTokens(c, e, n).split(' ');
+      expect(toks.includes('collapsed')).toBe(c);
+      expect(toks.includes('empty')).toBe(e);
+      expect(toks.includes('notabs')).toBe(n);
+    }
   });
 });

@@ -58,7 +58,7 @@
 @media (min-width: 900px), (max-height: 520px) {
   #choice { left: auto; transform: none; right: max(calc(var(--side-w) + 36px), calc((100% + var(--side-w) - 790px) / 2));
     width: min(470px, calc(100% - var(--side-w) - 52px)); }
-  #app:has(#side.collapsed) #choice { --side-w: 0px; }
+  #app#app[data-panel~='collapsed'] #choice { --side-w: 0px; }
 }
 /* only a new dispatch drops in: a refresh (an option becoming affordable) leaves the options where the cursor is */
 #choice:not([hidden]) .choice-card.enter { animation: choice-in .35s ease-out; }

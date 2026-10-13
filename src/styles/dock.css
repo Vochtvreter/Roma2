@@ -25,7 +25,7 @@
 #app[data-host='dock'][data-w='expanded'] { --dock-pane: var(--dock-half, clamp(340px, 30%, 400px)); }
 #app[data-host='dock'][data-detent='closed'] { --dock-now: 56px; }
 #app[data-host='dock'][data-detent='full'] { --dock-now: var(--dock-full, 100%); }
-#app[data-host='dock']:has(#side.empty) { --dock-now: 0px; }   /* no tab yet (a new colony): no pane */
+#app#app[data-host='dock'][data-panel~='empty'] { --dock-now: 0px; }   /* no tab yet (a new colony): no pane */
 
 /* ───────── the HUD: one 56 px row ───────── */
 /* Grain and Aqua (label, trend, days, the 12-month strip), coin over souls, spirits; from 960 px dignitas, the date and
@@ -144,6 +144,10 @@
 #app[data-host='dock'] #counsel .lesson-job { flex-wrap: wrap; row-gap: 2px; }
 #app[data-host='dock'] #counsel .lesson-prog { flex-basis: 100%; margin-left: 24px; white-space: normal; font-size: var(--fs-xs); }
 #app[data-host='dock'] #counsel .counsel-body { max-height: calc(40cqh - 56px); }
+/* the office stays whole (the phone's one row cuts it with an ellipsis: sheet.css): a long kicker wraps to a second line
+   in the pane, 'PERICVLVM · AQVARVM' and 'OPPORTVNITAS · AVGVR' in the 300 px one, 'MONITVM · AQVARVM' under Text size
+   Large up to 1024 px wide, 'DISCIPLINA · I / X' beside its count; balanced, so it breaks at the · ('I / X' whole) */
+#app[data-host='dock'] .counsel-kicker { white-space: normal; overflow: visible; text-overflow: clip; text-wrap: balance; }
 
 /* the one-line Res Gestae: its kicker and the progress over the goal (cut to one line), the CTA under them; its ▾ (or a
    tap on the line) unfolds the hint, the meter, the unlocks and the chips in place */
@@ -198,6 +202,9 @@
   #app[data-host='dock'] .side-tab-label { letter-spacing: -.04em; font-size: min(var(--fs-line), 14px); }   /* (14 px under Large) */
   /* Text size Large: the head's kickers shed their tracking, so 'RES GESTAE · XI / XX' and 'MONITVM · AEDILIS' stay whole */
   #app[data-host='dock'][data-text='large'] :is(#objective .obj-kicker, .counsel-kicker) { letter-spacing: 0; }
+}
+@container dock-pane (max-width: 359px) {   /* the counsel's in the 328 px pane too (820 px): 'MONITVM · AQVARVM' in one line */
+  #app[data-host='dock'][data-text='large'] .counsel-kicker { letter-spacing: 0; }
 }
 
 #app[data-host='dock'] #tab-body { order: 1; flex: 1 1 0; min-height: 0; padding: 6px 10px 20px; }

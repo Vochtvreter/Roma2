@@ -116,6 +116,21 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 /* but a card keeps its name and a line (kicker, title, a row): on a window too short for all three (1280 x 649) the
    counsel's body scrolls meanwhile, rather than a 20 px sliver of a card hanging off the column's foot */
 #left > #inspector:not(:empty) { min-height: calc(88px * var(--ts)); }
+/* The desktop (COLUMNS) takes none of the counsel's room for the hover card: in the column's flow it still took some on
+   a window up to ~740 px tall (a 1366 x 768 laptop less the browser's chrome: up to 83 px, its scrollbar coming and its
+   text rewrapping on every hover in and out). #inspector is the room under the counsel instead (flex-basis 0 and the
+   column's 8 px gap given back: it grows into what is free and shrinks nothing), and the card stands at its foot as
+   tall as that room, as it always did, scrolling inside. Where the room is less than its name and first lines (129 px:
+   a short window) it is that tall all the same, over the counsel's foot while the mouse is on the map (the mouse
+   leaving the map, onto the card or the counsel, takes it away). The room itself lets the map's hover through. A
+   clicked card is the popup beside its target (inspector.ts), never in the column. */
+#app[data-host='columns'] #left > #inspector {
+  flex: 1 1 0; min-height: 0; max-height: none; margin-top: -8px; z-index: var(--z-counsel); pointer-events: none;
+}
+#app[data-host='columns'] #left > #inspector > .ins-card {
+  position: absolute; left: 0; right: 0; bottom: 0; pointer-events: auto;
+  max-height: min(46vh, max(calc(100% - 8px), calc(129px * var(--ts))));
+}
 #counsel:has(> .counsel-card.offer) { max-height: 60%; }
 .counsel-card { display: flex; flex-direction: column; min-height: 0; }
 .counsel-card > .counsel-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }

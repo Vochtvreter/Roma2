@@ -28,7 +28,7 @@
 #app[data-host='columns'][data-detent='closed'] { --cols-now: 64px; }
 #app[data-host='columns'][data-detent='full'] { --cols-now: var(--cols-full, calc(100% - 630px)); }
 #app[data-host='columns'][data-fold][data-detent='full'] { --cols-map-l: 0px; }
-#app[data-host='columns']:has(#side.empty) { --cols-now: 0px; }   /* no tab yet (a new colony): no panel */
+#app#app[data-host='columns'][data-panel~='empty'] { --cols-now: 0px; }   /* no tab yet (a new colony): no panel */
 #app[data-host='columns']:not([data-input='mouse']) { --cols-edge: 52px; }
 
 /* the panel: at the right edge under the HUD, its width the detent's (sheet.ts sets an inline width and transform only
@@ -104,9 +104,9 @@
 
 /* the map tools, the ticker and the placing banner beside the spine as beside the docked panel (map-ui.css moved them
    to the edge for today's vanished panel) */
-#app[data-host='columns']:has(#side.collapsed) #map-tools { right: calc(var(--side-w) + 12px); }
-#app[data-host='columns']:has(#side.collapsed) #ticker { right: calc(var(--side-w) + 150px); }
-#app[data-host='columns']:has(#side.collapsed) #place-banner { left: calc((100% - var(--side-w) + 268px) / 2); max-width: calc(100% - var(--side-w) - 400px); }
+#app#app[data-host='columns'][data-panel~='collapsed'] #map-tools { right: calc(var(--side-w) + 12px); }
+#app#app[data-host='columns'][data-panel~='collapsed'] #ticker { right: calc(var(--side-w) + 150px); }
+#app#app[data-host='columns'][data-panel~='collapsed'] #place-banner { left: calc((100% - var(--side-w) + 268px) / 2); max-width: calc(100% - var(--side-w) - 400px); }
 /* wide: the 630 px of map hold the map tools and the ticker as beside the docked panel (the ticker from the left edge
    where the left column folds); the lessons' strip only the minimap and the zoom row, the overlay bar and the ticker
    stepping aside until the panel docks again (O still cycles the overlays; layout.ts MAP_TOOLS) */
@@ -129,6 +129,6 @@
    under its tabs */
 #app[data-host='columns'] #choice { top: calc(var(--hud-h) + 58px); }
 #app[data-host='columns']:not([data-input='mouse']) #choice { top: calc(var(--hud-h) + 68px); }
-#app[data-host='columns']:has(#side.collapsed) #choice { --side-w: var(--cols-now); }
+#app#app[data-host='columns'][data-panel~='collapsed'] #choice { --side-w: var(--cols-now); }
 #app#app[data-host='columns'][data-detent='full'] #choice { right: max(calc(var(--side-w) + 36px), calc((100% + var(--side-w) - var(--cols-map-l) - 480px) / 2)); }
 #app#app[data-host='columns'][data-strip][data-detent='full'] #choice { right: 12px; width: min(470px, calc(var(--cols-now) - 24px)); top: calc(var(--hud-h) + 104px); }

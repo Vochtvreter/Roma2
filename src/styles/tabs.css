@@ -263,7 +263,10 @@
   .side-body { columns: 3; }
 }
 /* under 330 px (a landscape phone's 340 px drawer, whose body is 314): the dense rows fold, so no button is cut off at
-   the body's edge. Not at 330–339: the 380 px desktop panel's body is 354 px, and 339 with a classic 15 px scrollbar */
+   the body's edge. Not at 330–339: the 380 px desktop panel's body is 354 px, and 339 with a classic 15 px scrollbar.
+   After a :has() the part it styles is named by its class (.tr-quick), never by a bare :last-child: Blink pools what
+   every :has() rule styles, and one with nothing to match on had each text change anywhere in #app (a HUD figure, a
+   tab's line, every frame) recalculate the whole page's style, ~10× the time */
 @container tab-body (max-width: 329px) {
   .tab-lab { grid-template-columns: minmax(0, 1fr); }
   .tab-lab-ctl { flex-wrap: wrap; }
@@ -272,7 +275,7 @@
   .tr-row > .tr-btns { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
   .tr-top, .tr-goods, .tr-quick { flex-wrap: wrap; }
   .tr-field:has(.ed-slider) { grid-template-columns: 52px minmax(0, 1fr) 28px; }
-  .tr-field:has(.ed-slider) > :last-child { grid-column: 1 / -1; }
+  .tr-field:has(.ed-slider) > .tr-quick { grid-column: 1 / -1; }
   .ed-row { flex-wrap: wrap; }
   .ed-row > .ed-row-main { flex: 1 1 100%; }
   .ed-would-row { flex-wrap: wrap; }
@@ -288,7 +291,7 @@
   #app[data-text='large'] .tr-row > .tr-btns { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
   #app[data-text='large'] :is(.tr-top, .tr-goods, .tr-quick) { flex-wrap: wrap; }
   #app[data-text='large'] .tr-field:has(.ed-slider) { grid-template-columns: 72px minmax(0, 1fr) 28px; }
-  #app[data-text='large'] .tr-field:has(.ed-slider) > :last-child { grid-column: 1 / -1; }
+  #app[data-text='large'] .tr-field:has(.ed-slider) > .tr-quick { grid-column: 1 / -1; }
   #app[data-text='large'] :is(.ed-row, .ed-would-row) { flex-wrap: wrap; }
   #app[data-text='large'] .ed-row > .ed-row-main { flex: 1 1 100%; }
   #app[data-text='large'] .bld-q { grid-template-columns: 36px minmax(0, 1fr); }

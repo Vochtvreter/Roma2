@@ -52,6 +52,14 @@ export function pulseAnchor(anchor: string, body: HTMLElement): void {
   window.setTimeout(() => el.classList.remove('side-pulse'), PULSE_MS);
 }
 
+/** What #app[data-panel] says of the panel (a token list for `~=`): 'collapsed' (#side.collapsed: folded to its toggle,
+ *  the spine or the phone's bar), 'empty' (#side.empty: no tab yet) and 'notabs' (#tabs holds no button). The stylesheets
+ *  key on it instead of #app:has(#side.collapsed): any :has() on #app had each text change under it (a HUD figure, a
+ *  tab's line, every frame) check #app's rules again and restyle what they reach. '' when none holds. */
+export function panelTokens(collapsed: boolean, empty: boolean, noTabs: boolean): string {
+  return [collapsed ? 'collapsed' : '', empty ? 'empty' : '', noTabs ? 'notabs' : ''].filter(Boolean).join(' ');
+}
+
 /** The side panel in #side. */
 export class SidePanel {
   private cur: TabId = 'council';
@@ -103,6 +111,17 @@ export class SidePanel {
     this.tabsEl.setAttribute('aria-label', 'Panels');
     this.body.addEventListener('pointerdown', () => { this.lastClick = performance.now(); });
     this.tabsEl.addEventListener('keydown', (e) => this.onKey(e));
+    this.mirror();
+  }
+
+  /** Writes the panel's state on #app (data-panel: panelTokens), with the class or the tab bar it mirrors, and only when
+   *  it changed. */
+  private mirror(): void {
+    const app = this.root.closest<HTMLElement>('#app');
+    if (!app) return;
+    const c = this.root.classList, v = panelTokens(c.contains('collapsed'), c.contains('empty'), this.tabsEl.firstChild === null);
+    if ((app.dataset.panel ?? '') === v) return;
+    if (v) app.dataset.panel = v; else delete app.dataset.panel;
   }
 
   /** The open tab. */
@@ -176,6 +195,7 @@ export class SidePanel {
   show(on: boolean, instant = false): void {
     if (instant) this.root.style.transition = 'none';
     this.root.classList.toggle('collapsed', !on);
+    this.mirror();
     this.toggleEl?.setAttribute('aria-expanded', String(on));
     this.toggleEl?.setAttribute('aria-label', on ? 'Hide the panel' : 'Show the panel');
     if (instant) { void this.root.offsetWidth; this.root.style.transition = ''; }   // the folded box is laid out before the slide returns
@@ -277,6 +297,7 @@ export class SidePanel {
     }
     const wasEmpty = this.root.classList.contains('empty');
     this.root.classList.toggle('empty', shown.length === 0);
+    this.mirror();
     if (shown.length === 0) this.toggle(false);
     else if (wasEmpty && !isPhone(this.layout?.host ?? null)) this.toggle(true);   // a phone's panel stays closed: the map first
     const key = `${shown.join(',')}|${[...this.fresh].join(',')}|${this.cur}|${+this.vertical}${+this.named}`;
@@ -302,6 +323,7 @@ export class SidePanel {
       this.btns.set(t, { btn, badge });
       this.tabsEl.appendChild(btn);
     }
+    this.mirror();
     this.spineNames(this.layout?.detent ?? null);
     this.body.setAttribute('aria-labelledby', `tab-${this.cur}`);
   }
@@ -309,7 +331,7 @@ export class SidePanel {
   private badges(): void {
     for (const [id, { badge }] of this.btns) {
       const b = PANELS[id].badge?.(this.g) ?? null;
-      badge.hidden = !b;
+      if (badge.hidden !== !b) badge.hidden = !b;   // (written every frame it set the attribute, and restyled the badge)
       if (!b) continue;
       if (badge.textContent !== b.text) badge.textContent = b.text;
       const cls = `badge side-badge ${b.kind}`;

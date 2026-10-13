@@ -25,7 +25,7 @@
   :where(#app:not([data-host='dock'])) #minimap { display: none; }
   :where(#app:not([data-host='dock'])) #map-tools { grid-template-areas: "ov" "zoom"; grid-template-columns: auto; bottom: 56px; }
   :where(#app:not([data-host='dock'])) #ticker { left: 320px; right: calc(var(--side-w) + 12px); }
-  #app:where(:not([data-host='dock'])):has(#side.collapsed) #ticker { right: 12px; }
+  #app#app:where(:not([data-host='dock']))[data-panel~='collapsed'] #ticker { right: 12px; }
   :where(#app:not([data-host='dock'])) #place-banner { bottom: 104px; }
 }
 
@@ -34,7 +34,7 @@
 @media (max-width: 1199px) {
   #app:where(:not([data-host='dock'])).placing #left { display: none; }
   :where(#app:not([data-host='dock'])) #place-banner { left: calc((100% - var(--side-w) - 62px) / 2); max-width: calc(100% - var(--side-w) - 90px); }
-  #app:where(:not([data-host='dock'])):has(#side.collapsed) #place-banner { left: calc((100% - 62px) / 2); max-width: calc(100% - 90px); }
+  #app#app:where(:not([data-host='dock']))[data-panel~='collapsed'] #place-banner { left: calc((100% - 62px) / 2); max-width: calc(100% - 90px); }
 }
 
 /* ───────── mobile: two-row HUD, widgets above the bottom sheet ───────── */
@@ -43,8 +43,8 @@
      still fit between the HUD and the map tools (320 px: the column, the tools and the ticker). Never vh: it is measured
      against the large viewport, which Safari's toolbars cover (tests/css-floor.test.ts). */
   :root { --hud-h: 96px; --side-w: 0px; --sheet-open: min(46%, calc(100% - var(--hud-h) - 320px)); --sheet: var(--sheet-open); }
-  #app:where(:not([data-host='dock'])):has(#side.collapsed) { --sheet: 56px; }
-  #app:where(:not([data-host='dock'])):has(#side.empty) { --sheet: 0px; }
+  #app#app:where(:not([data-host='dock']))[data-panel~='collapsed'] { --sheet: 56px; }
+  #app#app:where(:not([data-host='dock']))[data-panel~='empty'] { --sheet: 0px; }
 
   :where(#app:not([data-host='dock'])) #left { top: calc(var(--hud-h) + 6px); right: 8px; left: 8px; width: auto; bottom: calc(var(--sheet) + 150px); gap: 6px; }
   :where(#app:not([data-host='dock'])) .counsel-strip { display: none; }
@@ -81,11 +81,11 @@
   :where(#app:not([data-host='dock'])) #overlay-bar { align-items: flex-end; }
   :where(#app:not([data-host='dock'])) .map-btn { width: 40px; height: 40px; }
   :where(#app:not([data-host='dock'])) #ticker { left: 8px; right: 60px; bottom: calc(var(--sheet) + 8px); justify-content: flex-start; }
-  #app:where(:not([data-host='dock'])):has(#side.collapsed) #ticker { right: 60px; }
+  #app#app:where(:not([data-host='dock']))[data-panel~='collapsed'] #ticker { right: 60px; }
   :where(#app:not([data-host='dock'])) .tick-box { height: 36px; width: 100%; }
   :where(#app:not([data-host='dock'])) #toasts { top: calc(var(--hud-h) + 8px); right: 50%; transform: translateX(50%); align-items: center; }
-  #app:where(:not([data-host='dock'])):has(#side.collapsed) #toasts { right: 50%; }
-  :where(#app:not([data-host='dock'])) #place-banner, #app:where(:not([data-host='dock'])):has(#side.collapsed) #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100% - 16px); width: calc(100% - 16px); }
+  #app#app:where(:not([data-host='dock']))[data-panel~='collapsed'] #toasts { right: 50%; }
+  :where(#app:not([data-host='dock'])) #place-banner, #app#app:where(:not([data-host='dock']))[data-panel~='collapsed'] #place-banner { bottom: calc(var(--sheet) + 52px); left: 50%; max-width: calc(100% - 16px); width: calc(100% - 16px); }
   :where(#app:not([data-host='dock'])) .place-box { flex-wrap: wrap; gap: 8px; }
   :where(#app:not([data-host='dock'])) .place-help { white-space: normal; }
   :where(#app:not([data-host='dock'])) .place-box .btn { min-height: 44px; }

@@ -19,7 +19,7 @@ import {
   sheetHeights, shownAt, slimBanner, slotTap, snapDetent, stepDown, toolColumn, viewOf, visibleOn,
 } from '../src/ui/layout';
 import type { Box, Detent, Host, Media, RouteCtx } from '../src/ui/layout';
-import { coveredArea, dodge, roomShift } from '../src/ui/inspector';
+import { POPUP, coveredArea, dodge, popupSlot, roomShift } from '../src/ui/inspector';
 import { howToControls } from '../src/ui/modals';
 
 const TOUCH: Media = { coarse: true, anyFine: false, anyCoarse: true };    // a phone, a tablet
@@ -397,6 +397,65 @@ describe('roomShift (the inspector popup on a strip of map)', () => {
     expect(roomShift(250, 314, 148, 452, 190, 285)).toBe(88);
     expect(roomShift(300, 364, 148, 452, 190, 285)).toBe(38);
     expect(roomShift(400, 460, 148, 652, 190, 285)).toBe(0);
+  });
+});
+
+describe('popupSlot (the pinned popup beside its target, clear of the map\'s tools)', () => {
+  const box = (left: number, top: number, right: number, bottom: number): Box => ({ left, top, right, bottom });
+  // a 1180 × 820 tablet, its pane docked: the free map less the margins, and its map tools at the bottom right (the
+  // overlay bar, the minimap and the zoom: #map-tools whole) over the ticker at the bottom left
+  const room = box(8, 64, 818, 812), tools = [box(452, 520, 814, 808)], ticker = box(12, 764, 466, 808);
+  const hits = (p: { left: number; top: number; maxH: number }, natural: number, over: Box[]): number =>
+    coveredArea(box(p.left, p.top, p.left + 300, p.top + Math.min(natural, p.maxH)), over);
+
+  it('stands right of the target first, whole, centred on it, where nothing is in the way', () => {
+    expect(popupSlot(box(16, 222, 112, 318), room, 300, 495, tools)).toEqual({ side: 'l', left: 122, top: 64, maxH: POPUP.maxH });
+    expect(popupSlot(box(16, 222, 112, 318), room, 300, 495, [])).toEqual({ side: 'l', left: 122, top: 64, maxH: POPUP.maxH });
+  });
+
+  it('a card that would run over the tools ends above them, scrolling inside (a target at the top right of the map)', () => {
+    // left of the target is the one side the whole card fits beside it; there it would stand over the minimap
+    const p = popupSlot(box(714, 78, 810, 174), room, 300, 600, tools);
+    expect(p).toEqual({ side: 'r', left: 404, top: 64, maxH: 448 });
+    expect(hits(p, 600, tools)).toBe(0);
+    expect(p.top + p.maxH).toBe(520 - POPUP.clear);
+  });
+
+  it('beside a target over the tools\' row it is not cut by them: above or beside, the tallest place that keeps clear', () => {
+    const p = popupSlot(box(256, 408, 352, 504), room, 300, 510, [...tools, ticker]);
+    expect(hits(p, 510, [...tools, ticker])).toBe(0);
+    expect(p).toEqual({ side: 'l', left: 362, top: 64, maxH: 448 });
+  });
+
+  it('slides along its edge to clear a tool beside it, its tail still over the target', () => {
+    // above the target the whole card fits but its corner touches the overlay bar: it slides left, clear of it
+    const p = popupSlot(box(256, 552, 352, 648), room, 300, 343, [...tools, ticker]);
+    expect(p).toEqual({ side: 'b', left: 144, top: 199, maxH: 478 });
+    expect(hits(p, 343, [...tools, ticker])).toBe(0);
+    expect(p.left).toBeLessThanOrEqual(304 - POPUP.tail);   // the tail at the target's middle stays on the card
+  });
+
+  it('slides as far as the room\'s edge where the map is narrow (a 1366 × 768 laptop between its columns)', () => {
+    // the forum close up: the card below it would stand over the overlay bar; at the room's left edge it ends where the
+    // tools begin (no room for the clearance there)
+    const narrow = box(318, 72, 978, 760), bar = [box(618, 500, 978, 760)];
+    const p = popupSlot(box(372, 98, 804, 530), narrow, 300, 129, bar);
+    expect(p).toEqual({ side: 't', left: 318, top: 540, maxH: 220 });
+    expect(hits(p, 129, bar)).toBe(0);
+  });
+
+  it('keeps the whole card that covers least when no place clears the tools (a target in their corner)', () => {
+    const legend = [box(452, 459, 814, 808)];   // the overlay bar's legend stands above its buttons
+    expect(popupSlot(box(714, 478, 810, 574), room, 300, 378, legend)).toEqual({ side: 'b', left: 518, top: 90, maxH: 404 });
+  });
+
+  it('never cuts a card under its least height, nor a short card under its own', () => {
+    const r = box(150, 10, 250, 60), field = box(0, 0, 400, 600);
+    expect(popupSlot(r, field, 300, 500, [box(0, 300, 400, 360)])).toEqual({ side: 't', left: 50, top: 70, maxH: 222 });
+    // 122 px above the band: under POPUP.minH, so the whole card stays (over the band)
+    expect(popupSlot(r, field, 300, 500, [box(0, 200, 400, 260)])).toEqual({ side: 't', left: 50, top: 70, maxH: 530 });
+    // a 150 px card is never cut to 137
+    expect(popupSlot(r, field, 300, 150, [box(0, 215, 400, 260)])).toEqual({ side: 't', left: 50, top: 70, maxH: 530 });
   });
 });
 

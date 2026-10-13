@@ -3,7 +3,8 @@
 // what they resolve to, at Normal and at Large, and so is every --fs-* token wherever a stylesheet sets it again), no
 // shrinking relative size; the canvas's own type (the map's labels, kept whole on the screen; the chart) at 12 CSS px
 // or more; no sheet or pane height in vh, which Safari and Chrome measure against the large
-// viewport (the 46vh trap, platform.md §1); and the Text size setting's storage (src/ui/textsize.ts), table by table.
+// viewport (the 46vh trap, platform.md §1); no :has() rule styling a part with nothing to match on, nor one on #app
+// (the whole-page recalculation trap); and the Text size setting's storage (src/ui/textsize.ts), table by table.
 // Headless: node's fs reads the CSS; nothing here touches a DOM.
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -186,6 +187,90 @@ describe('no sheet or pane height in vh (the 46vh trap)', () => {
   it('catches the trap it is for', () => {
     const trap = declarations('trap.css', ':root { --sheet-open: min(46vh, calc(100% - 320px)); } #side { height: var(--sheet-open, 46vh); } #side { height: 46dvh; }');
     expect(trap.filter((d) => sheetish(d) && VH.test(d.value)).length).toBe(2);
+  });
+});
+
+/** The top-level parts of a selector list, or of a complex selector at its combinators: brackets, parentheses and quotes
+ *  kept whole. `at` ',' splits a list; ' ' splits a complex selector into its compounds (the combinators dropped). */
+function splitTop(sel: string, at: ',' | ' '): string[] {
+  const out: string[] = [];
+  let depth = 0, quote = '', cur = '';
+  const s = at === ' ' ? sel.replace(/\s*([>+~])\s*/g, ' ').trim() : sel;
+  for (const c of s) {
+    if (quote) { if (c === quote) quote = ''; cur += c; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    if (depth === 0 && (at === ',' ? c === ',' : /\s/.test(c))) { if (cur.trim()) out.push(cur.trim()); cur = ''; continue; }
+    cur += c;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** A compound selector without its :has() and :not() arguments (neither gives Blink a feature to invalidate by). */
+function bare(compound: string): string {
+  let out = '', depth = 0;
+  for (let i = 0; i < compound.length; i++) {
+    if (depth === 0 && /^:(has|not)\(/.test(compound.slice(i))) { depth = 1; i = compound.indexOf('(', i); continue; }
+    if (depth > 0) { if (compound[i] === '(') depth++; else if (compound[i] === ')') depth--; continue; }
+    out += compound[i];
+  }
+  return out;
+}
+
+/** A selector's compounds after one holding a :has() that have nothing to match on: no id, class, attribute or tag
+ *  (a bare :last-child, *, ::before). */
+function featurelessAfterHas(complex: string): string[] {
+  const parts = splitTop(complex, ' ');
+  const at = parts.findIndex((p) => p.includes(':has('));
+  if (at < 0) return [];
+  return parts.slice(at + 1).filter((p) => !/[#.[]|^[a-z]/i.test(bare(p)));
+}
+
+/** A selector with a :has() in a compound that names #app or an element above it (:root, html, body): Blink checks it
+ *  again on each change under that element, every frame's HUD figures among them. */
+function hasOnRoot(complex: string): boolean {
+  return splitTop(complex, ' ').some((p) => p.includes(':has(') && /(?<![\w-])(#app|:root|html|body)(?![\w-])/.test(p.slice(0, p.indexOf(':has('))));
+}
+
+describe('no :has() rule that styles a part with nothing to match on (the whole-page recalculation trap)', () => {
+  // Blink pools what every rule with a :has() in a non-subject compound styles into one invalidation set: one whose part
+  // has no id, class, attribute or tag (`.tr-field:has(.ed-slider) > :last-child`) makes it the whole subtree, so each
+  // text change under #app (a HUD figure every frame; #app has :has() rules of its own) recalculated the style of the
+  // whole page: ~10× origin/main's time on the desktop. Name the part by its class instead.
+  const selectors = [...new Set(DECLS.map((d) => d.sel))].flatMap((s) => splitTop(s, ','));
+
+  it('finds the :has() rules it guards', () => {
+    expect(selectors.filter((s) => s.includes(':has(')).length).toBeGreaterThan(20);
+  });
+
+  it('has none', () => {
+    expect(selectors.filter((s) => featurelessAfterHas(s).length > 0)).toEqual([]);
+  });
+
+  it('has no :has() on #app or above it (they key on #app[data-panel] and the like: ui/panels.ts panelTokens)', () => {
+    expect(selectors.filter(hasOnRoot)).toEqual([]);
+  });
+
+  it('catches a :has() on #app or above it, and lets one further down pass', () => {
+    for (const s of ["#app[data-host='columns']:has(#side.empty)", '#app:has(#side.collapsed) #choice',
+      "#app:where(:not([data-host='dock'])):has(#side.collapsed) #ticker", '#app#app.placing:not(:has(> #tabs:empty))',
+      ':root:has(#side.empty) #left', 'body:has(.modal-back) #app']) expect(hasOnRoot(s), s).toBe(true);
+    for (const s of ["#app#app[data-host='columns'][data-panel~='empty']", "#app[data-host='dock'] #side:has(> #tray.tray-col) > #tabs",
+      "#app:is([data-host='sheet'], [data-host='drawer']) #hud:has(.hud-speed.open)", '#counsel:has(> .counsel-card.offer)',
+      '.counsel-body:has(.x)', '#app-shell:has(.x)']) expect(hasOnRoot(s), s).toBe(false);
+  });
+
+  it('catches the trap it is for, and lets a named part or the subject itself pass', () => {
+    expect(featurelessAfterHas('.tr-field:has(.ed-slider) > :last-child')).toEqual([':last-child']);
+    expect(featurelessAfterHas("#app[data-host='x']:has(#side.empty) *")).toEqual(['*']);
+    expect(featurelessAfterHas('.a:has(> .b) ::before')).toEqual(['::before']);
+    expect(featurelessAfterHas('.tr-field:has(.ed-slider) > .tr-quick')).toEqual([]);
+    expect(featurelessAfterHas("#app:has(#side.collapsed) #choice")).toEqual([]);
+    expect(featurelessAfterHas('.modal-back:has(~ .modal-back:not(.modal-out)) > .modal')).toEqual([]);
+    expect(featurelessAfterHas("#hud > .hud-coin:not(:has(+ .hud-souls[hidden]))")).toEqual([]);
+    expect(featurelessAfterHas('#side:has(> #tray.tray-col) > :is(#tabs, #tab-body)')).toEqual([]);
   });
 });
 

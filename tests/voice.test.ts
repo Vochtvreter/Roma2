@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AdvisoryMemo, GameState, Remedy, RuleId, Severity } from '../src/game/types';
 import type { Game } from '../src/ui/types';
-import { awaitAction, awaitingItems, pickCounsel, remedyChip, voiceAction, waitingBeyond } from '../src/ui/counsel';
+import { awaitAction, awaitingItems, glueKicker, pickCounsel, remedyChip, voiceAction, waitingBeyond } from '../src/ui/counsel';
 import type { AwaitItem, CounselItem, RenderedRemedy } from '../src/ui/counsel';
 import { checkRemedy } from '../src/game/advisors/remedies';
 import { DEFAULT_PREFS } from '../src/game/save';
@@ -217,5 +217,18 @@ describe('waitingBeyond (the voice line\'s +n pip)', () => {
     // an advisory of a rule none of the listed ones has (whatever its severity) is not one of them either
     expect(waitingBeyond(items, as('annonae.famine', 3))).toBe(items.length);
     expect(waitingBeyond(items, as('annonae.famine', 2))).toBe(items.length);
+  });
+});
+
+describe('glueKicker (the voice line\'s kicker wraps after its dot)', () => {
+  it('glues each separator to the word before it, and leaves the words and the rest as they were', () => {
+    expect(glueKicker('MONITVM · AQVARVM')).toBe('MONITVM\u00a0· AQVARVM');
+    expect(glueKicker('DISCIPLINA · I / X')).toBe('DISCIPLINA\u00a0· I / X');
+    expect(glueKicker('NVNTIVS · VETERANI AD PORTAM')).toBe('NVNTIVS\u00a0· VETERANI AD PORTAM');
+    expect(glueKicker('MANDATA')).toBe('MANDATA');
+    // only a no-break space joins: the text reads (and measures) as before
+    expect(glueKicker('PERICVLVM · AQVARVM').replace(/\u00a0/g, ' ')).toBe('PERICVLVM · AQVARVM');
+    // where it may still break: after the dot, between the parts of what follows
+    expect(glueKicker('DISCIPLINA · I / X').split(' ')).toEqual(['DISCIPLINA\u00a0·', 'I', '/', 'X']);
   });
 });

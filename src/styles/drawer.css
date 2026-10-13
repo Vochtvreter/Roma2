@@ -22,7 +22,7 @@
   --drawer-left: calc(var(--drawer-gap) + env(safe-area-inset-left, 0px));
   --drawer-foot: calc(var(--drawer-gap) + env(safe-area-inset-bottom, 0px));
 }
-#app[data-host='drawer']:has(> #tabs:empty) { --spine-w: 0px; }
+#app#app[data-host='drawer'][data-panel~='notabs'] { --spine-w: 0px; }
 
 /* ───────── the spine: the tab icons ───────── */
 /* Edicta, Consiliarii, Aedificia, Populus, Commercium, Annales: 44 px icons 3 px apart with their badges and NEW; the label

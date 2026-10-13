@@ -188,6 +188,84 @@ export function dodge(t: Box, over: readonly Box[], within: Box, m: number): { d
   return best && all[0].a - best.a >= size / 4 ? { dx: best.dx, dy: best.dy } : { dx: 0, dy: 0 };
 }
 
+/** The pinned popup's place beside its target: the side its tail is on (`l`: the card right of the target, its tail on
+ *  the card's left edge; `r` left of it; `t` below it; `b` above it; '' over the target's emptier edge, no tail), the
+ *  card's top-left and its max-height (it scrolls inside below its natural height). */
+export interface PopupSlot { side: 'l' | 'r' | 't' | 'b' | ''; left: number; top: number; maxH: number }
+/** The popup's measures (CSS px): its gap to the target, its tallest and its least height (a shorter card keeps its
+ *  own), what it keeps clear of the map's tools, and how far its tail stands from its corners. */
+export const POPUP = { gap: 10, maxH: 560, minH: 180, clear: 8, tail: 14 } as const;
+
+/** Where the pinned popup stands (pure; tests/layout.test.ts) for a target `r` in the free map `room` (both #app px),
+ *  the card `w` wide and `natural` tall. Beside the target (right first), else below or above it where the whole card
+ *  fits, else where there is more room; a target too big for any of these (the forum close up) gets the card over its
+ *  emptier edge. Of the places where it fits whole, the one that covers least of the map's own `tools` (the zoom and the
+ *  tool column, the overlay bar, the minimap, the ticker), so − and ⌂ stay in reach while it is open; and when that one
+ *  still covers some, any side where a shorter card (down to POPUP.minH, scrolling inside) or one slid along its edge
+ *  (its tail still on the target's middle) covers none, the tallest of those (a tablet's map tools under a card beside
+ *  a target at the top of the map: the card ends above them). */
+export function popupSlot(r: Box, room: Box, w: number, natural: number, tools: readonly Box[], o: typeof POPUP = POPUP): PopupSlot {
+  const { gap, minH, clear: C, tail: T } = o;
+  const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+  const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+  const fullH = Math.min(o.maxH, room.bottom - room.top), need = Math.min(natural, fullH);
+  const below = room.bottom - (r.bottom + gap), above = r.top - gap - room.top;
+  const at = (side: PopupSlot['side']): PopupSlot => {
+    if (side === 't' || side === 'b') {
+      const maxH = Math.min(o.maxH, side === 't' ? below : above);
+      return { side, maxH, top: side === 't' ? r.bottom + gap : r.top - gap - Math.min(natural, maxH), left: clamp(cx - w / 2, room.left, Math.max(room.left, room.right - w)) };
+    }
+    return { side, maxH: fullH, top: clamp(cy - need / 2, room.top, room.bottom - need),
+      left: side === 'l' ? r.right + gap : side === 'r' ? r.left - gap - w : room.right - r.right >= r.left - room.left ? Math.max(room.left, room.right - w) : room.left };
+  };
+  const hit = (p: PopupSlot): number => coveredArea({ left: p.left, top: p.top, right: p.left + w, bottom: p.top + Math.min(natural, p.maxH) }, tools);
+  const fits = ([['l', r.right + gap + w <= room.right], ['r', r.left - gap - w >= room.left], ['t', need <= below], ['b', need <= above]] as const)
+    .filter(([, ok]) => ok).map(([k]) => k);
+  let best = at(fits[0] ?? (Math.max(below, above) >= minH ? (below >= above ? 't' : 'b') : ''));
+  let least = hit(best);
+  for (const k of fits.slice(1)) { const p = at(k), a = hit(p); if (a < least - E) { least = a; best = p; } }
+  if (!best.side || least <= E) return best;
+  const across = (t: Box, left: number): boolean => t.right > left + E && t.left < left + w - E;   // a tool in the card's columns
+  const lo = Math.min(natural, minH);   // the card's least height: its own when it is shorter
+  let alt: PopupSlot | null = null, tallest = 0;
+  // a place clear of the tools where the card shows `h` px of itself (its max-height may leave it room to grow)
+  const offer = (p: PopupSlot, h: number): void => { if (h >= lo - E && (!alt || h > tallest + E)) { alt = p; tallest = h; } };
+  // beside it: as tall as the run of the room's height around the target's middle that no tool in the card's columns cuts
+  for (const side of ['l', 'r'] as const) {
+    const left = side === 'l' ? r.right + gap : r.left - gap - w;
+    if (left < room.left - E || left + w > room.right + E) continue;
+    let y0 = room.top, y1 = room.bottom, ok = true;
+    for (const t of tools) {
+      if (!across(t, left)) continue;
+      if (t.bottom <= cy - T + E) y0 = Math.max(y0, t.bottom + C);
+      else if (t.top >= cy + T - E) y1 = Math.min(y1, t.top - C);
+      else { ok = false; break; }   // beside the target's middle: the tail would point into it
+    }
+    const maxH = Math.min(fullH, y1 - y0), h = Math.min(need, maxH);
+    if (ok) offer({ side, left, maxH, top: clamp(cy - h / 2, y0, y1 - h) }, h);
+  }
+  // below or above it: its edge by the target stays, it slides sideways clear of a tool beside (its tail still over the
+  // target's middle; as far as the room's edge where the map is narrow, a laptop's between the columns) and ends before
+  // the tools further off
+  for (const side of ['t', 'b'] as const) {
+    const edge = side === 't' ? r.bottom + gap : r.top - gap, space = Math.min(o.maxH, side === 't' ? below : above);
+    const lefts = [at(side).left, ...tools.flatMap((t) => [t.right + C, t.left - C - w]), room.left, room.right - w]   // (the room's edges: a narrow map)
+      .filter((x) => x >= room.left - E && x + w <= room.right + E && x <= cx - T + E && x + w >= cx + T - E);
+    for (const left of lefts) {
+      let maxH = space, ok = true;
+      for (const t of tools) {
+        if (!across(t, left)) continue;
+        if (side === 't' ? t.bottom <= edge + E : t.top >= edge - E) continue;   // on the target's side of the edge
+        if (side === 't' ? t.top <= edge + E : t.bottom >= edge - E) { ok = false; break; }   // across the edge itself
+        maxH = Math.min(maxH, side === 't' ? t.top - C - edge : edge - C - t.bottom);
+      }
+      const h = Math.min(natural, maxH);
+      if (ok) offer({ side, left, maxH, top: side === 't' ? edge : edge - h }, Math.min(need, maxH));
+    }
+  }
+  return alt ?? best;
+}
+
 const SEEK_MARGIN = 16;   // CSS px a covered target glides clear of the UI's edge
 const CARD_GAP = 8;       // CSS px between what floats over the map and the room a card has beside it (layout.ts clearOf)
 const NUDGE = 96;         // CSS px a target may slide sideways so its card fits beside it (a narrow free map)
@@ -337,7 +415,9 @@ class InspectorCard {
   /** The map's own tools as they stand over the map, in #app px: what a popup should keep clear of where it can. */
   private tools(app: DOMRect): Box[] {
     const out: Box[] = [];
-    for (const id of ['zoom-ctl', 'map-col', 'overlay-bar', 'minimap', 'ticker']) {
+    // (#map-tools whole: the corner its grid leaves between the overlay bar, the minimap and the zoom is no place for a
+    // card either, beside them all)
+    for (const id of ['map-tools', 'zoom-ctl', 'map-col', 'overlay-bar', 'minimap', 'ticker']) {
       const el = document.getElementById(id), b = el?.getBoundingClientRect();
       if (el && b && b.width && b.height && getComputedStyle(el).visibility !== 'hidden') {
         out.push({ left: b.left - app.left, top: b.top - app.top, right: b.right - app.left, bottom: b.bottom - app.top });
@@ -382,7 +462,7 @@ class InspectorCard {
     const r = c && { left: c.left + m.left, right: c.right + m.left, top: c.top + m.top, bottom: c.bottom + m.top };   // canvas → #app px
     const app = (pop.offsetParent ?? document.body).getBoundingClientRect();
     const column = document.getElementById('left')?.getBoundingClientRect();
-    const M = 8, GAP = 10, MAX_H = 560, MIN_H = 180;
+    const M = 8, GAP = POPUP.gap, MIN_H = POPUP.minH;
     // the free map at rest, in #app px: the panel where it comes to rest, not mid-slide (none at all under the medium
     // DOCK's wide pane: the card hides, as for a target panned away)
     const vf = view.freeRect(), fl = currentFloating();
@@ -432,35 +512,12 @@ class InspectorCard {
     }
     const off = !r || bx1 - bx0 < 1 || r.right < 0 || r.left > bx1 || r.bottom < by0 || r.top > by1;
     if (off || !r || !card) { this.apply('hidden', () => { pop.style.visibility = 'hidden'; }); return; }
+    // beside the target, below or above it, clear of the map's tools where it can be (popupSlot)
+    const { side, left, top, maxH } = popupSlot(r, { left: bx0, top: by0, right: bx1, bottom: by1 }, w, natural, this.tools(app));
     const cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
     const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
-    const fullH = Math.min(MAX_H, by1 - by0), need = Math.min(natural, fullH);
-    const below = by1 - (r.bottom + GAP), above = r.top - GAP - by0;
-    type Side = 'l' | 'r' | 't' | 'b' | '';
-    const at = (side: Side): { left: number; top: number; maxH: number } => {
-      if (side === 't' || side === 'b') {
-        const maxH = Math.min(MAX_H, side === 't' ? below : above);
-        return { maxH, top: side === 't' ? r.bottom + GAP : r.top - GAP - Math.min(natural, maxH), left: clamp(cx - w / 2, bx0, Math.max(bx0, bx1 - w)) };
-      }
-      return { maxH: fullH, top: clamp(cy - need / 2, by0, by1 - need),
-        left: side === 'l' ? r.right + GAP : side === 'r' ? r.left - GAP - w : bx1 - r.right >= r.left - bx0 ? Math.max(bx0, bx1 - w) : bx0 };
-    };
-    // beside the target (right first), else below or above it where the whole card fits, else where there is more room;
-    // a target too big for any of these (the forum close up) gets the card over its emptier edge, with no tail. Of the
-    // places where it fits whole, the one that covers least of the map's own tools (the zoom and the tool column, the
-    // overlay bar, the minimap, the ticker), so − and ⌂ stay in reach while it is open
-    const fits = ([['l', r.right + GAP + w <= bx1], ['r', r.left - GAP - w >= bx0], ['t', need <= below], ['b', need <= above]] as const)
-      .filter(([, ok]) => ok).map(([k]) => k as Side);
-    let side: Side = fits[0] ?? (Math.max(below, above) >= MIN_H ? (below >= above ? 't' : 'b') : '');
-    if (fits.length > 1) {
-      const tools = this.tools(app);
-      const hit = (k: Side): number => { const p = at(k), hh = Math.min(natural, p.maxH); return coveredArea({ left: p.left, top: p.top, right: p.left + w, bottom: p.top + hh }, tools); };
-      let least = hit(side);
-      for (const k of fits.slice(1)) { const a = hit(k); if (a < least - E) { least = a; side = k; } }
-    }
-    const { left, top, maxH } = at(side);
     const hh = Math.min(natural, maxH);
-    const tail = side === 't' || side === 'b' ? clamp(cx - left, 14, w - 14) : clamp(cy - top, 14, hh - 14);
+    const T = POPUP.tail, tail = side === 't' || side === 'b' ? clamp(cx - left, T, w - T) : clamp(cy - top, T, hh - T);
     const key = `${Math.round(left)},${Math.round(top)},${Math.round(maxH)},${side},${Math.round(tail)}`;
     this.apply(key, () => {
       pop.style.visibility = '';

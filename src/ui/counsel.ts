@@ -78,6 +78,14 @@ const PULSE_MS = 3000;
 const PULSE_TRIES = 20;
 /** The labour line a lesson card carries on the SHEET (CARD_LESSONS): lesson I's hands go on the fields there. */
 const CARD_LABOUR: Partial<Record<LessonId, LaborCat>> = { fields: 'food' };
+
+/** A kicker with each ' · ' glued to the word before it (a no-break space, as wide as a space in Silkscreen): where the
+ *  line wraps (the tablet's pane head lets it: dock.css) it breaks after the dot, 'MONITVM ·' over 'AQVARVM' and
+ *  'DISCIPLINA ·' over 'I / X', never before it. */
+export function glueKicker(k: string): string {
+  return k.replace(/ · /g, '\u00a0· ');
+}
+
 const APPOINTED_AT: Partial<Record<AdvisorId, string>> = {
   quaestor: 'Appointed at Vicus, or with the first coin trouble', aedilis: 'Appointed at Vicus, or when a house is stuck',
   augur: 'Appointed with the first omen, or on Kal. Sept.',
@@ -521,7 +529,7 @@ export class Counsel {
     const cat = currentHost() === 'sheet' && !x.done && CARD_LESSONS.includes(l.id) ? CARD_LABOUR[l.id] : undefined;
     const labour = cat ? h('div', { class: 'lesson-labour' }, labourEl(g, this.live, [cat])) : null;
     const notes = s.counters.mentorDiedDay !== null;
-    const kicker = h('span', { class: 'counsel-kicker' }, `DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`);
+    const kicker = h('span', { class: 'counsel-kicker' }, glueKicker(`DISCIPLINA · ${toRoman(x.index + 1)} / ${toRoman(LESSONS.length)}`));
     const title = h('span', { class: 'counsel-title' }, l.title);
     // the phone's voice line: 'DISCIPLINA · I / X' and the job's count (1 of 4, 41%) over the title; the job line itself
     // heads the unfolded card under it
@@ -550,7 +558,7 @@ export class Counsel {
     const read = (): void => { g.sfx('click'); if (!this.onRead?.()) g.openTab('council', 'choice', 'chip'); };
     return h('div', { class: 'counsel-card event', role: 'alert' },
       h('div', { class: 'counsel-head', onclick: read }, img('f_seal', 2, 'counsel-face'),
-        h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, caps(c.kicker)), days),
+        h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, glueKicker(caps(c.kicker))), days),
           h('span', { class: 'counsel-title' }, c.title))));
   }
 
@@ -603,7 +611,7 @@ export class Counsel {
     const kicker = `${opp ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])} · ${caps(office)}`;
     return h('div', { class: `counsel-card adv sev-${sev}${opp ? ' opp' : ''}`, role: sev >= 2 ? 'alert' : 'note' },
       h('div', { class: 'counsel-head', onclick: () => this.toggleOpen() }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'counsel-face'),
-        h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, kicker), metric), title)),
+        h('div', { class: 'counsel-who' }, h('div', { class: 'counsel-krow' }, h('span', { class: 'counsel-kicker' }, glueKicker(kicker)), metric), title)),
       h('div', { class: 'counsel-body' }, text, this.remedies(r.remedies),
         h('div', { class: 'counsel-foot' },
           h('span', { class: 'counsel-name' }, def.name),
