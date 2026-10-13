@@ -1,7 +1,7 @@
 // tests/placebanner.test.ts — entering placement (ui/mapbar.openPlacing): a pre-positioned placement (an advisor's "Place
 // it myself", the Consiliarii, "Could be built here") ends with the map's verdict on its tile, so a touch player gets
 // Place at once instead of an empty banner that asks for a second tap. The inspector's Place buttons pre-position too:
-// the slot that serves the house, a free plot in the tapped block. Headless: a stand-in view drives the real Placement
+// the slot that serves the house (else the one nearest it), a free plot in the tapped block. Headless: a stand-in view drives the real Placement
 // as MapView.startPlacing does.
 import { describe, expect, it } from 'vitest';
 import type { BuildingId, GameState, PlaceCheck } from '../src/game/types';
@@ -10,7 +10,9 @@ import { Placement } from '../src/render/placement';
 import { openPlacing } from '../src/ui/mapbar';
 import { fixSlot } from '../src/ui/tabs/house';
 import { canPlace, freePlot, placeBuilding, validSlots } from '../src/game/place';
-import { bestSlot } from '../src/game/site';
+import { bestSlot, resolvePlaceAt } from '../src/game/site';
+import { serveSlot } from '../src/game/advisors/util';
+import { classAt, sizeOf } from '../src/game/derived';
 import { previewCovered } from '../src/game/coverage';
 import { nextTier, unmetNeeds } from '../src/game/housing';
 import { getMap, tx, ty } from '../src/game/map';
@@ -73,6 +75,24 @@ describe('the inspector pre-positions its Place buttons', () => {
       const reach = previewCovered(s, 'puteus', tx(at!), ty(at!)).filter((l) => l.layer === 'water');
       expect(reach.some((l) => l.houses.includes(b.id))).toBe(true);
     }
+  });
+
+  it("with no free slot that reaches the house, its Place still starts by it: the valid slot nearest the house", () => {
+    const s = fresh(42);
+    const b = s.buildings.find((x) => x.house && unmetNeeds(s, x, nextTier(s, x)!).includes('water'))!;
+    expect(b).toBeDefined();
+    // every free slot that reaches it taken (the Ordo builds there) until none serves it
+    for (let i = 0; i < 30; i++) {
+      const at = serveSlot(s, 'puteus', 'player', 'water', [b.id])?.tile;
+      if (at === undefined) break;
+      expect(placeBuilding(s, 'puteus', at, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    }
+    expect(serveSlot(s, 'puteus', 'player', 'water', [b.id])).toBeNull();
+    const at = fixSlot(s, b.id, 'water', 'puteus');
+    expect(at).toBeDefined();
+    expect(validSlots(s, 'puteus', 'player').has(at!)).toBe(true);
+    const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+    expect(at).toBe(resolvePlaceAt(s, 'puteus', undefined, 'player', { near: { x: b.x, y: b.y, w, h } }));
   });
 
   it('"Place a house plot" takes a free plot in the tapped block, then the next one', () => {

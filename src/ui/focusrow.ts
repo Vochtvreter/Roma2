@@ -18,12 +18,13 @@ import type { Host } from './layout';
 import { currentHost, routeIntent } from './layout';
 import { getBuilding } from '../game/state';
 import { footprintOf } from '../game/derived';
+import { wallsRising } from '../game/urbs';
 import { W, idx, tx, ty } from '../game/map';
 import { BUILDING_DEFS } from '../game/data/buildings';
 
 // ───────────────────────────── pure ─────────────────────────────
 /** What a row names on the map: a building or site, a work the Ordo means to raise on a tile, the works a labour
- *  category staffs (the builders: the sites in hand), or the homes in decline. */
+ *  category staffs (the builders: the sites in hand and the town wall while its crew raises it), or the homes in decline. */
 export type FocusSpec =
   | { kind: 'building'; id: number }
   | { kind: 'wish'; type: BuildingId; tile: number }
@@ -42,7 +43,7 @@ export function keepsFocus(host: Host | null): boolean {
 export function focusOfBuilding(id: number): string { return `b:${id}`; }
 /** data-focus for a work the Ordo would raise on a tile (an Agenda row). */
 export function focusOfWish(type: BuildingId, tile: number): string { return `w:${type}:${tile}`; }
-/** data-focus for a labour category (its works; the builders' sites). */
+/** data-focus for a labour category (its works; the builders' sites and the rising town wall). */
 export function focusOfLabour(cat: LaborCat): string { return `c:${cat}`; }
 
 /** data-focus for an advisory, or null when it names nothing on the map (pure): a remedy that centres a building names
@@ -74,7 +75,8 @@ function footRect(s: GameState, b: { type: BuildingId; x: number; y: number }): 
 
 /** The tile rects a row names in a state (pure; tests/focusrow.test.ts), one per object, in the state's order: a
  *  building's footprint (none once it is gone); a wish's footprint at its tile (the work itself once it stands there); a
- *  labour category's finished works with posts (the builders': every site in hand); every home in decline. */
+ *  labour category's finished works with posts (the builders': every site in hand, then the tile of the town wall its
+ *  crew raises next); every home in decline. */
 export function focusRects(s: GameState, f: FocusSpec): Rect[] {
   switch (f.kind) {
     case 'building': { const b = getBuilding(s, f.id); return b ? [footRect(s, b)] : []; }
@@ -85,10 +87,23 @@ export function focusRects(s: GameState, f: FocusSpec): Rect[] {
       return [{ x: tx(f.tile), y: ty(f.tile), w, h }];
     }
     case 'labour':
-      if (f.cat === 'builders') return s.buildings.filter((b) => b.status !== 'done').map((b) => footRect(s, b));
+      if (f.cat === 'builders') {
+        const out = s.buildings.filter((b) => b.status !== 'done').map((b) => footRect(s, b));
+        const at = wallStretch(s);
+        if (at !== null) out.push({ x: tx(at), y: ty(at), w: 1, h: 1 });
+        return out;
+      }
       return s.buildings.filter((b) => b.status === 'done' && BUILDING_DEFS[b.type].labor === f.cat && BUILDING_DEFS[b.type].slots > 0).map((b) => footRect(s, b));
     case 'declining': return s.buildings.filter((b) => b.house?.declining).map((b) => footRect(s, b));
   }
+}
+
+/** The tile of the town wall its crew raises next (the first not yet built, in building order: render/linear.ts
+ *  builtWall), or null while no crew works on it (urbs.wallsRising: none surveyed, finished, or waiting for stone). */
+export function wallStretch(s: GameState): number | null {
+  const mo = s.urbs.moenia;
+  if (!mo || !mo.tiles.length || !wallsRising(s)) return null;
+  return mo.tiles[Math.min(mo.tiles.length - 1, Math.floor(mo.tiles.length * Math.max(0, Math.min(1, mo.progress))))];
 }
 
 /** The smallest tile rect holding every one of `rs` (pure), or null for none. */

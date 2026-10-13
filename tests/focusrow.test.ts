@@ -1,12 +1,14 @@
 // tests/focusrow.test.ts — the focus row's pure part (src/ui/focusrow.ts, DESIGN §15.7): what a ledger row names on the
 // map (its data-focus value, built and read back), and the tile rects that resolves to in a state: a building's
-// footprint, an Agenda wish's, a labour category's works (the builders' sites), the homes in decline; and their union,
-// which the map brings into view; and the hosts whose panel keeps the row (the tablet DOCK, the desktop COLUMNS). Headless:
-// the module touches no DOM at import.
+// footprint, an Agenda wish's, a labour category's works (the builders' sites and the rising town wall), the homes in
+// decline; and their union, which the map brings into view; and the hosts whose panel keeps the row (the tablet DOCK,
+// the desktop COLUMNS). Headless: the module touches no DOM at import.
 import { describe, expect, it } from 'vitest';
 import type { Remedy } from '../src/game/types';
 import { LABOR_CATS } from '../src/game/types';
-import { FOCUS_HOSTS, focusOfAdvisory, focusOfBuilding, focusOfLabour, focusOfWish, focusRects, keepsFocus, parseFocus, unionRect } from '../src/ui/focusrow';
+import { FOCUS_HOSTS, focusOfAdvisory, focusOfBuilding, focusOfLabour, focusOfWish, focusRects, keepsFocus, parseFocus, unionRect, wallStretch } from '../src/ui/focusrow';
+import { commissionWalls, wallsRising } from '../src/game/urbs';
+import { invalidate } from '../src/game/memo';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { footprintOf } from '../src/game/derived';
 import { W, idx } from '../src/game/map';
@@ -70,6 +72,30 @@ describe('what a row names on the map (focusRects)', () => {
     expect(place(s, 'puteus', at.x, at.y).ok).toBe(true);   // a new site
     expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toHaveLength(before + 1);
     expect(focusRects(s, { kind: 'labour', cat: 'water' }).some((r) => r.x === at.x && r.y === at.y)).toBe(false);   // not staffed until done
+  });
+
+  it("the builders: the town wall's next stretch while its crew raises it", () => {
+    const s = fresh();
+    s.rank = 3;
+    invalidate(s);
+    s.res.stone = 1e6;
+    s.res.denarii = 1e6;
+    const sites = focusRects(s, { kind: 'labour', cat: 'builders' });
+    expect(wallStretch(s)).toBeNull();                                    // no wall laid out
+    expect(commissionWalls(s).ok).toBe(true);
+    const mo = s.urbs.moenia!;
+    expect(wallsRising(s)).toBe(true);
+    const tile = (k: number) => ({ x: mo.tiles[k] % W, y: Math.floor(mo.tiles[k] / W), w: 1, h: 1 });
+    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual([...sites, tile(0)]);
+    mo.progress = 0.5;
+    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual([...sites, tile(Math.floor(mo.tiles.length * 0.5))]);
+    mo.progress = 1;
+    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual([...sites, tile(mo.tiles.length - 1)]);
+    mo.done = s.day;                                                      // finished: no crew
+    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual(sites);
+    mo.done = null;
+    s.res.stone = 0;                                                      // waiting for stone: no crew either
+    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual(sites);
   });
 
   it('the declining homes: each of them', () => {

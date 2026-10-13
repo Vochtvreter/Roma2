@@ -10,9 +10,9 @@ import { houseBeds, residents } from '../../game/census';
 import { crowds, houseTax, nextTier, unmetNeeds, firstWant } from '../../game/housing';
 import { getBuilding } from '../../game/lookup';
 import { houseDesir } from '../../game/coverage';
-import { derived } from '../../game/derived';
+import { classAt, derived, sizeOf } from '../../game/derived';
 import { hubOpen, price } from '../../game/trade';
-import { bestSlot } from '../../game/site';
+import { bestSlot, resolvePlaceAt } from '../../game/site';
 import { liftSlot, serveSlot } from '../../game/advisors/util';
 import { personName } from '../../game/people';
 import { overlayRevealed } from '../../game/reveal';
@@ -62,12 +62,17 @@ function crowdHint(g: Game, b: Building, next: HouseTierId): string | null {
 }
 
 /** Where a want's Place button sets the ghost down, as the advisors' remedies do: the free slot that serves house `id`
- *  (a well or shrine reaching it along the streets, a garden lifting its street), else none and the player picks one.
- *  Oil comes by the market hall from anywhere, so a grove goes to the best slot. */
+ *  (a well or shrine reaching it along the streets, a garden lifting its street), else the valid slot nearest the house
+ *  (resolvePlaceAt), so the ghost starts by it with any hand (DESIGN §15.8). Oil comes by the market hall from anywhere,
+ *  so a grove goes to the best slot. Undefined only when the type has no valid slot at all. */
 export function fixSlot(s: GameState, id: number, need: NeedId, type: BuildingId): number | undefined {
-  if (need === 'desirability') return liftSlot(s, 'player', [id])?.tile;
   if (need === 'oil') return bestSlot(s, type, { owner: 'player' })?.tile;
-  return serveSlot(s, type, 'player', need, [id])?.tile;
+  const serves = need === 'desirability' ? liftSlot(s, 'player', [id]) : serveSlot(s, type, 'player', need, [id]);
+  if (serves) return serves.tile;
+  const b = getBuilding(s, id);
+  if (!b) return undefined;
+  const [w, ht] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+  return resolvePlaceAt(s, type, undefined, 'player', { near: { x: b.x, y: b.y, w, h: ht } });
 }
 
 /** How to fix one of house `b`'s unmet needs: a hint and the buttons that do it. */

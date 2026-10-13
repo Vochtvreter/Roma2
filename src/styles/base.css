@@ -8,8 +8,6 @@ html, body {
   margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none;   /* no pull-to-refresh, no rubber band */
   background: var(--bg); color: var(--text);
   font-family: var(--font-body); font-size: var(--fs-base); line-height: 1.35;
-  /* Pixelify Sans ships liga fi/fl/ff/ffi/ffl glyphs that read as "A" ("Aelds", "AediAcia"); Silkscreen has none */
-  font-variant-ligatures: no-common-ligatures; font-feature-settings: "liga" 0, "clig" 0;
   -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; font-smooth: never;
   user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%; text-size-adjust: 100%;   /* a phone turned sideways keeps the type size */
@@ -17,8 +15,9 @@ html, body {
 /* #app and the layers beside it take the body size from their own type scale (tokens.css: Text size Large is set on #app) */
 #app, #app ~ * { font-size: var(--fs-body); }
 button, input, select, textarea { font: inherit; color: inherit; }
-/* Pixelify Sans draws its 'fi' ligature as one glyph that reads as a capital A ('Raise your Arst building'): ligatures
-   off everywhere, form controls included (after their font shorthand, which would reset it) */
+/* Pixelify Sans draws its fi/fl/ff/ffi/ffl ligatures as glyphs that read as a capital A ('Raise your Arst building',
+   'AediAcia'; Silkscreen has none): ligatures off everywhere, form controls included (after their font shorthand, which
+   would reset it) */
 html, body, button, input, select, textarea { font-variant-ligatures: no-common-ligatures; font-feature-settings: 'liga' 0, 'clig' 0; }
 button { cursor: pointer; }
 :focus { outline: none; }
