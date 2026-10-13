@@ -11,7 +11,7 @@
 #side-toggle {
   position: absolute; left: -30px; top: 10px; width: 28px; height: 44px; z-index: var(--z-side-toggle); cursor: pointer; padding: 0;
   background: var(--panel-solid); border: var(--border-w) solid var(--line); border-right: 0; border-radius: var(--r2) 0 0 var(--r2);
-  box-shadow: -2px 0 0 var(--ring); color: var(--muted); font-family: var(--font-caps); font-size: 12px;
+  box-shadow: -2px 0 0 var(--ring); color: var(--muted); font-family: var(--font-caps); font-size: var(--fs-caps);
 }
 #side-toggle:hover { color: var(--ember); }
 #side-toggle::before { content: '▸'; }
@@ -31,14 +31,14 @@
 .side-tab.on { color: var(--gold); border-color: var(--ember); background: linear-gradient(180deg, rgba(240,160,75,.22), rgba(240,160,75,.06)); }
 .side-tab-ico { width: 24px; height: 24px; flex: none; }
 .side-tab-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.05; }
-.side-tab-label { font-family: var(--font-body); font-size: 15px; letter-spacing: .01em; white-space: nowrap; }
-.side-tab-sub { font-size: 11px; color: var(--dim); }
+.side-tab-label { font-family: var(--font-body); font-size: var(--fs-body); letter-spacing: .01em; white-space: nowrap; }
+.side-tab-sub { font-size: var(--fs-xs); color: var(--dim); }
 .side-tab.on .side-tab-sub { color: var(--muted); }
 .side-tab.fresh { color: var(--gold); animation: side-fresh 1.6s ease-in-out infinite; }
 @keyframes side-fresh { 50% { box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 0 12px rgba(242,201,76,.45); } }
 .side-new {
   position: absolute; top: -5px; left: 4px; padding: 0 3px; border-radius: 2px; background: var(--gold); color: #1d1410;
-  font-family: var(--font-caps); font-size: 8px; line-height: 11px; box-shadow: 0 0 0 1px var(--ring);
+  font-family: var(--font-caps); font-size: var(--fs-caps); line-height: 11px; box-shadow: 0 0 0 1px var(--ring);
 }
 /* on the tab's top-right corner, above the label's last letters (the tab columns size to their labels) */
 .side-badge {
@@ -62,24 +62,15 @@
 /* disabled-with-reason buttons stay hoverable so their tooltip can explain */
 .btn.is-off, .btn[aria-disabled='true'] { opacity: .45; cursor: not-allowed; filter: saturate(.6); }
 .btn.is-off:active { transform: none; }
-.tab-new { margin-left: 6px; padding: 0 3px; border-radius: 2px; background: var(--gold); color: #1d1410; font-size: 8px; line-height: 11px; vertical-align: middle; }
+.tab-new { margin-left: 6px; padding: 0 3px; border-radius: 2px; background: var(--gold); color: #1d1410; font-size: var(--fs-caps); line-height: 11px; vertical-align: middle; }
 
-@media (max-width: 1099px) {
-  #side { box-shadow: -2px 0 0 var(--ring), -12px 0 24px rgba(0,0,0,.35); }
-}
+/* Under 900 px the phones' tab buttons (the SHEET's bar, the DRAWER's spine) start from the stacked form; their hosts
+   lay out the rest (sheet.css, drawer.css: the old 46% bottom sheet, its ▾ toggle and the under-1,100 px panel are
+   gone), and the tablet DOCK has none of it (dock.css): it stands off the DOCK at the specificity it had. */
 @media (max-width: 899px) {
-  #side { top: auto; left: 0; right: 0; width: auto; height: var(--sheet-open, 46vh); border-left: 0; border-top: var(--border-w) solid var(--line); box-shadow: 0 -2px 0 var(--ring); }
-  #side.collapsed { transform: translateY(calc(100% - 52px)); }
-  #side-toggle { left: auto; right: 8px; top: -30px; width: 44px; height: 28px; border: var(--border-w) solid var(--line); border-bottom: 0; border-radius: var(--r2) var(--r2) 0 0; }
-  #side-toggle::before { content: '▾'; }
-  #side.collapsed #side-toggle::before { content: '▴'; }
-  #tabs { grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 3px; }
-  .side-tab { flex-direction: column; justify-content: center; gap: 1px; min-height: 44px; padding: 2px; text-align: center; }
-  .side-tab-sub { display: none; }
-  .side-tab-label { font-size: 10px; }
-  .side-tab-ico { width: 20px; height: 20px; }
-  .side-badge { top: -5px; right: 3px; }   /* the stacked phone tabs have room beside the icon */
+  :where(#app:not([data-host='dock'])) #tabs { grid-template-columns: repeat(6, 1fr); gap: 2px; padding: 3px; }
+  :where(#app:not([data-host='dock'])) .side-tab { flex-direction: column; justify-content: center; gap: 1px; min-height: 44px; padding: 2px; text-align: center; }
 }
-@media (max-width: 559px) {
-  .side-tab-label { font-size: 9px; letter-spacing: -.02em; }
-}
+
+/* The desktop COLUMNS' badge spine (the panel folded), its ⤢ and its wide panel (the Tabularium): columns.css. */
+.side-wide { display: none; }

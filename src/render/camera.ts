@@ -2,6 +2,9 @@
 // World px: 16 per tile. Screen coordinates here are DEVICE px (the canvas backing store). The camera always holds the
 // settled state (integer scale); `Motion` adds the cosmetic in-between — a fling after a drag, eased keyboard glides
 // and a short eased zoom — which changes only what is drawn, never what the camera reports for picking.
+// Insets: the canvas stays full-bleed under the UI (the HUD, the panel, the left column). What the UI covers is given as
+// device-px insets per side, and the rest is the FREE rect: centring, the zoom anchor, the clamp and ensureVisible work in
+// it, while x, y stay the world px at the canvas centre, so picking, drawing and the fling never change.
 import type { Rect } from '../game/types';
 import { H, W } from '../game/map';
 import { B } from '../game/balance';
@@ -29,14 +32,85 @@ export interface Xform { k: number; ox: number; oy: number }
 /** Adds an object to the frame's y-sorted draw list (sort key: footprint bottom in world px, then x). */
 export type Push = (y: number, x: number, draw: (g: CanvasRenderingContext2D) => void) => void;
 
+/** The most device px per CSS px the map's canvas draws at: a sharper screen (or a browser zoomed past 150% on a 2×
+ *  one) still gets a 3× backing store, which is crisp enough and keeps the fill rate in bounds. */
+export const DPR_MAX = 3;
+
+/** The canvas's device px per CSS px for the window's `devicePixelRatio` (1 when it is missing): the view's backing
+ *  store and zoom scale, the minimap's and the labels' size all read this one, so they agree past 3×. */
+export function canvasDpr(raw: number | undefined): number {
+  return Math.min(DPR_MAX, raw || 1);
+}
+
+/** The map's labels (placement.ts label, the particles' floating words) are Silkscreen, drawn 8 font pixels to the em:
+ *  8 world px puts one font pixel on one world pixel, crisp at every whole zoom. */
+export const LABEL_GRID = 8;
+/** The type floor on the screen (DESIGN §16.1), in CSS px. */
+export const LABEL_MIN_CSS = 12;
+
+/** The world-px size of a map label at `cssPerWorld` CSS px per world px (the zoom level, or the transform's scale over
+ *  the dpr): the least multiple of the 8 px grid that stands at 12 CSS px or more on the screen. 8 from zoom 2 (16 CSS
+ *  px: the default zoom is 2 or 3), 16 at zoom 1. */
+export function labelPx(cssPerWorld: number): number {
+  return LABEL_GRID * Math.max(1, Math.ceil(LABEL_MIN_CSS / (LABEL_GRID * Math.max(cssPerWorld, 0.01)) - 1e-9));
+}
+
+/** A line of a map label: its words and the world-px x it is centred on. */
+export interface LabelLine { text: string; x: number }
+
+/** Lays out a map label meant to stand centred on `x`, between `lo` and `hi` (the view's edges, world px): its centre slid
+ *  in from an edge so the plate stays whole on the screen, and, when even the whole view is too narrow for it (a plot's
+ *  verdict at 16 CSS px on a 375 px phone), broken at the space that balances the two lines best. `width` gives a line's
+ *  plate width in world px. A line still wider than the view (one long word) is centred on the view. */
+export function labelLines(text: string, x: number, lo: number, hi: number, width: (s: string) => number): LabelLine[] {
+  const room = hi - lo;
+  let lines = [text];
+  if (width(text) > room) {
+    let best = Infinity;
+    for (let i = text.indexOf(' '); i > 0; i = text.indexOf(' ', i + 1)) {
+      const two = [text.slice(0, i), text.slice(i + 1)], w = Math.max(width(two[0]), width(two[1]));
+      if (w < best) { best = w; lines = two; }
+    }
+  }
+  return lines.map((t) => {
+    const w = width(t);
+    return { text: t, x: w >= room ? (lo + hi) / 2 : Math.min(Math.max(x, lo + w / 2), hi - w / 2) };
+  });
+}
+
 /** Device px per world px for a zoom level: max(1, round(level × dpr)). */
 export function scaleFor(level: number, dpr: number): number {
   return Math.max(1, Math.round(level * dpr));
 }
 
-/** The default zoom level: 3 on desktop, 2 below 700 CSS px (DESIGN §3.1). */
-export function defaultLevel(cssWidth: number): number {
-  return cssWidth < B.ui.ZOOM_SMALL_W ? B.ui.ZOOM_SMALL : B.ui.ZOOM_DEFAULT;
+/** The default zoom level for a free map whose shorter side is `cssSize` CSS px: 3, or 2 below 700 (DESIGN §3.1). The
+ *  view passes min(free width, free height): a landscape phone (393 px tall) and a docked tablet get 2, a desktop 3. */
+export function defaultLevel(cssSize: number): number {
+  return cssSize < B.ui.ZOOM_SMALL_W ? B.ui.ZOOM_SMALL : B.ui.ZOOM_DEFAULT;
+}
+
+/** Device px the UI covers on each side of the canvas; the free rect is the canvas less these. */
+export interface Insets { top: number; right: number; bottom: number; left: number }
+/** No UI over the map (the title screen, a test). */
+export const NO_INSETS: Readonly<Insets> = Object.freeze({ top: 0, right: 0, bottom: 0, left: 0 });
+
+/** The insets a camera can use: none when they would leave no free rect (a panel over the whole map), so centring and
+ *  the clamp still mean something there. */
+function usable(c: Camera, i: Insets): Insets {
+  return c.vw - i.left - i.right >= 1 && c.vh - i.top - i.bottom >= 1 ? i : NO_INSETS;
+}
+
+/** The device-px centre of the free rect. */
+export function freeCentre(c: Camera, insets: Insets): { sx: number; sy: number } {
+  const i = usable(c, insets);
+  return { sx: (i.left + c.vw - i.right) / 2, sy: (i.top + c.vh - i.bottom) / 2 };
+}
+
+/** Moves the camera so world point (wx, wy) shows at the free-rect centre (unclamped: the caller clamps). */
+export function centerOnFree(c: Camera, wx: number, wy: number, insets: Insets): void {
+  const f = freeCentre(c, insets);
+  c.x = wx - (f.sx - c.vw / 2) / c.scale;
+  c.y = wy - (f.sy - c.vh / 2) / c.scale;
 }
 
 /** A camera at the map centre, default level, 1×1 viewport (resize() fills in the real size). */
@@ -55,17 +129,40 @@ export function screenToWorld(c: Camera, sx: number, sy: number): { wx: number; 
   return { wx: (sx - c.vw / 2) / c.scale + c.x, wy: (sy - c.vh / 2) / c.scale + c.y };
 }
 
-function clampAxis(center: number, viewWorld: number, worldSize: number): number {
-  const need = Math.min(viewWorld * MIN_VISIBLE, worldSize);
-  const lo = need - viewWorld / 2;
-  const hi = worldSize - need + viewWorld / 2;
-  return lo > hi ? worldSize / 2 : Math.max(lo, Math.min(hi, center));
+/** One axis of the clamp: the free span runs from centre + a to centre + b (world px) and must overlap the map by
+ *  `need`; a span that cannot (the map smaller than the rule) is centred on the map instead. */
+function clampAxis(center: number, a: number, b: number, worldSize: number): number {
+  const need = Math.min((b - a) * MIN_VISIBLE, worldSize);
+  const lo = need - b;
+  const hi = worldSize - need - a;
+  return lo > hi ? worldSize / 2 - (a + b) / 2 : Math.max(lo, Math.min(hi, center));
 }
 
-/** Keeps at least 25% of the viewport on the map. */
-export function clampCamera(c: Camera): void {
-  c.x = clampAxis(c.x, c.vw / c.scale, WORLD_W);
-  c.y = clampAxis(c.y, c.vh / c.scale, WORLD_H);
+/** Keeps at least 25% of the free rect (the whole viewport without insets) on the map. */
+export function clampCamera(c: Camera, insets: Insets = NO_INSETS): void {
+  const i = usable(c, insets), s = c.scale;
+  c.x = clampAxis(c.x, (i.left - c.vw / 2) / s, (c.vw / 2 - i.right) / s, WORLD_W);
+  c.y = clampAxis(c.y, (i.top - c.vh / 2) / s, (c.vh / 2 - i.bottom) / s, WORLD_H);
+}
+
+/** One axis of ensureVisibleDelta, in device px: the span [s0, s1] inside [f0, f1] with a margin (shrunk to fit). */
+function visibleAxis(s0: number, s1: number, f0: number, f1: number, margin: number): number {
+  const size = s1 - s0, room = f1 - f0;
+  if (size > room) return s0 > f0 ? s0 - f0 : s1 < f1 ? s1 - f1 : 0;   // too big: fill the free span, nearest edge first
+  const m = Math.min(margin, (room - size) / 2);
+  return s0 < f0 + m ? s0 - (f0 + m) : s1 > f1 - m ? s1 - (f1 - m) : 0;
+}
+
+/** The smallest camera move (world px, to add to x and y) that brings a world-px rect inside the free rect, `marginPx`
+ *  device px clear of its edges (less when the rect barely fits); (0, 0) when it is inside already. A rect bigger than
+ *  the free rect is moved only until it fills it. */
+export function ensureVisibleDelta(c: Camera, r: { x: number; y: number; w: number; h: number }, insets: Insets, marginPx: number): { dx: number; dy: number } {
+  const i = usable(c, insets);
+  const a = worldToScreen(c, r.x, r.y), b = worldToScreen(c, r.x + r.w, r.y + r.h);
+  return {
+    dx: visibleAxis(a.sx, b.sx, i.left, c.vw - i.right, marginPx) / c.scale,
+    dy: visibleAxis(a.sy, b.sy, i.top, c.vh - i.bottom, marginPx) / c.scale,
+  };
 }
 
 /** The tile rectangle in view (plus a margin in tiles), clipped to the map. */
@@ -114,13 +211,18 @@ export class Motion {
     this.vx = this.vy = this.gx = this.gy = 0;
   }
 
+  /** True while a fling, a glide or a zoom ease still moves the camera (the view keeps drawing, paused or not). */
+  get busy(): boolean {
+    return this.vx !== 0 || this.vy !== 0 || this.gx !== 0 || this.gy !== 0 || this.zoom !== null;
+  }
+
   /** Eases the next frames from scale `s0` to the camera's scale around a device-px anchor. */
   easeZoom(s0: number, ax: number, ay: number): void {
     this.zoom = { s0, ax, ay, t: 0 };
   }
 
-  /** Advances the motion and moves the camera; true while anything still moves. */
-  step(c: Camera, dtMs: number): boolean {
+  /** Advances the motion and moves the camera (clamped to the free rect of `insets`); true while anything still moves. */
+  step(c: Camera, dtMs: number, insets: Insets = NO_INSETS): boolean {
     const dt = dtMs / 1000;
     let moving = false;
     if (this.vx || this.vy) {
@@ -144,7 +246,7 @@ export class Motion {
     }
     if (moving) {
       const px = c.x, py = c.y;
-      clampCamera(c);
+      clampCamera(c, insets);
       if (px !== c.x) this.vx = this.gx = 0;
       if (py !== c.y) this.vy = this.gy = 0;
     }

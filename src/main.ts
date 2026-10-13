@@ -1,5 +1,8 @@
 // src/main.ts — App implements Game: the fixed-step loop, speeds, autosave, offline catch-up, title/game modes
 // (ARCHITECTURE §11.4–11.5, §13.2, §13.8). Owner: WP-H.
+// The loop turns on animation frames while the map shows, and on a COVERED_HZ timer while the UI covers all of it
+// (layout.ts mapCovered → view.suspend: nothing is drawn, the browser may skip its frames); its clock (game/loop.ts)
+// counts whole wall µs either way, so the colony runs at the chosen speed whatever the rate.
 import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/600.css';
 import '@fontsource/silkscreen/400.css';
@@ -21,12 +24,14 @@ import {
 } from './game/save';
 import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
+import { COVERED_DT_CLAMP, COVERED_HZ, advance, startClock, zeroOwed } from './game/loop';
+import type { Clock } from './game/loop';
 import { hashStr } from './game/rng';
 import { getBuilding } from './game/state';
-import { idx } from './game/map';
+import { idx, tx, ty } from './game/map';
+import { BUILDING_DEFS } from './game/data/buildings';
 import { blockOfTile, derived } from './game/derived';
-import { bestSlot } from './game/site';
-import { canPlace } from './game/place';
+import { resolvePlaceAt } from './game/site';
 import * as actions from './game/actions';
 import { applyRemedy as applySimRemedy, checkRemedy } from './game/advisors/remedies';
 import { MapView } from './render/view';
@@ -34,15 +39,20 @@ import type { PlacingState } from './render/view';
 import { registerAllArt } from './render/art/index';
 import { footprintRect } from './render/buildings';
 import { UI } from './ui/index';
-import { openPlacing } from './ui/mapbar';
 import { initTooltips } from './ui/dom';
 import { initKeys } from './ui/keys';
+import { initBack } from './ui/history';
 import { setTitleNotice } from './ui/title';
 import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
 import { closeAllModals, exportDue, modalCount } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
+import { afterPlace, keepPlacing, keepable, openPlacing, startAt } from './ui/mapbar';
+import { lastTouch, touchInput } from './ui/pointer';
 import type { Game, InspectTarget, Mode, SfxName } from './ui/types';
+import type { OpenFrom } from './ui/layout';
+import { isPhone, slimBanner } from './ui/layout';
+import { askPersist, keepCopyWhy, platform, registerWorker } from './ui/platform';
 
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
@@ -60,8 +70,8 @@ class App implements Game {
   mode: Mode = 'title';
   /** The UI root (public for ?dev inspection). */
   readonly ui: UI;
-  private acc = 0;
-  private last = 0;
+  private clock: Clock = startClock(0);
+  private timer = 0;   // the covered loop's next turn (schedule), 0 while the loop runs on animation frames
   private saveTimer = 0;
   private hiddenAt = 0;
   private fxBuf: FxEvent[] = [];
@@ -74,7 +84,6 @@ class App implements Game {
   private broken = false;
   private titleFailed = false;
   private nudged = false;
-  private persistAsked = false;
 
   constructor() {
     registerAllArt();
@@ -96,6 +105,7 @@ class App implements Game {
     });
     this.ui = new UI(this);
     this.ui.build();
+    initBack(this);
     initKeys(this, DEV);
     try { this.view.attach(this.state); } catch (e) {   // a save that loads but cannot be drawn: a fresh map behind the title
       console.error('[castra] the saved colony could not be shown', e);
@@ -103,13 +113,23 @@ class App implements Game {
       this.view.attach(this.state);
     }
     window.addEventListener('resize', () => this.view.resize());
+    // iOS ignores user-scalable=no: a pinch on the chrome would zoom the page (the map's own pinch is pointer events)
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
     document.addEventListener('visibilitychange', () => this.onVisibility());
     window.addEventListener('pagehide', () => { if (this.mode === 'game') this.write(false); });
     // another tab entered a game: it owns the save now (R02); a page restored from the back-forward cache checks too
     window.addEventListener('storage', (e) => { if (e.key === KEYS.owner && this.mode !== 'title' && !ownsSave(this.sid)) this.yieldToOtherTab(); });
     window.addEventListener('pageshow', (e) => { if (e.persisted && this.mode !== 'title' && !ownsSave(this.sid)) this.yieldToOtherTab(); });
+    // the map shows again (a detent, the free map): a turn waiting on the covered timer runs at the next frame instead
+    this.ui.layout.onChange(() => this.wake());
+    // the map's labels are Silkscreen: a paused, idle map drawn before the face arrived draws again with it
+    try { document.fonts?.addEventListener?.('loadingdone', () => this.view.invalidate()); } catch { /* no font events */ }
+    // an app from the Home Screen asks at once to keep its storage (WebKit grants it there; the Menu shows the answer)
+    if (platform().standalone) askPersist();
+    // the offline worker (public/sw.js): built pages only, the dev server serves the sources
+    if (import.meta.env.PROD) registerWorker(import.meta.url, () => toast('A new version of the game is ready: it runs from the next launch.', 'info', 'i_seal', 8000));
     this.ui.showTitle();
-    requestAnimationFrame((t) => { this.last = t; this.frame(t); });
+    requestAnimationFrame((t) => { this.clock = startClock(t); this.frame(t); });
   }
 
   // ───────────────────────────── Game ─────────────────────────────
@@ -139,6 +159,7 @@ class App implements Game {
 
   changed(): void {
     this.ui.changed();
+    this.view.invalidate();   // a paused map draws what an action changed (view.frame skips its idle frames)
   }
 
   act(r: ActionResult, opts?: { okSfx?: SfxName; okToast?: string }): ActionResult {
@@ -156,7 +177,16 @@ class App implements Game {
   startPlacing(p: PlacingState): void {
     if (this.mode !== 'game') return;
     this.sfx('click');
-    openPlacing(this.view, (q, check) => this.ui.showPlaceBanner(q, check), p, this.state);
+    this.beginPlacing(p);
+  }
+
+  /** Placing starts (or goes on to the next plot: placeAt). A finger's ghost, or any on a phone host, starts on the
+   *  best plot when none was given (startAt), so Place shows at once. The banner opens first (mapbar.openPlacing): a
+   *  pre-positioned ghost reports its verdict from view.startPlacing (onPlacementPreview), and on touch that verdict
+   *  carries the Place button, which a banner drawn after it would wipe. */
+  private beginPlacing(p: PlacingState): void {
+    const at = startAt(p, touchInput(), isPhone(this.ui.layout.host), () => (p.kind === 'building' ? resolvePlaceAt(this.state, p.type) : undefined));
+    openPlacing(this.view, (q, check) => this.ui.showPlaceBanner(q, check), at, this.state);
   }
 
   cancelPlacing(): void {
@@ -168,7 +198,17 @@ class App implements Game {
     const p = this.view.placing;
     if (!p || p.kind !== 'building') return;
     const r = this.act(actions.place(this.state, p.type, tile, { owner: 'player', replaceId: p.replaceId }), { okSfx: 'place' });
-    if (r.ok && !shift) this.cancelPlacing();
+    const touch = lastTouch();   // the press of this Place: a finger's Place button, or a mouse's click
+    // ⟳ is the slim banners' (the phones' and the tablet's, mapbar.ts): on the desktop a finger's Place ends the placing,
+    // as it always did
+    const next = afterPlace({ ok: r.ok, shift, touch, keep: keepPlacing() && keepable(p.type) && slimBanner(this.ui.layout.host), moving: p.replaceId !== undefined });
+    if (next === 'end') { this.ui.placed(); this.cancelPlacing(); }   // placed: a phone's panel stays closed (no spring back)
+    else if (next === 'more' && touch) {
+      // ⟳ on touch: the ghost goes on to the free plot nearest the one just taken (a mouse's ghost follows the mouse)
+      const [w, hh] = BUILDING_DEFS[p.type].size;
+      const near = resolvePlaceAt(this.state, p.type, undefined, 'player', { near: { x: tx(tile), y: ty(tile), w, h: hh } });
+      this.beginPlacing({ kind: 'building', type: p.type, at: near });
+    }
   }
 
   inspect(t: InspectTarget | null, sticky: boolean): void {
@@ -180,22 +220,37 @@ class App implements Game {
   }
 
   select(id: number | null): void {
+    if (id !== null) this.showOnMap();
     this.view.select(id);
     this.inspect(id === null ? null : { kind: 'building', id }, true);
   }
 
+  /** Centres a tile, or the building on it (its whole footprint), in the free map, and flashes it. */
   focusTile(tile: number): void {
-    this.view.centerOn(tile);
+    this.showOnMap();
     const id = derived(this.state).buildingAt[tile] ?? 0;
     const b = id > 0 ? getBuilding(this.state, id) : undefined;
     if (b) {
       const r = footprintRect(this.state, b);
+      this.view.centerOn(r);
       this.view.flash(idx(r.x, r.y), r.w, r.h);
-    } else this.view.flash(tile, 1, 1);
+    } else {
+      this.view.centerOn(tile);
+      this.view.flash(tile, 1, 1);
+    }
   }
 
-  openTab(tab: TabId, anchor?: string): void {
-    this.ui.side.open(tab, anchor);
+  /** The map is asked to show something (a selection, a centred tile: an Annales line, a remedy's Look, a ledger row): on a
+   *  tablet or the desktop the panel makes room first (layout.route focus: the DOCK's wide pane under 960 px, which leaves
+   *  no map, docks), so the centring and the popup land in the map that shows. A phone routes its context card itself
+   *  (UI inspector.onPin), and its centring stays as it was. */
+  private showOnMap(): void {
+    const L = this.ui.layout;
+    if (L && !isPhone(L.host)) L.go({ kind: 'focus' });
+  }
+
+  openTab(tab: TabId, anchor?: string, from?: OpenFrom, shift?: boolean): void {
+    this.ui.side.open(tab, anchor, from, shift);
   }
 
   prefillContract(spec: ContractSpec): void {
@@ -208,12 +263,10 @@ class App implements Game {
     const check = checkRemedy(s, r);
     if (!check.ok) { toast(check.reason, 'bad'); this.sfx('error'); return; }
     switch (r.kind) {
-      case 'place': {   // a remedy's tile can be taken since it was rendered (the Ordo built there): the best slot instead
-        const at = r.tile !== undefined && canPlace(s, r.building, r.tile, { owner: 'player' }).ok ? r.tile : bestSlot(s, r.building, { owner: 'player' })?.tile;
-        this.startPlacing({ kind: 'building', type: r.building, at });
+      case 'place':   // a remedy's tile can be taken since it was rendered (the Ordo built there): the best slot instead
+        this.startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) });
         return;
-      }
-      case 'open': this.openTab(r.tab, r.anchor); return;
+      case 'open': this.openTab(r.tab, r.anchor, 'remedy'); return;
       case 'overlay': this.view.setOverlay(r.overlay, r.layer); return;
       case 'contract': this.prefillContract(r.spec); return;
       case 'building':
@@ -307,16 +360,17 @@ class App implements Game {
     this.broken = false;
     claimSave(this.sid);
     setTitleNotice(null);
-    this.acc = 0;
+    this.clock = zeroOwed(this.clock);
     this.saveTimer = 0;
     this.fxBuf = [];
     drainActionFx();
     this.run = null;
     this.pathCount = Object.keys(s.decisions.paths).length;
+    try { this.rates = previewRates(s); } catch { this.rates = emptyRates(); }
+    // the chrome first: the view centres and picks its zoom for the map the HUD, the panel and the column leave free
+    this.ui.hideTitle();
     try { this.view.attach(s); } catch (e) { this.fail(e); }   // a save that loads but cannot be drawn: stop, offer Export
     this.view.setInputEnabled(true);
-    try { this.rates = previewRates(s); } catch { this.rates = emptyRates(); }
-    this.ui.hideTitle();
     this.ui.showPlaceBanner(null, null);
     this.inspect(null, true);
   }
@@ -355,6 +409,8 @@ class App implements Game {
       if (this.mode === 'game') this.write(false);
       return;
     }
+    // the loop's clock starts again from now: the time away is the catch-up's (below), never also the first turn's
+    this.clock = advance(this.clock, performance.now(), 0, { run: false, clamp: 0 }).clock;
     const away = this.hiddenAt > 0 ? Date.now() - this.hiddenAt : 0;
     this.hiddenAt = 0;
     if (this.mode === 'title') { this.ui.showTitle(); return; }   // another tab may have saved meanwhile: re-read the save
@@ -377,10 +433,7 @@ class App implements Game {
     if (!ok && (loud || !this.saveWarned)) toast(SAVE_FAIL, 'bad', undefined, 8000);
     this.saveWarned = !ok;
     this.saveTimer = 0;
-    if (ok && !this.persistAsked) {   // ask the browser not to evict the only copy (Safari drops idle sites' storage)
-      this.persistAsked = true;
-      try { void navigator.storage?.persist?.().catch(() => false); } catch { /* not offered */ }
-    }
+    if (ok) askPersist();   // ask the browser (once) not to evict the only copy (Safari drops idle sites' storage)
     return ok;
   }
 
@@ -405,7 +458,8 @@ class App implements Game {
   private remindExport(): void {
     if (this.nudged || this.mode !== 'game' || !exportDue(this.state)) return;
     this.nudged = true;
-    toast('Keep a copy of the colony: Menu → Export.', 'info', 'i_seal', 10_000, 'It lives only in this browser, and Safari forgets sites left unvisited for a week.');
+    // Safari's week only in a Safari tab: an app from the Home Screen keeps its own storage (platform.ts)
+    toast('Keep a copy of the colony: Menu → Export.', 'info', 'i_seal', 10_000, keepCopyWhy(platform()));
   }
 
   /** The state drifting behind the title when there is no readable save. */
@@ -468,19 +522,52 @@ class App implements Game {
   }
 
   // ───────────────────────────── the loop ─────────────────────────────
+  /** One turn of the loop at wall time `t` (ms): the clock (game/loop.ts) says how many ticks are due, then step(). */
   private frame(t: number): void {
-    requestAnimationFrame((n) => this.frame(n));   // queued first: a throw below cannot stop the loop
-    const dt = Math.min(B.time.DT_CLAMP, Math.max(0, (t - this.last) / 1000));
-    this.last = t;
+    this.schedule();   // queued first: a throw below cannot stop the loop
+    // hidden (only the covered timer still turns then): no time counts here, the catch-up counts it (onVisibility)
+    if (document.hidden) { this.clock = advance(this.clock, t, 0, { run: false, clamp: 0 }).clock; return; }
+    const run = this.mode === 'game' && !this.paused && !this.modalOpen && !this.broken;
+    const turn = advance(this.clock, t, this.speed, { run, clamp: this.view.suspended ? COVERED_DT_CLAMP : B.time.DT_CLAMP });
+    this.clock = turn.clock;
     try {
-      this.step(t, dt);
+      this.step(t, turn.dt, turn.ticks);
     } catch (e) {
       this.fail(e);
     }
   }
 
-  private step(t: number, dt: number): void {
+  /** Queues the next turn: the next animation frame while the map shows; while the UI covers all of it
+   *  (view.suspended), a timer at COVERED_HZ (≥ 12 Hz), which leaves the browser free to skip its frames (nothing on the
+   *  canvas changes) and still runs the colony at full rate (game/loop.ts: its turns lose no sim time). Not during a
+   *  catch-up: its slices run once a turn, and the time away should pass as fast as frames come. */
+  private schedule(): void {
+    if (this.view.suspended && this.mode !== 'catchup') this.timer = window.setTimeout(() => { this.timer = 0; this.frame(performance.now()); }, 1000 / COVERED_HZ);
+    else requestAnimationFrame((n) => this.frame(n));
+  }
+
+  /** The map shows again: a turn waiting on the covered timer runs at the next animation frame instead (one loop
+   *  only: the timer it replaces is the loop's next turn). */
+  private wake(): void {
+    if (!this.timer) return;
+    window.clearTimeout(this.timer);
+    this.timer = 0;
+    requestAnimationFrame((n) => this.frame(n));
+  }
+
+  /** Asks the layout whether the UI covers all of the map (layout.ts mapCovered: the SHEET or the DRAWER full, the DOCK's
+   *  wide pane under 960 px, a phone's modal sheet) and suspends the map's drawing while it does; shown again, the loop
+   *  goes back to animation frames at once. */
+  private cover(): void {
+    const on = this.ui.layout?.covered(this.modalOpen) ?? false;
+    if (on === this.view.suspended) return;
+    this.view.suspend(on);
+    if (!on) this.wake();
+  }
+
+  private step(t: number, dt: number, ticks: number): void {
     const s = this.state;
+    this.cover();
     if (this.mode === 'catchup' && this.run) {
       const run = this.run;
       const t0 = performance.now();
@@ -491,18 +578,12 @@ class App implements Game {
       if (done) this.finishCatchup(run);
       return;
     }
-    if (this.mode === 'game' && !this.paused && !this.modalOpen && !this.broken) {
-      this.acc += dt * this.speed;
-      let steps = 0;
-      while (this.acc >= 1 && steps < B.time.MAX_STEPS) {
-        const ctx = newCtx();
-        tick(s, ctx);
-        this.rates = ctx.rates;
-        for (const e of ctx.fx) this.fxBuf.push(e);
-        this.acc -= 1;
-        steps++;
-      }
-      if (steps === B.time.MAX_STEPS) this.acc = 0;
+    // the ticks the clock found due (game/loop.ts: a game, not paused, no modal, not broken)
+    for (let i = 0; i < ticks; i++) {
+      const ctx = newCtx();
+      tick(s, ctx);
+      this.rates = ctx.rates;
+      for (const e of ctx.fx) this.fxBuf.push(e);
     }
     if (this.mode === 'title') this.view.titleDrift(dt * 1000, s);
     for (const e of drainActionFx()) this.fxBuf.push(e);

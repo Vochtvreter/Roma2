@@ -1,15 +1,19 @@
 // src/ui/steady.ts — keeps what the player points at in place while the colony changes around it. Owner: WP-I.
 // ScrollAnchor: a scrolling list that is rebuilt or re-measured keeps the element under the mouse (else the first one in
 // view) where it was, borrowing blank room above or below while the mouse rests there. PointerHold: a widget defers
-// structural rebuilds while the mouse rests on it, except as the answer to the player's own click. Ratchet: a widget's
+// structural rebuilds while the mouse rests on it, except as the answer to the player's own click, and always while a
+// press made in it is still held (a finger holding a repeating ±). Ratchet: a widget's
 // box only grows while it is on screen, so a shorter number or date never pulls its neighbours across.
 import { h } from './dom';
 import { B } from '../game/balance';
+import { onTextSize } from './textsize';
 
 /** Elements a scroll anchor can find again after a rebuild: section anchors and list rows with a stable key. */
 const KEYED = '[data-key],[data-anchor]';
 /** After a click inside a held widget, rebuilds go through for this long: the click's own consequence shows at once. */
 const RELEASE_MS = 2000;
+/** A press held longer than this is taken for one whose let-go was lost (the window lost focus mid-press): it holds no more. */
+const PRESS_MAX_MS = 10_000;
 
 function keyOf(el: Element): string | null {
   const k = (el as HTMLElement).dataset;
@@ -105,20 +109,40 @@ export class ScrollAnchor {
   }
 }
 
-/** Tracks the mouse resting on a widget and the player's clicks in it. */
+/** Tracks the mouse resting on a widget, the player's clicks in it, and a press still held down there (a finger holding
+ *  a ± that repeats: labour.ts). */
 export class PointerHold {
   private over = false;
   private downAt = -Infinity;
+  private readonly down = new Set<number>();   // pointers pressed in the widget and not yet let go (anywhere)
 
   constructor(el: HTMLElement) {
     el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') this.over = true; });
     el.addEventListener('pointerleave', () => { this.over = false; });
-    el.addEventListener('pointerdown', () => { this.downAt = performance.now(); });
+    el.addEventListener('pointerdown', (e) => { this.downAt = performance.now(); this.down.add(e.pointerId); });
+    // the let-go is heard wherever it happens: a finger that slid off the button still ends its press. A long press
+    // counts as a click at its let-go (the guard runs from there); a quick one keeps its press time, as it always had
+    const up = (e: PointerEvent): void => {
+      if (!this.down.delete(e.pointerId)) return;
+      const now = performance.now();
+      if (now - this.downAt > B.ui.CLICK_GUARD_MS) this.downAt = now;
+    };
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+    window.addEventListener('blur', () => this.down.clear());
   }
 
-  /** True while a rebuild must wait: just after a click (it would swap the button being pressed), or while the mouse
-   *  rests on the widget and has not clicked lately (the player is reading it or aiming at it). */
+  /** True while a pointer that went down in the widget is still down: a rebuild then would tear the button out from under
+   *  a held finger (a ± repeating), whatever the time since the press. */
+  pressed(now = performance.now()): boolean {
+    if (this.down.size && now - this.downAt > PRESS_MAX_MS) this.down.clear();
+    return this.down.size > 0;
+  }
+
+  /** True while a rebuild must wait: a press still held, just after a click or a let-go (it would swap the button being
+   *  pressed), or while the mouse rests on the widget and has not clicked lately (the player is reading it or aiming at it). */
   holds(now = performance.now()): boolean {
+    if (this.pressed(now)) return true;
     const since = now - this.downAt;
     if (since < B.ui.CLICK_GUARD_MS) return true;
     return this.over && since > RELEASE_MS;
@@ -151,7 +175,8 @@ export class ControlHold {
   }
 }
 
-/** Grow-only widths: each element keeps the widest box it has had, until reset (a resize or a new layout). */
+/** Grow-only widths: each element keeps the widest box it has had, until reset (a resize, a new layout, another Text
+ *  size: textsize.ts). */
 export class Ratchet {
   private readonly els = new Set<HTMLElement>();
   private readonly mq: MediaQueryList | null;
@@ -160,6 +185,7 @@ export class Ratchet {
   constructor(off?: string) {
     this.mq = off && typeof matchMedia === 'function' ? matchMedia(off) : null;
     if (typeof window !== 'undefined') window.addEventListener('resize', () => this.reset());
+    onTextSize(() => this.reset());
   }
 
   /** Widens each element's floor to its current width (call after the frame's text writes). */

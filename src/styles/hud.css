@@ -1,5 +1,8 @@
 /* src/styles/hud.css — owner H (WP-H UI shell). The HUD bar (DESIGN §15.2) and the vital tablets (§11.11).
-   Left to right: brand · Grain and Aqua tablets · coin · souls · spirits · dignitas · materials (2-row grid) · date · speed · menu. */
+   Left to right: brand · Grain and Aqua tablets · coin · souls · spirits · dignitas · materials (2-row grid) · date · speed · menu.
+   Every figure (data-fig) opens the Breviarium (tray.css). A portrait phone (the SHEET host) lays the same elements out
+   as one 52 px row, a landscape phone (the DRAWER host) as one 44 px row: the last two sections; the tablet's DOCK as one
+   56 px row in dock.css. The view control stands before the speeds on the DOCK, at the map's top-left on the COLUMNS. */
 
 #hud {
   position: absolute; top: 0; left: 0; right: 0; height: var(--hud-h); z-index: var(--z-hud);
@@ -7,7 +10,9 @@
   background: linear-gradient(rgba(29, 21, 17, .97), rgba(36, 26, 21, .94));
   border-bottom: 2px solid var(--line); box-shadow: 0 2px 0 var(--ring), 0 6px 18px rgba(0, 0, 0, .4);
 }
+#app[data-input='touch'] #hud { background: linear-gradient(#1d1511, #241a15); }   /* solid where the blur is off (tokens.css) */
 #hud > * { flex: 0 0 auto; }
+#hud [data-fig] { cursor: pointer; }   /* a tap or click opens the Breviarium there; hover keeps the card */
 .hud-break { display: none; }
 .hud-stack { display: flex; flex-direction: column; justify-content: center; line-height: 1.05; min-width: 0; }
 
@@ -16,46 +21,53 @@
 .hud-aquila { width: 40px; height: 40px; padding: 2px; border: 0; border-radius: 4px; background: radial-gradient(circle, rgba(242, 201, 76, .22), transparent 70%); flex: none; }
 .hud-aquila img { width: 32px; height: 32px; filter: drop-shadow(0 2px 0 var(--ring)); }
 .hud-brand-text { display: flex; flex-direction: column; min-width: 0; }
-.hud-name { background: none; border: 0; padding: 0; text-align: left; font-size: 17px; color: var(--gold); text-shadow: 0 2px 0 var(--ring);
+.hud-name { background: none; border: 0; padding: 0; text-align: left; font-size: calc(17px * var(--ts)); color: var(--gold); text-shadow: 0 2px 0 var(--ring);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
 .hud-name:hover { text-decoration: underline dotted; }
 .hud-rankline { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; }
-.hud-rank { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1px; color: #2a1606; background: linear-gradient(var(--gold), #c99a3b);
+.hud-rank { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1px; color: #2a1606; background: linear-gradient(var(--gold), #c99a3b);
   padding: 0 4px; border-radius: 2px; line-height: 13px; }
-.hud-title { font-size: 11px; color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; }
-.hud-stars { color: var(--gold); font-size: 10px; letter-spacing: -1px; }
+.hud-title { font-size: var(--fs-xs); color: var(--muted); font-style: italic; overflow: hidden; text-overflow: ellipsis; }
+.hud-stars { color: var(--gold); font-size: var(--fs-xs); letter-spacing: -1px; }
 
-/* the vital tablets: the signature widget */
+/* the vital tablets: the signature widget. 'GRAIN' and the trend over the icon and the days, the 12 month cells, and
+   under them the seasons (or, once the stores would run dry, the red 'empty a.d. …' line): rows of 10 / 21 / 6 / 10 px
+   that hold 12 px type in the 56 px tablet (the other hosts lay the same nodes out their own way) */
 .hud-vitals { display: flex; gap: 6px; }
 .hud-vital {
-  position: relative; display: grid; grid-template-columns: 26px 1fr; grid-template-rows: 11px 19px 6px 9px; row-gap: 1px; column-gap: 4px;
-  width: 132px; height: 56px; padding: 3px 6px 2px; cursor: help;
+  position: relative; display: grid; grid-template-columns: 24px auto minmax(0, 1fr); grid-template-rows: 10px 21px 6px 10px; row-gap: 1px; column-gap: 3px;
+  grid-template-areas: "label label trend" "ico main main" "strip strip strip" "foot foot foot";
+  width: 132px; height: 56px; padding: 1px 6px; cursor: help;
   background: linear-gradient(#22180f, #17100c); border: 2px solid #4d3a2b; border-radius: 5px;
   box-shadow: 0 0 0 2px var(--ring), inset 0 1px 0 rgba(255, 236, 200, .07), inset 0 -2px 0 rgba(0, 0, 0, .35);
 }
 .vit-grain { border-top-color: #8a6a2a; }
 .vit-water { border-top-color: #2f5f7d; }
-.vit-ico { grid-row: 1 / 3; grid-column: 1; width: 24px; height: 24px; align-self: center; filter: drop-shadow(0 1px 0 var(--ring)); }
-.vit-head { grid-column: 2; display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
-.vit-label { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1.5px; }
+.vit-ico { grid-area: ico; width: 24px; height: 24px; align-self: center; filter: drop-shadow(0 1px 0 var(--ring)); }
+.vit-head { display: contents; }
+.vit-label { grid-area: label; align-self: center; font-family: var(--font-caps); font-size: var(--fs-caps); line-height: 10px; letter-spacing: 1px; white-space: nowrap; }
 .vit-grain .vit-label { color: var(--gold); }
 .vit-water .vit-label { color: var(--water); }
-.vit-trend { font-size: 8px; color: var(--muted); white-space: nowrap; }
+.vit-trend { grid-area: trend; justify-self: end; align-self: center; min-width: 0; overflow: hidden; font-family: var(--font-body); font-size: var(--fs-xs); line-height: 10px; color: var(--muted); white-space: nowrap; }
 .vit-trend.bad { color: #ff8b80; } .vit-trend.good { color: var(--good); }
-.vit-main { grid-column: 2; display: flex; align-items: baseline; gap: 2px; white-space: nowrap; overflow: hidden; }
-.vit-days { font-size: 17px; color: var(--text); text-shadow: 0 2px 0 var(--ring); line-height: 19px; }
-.vit-unit { font-size: 9px; color: var(--muted); margin-right: 4px; }
-.vit-sub { grid-column: 1 / 3; grid-row: 4; display: none; font-family: var(--font-caps); font-size: 8px; line-height: 9px; color: #ff8b80;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.2px; }
+.vit-main { grid-area: main; align-self: center; display: flex; align-items: baseline; gap: 2px; white-space: nowrap; overflow: hidden; }
+.vit-days { font-size: calc(17px * var(--ts)); color: var(--text); text-shadow: 0 2px 0 var(--ring); line-height: 19px; }
+.vit-unit { font-size: var(--fs-caps); color: var(--muted); margin-right: 4px; }
+.vit-sub { grid-area: foot; display: none; font-size: var(--fs-xs); line-height: 10px; color: #ff8b80;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.04em; }   /* tight as the seasons: 'empty a.d. VI Id. Ian.' whole in the 120 px tablet */
 .hud-vital.falling .vit-sub { display: block; }
 .hud-vital.falling .vit-seasons { display: none; }
-.vit-strip { grid-column: 1 / 3; display: flex; gap: 1px; }
+.vit-strip { grid-area: strip; display: flex; gap: 1px; }
 .vit-cell { flex: 1; height: 6px; border-radius: 1px; background: var(--dim-fill); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .3); }
 .vit-cell.good { background: var(--good); } .vit-cell.gold { background: var(--gold); } .vit-cell.warn { background: var(--sev-2); }
 .vit-cell.bad { background: var(--bad); } .vit-cell.empty { background: #0a0710; box-shadow: inset 0 0 0 1px #3a2a22; }
 .vit-cell.now { box-shadow: 0 -2px 0 var(--text); }
-.vit-seasons { grid-column: 1 / 3; display: flex; gap: 1px; font-family: var(--font-caps); font-size: 8px; line-height: 9px; overflow: hidden; }
-.vit-season { flex-basis: 0; text-align: center; white-space: nowrap; overflow: hidden; border-top: 1px solid currentColor; opacity: .85; }
+/* the seasons in Pixelify, 'Ver Aest Avt Hiem' (12 px Silkscreen capitals are too wide for three months of a tablet): a
+   label may reach a hair past its months, never into a neighbour's (a four-letter season stands between two short ones;
+   a run of one or two months shows its initial, vitals.ts paintSeasons) */
+.vit-seasons { grid-area: foot; display: flex; gap: 1px; font-size: min(var(--fs-xs), 13px); line-height: 9px; overflow: hidden; }   /* (13 px under Large: the Breviarium has them at full size) */
+.vit-season { flex-basis: 0; min-width: 0; text-align: center; white-space: nowrap; border-top: 1px solid currentColor; opacity: .85; text-transform: lowercase; letter-spacing: -.04em; }
+.vit-season::first-letter { text-transform: uppercase; }
 .vit-season.s0 { color: #a9d77a; } .vit-season.s1 { color: #f2c94c; } .vit-season.s2 { color: #e3843a; } .vit-season.s3 { color: #a9bfd1; }
 .hud-vital.low { border-color: #8a3d2b; }
 .hud-vital.falling .vit-days { color: #ffd0c8; }
@@ -69,8 +81,8 @@
   background: rgba(0, 0, 0, .28); border: 2px solid #33251d; border-radius: 4px;
 }
 .hud-chip > img { width: 24px; height: 24px; flex: none; }
-.hud-n { font-size: 13px; color: var(--text); white-space: nowrap; }
-.hud-sub { font-family: var(--font-caps); font-size: 8px; color: var(--muted); white-space: nowrap; }
+.hud-n { font-size: var(--fs-small); color: var(--text); white-space: nowrap; }
+.hud-sub { font-family: var(--font-body); font-size: var(--fs-xs); line-height: 14px; color: var(--muted); white-space: nowrap; }   /* Pixelify: 12 px Silkscreen ran the date's chip 50 px wider */
 .hud-sub.bad { color: #ff8b80; } .hud-sub.good { color: var(--good); }
 .hud-chip.warn .hud-n { color: var(--gold); }
 .hud-chip.bad .hud-n { color: #ff8b80; }
@@ -93,44 +105,76 @@
 .hud-res { display: flex; align-items: center; gap: 3px; padding: 0 5px 0 1px; min-width: 64px; cursor: help;
   background: rgba(0, 0, 0, .22); border: 1px solid #2f231c; border-radius: 3px; }
 .hud-res img { width: 24px; height: 24px; flex: none; }
-.hud-res-n { font-size: 11px; color: var(--text); line-height: 11px; white-space: nowrap; }
+.hud-res-n { font-size: var(--fs-caps); color: var(--text); line-height: 14px; white-space: nowrap; }
 .hud-res-n b { font-weight: normal; }
-.hud-res-cap { font-size: 7px; color: var(--dim); }
-.hud-res-r { font-size: 7px; color: var(--muted); line-height: 9px; }
+.hud-res-cap { font-family: var(--font-body); font-size: var(--fs-xs); color: var(--dim); }
+.hud-res-r { font-size: var(--fs-caps); color: var(--muted); line-height: 14px; white-space: nowrap; }
 .hud-res-r.good { color: var(--good); } .hud-res-r.bad { color: #ff8b80; }
 .hud-res.full .hud-res-n { color: var(--gold); }
 .hud-res.empty .hud-res-n { color: #ff8b80; }
+/* the desktop's cells hold one 12 px line in their 25 px row: the amount (its cap beside it once the store is 90% full)
+   and the day's net after it. When the strip has not the room for every cell, the nets step into the hover cards and the
+   Breviarium, then the caps (hud.ts fitColumns measures), so it keeps its amounts in view; past that it scrolls */
+#app[data-host='columns'] .hud-res > .hud-stack { flex-direction: row; align-items: baseline; gap: 5px; }
+#app[data-host='columns'] .hud-strip.no-rate .hud-res-r, #app[data-host='columns'] .hud-strip.no-cap .hud-res-cap { display: none; }
 
 /* date */
 .hud-date { display: flex; align-items: center; gap: 6px; height: 42px; padding: 2px 10px 2px 4px; min-width: 132px; cursor: help;
   background: rgba(0, 0, 0, .28); border: 2px solid #33251d; border-radius: 4px; }
 .hud-date > img { width: 24px; height: 24px; flex: none; }
-.hud-date-main { font-family: var(--font-caps); font-size: 11px; color: var(--text); white-space: nowrap; }
+.hud-date-main { font-family: var(--font-caps); font-size: var(--fs-caps); color: var(--text); white-space: nowrap; }
+.hud-se-short { display: none; }
 .hud-seasonbar { height: 3px; margin-top: 3px; background: rgba(255, 255, 255, .1); border-radius: 2px; overflow: hidden; }
 .hud-seasonbar > i { display: block; height: 100%; width: 0; background: var(--ember); }
 .hud-seasonbar > i.s0 { background: #9ccc5a; } .hud-seasonbar > i.s1 { background: var(--gold); }
 .hud-seasonbar > i.s2 { background: var(--sev-2); } .hud-seasonbar > i.s3 { background: #a9bfd1; }
 
-/* speed and menu */
+/* speed and menu: pause and the speeds in a row; the phone's pair and popover are the last section's */
 .hud-speed { display: flex; gap: 2px; }
+.hud-sp-pop { display: contents; }
+.hud-sp-cur { display: none; }
 .hud-sp, .hud-menu {
   min-width: 32px; height: 34px; padding: 0 3px; border: 2px solid var(--ring); border-radius: 4px;
   background: linear-gradient(#46342a, #33261f); box-shadow: inset 0 2px 0 rgba(255, 236, 200, .1);
-  font-family: var(--font-caps); font-size: 10px; color: var(--text);
+  font-family: var(--font-caps); font-size: var(--fs-caps); color: var(--text);
 }
 .hud-sp:hover, .hud-menu:hover { filter: brightness(1.25); }
 .hud-sp.on { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; }
-.hud-menu { font-family: var(--font-body); font-size: 18px; min-width: 38px; }
+.hud-menu { font-family: var(--font-body); font-size: var(--fs-lead); min-width: 38px; }
 
-/* Below 1760 px the full row no longer fits: the chips tighten, and once five or more materials are on the strip the
-   brand shrinks to its aquila (name and rank in its tooltip); below 1440 px it steps aside, so the material strip keeps
-   its numbers (DESIGN §15.2). */
+/* the view control (hud.ts, layout.ts VIEWS): Urbs, Mensa, Tabularium as one segmented control, the view in use lit and
+   labelled (its icons alone when the row is short: .bare). On the tablet DOCK and the desktop COLUMNS only; 44 px
+   segments for a finger or a pen, else the speed buttons' 34 */
+.hud-view { display: none; }
+#app:is([data-host='dock'], [data-host='columns']) .hud-view { display: flex; gap: 0; }
+.hud-view-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 36px; height: 34px; padding: 0 5px;
+  border: 2px solid var(--ring); border-radius: 0; background: linear-gradient(#46342a, #33261f);
+  box-shadow: inset 0 2px 0 rgba(255, 236, 200, .1); color: var(--text); white-space: nowrap;
+}
+.hud-view-btn + .hud-view-btn { border-left-width: 1px; }
+.hud-view-btn:first-child { border-radius: 4px 0 0 4px; }
+.hud-view-btn:last-child { border-radius: 0 4px 4px 0; }
+.hud-view-btn:hover { filter: brightness(1.25); }
+.hud-view-btn.on { background: linear-gradient(var(--ember), #e07a35); color: #2a1606; }
+.hud-view-ico { width: 24px; height: 24px; flex: none; }
+.hud-view-label { display: none; font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: .5px; }
+.hud-view-btn.on .hud-view-label { display: inline; }
+.hud-view.bare .hud-view-label { display: none; }
+#app:not([data-input='mouse']) .hud-view-btn { min-width: 44px; height: 44px; }
+/* (on the desktop COLUMNS it stands at the top-left of the map instead, beside the left column: columns.css) */
+
+/* Below 1760 px the full row no longer fits: the chips tighten (the materials' nets and caps go as the strip runs out
+   of room: above), and once five or more materials are on the strip the brand shrinks to its aquila (name and rank in
+   its tooltip); below 1440 px it steps aside, so the material strip keeps its numbers (DESIGN §15.2). */
 @media (max-width: 1759px) {
   .hud-title { display: none; }
   .hud-brand { max-width: 170px; }
   #hud:has(.hud-strip > :nth-child(5)) .hud-brand-text { display: none; }
   #hud { gap: 5px; padding: 0 8px; }
-  .hud-vital { width: 118px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
+  .hud-vital { width: 120px; column-gap: 3px; padding-left: 4px; padding-right: 4px; }
+  #app[data-host='columns'] .hud-se-long { display: none; }
+  #app[data-host='columns'] .hud-se-short { display: inline; }
   .hud-stages { width: 40px; }
   .hud-chip { padding-right: 6px; }
   .hud-date { min-width: 0; padding-right: 8px; }
@@ -141,3 +185,147 @@
 @media (max-width: 1439px) {
   .hud-brand { display: none; }
 }
+
+/* Text size Large on the desktop (textsize.ts): a 72 px row, so the tablets keep their four rows (16 px Silkscreen, the
+   days at 21 px, the seasons at 15) in 136 px, and the chips, the materials' cells and the speeds grow with their type */
+#app[data-host='columns'][data-text='large'] { --hud-h: 72px; }
+#app[data-host='columns'][data-text='large'] .hud-vital { width: 136px; height: 64px; grid-template-rows: 12px 24px 6px 12px; }
+#app[data-host='columns'][data-text='large'] :is(.vit-label, .vit-trend, .vit-sub) { line-height: 12px; }
+#app[data-host='columns'][data-text='large'] .vit-seasons { line-height: 11px; }
+#app[data-host='columns'][data-text='large'] .vit-days { line-height: 24px; }
+#app[data-host='columns'][data-text='large'] #hud > :is(.hud-chip, .hud-date) { height: 52px; }
+#app[data-host='columns'][data-text='large'] .hud-strip { grid-template-rows: repeat(2, 31px); }
+#app[data-host='columns'][data-text='large'] :is(.hud-res-n, .hud-res-r) { line-height: 18px; }
+#app[data-host='columns'][data-text='large'] :is(.hud-sp, .hud-menu) { height: 42px; }
+/* under 1760 px the date steps into the Breviarium (which every figure opens, the date and the season's next crunch in
+   it), so the strip keeps three columns of materials down to 1280 px */
+@media (max-width: 1759px) {
+  #app[data-host='columns'][data-text='large'] #hud > .hud-date { display: none; }
+}
+
+/* ───────── SHEET (portrait phones, layout.ts): one 52 px row ───────── */
+/* Grain and Aqua with their forecast strips, coin over souls, the speed pair [❚❚][1× ▾] and the menu; spirits, dignitas,
+   the date and the materials leave the row for the Breviarium, which every figure opens. A grid of named areas, so the
+   narrow-screen order and flex rules have nothing to say here (mobile.css scopes them away besides). It fits 360 px with
+   both tablets at 74 px and a roll of '308/320': the gaps narrow with the screen, and past that the coin-and-souls column
+   gives way first (an ellipsis on a long roll). The SHEET's #app runs under the notch (sheet.css): the row pads itself
+   below it, and --hud-h counts the pad. Nothing under 12 px. */
+#app[data-host='sheet'] { --hud-h: calc(52px + env(safe-area-inset-top, 0px)); }
+#app[data-host='sheet'] #hud {
+  --hud-gap: clamp(2px, calc((100vw - 300px) / 25), 4px);   /* 2.4 px at 360, 3 px at 375, 3.7 px at 393 */
+  display: grid; height: var(--hud-h); padding: calc(4px + env(safe-area-inset-top, 0px)) 2px 4px; column-gap: var(--hud-gap); row-gap: 0; align-items: stretch;
+  grid-template-columns: minmax(calc(148px + var(--hud-gap)), 1fr) minmax(0, max-content) max-content max-content;
+  grid-template-rows: 22px 22px;
+  grid-template-areas: "vit coin speed menu" "vit souls speed menu";
+}
+#app[data-host='sheet'] #hud > :is(.hud-brand, .hud-morale, .hud-dignitas, .hud-break, .hud-date, .hud-strip) { display: none; }
+#app[data-host='sheet'] #hud::after { content: none; }
+
+/* the tablets: icon, days (18 px) with 'd', the trend arrow; the 12 month cells beneath, 6 px tall */
+#app[data-host='sheet'] .hud-vitals { grid-area: vit; display: flex; gap: var(--hud-gap); min-width: 0; }
+#app[data-host='sheet'] .hud-vital {
+  flex: 1 1 0; min-width: 74px; width: auto; height: 44px; padding: 2px 1px 2px 2px; cursor: pointer;
+  grid-template-columns: 24px auto minmax(0, 1fr); grid-template-rows: 1fr 6px; column-gap: 1px; row-gap: 2px;
+  grid-template-areas: "ico main trend" "strip strip strip";
+}
+#app[data-host='sheet'] .vit-ico { grid-area: ico; align-self: center; }
+#app[data-host='sheet'] .vit-head { display: contents; }
+#app[data-host='sheet'] .vit-label, #app[data-host='sheet'] .vit-rate { display: none; }
+#app[data-host='sheet'] .vit-main { grid-area: main; align-self: center; gap: 1px; }
+#app[data-host='sheet'] .vit-days { font-family: var(--font-body); font-size: var(--fs-lead); line-height: 20px; }
+#app[data-host='sheet'] .vit-unit { font-family: var(--font-body); font-size: var(--fs-xs); margin-right: 0; }
+#app[data-host='sheet'] .hud-vital.long .vit-unit { display: none; }   /* three digits: the number keeps its room */
+#app[data-host='sheet'] .vit-trend { grid-area: trend; align-self: center; font-family: var(--font-body); font-size: var(--fs-xs); overflow: hidden; }
+#app[data-host='sheet'] .vit-strip { grid-area: strip; display: flex; }
+#app[data-host='sheet'] .hud-vital .vit-seasons, #app[data-host='sheet'] .hud-vital .vit-sub { display: none; }   /* in the Breviarium */
+
+/* coin over souls: one box of two 22 px lines (whichever the lessons have brought) */
+#app[data-host='sheet'] .hud-coin { grid-area: coin; }
+#app[data-host='sheet'] .hud-souls { grid-area: souls; }
+#app[data-host='sheet'] #hud > :is(.hud-coin, .hud-souls) {
+  height: auto; min-width: 0; gap: 2px; padding: 0 1px; overflow: hidden;
+  background: rgba(0, 0, 0, .28); border: 2px solid #33251d; border-radius: 4px;
+}
+#app[data-host='sheet'] #hud > .hud-coin:not(:has(+ .hud-souls[hidden])) { border-bottom: 0; border-radius: 4px 4px 0 0; padding-top: 1px; }
+#app[data-host='sheet'] #hud > .hud-coin:not([hidden]) + .hud-souls { border-top: 0; border-radius: 0 0 4px 4px; padding-bottom: 1px; }
+#app[data-host='sheet'] #hud > :is(.hud-coin, .hud-souls) > img { width: 12px; height: 12px; }
+#app[data-host='sheet'] #hud > :is(.hud-coin, .hud-souls) .hud-n { font-family: var(--font-body); font-size: var(--fs-xs); line-height: 16px; overflow: hidden; text-overflow: ellipsis; }
+#app[data-host='sheet'] #hud > :is(.hud-coin, .hud-souls) :is(.hud-sub, .hud-stages) { display: none; }
+/* Text size Large (textsize.ts): the tablets' 22 px days and their trends need 84 px each, so under 412 px the coin and
+   souls column steps into the Breviarium first (as the DRAWER's row lets them go: below), the tablets taking its room */
+@media (max-width: 411px) {
+  #app[data-host='sheet'][data-text='large'] #hud > :is(.hud-coin, .hud-souls) { display: none; }
+}
+
+/* the speed pair and its popover (a Back and Esc layer, hud.ts), on both phone hosts */
+#app[data-host='sheet'] .hud-speed { grid-area: speed; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-speed { position: relative; align-self: center; gap: 0; margin: 0; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp { width: 44px; min-width: 44px; height: 44px; padding: 0; font-size: var(--fs-caps); }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-pause { border-radius: 4px 0 0 4px; }   /* the pair reads as one control */
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-cur { border-radius: 0 4px 4px 0; border-left-width: 1px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-cur { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-caret { font-family: var(--font-body); font-size: var(--fs-xs); }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-pop {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0; gap: 4px; padding: 4px;
+  background: var(--panel-solid); border: 2px solid var(--line); border-radius: var(--r2);
+  box-shadow: var(--ring-shadow), 0 10px 24px rgba(0, 0, 0, .5);
+}
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-speed.open .hud-sp-pop { display: flex; }
+#app:is([data-host='sheet'], [data-host='drawer']) .hud-sp-pop .hud-sp { width: 52px; min-width: 52px; font-size: var(--fs-small); }
+#app:is([data-host='sheet'], [data-host='drawer']) #hud { z-index: var(--z-popup); }   /* the popover drops over the counsel card (21) below the row */
+/* open, it stands over the toasts (23), the Breviarium (24) and the event card (25) too: the speed tapped is the one set */
+#app:is([data-host='sheet'], [data-host='drawer']) #hud:has(.hud-speed.open) { z-index: calc(var(--z-choice) + 1); }
+/* the menu is a full 44 px target from 375 px; on a 360 px phone it yields 4 px to the souls figure */
+#app[data-host='sheet'] .hud-menu { grid-area: menu; align-self: center; width: clamp(40px, calc(100vw - 331px), 44px); min-width: 0; height: 44px; margin: 0; padding: 0; font-size: var(--fs-title); }
+
+/* ───────── DRAWER (landscape phones, short windows, layout.ts): one 44 px row ───────── */
+/* Grain and Aqua (the days in 18 px with 'd' and the trend, no strip), coin over its trend, souls, spirits, the date, then
+   at the right the speed pair [❚❚][1× ▾] and the menu (five 44 px speeds and the date do not fit an 852 px phone beside
+   the figures). A flex row in the figures' own order (the narrow-screen order and wrap rules of mobile.css have nothing to
+   say here), 44 px tall with its 44 px targets: its rule below is a shadow over the map, not a border inside the row. As
+   the width runs out the figures step into the Breviarium,
+   which every figure opens and which holds them all: the date first, then spirits, souls, coin, Aqua and Grain (hud.ts
+   fit: .hud-drop); the speed pair and the menu never. The DRAWER's #app runs under the notch (drawer.css): the row pads
+   itself on the notch's side, and --hud-h counts the top pad. Nothing under 12 px. */
+#app[data-host='drawer'] { --hud-h: calc(44px + env(safe-area-inset-top, 0px)); }
+#app[data-host='drawer'] #hud {
+  display: flex; flex-wrap: nowrap; align-items: center; align-content: normal; gap: 4px; row-gap: 0; height: var(--hud-h);
+  padding: env(safe-area-inset-top, 0px) calc(4px + env(safe-area-inset-right, 0px)) 0 calc(4px + env(safe-area-inset-left, 0px));
+  border-bottom: 0; box-shadow: 0 2px 0 var(--line), 0 4px 0 var(--ring), 0 8px 18px rgba(0, 0, 0, .4);
+}
+#app[data-host='drawer'] #hud > * { order: 0; }
+#app[data-host='drawer'] #hud > :is(.hud-brand, .hud-dignitas, .hud-break, .hud-strip), #app[data-host='drawer'] #hud .hud-drop { display: none; }
+#app[data-host='drawer'] #hud::after { content: none; }
+
+/* the tablets: icon, days and the trend on one line */
+#app[data-host='drawer'] .hud-vitals { display: flex; gap: 4px; }
+#app[data-host='drawer'] .hud-vital {
+  width: auto; height: 40px; padding: 2px 6px 2px 3px; cursor: pointer;
+  grid-template-columns: 24px auto auto; grid-template-rows: minmax(0, 1fr); grid-template-areas: "ico main trend"; column-gap: 4px; row-gap: 0;
+  align-items: center;
+}
+#app[data-host='drawer'] .vit-ico { grid-area: ico; }
+#app[data-host='drawer'] .vit-head { display: contents; }
+#app[data-host='drawer'] .vit-label { display: none; }
+#app[data-host='drawer'] .vit-main { grid-area: main; gap: 1px; }
+#app[data-host='drawer'] .vit-days { font-family: var(--font-body); font-size: var(--fs-lead); line-height: 20px; }
+#app[data-host='drawer'] .vit-unit { font-family: var(--font-body); font-size: var(--fs-xs); margin-right: 0; }
+#app[data-host='drawer'] .vit-trend { grid-area: trend; font-family: var(--font-body); font-size: var(--fs-xs); }
+#app[data-host='drawer'] .hud-vital :is(.vit-strip, .vit-seasons, .vit-sub) { display: none; }   /* in the Breviarium */
+
+/* coin (its trend under it), souls, spirits: 40 px chips */
+#app[data-host='drawer'] .hud-chip { height: 40px; min-width: 0; gap: 4px; padding: 2px 7px 2px 3px; cursor: pointer; }
+#app[data-host='drawer'] .hud-chip .hud-n { font-size: var(--fs-small); }
+#app[data-host='drawer'] .hud-chip .hud-sub { font-family: var(--font-body); font-size: var(--fs-xs); line-height: 14px; }
+#app[data-host='drawer'] .hud-stages { display: none; }
+
+/* the date over its year and season */
+#app[data-host='drawer'] .hud-date { height: 40px; min-width: 0; gap: 4px; padding: 2px 8px 2px 6px; cursor: pointer; }
+#app[data-host='drawer'] .hud-date > img { display: none; }
+#app[data-host='drawer'] .hud-date-main { font-size: var(--fs-caps); line-height: 14px; }
+#app[data-host='drawer'] .hud-date .hud-sub { font-family: var(--font-body); font-size: var(--fs-xs); line-height: 14px; }
+#app[data-host='drawer'] .hud-seasonbar { margin-top: 2px; }
+
+/* the speed pair pushed to the right, and the menu */
+#app[data-host='drawer'] .hud-speed { margin-left: auto; }
+#app[data-host='drawer'] .hud-menu { width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; font-size: var(--fs-title); }

@@ -7,6 +7,7 @@ import { fmt, fmtDays, h, img } from './dom';
 import type { Kid } from './dom';
 import { waxSeal } from './tipkit';
 import { exportDue, openExportImport, openModal } from './modals';
+import { keepCopyWhy, platform } from './platform';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
 import { forecast } from '../game/forecast';
 import { view } from '../game/sim';
@@ -113,10 +114,13 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
   const w = works(b, a);
   const hm = homes(b, a);
   const hl = r.highlights.slice(-HIGHLIGHTS).reverse();
+  // what waits on the Praefectus comes first, before the account of what was done: on a phone the letter is several
+  // screens long, and its Return to the city stays pinned at the foot (modals.css)
   return h('div', { class: 'disp-body' },
     h('div', { class: 'disp-head' }, `from ${formatRoman(b.day)} to ${formatRoman(a.day, { year: true })}`,
       h('span', { class: 'disp-dim' }, ` · ${fmt(r.days)} days · you were away ${awayTime(r.awayMs)}`),
       wonWhileAway(g.state, r) ? h('span', { class: 'disp-dim' }, ' · the Capitolium was dedicated and the clock stopped') : null),
+    awaiting(g, r, close),
     line('THE CITY', city),
     line('STORES', stores),
     line('WORKS RAISED', w.length ? h('span', { class: 'disp-works' }, w) : 'None this time.'),
@@ -124,9 +128,8 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     r.decided.length ? line('DECIDED IN YOUR NAME', h('ul', { class: 'disp-list' }, r.decided.map((d) => h('li', null, d)))) : null,
     hl.length ? line('IN THE ANNALES', h('ul', { class: 'disp-list' }, hl.map((e) => h('li', null, h('span', { class: 'disp-date' }, formatRoman(e.day)), ' ', e.text)))) : null,
     line('LOWEST POINT', lowest(r)),
-    awaiting(g, r, close),
     exportDue(g.state) ? line('KEEP A COPY', h('div', { class: 'disp-await' }, h('span', { class: 'disp-mark' }, '◆'),
-      h('span', { class: 'disp-await-text' }, 'The colony lives only in this browser, and Safari forgets sites left unvisited for a week.'),
+      h('span', { class: 'disp-await-text' }, keepCopyWhy(platform())),   // Safari's week only in a Safari tab
       h('button', { class: 'btn small', onclick: () => openExportImport(g) }, 'Export a copy'))) : null,
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-note' }, 'Time away passes at half speed, up to five years.'),

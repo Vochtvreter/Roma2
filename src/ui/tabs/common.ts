@@ -5,6 +5,7 @@ import type { ActionResult, BuildingId, CouncilReport, Cost, GameState, Remedy, 
 import type { Game, Panel, Updater } from '../types';
 import { fmtCost, h, img, sentence, tip } from '../dom';
 import type { Kid } from '../dom';
+import { pressWord } from '../pointer';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
 import { DUTY_DEFS, wishDuty } from '../../game/ordo/duties';
@@ -16,6 +17,7 @@ import { B } from '../../game/balance';
 import { steadyNet } from '../../game/sim';
 import { BUILDING_DEFS } from '../../game/data/buildings';
 import { RANK_DEFS } from '../../game/data/ranks';
+import { focusOfWish } from '../focusrow';
 
 /** A tab panel; `focus` lets openTab(tab, anchor) set panel state (a filter, a form) before the rebuild. */
 export interface TabPanel extends Panel {
@@ -84,6 +86,7 @@ export function confirmRich(b: HTMLButtonElement, note: string, fn: () => void):
     e.stopPropagation();
     if (b.classList.contains('armed')) { disarm(); fn(); return; }
     b.classList.add('armed');
+    tag.textContent = pressWord(note);   // 'Click again…' says Tap to a finger
     b.append(tag);
     timer = window.setTimeout(disarm, ARM_MS);
   });
@@ -219,6 +222,7 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
         h('div', { class: 'tab-why' }, reasonText(w.reason))));
     if (w.tile !== undefined) {
       const t = w.tile;
+      el.dataset.focus = focusOfWish(w.type, t);   // the focus row on a tablet (focusrow.ts)
       el.classList.add('click');
       el.addEventListener('click', () => g.focusTile(t));
     }

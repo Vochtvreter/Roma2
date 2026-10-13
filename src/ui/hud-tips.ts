@@ -1,7 +1,7 @@
 // src/ui/hud-tips.ts — the HUD's tooltips (DESIGN §11.10): resource ledger with "how to get more", coin, souls, spirits,
 // dignitas and the date. Owner: WP-H. Built lazily on hover from live state; every line is DOM, never HTML.
 import { EDICTS, RESOURCES } from '../game/types';
-import type { MulKey, RateSource, ResId } from '../game/types';
+import type { GameState, MulKey, RateSource, ResId } from '../game/types';
 import type { Game } from './types';
 import { fmt, fmtDays, fmtRate, h, plural, realTime, sentence } from './dom';
 import { caps, tipCard, tipHead, tipKicker, tipNote, tipRow, tipSep } from './tipkit';
@@ -22,6 +22,8 @@ import { BUILDING_DEFS } from '../game/data/buildings';
 import { EDICT_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { RESOURCE_DEFS } from '../game/data/resources';
+import { resourceRevealed } from '../game/reveal';
+import { introRunning } from '../game/intro';
 
 const SOURCE_LABEL: Partial<Record<RateSource, string>> = {
   drinking: 'Drinking', idleForage: 'Idle hands forage', renovation: 'Renovations', construction: 'Building sites',
@@ -246,3 +248,9 @@ export function seasonFrac(day: number): number {
 
 /** Resources other than coin, grain and water, in registry order (the HUD strip). */
 export const STRIP_RES: readonly ResId[] = RESOURCES.filter((r) => r !== 'denarii' && r !== 'grain' && r !== 'water');
+
+/** The materials the strip (and the Breviarium's grid) shows: those revealed or in store; while the lessons run
+ *  (§11.13) only what the taught works cost, timber and stone. */
+export function stripShown(s: GameState): ResId[] {
+  return STRIP_RES.filter((r) => (resourceRevealed(s, r) || s.res[r] > 0) && (!introRunning(s) || r === 'timber' || r === 'stone'));
+}

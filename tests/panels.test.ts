@@ -4,11 +4,14 @@ import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
 import type { GameState } from '../src/game/types';
 import type { Game } from '../src/ui/types';
-import { PANELS } from '../src/ui/panels';
+import { PANELS, panelTokens } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
 import { DEFAULT_PREFS } from '../src/game/save';
 import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
 import { councilReport } from '../src/game/ordo/index';
+import { pendingOffers } from '../src/game/ordo/duties';
+import { newGame } from '../src/game/state';
+import { keepDuties, skipIntro } from '../src/game/actions';
 import { view } from '../src/game/sim';
 import { placeBuilding } from '../src/game/place';
 import { B } from '../src/game/balance';
@@ -35,6 +38,8 @@ function discrete(s: GameState): string {
     labourKey(s),
     // NEW stickers expire NEW_DAYS after the milestone or rank that revealed them
     [...Object.values(s.guidance.milestoneDays), ...Object.values(s.decisions.pathDays)].map((d) => s.day - (d ?? 0) < B.ui.NEW_DAYS),
+    // chores learned and not yet answered: Edicta leads with the Mandata and the offer's answer while any wait
+    pendingOffers(s),
   ]);
 }
 
@@ -104,6 +109,19 @@ describe('panel signatures', () => {
     expect(people.signature(g)).not.toBe(p0);
     s.log.push({ day: s.day, kind: 'info', text: 'A test line.' });
     expect(annals.signature(g)).not.toBe(a0);
+  });
+
+  it('Edicta rebuilds when the duty offer is answered (the Mandata lead the tab only while one waits)', () => {
+    const s = newGame({ seed: 42, now: 0, intro: true });
+    const g = fakeGame(s);
+    skipIntro(s);   // a colony run by hand past the lessons: every chore learned, none handed over or kept
+    expect(pendingOffers(s).length).toBeGreaterThan(1);
+    const council = PANELS.council;
+    const offered = council.signature(g);
+    expect(council.signature(g)).toBe(offered);
+    expect(keepDuties(s).ok).toBe(true);   // answered: nothing else about the duties changed
+    expect(pendingOffers(s)).toEqual([]);
+    expect(council.signature(g)).not.toBe(offered);
   });
 
   it('badges never throw and keep their shape', () => {
@@ -219,5 +237,22 @@ describe('text slips (R48)', () => {
     expect(sentence(`You asked for a well on ${d}`)).toBe(`You asked for a well on ${d}`);
     expect(sentence('Hiems in 3 days')).toBe('Hiems in 3 days.');
     expect(plural(1, 'house', 'houses')).toBe('1 house');
+  });
+});
+
+describe('panelTokens (#app[data-panel], what the stylesheets key on instead of #app:has(#side…))', () => {
+  it('names each state that holds, in a fixed order, and nothing when none does', () => {
+    expect(panelTokens(false, false, false)).toBe('');
+    expect(panelTokens(true, false, false)).toBe('collapsed');
+    expect(panelTokens(false, true, false)).toBe('empty');
+    expect(panelTokens(false, false, true)).toBe('notabs');
+    expect(panelTokens(true, true, true)).toBe('collapsed empty notabs');
+    // each a whole token for [data-panel~='…']
+    for (const [c, e, n] of [[true, false, true], [false, true, true], [true, true, false]] as const) {
+      const toks = panelTokens(c, e, n).split(' ');
+      expect(toks.includes('collapsed')).toBe(c);
+      expect(toks.includes('empty')).toBe(e);
+      expect(toks.includes('notabs')).toBe(n);
+    }
   });
 });

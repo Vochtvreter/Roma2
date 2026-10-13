@@ -18,27 +18,31 @@
   background: var(--panel); border: 2px solid var(--line); border-radius: 6px;
   box-shadow: var(--ring-shadow), 0 8px 24px rgba(0, 0, 0, .45), inset 0 2px 0 rgba(255, 236, 200, .04); backdrop-filter: var(--blur);
 }
-.obj-kicker { display: flex; justify-content: space-between; gap: 8px; font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.5px; color: var(--ember); }
-.obj-prog { color: var(--muted); letter-spacing: .5px; }
-.obj-goal { display: flex; align-items: center; gap: 6px; font-size: 16px; margin: 4px 0 2px; color: var(--text); }
+/* the count drops under the name, right-aligned, when both do not fit (Text size Large): never each cut in two */
+.obj-kicker { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 8px; font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1.5px; color: var(--ember); }
+.obj-kicker > span { white-space: nowrap; }
+.obj-prog { margin-left: auto; color: var(--muted); letter-spacing: .5px; }
+.obj-goal { display: flex; align-items: center; gap: 6px; font-size: var(--fs-num); margin: 4px 0 2px; color: var(--text); }
 .obj-laurel { width: 24px; height: 24px; flex: none; }
-.obj-hint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.obj-hint { font-size: var(--fs-xs); color: var(--muted); margin-bottom: 6px; }
 .obj-meter { margin: 6px 0 2px; }
-.obj-unlocks { font-size: 11px; color: var(--good); margin-top: 5px; }
+.obj-unlocks { font-size: var(--fs-xs); color: var(--good); margin-top: 5px; }
 .obj-unlocks-k { color: var(--muted); }
 .obj-cta {
   display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 6px 8px; text-align: left;
-  border: 2px solid #c06aa0; border-radius: 4px; color: #ffe8a8; font-size: 13px;
+  border: 2px solid #c06aa0; border-radius: 4px; color: #ffe8a8; font-size: var(--fs-small);
   background: linear-gradient(rgba(154, 60, 120, .55), rgba(106, 31, 74, .55));
   animation: ctaGlow 2.4s ease-in-out infinite;
 }
 .obj-cta:hover { filter: brightness(1.2); }
-.obj-cta-k { font-family: var(--font-caps); font-size: 8px; letter-spacing: 1px; color: #2a0c1e; background: var(--gold); padding: 1px 4px; border-radius: 2px; flex: none; }
+.obj-cta-k { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1px; color: #2a0c1e; background: var(--gold); padding: 1px 4px; border-radius: 2px; flex: none; }
 @keyframes ctaGlow { 50% { box-shadow: 0 0 16px rgba(192, 106, 160, .6); border-color: var(--gold); } }
-.obj-cta-note { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.obj-cta-note { font-size: var(--fs-xs); color: var(--muted); margin-top: 3px; }
 .obj-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
-.obj-chip { font-size: 9px; }
+/* a long one wraps inside the column at the 12 px floor, its lines balanced (no lone 'D' on the second) */
+.obj-chip { font-size: var(--fs-caps); white-space: normal; max-width: 100%; text-wrap: balance; letter-spacing: 0; }
 #objective.obj-pop { animation: objPop .6s; }
+.obj-fold { display: none; }   /* the ▾ of the one-line form: the tablet DOCK's pane head only (dock.css) */
 @keyframes objPop { 30% { transform: scale(1.04); border-color: var(--gold); box-shadow: var(--ring-shadow), 0 0 22px rgba(242, 201, 76, .5); } }
 
 /* ───────── counsel: portrait strip + one card ───────── */
@@ -74,55 +78,99 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 .counsel-face { width: 48px; height: 48px; flex: none; border: 2px solid var(--ring); border-radius: 4px; background: #2a1e18;
   box-shadow: 0 0 0 1px var(--line-2); }
 .counsel-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.counsel-kicker { font-family: var(--font-caps); font-size: 9px; letter-spacing: 1.2px; color: var(--ember); min-width: 0; }
+.counsel-kicker { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1.2px; color: var(--ember); min-width: 0; }
 .counsel-card.adv.sev-1 .counsel-kicker { color: var(--sev-1); }
 .counsel-card.adv.sev-2 .counsel-kicker { color: var(--sev-2); }
 .counsel-card.adv.sev-3 .counsel-kicker { color: var(--sev-3); }
 .counsel-card.adv.opp .counsel-kicker { color: var(--gold); }
-.counsel-title { font-size: 16px; line-height: 1.2; color: var(--gold); }
+.counsel-title { font-size: var(--fs-num); line-height: 1.2; color: var(--gold); }
 .counsel-card.adv .counsel-title { color: var(--text); }
 /* the office is never cut: the kicker wraps, and the metric chip drops below it when they do not fit side by side */
 .counsel-krow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 3px 6px; min-height: 16px; }
 .counsel-metric { flex: none; margin: 0 0 0 auto; }
-.counsel-text { margin: 7px 0 8px; font-size: 13px; line-height: 1.4; color: #e6d9c2; }
+.counsel-text { margin: 7px 0 8px; font-size: var(--fs-small); line-height: 1.4; color: #e6d9c2; }
 .counsel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.counsel-link { margin-left: auto; background: none; border: 0; padding: 2px 0; font-size: 12px; color: var(--dim); }
+.counsel-link { margin-left: auto; background: none; border: 0; padding: 2px 0; font-size: var(--fs-xs); color: var(--dim); }
 .counsel-link:hover { color: var(--muted); text-decoration: underline; }
 .counsel-remedies { display: flex; flex-direction: column; gap: 5px; }
 .counsel-rem { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .counsel-rem.build { flex-wrap: nowrap; gap: 8px; padding: 5px 6px; background: rgba(0, 0, 0, .2); border: 1px solid #33251d; border-radius: 4px; }
 .counsel-rem-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
-.counsel-rem-name { font-size: 13px; color: var(--gold); }
+.counsel-rem-name { font-size: var(--fs-small); color: var(--gold); }
 .counsel-rem-btns { display: flex; flex-wrap: wrap; gap: 5px; }
 .counsel-rem-ico { max-width: 32px; max-height: 32px; flex: none; align-self: center; }
 .counsel-btnwrap { display: inline-flex; flex-direction: column; gap: 1px; }
-.counsel-why { font-size: 10px; color: var(--dim); max-width: 200px; }
+.counsel-why { font-size: var(--fs-xs); color: var(--dim); max-width: 200px; }
 .counsel-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 236, 200, .07); }
-.counsel-name { font-size: 11px; color: var(--dim); font-style: italic; margin-right: auto; }
-.counsel-foot .counsel-link { margin-left: 0; }
+.counsel-name { font-size: var(--fs-xs); color: var(--dim); font-style: italic; margin-right: auto; }
+.counsel-foot .counsel-link { margin-left: 0; white-space: nowrap; }   /* 'Hush 30 d' on one line: the name beside it wraps instead (Text size Large) */
 .counsel-toggle { display: none; }
+/* The column never runs off the screen: when its parts cannot all fit (a short window, a two-row touch HUD, a long
+   advisory), the inspector gives way first, then the counsel card, whose body scrolls inside. A duty offer lists every
+   chore learned (eight after 'skip the introduction', 19 buttons): it is capped at 60% of the column outright, with Hand
+   over all / Keep them all pinned at its foot (mobile.css caps it by the screen instead). */
+#left > #counsel { flex: 0 1 auto; min-height: 0; }
+/* gives way first, all of it: shrinking goes by factor × size, and at 1000 the counsel still took a pixel of a hover
+   card's overflow, which brought up its scrollbar and rewrapped it on every hover in and out */
+#left > #inspector { flex-shrink: 1000000; }
+/* but a card keeps its name and a line (kicker, title, a row): on a window too short for all three (1280 x 649) the
+   counsel's body scrolls meanwhile, rather than a 20 px sliver of a card hanging off the column's foot */
+#left > #inspector:not(:empty) { min-height: calc(88px * var(--ts)); }
+/* The desktop (COLUMNS) takes none of the counsel's room for the hover card: in the column's flow it still took some on
+   a window up to ~740 px tall (a 1366 x 768 laptop less the browser's chrome: up to 83 px, its scrollbar coming and its
+   text rewrapping on every hover in and out). #inspector is the room under the counsel instead (flex-basis 0 and the
+   column's 8 px gap given back: it grows into what is free and shrinks nothing), and the card stands at its foot as
+   tall as that room, as it always did, scrolling inside. Where the room is less than its name and first lines (129 px:
+   a short window) it is that tall all the same, over the counsel's foot while the mouse is on the map (the mouse
+   leaving the map, onto the card or the counsel, takes it away). The room itself lets the map's hover through. A
+   clicked card is the popup beside its target (inspector.ts), never in the column. */
+#app[data-host='columns'] #left > #inspector {
+  flex: 1 1 0; min-height: 0; max-height: none; margin-top: -8px; z-index: var(--z-counsel); pointer-events: none;
+}
+#app[data-host='columns'] #left > #inspector > .ins-card {
+  position: absolute; left: 0; right: 0; bottom: 0; pointer-events: auto;
+  max-height: min(46vh, max(calc(100% - 8px), calc(129px * var(--ts))));
+}
+#counsel:has(> .counsel-card.offer) { max-height: 60%; }
+.counsel-card { display: flex; flex-direction: column; min-height: 0; }
+.counsel-card > .counsel-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.counsel-card.offer .counsel-foot { position: sticky; bottom: 0; z-index: 1; background: var(--panel-solid); }
+/* the note takes a line of its own, the two answers share the next (the 300 px column wrapped each onto two lines) */
+.counsel-card.offer .counsel-foot { flex-wrap: wrap; row-gap: 0; }
+.counsel-card.offer .counsel-name { flex-basis: 100%; }
+.counsel-card.offer .counsel-link { white-space: nowrap; }
 .counsel-calm {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted);
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: var(--fs-xs); color: var(--muted);
   background: rgba(36, 26, 22, .82); border: 2px solid #3a2a22; border-radius: 6px; box-shadow: var(--ring-shadow);
 }
 .counsel-seal { width: 12px; height: 12px; flex: none; opacity: .8; }
 
-/* Short screens (tablet and desktop under 761 px tall) keep the Res Gestae to that compact form all the time, so the
-   counsel card and a hovered card still have room in the column (at 1000x700 a hover card got 29 px). */
-@media (min-width: 900px) and (max-height: 760px) {
-  .obj-hint, .obj-unlocks { display: none; }
-  .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
-  .obj-chip { flex: none; }
+/* Short desktop windows keep the Res Gestae to that compact form all the time, so the counsel card and a hovered card
+   still have room in the column (at 1000x700 a hover card got 29 px). The COLUMNS only: the DOCK's pane head and the
+   Breviarium re-host #objective and show it whole. Up to 860 px tall since the 12 px type floor (the card and the
+   counsel grew ~40 px: a 1366 x 768 screen, or a 1440 x 900 one less the browser's chrome, left a hover card 20 px) */
+@media (max-height: 860px) {
+  #app[data-host='columns'] :is(.obj-hint, .obj-unlocks) { display: none; }
+  #app[data-host='columns'] .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
+  #app[data-host='columns'] .obj-chip { flex: none; }
+}
+/* the same on the desktop under Text size Large up to 950 px tall (760 × 1.25): at 1280 × 800 the full card left the
+   counsel's remedies below its fold */
+@media (max-height: 950px) {
+  #app[data-host='columns'][data-text='large'] :is(.obj-hint, .obj-unlocks) { display: none; }
+  #app[data-host='columns'][data-text='large'] .obj-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
+  #app[data-host='columns'][data-text='large'] .obj-chip { flex: none; }
 }
 
 /* the opening lessons (DESIGN §11.13): the job as a checkbox line, the payoff once done, a pulse when a job waits long */
-.lesson-job { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-size: 13px; color: var(--text); }
+/* the count drops under the job, right-aligned, when the two do not share the line (Text size Large in the 300 px column) */
+.lesson-job { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 2px 0 8px; font-size: var(--fs-small); color: var(--text); }
 .lesson-box { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: none;
-  border: 2px solid var(--gold); border-radius: 3px; font-size: 11px; line-height: 1; color: var(--bg); }
+  border: 2px solid var(--gold); border-radius: 3px; font-size: var(--fs-xs); line-height: 1; color: var(--bg); }
 .lesson-job.done .lesson-box { background: var(--gold); }
 .lesson-job.done { color: var(--muted); }
-.lesson-next { font-size: 12px; color: var(--gold); }
-.lesson-prog { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
-.lesson-then { margin-top: 6px; font-size: 11px; color: var(--dim); }
+.lesson-next { font-size: var(--fs-xs); color: var(--gold); }
+.lesson-prog { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.lesson-then { margin-top: 6px; font-size: var(--fs-xs); color: var(--dim); }
 .counsel-card.lesson.done { border-color: var(--gold); }
 .counsel-card.lesson.nudge { animation: guidePulse 1.4s ease-in-out 3; }

@@ -49,8 +49,9 @@ function blocked(s: GameState): ReturnType<typeof blockedHouses> {
 export const GUIDE: GuideStep[] = [
   {
     id: 'welcome', title: 'Salve, Praefecte',
-    text: (s) => `I am ${MENTOR.name}, once ${MENTOR.title.replace(/ emeritus$/, '')}. The Ordo runs ${s.name} day by day, even while you sleep. `
-      + 'You set its course, and you may build whatever you like yourself. I will speak when something new matters.',
+    text: (s) => `I am ${MENTOR.name}, once ${MENTOR.title.replace(/ emeritus$/, '')}. ${s.name} is yours to run by hand; each chore you master, `
+      + 'the Ordo can carry day by day, even while you sleep. You set its course, and you may build whatever you like yourself. '
+      + 'I will speak when something new matters.',
     when: () => true,
   },
   // ─────────── urgent, whenever they happen ───────────

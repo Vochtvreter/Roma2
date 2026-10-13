@@ -4,6 +4,7 @@ import { BUILDER, HOUSE_TIERS, STAGES } from '../../game/types';
 import type { GameState, HouseTierId, NeedId, Person } from '../../game/types';
 import type { Game, Updater } from '../types';
 import { fmt, h, img, plural, tip } from '../dom';
+import { touchInput } from '../pointer';
 import { ageOf, census, stageOf } from '../../game/census';
 import { personName } from '../../game/people';
 import { firstWant } from '../../game/housing';
@@ -19,6 +20,7 @@ import { houseSprite } from '../../render/art/index';
 import { section } from './common';
 import type { TabPanel } from './common';
 import { labourEl, labourKey } from './labour';
+import { focusOfBuilding } from '../focusrow';
 
 const STAGE_NAME = ['Children', 'Youths', 'Adults', 'Elders'] as const;
 const HUNGER = ['Sated', 'Peckish', 'Hungry', 'Starving'] as const;
@@ -131,7 +133,7 @@ function homes(g: Game, up: Updater[]): HTMLElement {
             h('button', { class: 'chip pop-want', type: 'button', onclick: () => { g.view.setOverlay('domus'); g.sfx('click'); } },
               img(NEED_META[n].icon, 1, 'chip-ico'), `${k} · ${NEED_META[n].label.toLowerCase()}`))) : null));
     }));
-    if (c.declining) box.append(h('div', { class: 'ed-warn' }, `${plural(c.declining, 'home is', 'homes are')} declining. Hover them on the map to see what lapsed.`));
+    if (c.declining) box.append(h('div', { class: 'ed-warn' }, `${plural(c.declining, 'home is', 'homes are')} declining. ${touchInput() ? 'Tap' : 'Hover'} them on the map to see what lapsed.`));
     if (!c.houses) box.append(h('div', { class: 'tab-quiet' }, 'No homes yet.'));
   };
   refresh();
@@ -153,7 +155,7 @@ function gentes(g: Game, up: Updater[]): HTMLElement {
     const row = (f: GameState['families'][number]): HTMLElement => {
       const head = s.people.find((p) => p.id === f.head);
       const home = f.home !== null ? getBuilding(s, f.home) : undefined;
-      return h('div', { class: 'pop-gens', 'data-key': `gens-${f.id}` }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
+      return h('div', { class: 'pop-gens', 'data-key': `gens-${f.id}`, 'data-focus': home ? focusOfBuilding(home.id) : null }, h('b', null, `gens ${feminine(f.gens)}`), vets.has(f.id) ? h('span', { class: 'chip gold' }, 'veterans') : null,
         h('span', { class: 'muted' }, ` · ${head ? personName(head) : '—'} · ${plural(size[f.id] ?? 0, 'soul', 'souls')} · ${home?.house ? TIER_DEFS[home.house.tier].latin : 'no roof'}`));
     };
     list.replaceChildren(...fams.slice(0, GENTES_SHOWN).map(row));
@@ -195,16 +197,16 @@ export const panel: TabPanel = {
     const s = g.state;
     const census_ = section('Census', 'Souls, beds and spirits', { anchor: 'census' });
     census_.append(stats(g, up));
-    body.append(census_);
     const w = watch(s);
     const sec = section('Custodia', 'Watch', { anchor: 'watch' });   // always drawn: advisors open it by its anchor
     sec.append(w.length ? h('ul', { class: 'pop-watch' }, w.map((x) => h('li', null, x)))
       : h('div', { class: 'tab-quiet' }, 'No group is hungry or parched, and no one is sick or without a roof.'));
-    body.append(sec);
     const labour = section('Operae', s.ordo.on.labour ? 'Labour: hands at work / wanted · posts' : 'Labour: your targets', { anchor: 'labour',
       note: s.ordo.on.labour ? 'The Ordo staffs every post daily, water first, then food, and says why.' : null });
     labour.append(labourEl(g, up));
-    body.append(labour);
+    // while the labour is the player's, its targets come first: what a phone's half sheet shows without a scroll
+    if (s.ordo.on.labour) body.append(census_, sec, labour);
+    else body.append(labour, census_, sec);
     const domus = section('Domus', 'Homes by tier, and what they wait for', { anchor: 'homes' });
     domus.append(homes(g, up));
     body.append(domus);

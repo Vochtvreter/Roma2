@@ -15,6 +15,7 @@ import { ADVISOR_DEFS } from '../../game/data/advisors';
 import { portrait } from '../../render/art/index';
 import { agendaEl, btn, caps, remedyKey, section } from './common';
 import type { TabPanel } from './common';
+import { focusOfAdvisory } from '../focusrow';
 
 const SEV_NAME = ['Nota', 'Monitum', 'Cave', 'Periculum'] as const;
 const OPPORTUNITAS: RuleId = 'augur.petition';
@@ -86,7 +87,7 @@ function card(g: Game, a: ActiveAdvisory, up: Updater[]): HTMLElement {
     sev < 3 && !hushed(s, a) ? btn(g, 'Hush 30 d', () => A.hush(g.state, a.rule), { cls: 'ghost', tip: 'Keep it off the counsel card for 30 days. It stays here.' }) : null,
     sev === 0 && !muted ? btn(g, 'Mute', () => A.mute(g.state, a.rule), { cls: 'ghost', tip: 'Never show this note on the counsel card.' }) : null,
     muted ? btn(g, 'Unmute', () => A.unmute(g.state, a.rule), { cls: 'ghost' }) : null);
-  return h('div', { class: `card adv-card sev-${sev}${gold ? ' gold' : ''}`, 'data-anchor': a.rule },
+  return h('div', { class: `card adv-card sev-${sev}${gold ? ' gold' : ''}`, 'data-anchor': a.rule, 'data-focus': focusOfAdvisory(a.rule, r.remedies) },
     h('div', { class: 'adv-head' }, img(portrait(a.advisor, advisorMood(s, a.advisor)), 2, 'adv-pt'),
       h('div', null, h('div', { class: 'kicker' }, `${caps(ADVISOR_DEFS[a.advisor].office)} · ${gold ? 'OPPORTVNITAS' : caps(SEV_NAME[sev])}`),
         h('div', { class: 'adv-title-row' }, title, metric))),

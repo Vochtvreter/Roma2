@@ -139,7 +139,7 @@ Only pushes to `main` (and manual runs) start the deploy, so a branch push never
 ### 2.5 Other files
 - `.gitignore`: `node_modules dist *.log .DS_Store coverage test-results`.
 - `public/favicon.svg`: a 16×16 pixel aquila in SVG `<rect>`s.
-- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4) and `castravaleria.exported.v1` (when a copy was last exported). Every access is wrapped in `try/catch`.
+- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): the game's (save.ts `KEYS`) `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4) and `castravaleria.exported.v1` (when a copy was last exported); the UI's own, per browser and never in the save or Prefs, `castravaleria.ui.textSize.v1` (Text size, `ui/textsize.ts`) and `castravaleria.ui.keepPlacing.v1` (⟳ keep placing, `ui/mapbar.ts`). The offline worker keeps its files in Cache Storage as `castra-<folder>-<BUILD>` (§13.11). Every access is wrapped in `try/catch`.
 - `?dev` query: exposes `window.cv = app`, `window.skip(days)`, key 5 = 20×, "DEV" in the title footer. Nothing else differs.
 
 ---
@@ -153,6 +153,8 @@ index.html                         S
 package.json tsconfig.json vite.config.ts .gitignore README.md   S
 .github/workflows/ci.yml deploy.yml                              S
 public/favicon.svg                 S
+public/manifest.webmanifest public/icons/*.png public/sw.js      H   the installable app (§13.11)
+scripts/icons.mjs scripts/precache.ts                            H   the icons from f_aquila; the worker's build step (§13.11)
 src/main.ts                        H   App implements Game: loop, speeds, autosave, catch-up, title/game mode   (350)
 src/game/                          pure simulation — no DOM, no render, no ui imports
   types.ts                         S   frozen types (§4)                                         (620)
@@ -203,6 +205,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   trade.ts                         D   prices, market, caravans, contracts, merchant               (380)
   save.ts                          D   serialize, migrations, prefs, fasti, export/import          (190)
   offline.ts                       D   offlineRun, report                                          (150)
+  loop.ts                          H   the main loop's clock: wall µs in, whole ticks out (§13.8)  (60)
   advisors/engine.ts               E   evaluation, hysteresis, ordering, render, hush/mute        (260)
   advisors/rules-annonae.ts        E   rules 1–6                                                   (230)
   advisors/rules-aquarum.ts        E   rules 7–10                                                  (150)
@@ -242,10 +245,12 @@ src/ui/
   types.ts                         S   Game, Panel, Prefs re-export, PlacingState re-export        (80)
   index.ts                         H   UI root: builds widgets, update loop, log→toast, fx        (230)
   intro.ts                         H   shows/hides the parts the lessons bring; arrival glow       (40)
-  hud.ts                           H   brand, chips, resource strip, date, speed, menu button      (240)
-  vitals.ts                        H   grain/water tablets + 12-month strip                        (150)
+  hud.ts                           H   brand, chips, resource strip, date, view control, speed (pair + popover), menu; figures → tray (290)
+  vitals.ts                        H   grain/water tablets + 12-month strip; strip, card and chart helpers the tray shares (200)
+  tray.ts                          H   the Breviarium: Awaiting you, Res Gestae, essentials, ledgers, materials, the Ordo; the wide pane's column (420)
+  focusrow.ts                      H   the focus row of the DOCK and the COLUMNS: data-focus rows, one listener, the map's answer (pure resolution) (130)
   objective.ts                     H   Res Gestae panel, CTA, danger chips                         (130)
-  counsel.ts                       H   portrait strip + one counsel card (advisory / tip / calm)   (230)
+  counsel.ts                       H   portrait strip + one counsel card; awaitingItems, voiceAction (pure) (430)
   ticker.ts                        H   merged Ordo/Acta ticker                                     (80)
   toasts.ts                        H   toasts                                                      (60)
   banner.ts                        H   rank / stage banners                                        (60)
@@ -254,6 +259,13 @@ src/ui/
   title.ts                         H   title screen, Fasti                                         (150)
   audio.ts                         H   synthesized sfx                                             (130)
   keys.ts                          H   global keyboard                                             (80)
+  history.ts                       H   layers Back and Esc close (registerBack), the Back sentinel (110)
+  pointer.ts                       H   the pointer in use: lastTouch, touchInput, finePointer      (50)
+  textsize.ts                      H   Text size Normal/Large: UI-owned key, data-text on #app, onTextSize; parse/read/write pure (90)
+  platform.ts                      H   standalone, iOS, Safari; the Menu's and the title's platform entries; persist, clipboard, fullscreen, the worker (§13.11) (190)
+  layout.ts                        H   size classes, hosts, detents, route, reveal; data-* on #app, free rect → view insets (§13.10) (750: the one file over ~600 lines, its pure tables and the engine together)
+  sheet.ts                         H   the sliding panel's DOM: grabber, voice-line slot, drag and slide (SHEET, DRAWER; the DOCK's and COLUMNS' slide) (240)
+  mapbar.ts                        H   overlay bar, zoom, the phones' tool column (MapColumn), the placing banner (⟳, ↕); startAt, afterPlace, keepable, placingWhy (pure) (330)
   panels.ts                        I   side panel host, tabs, badges, NEW markers, signatures      (170)
   tabs/edicta.ts                   I   Decisions tab                                               (330)
   tabs/consiliarii.ts              I   Advisors tab                                                (160)
@@ -267,6 +279,7 @@ src/styles/
   index.css                        S   @imports in fixed order; fonts imported in main.ts
   tokens.css                       S   :root tokens (DESIGN §16.1)                                 (60)
   base.css hud.css left.css map-ui.css modals.css title.css mobile.css      H                 (1,050)
+  tray.css sheet.css drawer.css dock.css columns.css (the hosts: phone sheet, landscape drawer, tablet dock, desktop columns)   H
   panels.css tabs.css inspector.css                                         I                 (560)
 tests/
   util.ts                          S   fresh(), run(), ctx(), helpers                              (80)
@@ -277,6 +290,8 @@ tests/
   progression.test.ts events.test.ts trade.test.ts save.test.ts              D                 (380)
   advisors.test.ts guide.test.ts                                             E                 (260)
   art.test.ts                                                                G                 (50)
+  camera.test.ts layout.test.ts sheet.test.ts voice.test.ts focusrow.test.ts   F H            (500)
+  loop.test.ts pwa.test.ts history.test.ts css-floor.test.ts                   H              (840)
   autoplayer.ts balance.test.ts contract.test.ts determinism.test.ts perf.test.ts trace.test.ts   J   (900)
 ```
 Approximate total: game 11.0k incl. data, render 4.4k, ui 4.3k incl. CSS, tests 2.6k → ≈ 22k if every budget is maxed, so **budgets are ceilings, not targets**; aim for ≈ 70% of each (≈ 15.5k). Files stay under ~600 lines; split if needed (new files must stay within the owner's directory prefix and be listed in the PR note).
@@ -1546,7 +1561,7 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
 
 ### 12.1 Coordinates, canvas and camera
 - World pixels: `TILE = 16` per tile; tile `i` covers world px `[tx(i)·16, +16) × [ty(i)·16, +16)`. The map is 1,792 × 1,344 world px.
-- `#map` is a full-viewport canvas with backing size = CSS size × `devicePixelRatio`; `imageSmoothingEnabled = false` for sprites. **Device pixels per world pixel** `scale = max(1, round(level × dpr))` with `ZOOM_LEVELS = [1, 2, 3, 4]` (CSS px per world px); default level 2, centred on the forum. Camera clamps so ≥ 25% of the viewport always shows map.
+- `#map` is a full-viewport canvas with backing size = CSS size × `devicePixelRatio`; `imageSmoothingEnabled = false` for sprites. **Device pixels per world pixel** `scale = max(1, round(level × dpr))` with `ZOOM_LEVELS = [1, 2, 3, 4, 5]` (B.ui.ZOOM_LEVELS, DESIGN §3.1; CSS px per world px); default level from the free map's shorter side (3, or 2 under 700 CSS px), centred on the forum in the free rect. Camera clamps so ≥ 25% of the free rect (the viewport less the UI's insets) always shows map.
 ```ts
 // camera.ts (F)
 export const ZOOM_LEVELS: readonly number[];
@@ -1554,13 +1569,29 @@ export interface Camera { x: number; y: number; level: number; scale: number; vw
 export function makeCamera(): Camera;
 export function worldToScreen(c: Camera, wx: number, wy: number): { sx: number; sy: number };   // device px
 export function screenToWorld(c: Camera, sx: number, sy: number): { wx: number; wy: number };
-export function clampCamera(c: Camera): void;
+export function clampCamera(c: Camera, insets?: Insets): void;                // ≥ 25% of the FREE rect stays on the map
 export function visibleTiles(c: Camera, margin?: number): Rect;
+// insets (device px the UI covers on each side of the canvas; the free rect is the canvas less these)
+export interface Insets { top: number; right: number; bottom: number; left: number }
+export function freeCentre(c: Camera, insets: Insets): { sx: number; sy: number };          // device px
+export function centerOnFree(c: Camera, wx: number, wy: number, insets: Insets): void;      // (wx, wy) at the free centre (unclamped)
+export function ensureVisibleDelta(c: Camera, worldRect: { x: number; y: number; w: number; h: number }, insets: Insets, marginPx: number): { dx: number; dy: number };
+export function defaultLevel(cssSize: number): number;   // 3, or 2 below ZOOM_SMALL_W: fed min(free width, free height)
 ```
+- **Insets** (tests/camera.test.ts at DPR 1, 2, 2.625, 3): the canvas stays full-bleed under the UI and never resizes between panel states. The UI (layout.ts) tells the view what it covers; centring, the ± zoom anchor, the clamp, the minimap rectangle and `ensureVisibleDelta` (the least move that brings a rect inside the free rect, `marginPx` clear of its edges; 0 when it is inside; a rect too big is only moved until it fills it) use the free rect. Insets that leave no free rect fall back to the whole viewport. `x, y` stay the world px at the canvas centre, so `screenToWorld`/`worldToScreen`, picking, the fling and drawing never see the insets.
 - `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
 
 ### 12.2 Frame and draw order (`view.ts`)
-`frame()` is called every animation frame by `main.ts`. Order:
+`frame()` is called on every turn of `main.ts`'s loop (§13.8), and draws only when the frame can differ from the last
+(P7, battery): never while the UI covers all of the map (`suspend(true)`: the canvas keeps its last picture), and while
+paused (or under a modal) only when something moves by itself — a fling, glide or zoom ease (`Motion.busy`), a flash,
+the demolish warning, a particle in flight (`Particles.busy`), placing, the title's drift, a season's crossfade or a
+chunk in view waiting its bake (`TerrainPainter.busy`) — or something changed: `invalidate()` (Game.changed, the fonts
+arriving), an input (hover, tap, drag, wheel), a resize, the insets, an overlay, the selection, placing's end, an fx, or
+the state's `day`, `structEpoch` or `censusEpoch` (or the state object itself). What moves only with the clock holds
+still while paused: walkers and birds already did; the marks' bob and the selection ring's pulse now do too. An idle
+frame pays the minimap's held-back redraw (`Minimap.pending`) and bakes an off-screen chunk every third call
+(`TerrainPainter.bakeIdle`). `draws` counts the frames drawn (?dev). Order:
 1. **Terrain chunks**: 4 × 3 offscreen canvases of 28 × 28 tiles, baked per season (ground colours DESIGN §16.2, hash dither ±8% on 20% of pixels, river ripples and foam, clay banks, ore speckles, springs, fossa, survey chalk lines with peg dots for unbuilt active streets). Rebaked on season change (2 s crossfade from the old set), rank change (rings) and `structEpoch` changes that touch streets. Forest is **not** baked (trees are objects).
 2. **Ground layer** (per frame, culled): roads (dirt / paved autotile with kerbs, drawn by `linear.ts`), forum pavement, field furrows and olive rows of rural buildings (these sprites are drawn here, before y-sorting), staked/planned footprints (chalk outline, pegs).
 3. **Overlay** (if active): the overlay's 1 px/tile canvas scaled up **with smoothing on** at 45% alpha.
@@ -1605,7 +1636,7 @@ export function spriteNames(): string[];
 | Linear | `l_vallum_<h\|v\|c>` · `l_murus_<h\|v\|c>` (16 × 24) · `l_gate_<timber\|stone>_<h\|v>` (48 × 40) · `l_aqua_<ew\|ns\|pier>` (16 × 28) · `l_bridge` · `n_milestone` 6×10 (roads are procedural in `linear.ts`) |
 | Nature | `n_oak_<0..2>` with `@<season>` variants · `n_pine` · `n_cypress` · `n_stump` · `n_rock_<0\|1>` · `n_reeds` · `n_ruins` · `n_lucus` · `n_spring` |
 | Actors | `a_person_<idle\|walk0\|walk1\|work>` · `a_child_<idle\|walk0\|walk1>` · `a_elder_<…>` · `a_patrician_<…>` · `a_legionary_<0\|1>` · `a_priest_<0\|1>` · `a_oxcart_<0\|1>` · `a_mules_<0\|1>` · `a_wagon_<0\|1>` · `a_vettent` · `a_ox_<0\|1>` · `a_bird_<0\|1>` · `a_sheep` · `a_fish` |
-| Icons 12×12 | `i_<resId>` (12) · `i_face_<0..4>` · `i_laurel` · `i_season_<0..3>` · `i_want_<needId>` (13) · `i_seal` · `i_plan` · `i_stake` · `i_closed` · `i_unpaid` · `i_unstaffed` · `i_request` · `i_souls` · `i_beds` · `i_tab_<tabId>` (6) · `i_tool_<toolId>` (5) · `i_ov_<overlayId>` (5, not `none`) · `i_star` |
+| Icons 12×12 | `i_<resId>` (12) · `i_face_<0..4>` · `i_laurel` · `i_season_<0..3>` · `i_want_<needId>` (13) · `i_seal` · `i_plan` · `i_stake` · `i_closed` · `i_unpaid` · `i_unstaffed` · `i_request` · `i_souls` · `i_beds` · `i_tab_<tabId>` (6) · `i_tool_<toolId>` (5) · `i_ov_<overlayId>` (5, not `none`) · `i_star` · `i_view_<closed|half|full>` (3: the view control) |
 | Portraits 24×24 | `pt_<advisorId>_<0\|1\|2>` (calm/concerned/alarmed) · `pt_mentor` · `pt_mentor_notes` · `pt_silhouette` |
 | Frames | `f_meander` 12×12 · `f_seal` 16×16 · `f_aquila` 32×32 |
 
@@ -1641,10 +1672,14 @@ export class MapView {
   handleFx(events: FxEvent[], s: GameState): void;    // §12.6
   resize(): void;
   panBy(dxCss: number, dyCss: number): void;
-  centerOn(tile: number, level?: number): void;
+  centerOn(target: number | Rect, level?: number): void;   // a tile, or the middle of a tile rect, at the free-rect centre
   centerOnForum(): void;
-  zoomBy(steps: number, anchor?: { sx: number; sy: number }): void;
+  zoomBy(steps: number, anchor?: { sx: number; sy: number }): void;   // the player's own: default anchor = the free-rect centre
   setZoom(level: number): void;
+  setInsets(css: { top: number; right: number; bottom: number; left: number }, opts?: { host?: boolean; canvasZoom?: boolean; labelEdge?: number }): void;   // CSS px (ui/layout.ts); host: re-pick the default zoom; canvasZoom: the COLUMNS keep the canvas-width rule; labelEdge: CSS px more on the right the map's labels keep clear of (the COLUMNS' ▸ and ⤢ handles, --cols-edge)
+  freeRect(): { left: number; top: number; right: number; bottom: number };   // canvas CSS px: the canvas less the insets
+  mapRect(): { left: number; top: number; width: number; height: number };    // the canvas box relative to #app (add to screenRect)
+  ensureVisible(target: number | Rect, marginCss?: number): { dx: number; dy: number };   // eased glide (Motion.glide); the target's screen shift
   readonly placing: PlacingState | null;
   startPlacing(p: PlacingState, s: GameState): void;  // auto-selects the matching overlay (§12.5), remembers the previous one
   cancelPlacing(): void;                              // restores the previous overlay
@@ -1656,10 +1691,23 @@ export class MapView {
   tileAt(sxCss: number, syCss: number): number | null;
   pickBuilding(sxCss: number, syCss: number): number | null;   // y-sorted sprites back to front with alphaMask, then derived.buildingAt
   screenOf(tile: number): { x: number; y: number } | null;     // CSS px, for anchoring DOM
+  screenRect(x: number, y: number, w: number, h: number): { left: number; top: number; right: number; bottom: number };   // canvas CSS px
+  buildingRect(id: number): { left: number; top: number; right: number; bottom: number } | null;
+  buildingTiles(id: number): Rect | null;             // its footprint as a tile rect
   titleDrift(dtMs: number, s: GameState): void;       // slow diagonal pan used behind the title
   setInputEnabled(on: boolean): void;                 // off under the catch-up veil and modals
+  suspend(on: boolean): void;                         // P7: the UI covers all of the map (layout.ts mapCovered): draw nothing
+  readonly suspended: boolean;
+  invalidate(): void;                                 // P7: something the map shows changed outside the view: draw next frame
+  readonly draws: number;                             // P7: map frames drawn since the page loaded (?dev battery checks)
 }
 ```
+Covered (`suspend(true)`), `frame()` returns at once and `handleFx` drops the bursts, flashes and columns (kept, they
+would all play at once when the map shows again), but keeps a `fire` (a building's flames for a while, not a burst: the
+building whose crackle was heard burns when the map shows); uncovered, the next frame draws, the particles and walkers
+going on from where they stood.
+Camera and the UI: every coordinate in and out is canvas CSS px; `mapRect()` places them in `#app`. `setInsets` never recentres, but clamps at once to the new free rect (at a map edge a wider free rect moves the limit: the step comes with the panel's slide, not with the next drag); with `host: true` (the layout changed shape) the default level is chosen again from the free map unless the player zoomed by hand since `attach`. `attach` picks the default level from min(free width, free height) (phones, landscape phones, docked tablets: 2), except on the COLUMNS host, where `setInsets({ canvasZoom: true })` keeps the canvas-width rule (desktops and 1366×768 laptops: 3) and centres the forum in the free rect. `startPlacing` with `at` glides the ghost into the free map (which ends above the placing banner) by the least it needs (`ensureVisible`, 64 px clear), never when it is there already; every `setInsets` does the same for a ghost the player set (pre-positioned or tapped, not the mouse's: `keepGhost`), so a rotation or a resized window never leaves Place staking a site out of sight. The inspector's popup (inspector.ts) glides a pinned target clear only when the UI covers it, when picked and again on a layout change (`Layout.onChange`): `ensureVisible` into the free rect, then `dodge()` (pure, tests/layout.test.ts) clear of what floats over it (the map's tools, the ticker, a phone's band of cards; what the layout floats, the DOCK's head beside the spine, by its own box: `currentFloating`); a target already in view never moves. The card stands where the room around its target holds it (`clearAround`: a house left of the DOCK's head keeps its card there), and of the sides where it fits whole it takes the one covering least of the map's tools (`#map-tools` whole, the zoom, the tool column, the overlay bar, the minimap, the ticker); when that one still covers some, a side where a shorter card (down to 180 px, scrolling inside) or one slid along its edge (its tail still on the target's middle) covers none, the tallest of those (`popupSlot`, pure, tests/layout.test.ts: a card left of a target at the top right of a tablet's map ends above the minimap).
+
 Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
 
 ### 12.5 Overlays (`overlays.ts`, F)
@@ -1698,7 +1746,7 @@ Auto-selection while placing: water buildings → `aqua`; service buildings → 
 Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walkers (`actors.ts`) are visual only: `min(220, pop / 4)` (120 on touch) sampled people walk home ↔ work along the road graph (BFS cached per `structEpoch`), chosen by `hash2(personId, day)`; tunic colour by labour category of the job (water `#62b0d6`, food `#d9a35b`, materials `#8a6b4a`, industry `#55565e`, services `#9e2f25`, builders `#c0623f`, none `#bba58b`); patricians in white togas; children and elders by stage.
 
 ### 12.7 Minimap (`minimap.ts`, F)
-`#minimap` canvas, CSS 224 × 168 (2 px per tile, backing × dpr): terrain colour per tile, buildings as footprint colours, roads, the active overlay, the viewport rectangle. Redrawn at most every 500 ms. Click or drag → `centerOn`. Hidden below 1,100 px and while placing.
+`#minimap` canvas, CSS 224 × 168 (2 px per tile, backing × dpr): terrain colour per tile, buildings as footprint colours, roads, the active overlay, the viewport rectangle (the free rect: the map the UI leaves in view). Redrawn at most every 500 ms. Click or drag → the point to the free-rect centre. Hidden on the phone hosts (SHEET, DRAWER) and on the DOCK under 960 px wide (mobile.css, dock.css: the tool column's Mappae holds the overlay bar there), and while placing; shown on the DOCK from 960 px (a 1,050 px mouse window included) and on the COLUMNS, docked, wide and in the lessons' strip.
 
 ---
 
@@ -1714,11 +1762,18 @@ Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walker
   <meta name="theme-color" content="#15100d" />
   <title>Castra Valeria</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Castra" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
 <body>
   <div id="app">
     <canvas id="map" aria-label="Map of the colony"></canvas>
     <header id="hud"></header>
+    <div id="tray"></div>
     <aside id="left">
       <section id="objective"></section>
       <section id="counsel"></section>
@@ -1734,6 +1789,7 @@ Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walker
       <canvas id="minimap"></canvas>
       <div id="zoom-ctl"></div>
     </div>
+    <nav id="map-col"></nav>
     <aside id="side">
       <button id="side-toggle" aria-label="Toggle panel"></button>
       <nav id="tabs" role="tablist"></nav>
@@ -1748,7 +1804,26 @@ Particles are capped at 600 (300 when `matchMedia('(pointer: coarse)')`). Walker
 </body>
 </html>
 ```
-DOM ownership: **H** fills `#hud`, `#objective`, `#counsel`, `#toasts`, `#banner`, `#place-banner`, `#ticker`, `#map-tools` (overlay bar and zoom buttons; the minimap canvas is drawn by F), `#title-screen`, `#modal-root`, `#tooltip`, `#veil`. **I** fills `#side` (toggle, tabs, body), `#inspector`, `#choice`. Z-order is DESIGN §15.1 (set in CSS by the owner of each element).
+Ids are only ever added: `#tray` (the Breviarium, tray.ts) came with the phone HUD; on the phone hosts (SHEET, DRAWER)
+the `#objective` node itself moves into it and back to `#left` on any other host (one instance of every widget). `#map-col`
+(the phones' tool column, mapbar.ts `MapColumn`) came with the phone sheet. On the phone hosts nodes move, never copy
+(§13.10): `#counsel` and `#ticker` into the voice line, `#tabs` out of `#side` into `#app` (the SHEET's bar at its foot,
+the DRAWER's spine at its right edge), `#overlay-bar` into the Mappae popover and `#zoom-ctl` into `#map-col`; on the
+DRAWER the voice line's slot itself stands in `#app` (afloat on the map) while the pane is closed. Any other host puts
+each back where this file has it. Ids made in code: `#sheet-grab` and `#sheet-voice` (the grabber and the voice line's
+slot, sheet.ts, at the head of `#side`), `#map-via`, `#map-mappae`, `#via-pop`, `#mappae-pop` (the column's buttons and
+popovers), `#hud-menu` (the HUD's ☰), `#speed`, `#speed-pop`, `#vital-grain`, `#vital-water` and the tab buttons
+`#tab-<id>`. P3 (the DRAWER) added `#safe-box` (layout.ts, a child of `<body>`: fixed, invisible, inset by the safe
+areas: the window the size classes are read from, §13.10). P4 (the DOCK) added `#view-ctl` (the HUD's view control,
+hud.ts); on the DOCK `#objective` and `#counsel` move into `#sheet-voice` at the head of `#side` (the left column folded
+in), `#ticker` stays home, and from 960 px wide the wide pane takes `#tray` as its first child (tray.ts `column`).
+P5 (the desktop COLUMNS) added `#side-wide` (⤢, panels.ts: a child of `#side` after `#side-toggle`); on the COLUMNS
+`#view-ctl` stands in `#app` (at the top-left of the map), and the wide panel takes `#tray` as its first child too.
+P7 (the installable app, §13.11) added to `<head>`, no ids: `<link rel="manifest" href="manifest.webmanifest">`,
+`<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">` and the metas `apple-mobile-web-app-capable`,
+`mobile-web-app-capable`, `apple-mobile-web-app-title` (Castra) and `apple-mobile-web-app-status-bar-style`
+(black-translucent: the map runs under the status bar, the chrome inside the safe areas); every URL relative.
+DOM ownership: **H** fills `#hud`, `#tray`, `#objective`, `#counsel`, `#toasts`, `#banner`, `#place-banner`, `#ticker`, `#map-tools` (overlay bar and zoom buttons; the minimap canvas is drawn by F), `#map-col`, the phones' grabber and voice line in `#side` (sheet.ts), `#title-screen`, `#modal-root`, `#tooltip`, `#veil`. **I** fills `#side` (toggle, tabs, body), `#inspector`, `#choice`. Z-order is DESIGN §15.1 (set in CSS by the owner of each element).
 
 ### 13.2 `Game` (`src/ui/types.ts`, scaffold; implemented by `App` in `src/main.ts`, H)
 ```ts
@@ -1773,7 +1848,7 @@ export interface Game {
   inspect(t: InspectTarget | null, sticky: boolean): void;
   select(id: number | null): void;    // view.select + inspect building
   focusTile(tile: number): void;      // centre + flash
-  openTab(tab: TabId, anchor?: string): void;
+  openTab(tab: TabId, anchor?: string, from?: OpenFrom, shift?: boolean): void;   // who asked (layout.route); shift with a key: wide
   prefillContract(spec: ContractSpec): void;   // opens 'trade' with the new-contract form filled
   applyRemedy(r: Remedy): void;       // §13.6
   newGame(opts?: { afterVictory?: boolean }): void;
@@ -1800,14 +1875,30 @@ export class UI {
   showVeil(run: OfflineRun, onSkip: () => void): void; hideVeil(): void;
   showDispatch(kind: 'founding' | 'away' | 'victory', report?: AwayReport): void;
   showPlaceBanner(p: PlacingState | null, check: PlaceCheck | null): void;
+  readonly layout: Layout;                        // §13.10, created in build() right after the SidePanel
+  readonly tray: Tray;                            // the Breviarium (below)
+}
+// src/ui/tray.ts (H) — the Breviarium, the accounts every HUD figure opens (DESIGN §15.2); UI-only, not a TabId
+export class Tray {
+  constructor(g: Game, root: HTMLElement, objective: HTMLElement);   // root = #tray; objective = #objective (moved into the tray on the phone hosts, SHEET and DRAWER)
+  readonly open: boolean;
+  covers(el: HTMLElement): boolean;               // open beneath that HUD figure: its hover card holds back (Hud.quiet)
+  toggle(fig: string, from: HTMLElement | null, viaKey?: boolean): void;   // a HUD figure (data-fig): open there, or close on a second tap of it
+  show(section?: string, from?: HTMLElement | null): void;                // 'awaiting' | 'gestae' | 'grain' | 'water' | 'coin' | … | 'ordo'
+  close(): void;                                  // also a history.ts layer (BACK_RANK.tray): Back and Esc
+  mount(host: Host): void;                        // a host change: #objective in on a phone host (SHEET, DRAWER), back to #left elsewhere
+  column(pane: HTMLElement | null): void;         // the wide pane's first column (brevColumn: the DOCK from 960 px, the COLUMNS); null: back under the HUD, closed
+  update(now: number): void;                      // throttled by UI.frame; does nothing while closed
+  onRead: (() => boolean) | null;                 // 'Read' on a waiting dispatch → ChoiceCard.reveal
 }
 // src/ui/panels.ts (I)
 export class SidePanel {
   constructor(g: Game, root: HTMLElement);        // root = #side
   frame(now: number): void;                       // signature diff of the open tab; badges; NEW stickers on reveal
-  open(tab: TabId, anchor?: string): void;
+  open(tab: TabId, anchor?: string, from?: OpenFrom, shift?: boolean): void;   // routed through Layout.go (from: who asked; shift with a key: wide)
   readonly current: TabId;
-  toggle(open?: boolean): void;                   // collapse (desktop) / bottom sheet (mobile)
+  toggle(open?: boolean): void;                   // collapse (desktop) / bottom sheet (mobile): through layout.panelToggle
+  show(on: boolean, instant?: boolean): void;     // writes the open or folded panel (Layout.setDetent calls it)
 }
 // src/ui/inspector.ts (I)
 export class Inspector {
@@ -1869,11 +1960,12 @@ export function toastBatch(key: string, text: (n: number) => string, kind?: 'inf
 
 ### 13.5 Counsel card (`counsel.ts`, H)
 Exactly one item, by priority: Periculum advisory › urgent tip (`nextTip(s)?.urgent`) › an opening lesson whose job is not done (DESIGN §11.13) › Cave advisory › a lesson in its breather (payoff, *Begin now*) › tip (if `prefs.tips`) › Monitum / Opportunitas advisory › calm line (*"The council is content. Next: {current milestone}"*). Above it (once a lesson has brought it, `introduced(s, 'portraits')`) the portrait strip of appointed advisors (`portrait(id, advisorMood)`, severity pip; click → `openTab('advisors', id)`). An advisory renders `renderAdvisory()` lazily (only when it is the shown item or the signature changed): kicker (advisor office), title, metric chip, text, up to 3 remedy buttons (disabled with `check.reason` when not ok), **Hush 30 d** (not Periculum), **Mute** (Nota only). Building remedies show **Ask the Ordo** + **Place it myself** when Ordo construction is on, else only the latter. A tip shows the mentor portrait, `mentorKicker(s)`, title, text, **Understood** (`dismissTip`) and **Show me** when `target`/`tab` is set (opens the tab and pulses the target selector for 3 s).
+What waits on the player, pure (tests/voice.test.ts): `awaitingItems(s)` lists, most pressing first, each Periculum advisory, a dispatch (`s.choice`), each Cave advisory, the chores learned and not yet answered (`pendingOffers`, once the lessons have brought Edicta's Mandata), and a ready petition while Edicta is on the bar (the Breviarium's *Awaiting you*; the phone voice line's '+n', which counts them less the one the line shows: `waitingBeyond`). On the SHEET the counsel card is the voice line (§13.10): folded to its head (portrait, kicker, title, the chip, the pip) at the sheet's top, unfolded inside the sheet; `showLesson(g, l)` is every Show me's route (its tab where the lessons' table puts it, `bringTarget`, then `pulseTarget`). `voiceAction(item, s)` gives an item's one chip: a Periculum or Cave with a building remedy → **Place** (that remedy, checked), offers → **Review** (Edicta at `mandates`), a lesson under way with a pointer → **Show me**, a dispatch → **Read**, a petition → **Petition**; else none (the line shows ▾). `awaitAction` is a row's: an advisory's first remedy (a building one as Place), else the chip. `remedyChip(list, first, s)` is the shared core.
 
 ### 13.6 Remedy execution (`App.applyRemedy`, H)
 ```
 check = checkRemedy(s, r); if (!check.ok) → toast(check.reason, 'bad'); sfx 'error'; return
-place     → startPlacing({ kind: 'building', type: r.building, at: r.tile ?? bestSlot(s, r.building, { owner: 'player' })?.tile })
+place     → startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) })   // the tile while still valid, else the best slot
 open      → openTab(r.tab, r.anchor)
 overlay   → view.setOverlay(r.overlay, r.layer)
 contract  → prefillContract(r.spec)
@@ -1902,24 +1994,165 @@ Toasts are only for completions, evolutions, milestones, rank-ups and errors (DE
 ```
 boot: registerAllArt(); prefs = loadPrefs(); initTooltips(); view = new MapView(#map, #minimap, callbacks); ui = new UI(app); ui.build()
       hasSave() ? title (Continue) : title (Found a new colony); the title map = loadGame() ?? newGame({ seed: 42, now })
-frame(t): dt = min(DT_CLAMP, (t − last) / 1000)
+frame(t): schedule()                        // the next turn first: an animation frame, or the covered timer (below)
+  hidden → the clock moves on without counting (the catch-up counts the absence, onVisibility); return
+  turn = advance(clock, t, speed, { run: game & !paused & !modalOpen & !broken, clamp: covered ? COVERED_DT_CLAMP : DT_CLAMP })
+     // game/loop.ts (pure): whole wall µs (rounded timestamps telescope) × speed → owed; ticks = ⌊owed / 1 s⌋,
+     // at most MAX_STEPS (a larger backlog is dropped, as before); dt = the turn's clamped wall time
+  cover(): view.suspend(layout.covered(modalOpen))   // layout.ts mapCovered; uncovered → the timer turn goes back to rAF
   catchup → slice run (§11.5); view.frame; ui.frame; return
-  game & !paused & !modalOpen → acc += dt × speed; steps = 0
-     while acc ≥ 1 && steps < MAX_STEPS: ctx = newCtx(); tick(s, ctx); rates = ctx.rates; fxBuf.push(...ctx.fx); acc −= 1; steps++
-     if steps === MAX_STEPS: acc = 0          // drop the backlog
+  turn.ticks × { ctx = newCtx(); tick(s, ctx); rates = ctx.rates; fxBuf.push(...ctx.fx) }
   fxBuf.push(...drainActionFx()); if fxBuf.length: view.handleFx(fxBuf, s); ui.onFx(fxBuf); fxBuf = []
   view.frame(dt × 1000, s, speed, paused); ui.frame(t)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
-keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → placing → selection → menu); ignored inside inputs
+keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs
+back (history.ts): initBack(g) registers the modal 100, placing 50 and selection 40; the phone's speed popover (hud.ts)
+      and the tool column's Via and Mappae popovers (mapbar.ts) add 70, the Breviarium (tray.ts) 60, the event card in a
+      phone's slot (ui/index.ts) 45, and the layout the panel's detent at 30 (isLayer, backDetent: full → half → closed on
+      the phones, wide → docked on the COLUMNS, spine or wide → docked on the DOCK); later layers registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;
+      popstate closes the top open layer (a letter that must be answered goes to the title) and re-arms; with none open the
+      first Back saves and toasts 'Back again to leave · the colony is saved', a second within LEAVE_MS leaves
+startPlacing(p): the place banner first (it refreshes the layout: a phone's sheet drops while placing), then view.startPlacing
+      (a pre-positioned ghost reports its verdict, and on touch its Place button, through onPlacementPreview);
+      view.startPlacing glides the ghost into the free map only when it is not there already (ensureVisible)
+focusTile(tile): centres the building on it (its whole footprint) or the tile in the free map, and flashes it
+enter(s): the title comes down first (UI.hideTitle syncs the tab bar and refreshes the layout), then view.attach(s), so the
+      default zoom and the forum's centring are for the map the HUD, the panel and the column leave free
 ```
+The loop turns on `requestAnimationFrame` while the map shows; while the UI covers all of it (`view.suspended`: the SHEET
+or the DRAWER full, the DOCK's wide pane under 960 px, a phone's modal sheet) it turns on a timer at `COVERED_HZ` (15,
+the floor is 12) so the browser may skip its frames, and its turns are clamped at `COVERED_DT_CLAMP` (0.25 s) instead
+of `DT_CLAMP` (0.1 s), so a late timer loses no sim time: the colony runs at the chosen speed whatever the rate
+(tests/loop.test.ts: 30 s at 12, 15, 60 and 120 Hz give the same ticks and the same state hash). A layout change
+(`Layout.onChange`) wakes a waiting timer turn onto the next animation frame; a catch-up always runs on animation
+frames. A panel that moves (under the finger, or sliding: `SheetHooks.moving`) covers nothing, so a drag down from a
+full sheet or drawer uncovers the live map (the next timer turn finds it and goes back to animation frames), not the
+picture the cover left on the canvas. `Game.changed()` also invalidates the map (a paused map draws what an action changed); the fonts' `loadingdone`
+does too.
 `?dev` exposes `window.cv = app` and `window.skip(days)` (runs `days` online ticks synchronously).
 
 ### 13.9 CSS ownership and conventions
-- `tokens.css` (S) defines every DESIGN §16.1 token plus `--font-body: 'Pixelify Sans'`, `--font-caps: 'Silkscreen'`, spacing `--s1..--s5` (4/8/12/16/24 px), radii, z-index tokens (`--z-map` 0 … `--z-veil` 200 from DESIGN §15.1). Fonts are imported in `main.ts` (`@fontsource/pixelify-sans/400.css`, `600.css`, `@fontsource/silkscreen/400.css`).
+- `tokens.css` (S) defines every DESIGN §16.1 token plus `--font-body: 'Pixelify Sans'`, `--font-caps: 'Silkscreen'`, spacing `--s1..--s5` (4/8/12/16/24 px), radii, z-index tokens (`--z-map` 0 … `--z-veil` 200 from DESIGN §15.1), and the type scale (P6, DESIGN §16.1): `--fs-caps` (12 px, 13.333 at ≥ 3 dppx), `--fs-xs` 12, `--fs-small` 13, `--fs-line` 14, `--fs-body` 15 (`--fs-base`), `--fs-num` 16, `--fs-lead` 18, `--fs-title` 20, `--fs-hero` 26, each `calc(N px × var(--ts))`. They are declared on `:root, #app, #app ~ *` (a custom property's `calc()` is worked out where it is declared, so `#app` and the layers beside it, `#title-screen`, `#modal-root`, `#tooltip`, `#veil`, read their own `--ts`), and `#app[data-text='large'], #app[data-text='large'] ~ *` sets `--ts: 1.25` and `--fs-caps: 16px` (Text size Large: `ui/textsize.ts` writes `data-text` and keeps the choice in `castravaleria.ui.textSize.v1`, never in Prefs; what measures itself listens with `onTextSize`: `Hud.refit`, the `Ratchet`s, `Layout.refresh`, the tray). Every `font-size` in `src/styles` is a token, `calc(N px * var(--ts))`, `min(token, N px)` where a fixed box holds it (the phone bar's names, the tablet's tab names) or a viewport clamp (the title, the banner), never under 12 px at either size; `tests/css-floor.test.ts` checks it, every `--fs-*` token wherever a stylesheet sets it again (any `@media` or `@container` block), the canvas's font literals (the map labels size themselves by `camera.ts labelPx` at the canvas's own capped pixel ratio, `canvasDpr`, the one the view and the minimap use, and stay whole in the free map, `labelLines`: slid in from an edge, or in two lines; the chart by `textsize.ts chartFontPx`), and that no sheet or pane height is in `vh`. Fonts are imported in `main.ts` (`@fontsource/pixelify-sans/400.css`, `600.css`, `@fontsource/silkscreen/400.css`).
 - `base.css` (H) owns the shared components every UI file uses and nobody redefines: `.btn` (`.primary .legate .good .danger .ghost .small`), `.chip` (`.bad .good .gold`), `.well`, `.card`, `.kicker`, `.meter`, `.pip`, `.sev-0…3`, `.badge`, `.new`, `.seal`, `.num`, `.muted`, `.meander` (border-image from `f_meander`, injected as a CSS variable by `ui/index.ts`).
-- New class names are prefixed by area: `hud- left- obj- counsel- tick- toast- banner- place- map- modal- disp- title- veil-` (H); `side- tab- ed- adv- bld- pop- tr- ann- ins- choice-` (I).
-- Breakpoints: desktop ≥ 1,100 px; tablet 900–1,099 (side panel overlays the map, minimap hidden); mobile < 900 (bottom sheet 46 vh, HUD two rows); compact < 560. Touch targets ≥ 44 px; `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- New class names are prefixed by area: `hud- left- obj- counsel- tick- toast- banner- place- map- modal- disp- title- veil- tray-` (H); `side- tab- ed- adv- bld- pop- tr- ann- ins- choice-` (I).
+- Size classes (§13.10): `#app[data-w=compact|medium|expanded|large][data-h=short|regular|tall][data-input=touch|mixed|mouse][data-host=sheet|drawer|dock|columns][data-detent=closed|half|full]` and `[data-tiny]`, written by `ui/layout.ts`, `[data-text=large]` by `ui/textsize.ts` (Text size Large; none for Normal), and `[data-panel~=collapsed|empty|notabs]` by `ui/panels.ts` (`panelTokens`: `#side.collapsed`, `#side.empty`, an empty `#tabs`, written with them; the stylesheets key on it, never on `#app:has(…)`, and no `:has()` rule styles a part with nothing to match on, a bare `:last-child`: either had each text change under `#app` restyle what it reaches, the second the whole page, ~10× origin/main's style time; tests/css-floor.test.ts) (on a phone also `[data-card]` while a card stands in the phone's slot; on the SHEET `--sheet-closed|half|full` and `--dock-h`, the height of what stands on the bar; on the DRAWER `--drawer-half|full`, the pane's widths; on the DOCK `--dock-half|full`, its pane's widths, and dock.css's `--dock-now`, the width at the detent; on the COLUMNS
+`--cols-half|full`, the panel's widths, columns.css's `--cols-now`, which is `--side-w` there, and `[data-fold]` where
+the left column folds away for the wide panel or `[data-strip]` where the map gives way to it, `columnsRoom`). What both phone hosts share is keyed `#app:is([data-host='sheet'], [data-host='drawer'])` (the same specificity as one host's selector), and what the DOCK shares with them (the voice line's look, the tool column, the 76 px banner's box, the tab bodies' 12 px floor) `#app:is([data-host='sheet'], [data-host='drawer'], [data-host='dock'])`. New CSS keys on these attributes only (plus `@container` queries inside panels); the width-only `@media` breakpoints below are migrated to them as each host lands, and keep working until then.
+- Container queries (tabs.css): `#tab-body` is the `tab-body` container (inline size): its page (`.side-body`) is one column under 520 px (the 380 px desktop panel, a phone), sections in two columns from 520 and three from 840 (`display: block`, `columns`, each section `break-inside: avoid`), and under 330 px (the 340 px drawer's 314 px body; never the 380 px desktop panel's, even with a 15 px scrollbar) the dense rows fold (labour lines, trade rows, edict rows, works queue) so nothing is cut off by the body's `overflow-x: hidden`; under Text size Large they fold from 412 px (330 × 1.25). Grids in tab bodies size by the body (`.adv-filters`, `.pop-grid`: `auto-fit`/`auto-fill` with a minimum), not by fixed counts.
+- Breakpoints (P4: every host but COLUMNS has its own shape, and COLUMNS is never under 1,280 px): the width blocks of mobile.css and panels.css (under 1,100, 1,200, 900, 560 px) now serve only what the phones still lean on and stand off the DOCK (`:where(#app:not([data-host='dock']))`, the same specificity); the DOCK's one 56 px HUD row, pane, spine, wide pane, map tools and banner are `dock.css`; the desktop COLUMNS' badge
+spine, ⤢, wide panel and what moves with them (the view control's place, the map tools, the toasts, the event card) are
+`columns.css` (imported last; P5), today's desktop rules of hud.css, left.css, panels.css and map-ui.css standing as
+they were for the docked panel. The Breviarium as a wide pane's first column is tray.css's (`#side > #tray.tray-col`). The SHEET's one-row HUD is `#app[data-host='sheet']` in hud.css, and its sheet, bar, voice line, tool column, toasts and placing banner are `sheet.css`. The DRAWER's 44 px HUD row is in hud.css, and its spine, pane, floating voice line, tool column, card slot, one-row banner and toasts are `drawer.css`. index.css imports `tray.css`, `mobile.css`, `sheet.css`, `drawer.css`, `dock.css` and `columns.css` in that order (columns.css last), so each host's sheet outranks mobile.css and panels.css. What is left of mobile.css's width blocks stands under `:where(#app:not([data-host='dock']))`, and its short-window drawer under `:where(#app:not([data-host='drawer'], [data-host='dock']))`, which keeps their specificity. (Before the hosts: desktop ≥ 1,100 px; tablet 900–1,099, the side panel over the map, minimap hidden; mobile < 900, a 46 vh bottom sheet and a two-row HUD; compact < 560.) Touch targets ≥ 44 px wherever `(pointer: coarse)` matches, at any width; `image-rendering: pixelated` on every sprite `<img>` and canvas; `-webkit-font-smoothing: none`.
+- Battery (P7, tokens.css): every panel's `backdrop-filter` is `var(--blur)`, which is `none` on `#app[data-input='touch']`
+  and the layers beside it: it is computed again every frame the map under it draws. There `--panel` is `--panel-solid`
+  and the HUD's gradient opaque too: without the blur a 95% panel let the map read through behind its text.
+- Page hygiene (base.css): `#app { overflow: clip }` (script can never scroll the frame; only `#tab-body` scrolls, through `dom.scrollWithin`, never `scrollIntoView`); `touch-action: pan-x pan-y` on `#app > :not(#map)`, `#modal-root`, `#title-screen`, `#veil` (never `#app *`, which would override `#map { touch-action: none }`); a `gesturestart` preventDefault (main.ts); `overscroll-behavior: none` and `text-size-adjust: 100%` on html, body; `-webkit-touch-callout: none` on img; fields of 16 px on touch; ligatures off everywhere (`font-variant-ligatures: no-common-ligatures`: Pixelify Sans draws 'fi' as one glyph that reads as 'A'). The canvas draws text in Silkscreen only, which has no ligatures.
+
+### 13.10 Layout engine (`src/ui/layout.ts`, H)
+One game screen: the map full-bleed underneath and one panel on top, whose shape (the **host**) follows the window and whose resting position (the **detent**) follows the player.
+```ts
+// pure (tests/layout.test.ts)
+export type WClass = 'compact' | 'medium' | 'expanded' | 'large';   // #app CSS px: < 600 · 600–959 · 960–1439 · ≥ 1440
+export type HClass = 'short' | 'regular' | 'tall';                  // < 480 · 480–759 · ≥ 760
+export type InputClass = 'touch' | 'mixed' | 'mouse';               // coarse & !any-fine · coarse & any-fine, or fine & any-coarse · else
+export type Host = 'sheet' | 'drawer' | 'dock' | 'columns';
+export type Detent = 'closed' | 'half' | 'full';
+export function classify(w: number, h: number, m: Media): Classes;   // { w, h, input, host, tiny }
+export function route(i: Intent, c: RouteCtx): Route;                // { detent, remember, card }
+export function reveal(selector: string, host: Host, w?: WClass): string;   // a hidden target's visible proxy (revealOn: REVEAL, the DOCK's by width), a card's copy of a row (CARD_ROWS), else itself
+export function hostPointer(l: Lesson, host: Host): { open; anchor?; glow; card };   // lessonPointer, but a CARD_LESSONS job on the SHEET stays in its card
+export function trayHolds(anchor?: string): boolean;                // the SHEET's build tray carries this Aedificia anchor (else: full)
+export function lessonFolds(l: Lesson, host: Host): boolean;        // the lesson arrives folded in the voice line (a tray card's job)
+export function isPhone(host: Host | null): boolean;                // SHEET or DRAWER: the phone widgets
+export function mapCovered(free: Box, host: Host, modal: boolean): boolean;   // P7: no map left at rest, or a phone's modal sheet → view.suspend
+export function drawerWidths(W: number, spine: number): Record<Detent, number>;   // the DRAWER pane's width per detent
+export function clearOf(box: Box, ob: Box, gap?: number): Box;      // the largest part of a box clear of what stands in it
+export function clearAround(box: Box, ob: Box, x: number, y: number, gap?: number): Box;   // the largest such part holding (x, y), else clearOf's: a popup's room beside what floats
+export function currentFloating(): { under: Box; box: Box } | null;  // Layout.floatingBox: the DRAWER's line or card, the DOCK's head afloat, and the free map under it
+export function priorityDrops(need: number, room: number, widths: readonly number[]): number;   // the DRAWER's and the DOCK's HUD priority+
+export function dockWidths(W: number, w: WClass): Record<Detent, number>;   // the DOCK pane's width per detent: spine 56 · clamp · wide
+export function brevColumn(host: Host, w: WClass, d: Detent): boolean;      // the Breviarium is the wide pane's first column (DOCK ≥ 960, COLUMNS)
+export function columnsRoom(W: number, lessons?: boolean): 'beside' | 'fold' | 'strip';   // how the COLUMNS make room for wide: the left column beside the 630 px of map (≥ 1750), folded away, or (the opening lessons running: its card is theirs) kept with the map a strip
+export function columnsWidths(W: number, lessons?: boolean): Record<Detent, number>;   // the COLUMNS panel per detent: spine 64 · 380 · wide (all but 630 px of map, and the left column where it stays)
+export function toolColumn(host: Host, w: WClass): boolean;  // the phones' tool column (and the overlay bar in Mappae): phones, DOCK < 960
+export function slimBanner(host: Host | null): boolean;      // the placing banner with the reason row and ⟳: all but COLUMNS
+export function isLayer(d: Detent, host: Host): boolean; export function backDetent(d: Detent, host: Host, tiny: boolean): Detent;   // Back/Esc
+export function keyAction(key: string, shift: boolean, host: Host): KeyAction | null;   // a tab letter (Shift: wide), C M I: a view
+export function visibleOn(host: Host, w?: WClass): readonly string[]; export function revealOn(host: Host, w?: WClass): Record<string, string>;
+export const DEFAULT_DETENT, LESSON_VIEW, VISIBLE, REVEAL, DOCK_TOOLS, CARD_LESSONS, CARD_ROWS, VIEWS, VIEW_HOSTS, TAB_KEYS, DOCK, COLUMNS; // host defaults · LessonId → 'tab' | 'map' | 'frame' · per-host targets · the views · the DOCK's and the COLUMNS' widths
+// DOM: one instance (UI.build), window.cv.ui.layout in ?dev
+export class Layout {
+  readonly classes: Classes; readonly host: Host; readonly input: InputClass; readonly tiny: boolean; readonly detent: Detent;
+  setDetent(d: Detent, opts?: { instant?: boolean; fromH?: number; user?: boolean }): void;   // the panel, the SHEET's slide, the insets
+  panelToggle(open: boolean): void;                           // SidePanel.toggle(): the last open detent, or closed
+  go(i: Intent): Route; restore(): boolean; forget(): void;   // route() and move there; put back (detent and tab-body scroll) / drop what a remembering route left
+  dock(el: HTMLElement | null): void; readonly docked: HTMLElement | null; readonly dockH: number;   // the SHEET's card slot; what stands on the bar
+  lift(why: string): void; drop(why: string): void;           // half for a while (the SHEET's unfolded counsel), and back
+  onMount(mount: (host: Host, c: Classes) => void): void;     // a widget's place per host (and width class), run before the layout measures
+  attachSheet(hooks: SheetHooks, observe: HTMLElement[]): void;   // the phones' head, slide and floating voice line (sheet.ts)
+  readonly offered: readonly Detent[]; readonly sheetHeights: Record<Detent, number> | null;
+  readonly extents: Record<Detent, number> | null;            // the SHEET's heights, the DRAWER's, the DOCK's or the COLUMNS' widths
+  freeRect(): { left: number; top: number; right: number; bottom: number };   // #app px of map the UI leaves free
+  covered(modal: boolean): boolean;                           // P7: mapCovered now, the panel at rest (main.ts asks every turn)
+  reveal(selector: string): string;
+  onChange(cb: (why: 'classes' | 'detent' | 'free') => void): () => void;
+  refresh(): void;                                            // measure now (the title shown or hidden, placing)
+}
+```
+- **Hosts**, first match wins: DRAWER if short and < 960 wide · SHEET if < 720 wide · COLUMNS if a mouse and ≥ 1280, or anything ≥ 1440 · else DOCK. **Tiny** (< 360 wide or < 420 tall) takes the half detent off the sheet (closed ↔ full). Players see the detents as sheet closed/half/full, drawer spine/half/full, dock and columns spine/docked/wide; code says closed/half/full. Defaults: sheet and drawer closed, dock and columns half.
+- **Observed**: a ResizeObserver on `#safe-box` (the window inside the safe areas: the classes are read from it, never from `#app`, whose box the phone hosts run under the insets, so a host can never change the size that chose it: a 900 × 490 window with a 20 px home indicator stays a 900 × 470 DRAWER), on `#app` (the geometry) and on `#hud`, `#side`, `#left`, `#place-banner`, `#tabs`, `#map-col` and a docked card; `change` on `(pointer: coarse)`, `(any-pointer: fine)`, `(any-pointer: coarse)`; `refresh()` from the UI root when the title or placing changes the chrome. Each recompute rewrites the `data-*` attributes on `#app` (§13.9) when a class changes and calls `view.setInsets` when the free rect changes (with `host: true` on a host change: the view re-picks its default zoom).
+- **One source of truth for the detent**: the Layout. `SidePanel.toggle()` asks it (`panelToggle`), it writes the panel through `SidePanel.show()`; the view control and the keys C, M, I go through `moveDetent`. A detent above the host's default is a Back/Esc layer (`BACK_RANK.detent`, 30), and on the DOCK its spine too: Back from the spine or from wide docks the pane again (`isLayer`, `backDetent`, pure). On the COLUMNS only wide is a layer: the spine is a view of its own there, so Esc from it goes on to the menu (the chain: modal → placing → selection → wide → docked → menu). A tiny sheet's half becomes full, marked forced, and goes back to half once the window offers it again (`keepDetent`, pure).
+- **Free rect**: the `#app` rect below the HUD, clear of the panel at its detent's **target** (never mid-slide: the SHEET's heights, the DRAWER's, the DOCK's and the COLUMNS' widths from the pure tables; a phone's sheet and drawer drop while placing, the DOCK's pane stays), right of the desktop's `#left` column (unless it folds away for the wide panel, `columnsRoom`), and above `#place-banner` while placing. The DOCK's wide pane leaves a 320 px strip from 960 px wide and none under it (the free rect is then empty: the inspector's popup hides, `currentFree()`); beside the DOCK's spine it is clear of the floating head. The map's tools, the ticker and a phone's band of cards float on the free map and are not taken out (the inspector steps a target clear of them; P2's voice line and tool column replace them). Turned into canvas insets with `view.mapRect()`, given to the view as soon as a detent is set, from the slide's start (its target's rect: the camera's glide that follows, a centring or a pre-positioned ghost, runs with the slide and lands in the map that will show), on every host.
+- **Routing** (`route`, pure): place and focus clear a phone's map (closed, remembered; focus also opens the context card) and leave a tablet or desktop pane, but for a wide one: placing docks the DOCK's or the COLUMNS' wide pane at any width, remembered (cancelling goes wide again; `Layout.go` drops a kept detent whenever a placing keeps nothing itself, so its end can never restore an older one), and a focus docks the DOCK's wide pane under 960 px, which leaves no map (`RouteCtx.w`), not remembered: it stays docked (SPEC A §7). Every "show on map" routes that focus off the phones (`App.select`, `App.focusTile`: an Annales line, a remedy's Look, a ledger row; the focus row too); a tab opens half on a sheet (full for council, trade, annals, from a slot too; a chip half), half in a drawer, docked elsewhere unless already wide (Shift + its key: wide); a lesson follows `LESSON_VIEW` (its tab as a tab opens · the map shows: a full panel steps down · the frame: unchanged). `reveal` runs first in `pulseTarget` (counsel.ts), so every lesson's pointer glows something the host shows (a table test covers every lesson × host × detent).
+- **The SHEET** (portrait phones, P2b; `sheet.ts`, `sheet.css`). `#side` is the sheet: `[#sheet-grab strip][#sheet-voice: #counsel's folded card as the voice line, #ticker in calm][#tab-body]`, standing on the bar (`#tabs`, re-hosted to `#app`'s foot: 60 px + the bottom safe area, five stable slots `BAR_SLOTS`, Annales none; `slotTap`: the open tab's slot closes a raised sheet). `#app` runs under the safe areas there; the HUD and the bar pad themselves. Heights (pure `sheetHeights`): closed = the head (grabber + voice line, `SheetHooks.head`, re-measured when the line's words change), half = clamp(240, 44% of `#app`, 380) (50% at h regular), full = up to the HUD; written as `--sheet-closed|half|full` on `#app`. `setDetent` slides with a transform from the taller of the two heights (`SheetHooks.slide`), the inline height dropped at rest (`#side[data-rest]`: the tab body hides only once closed; `data-moving` shows it during a drag, the strip keeping its rest shape), the insets set for the target at once. The grabber: drag (follows the finger; `snapDetent`: nearest, or the next one on a fling ≥ `FLING` px/ms, a finger held still before it lets go flinging nothing), tap (`cycleDetent`), touch-action none; its 44 px hit area reaches over the map above a 10 px strip (the strip is 44 px at full). Entering the SHEET, and entering a colony on it, closes the sheet (`hostEntryDetent`, pure) unless a tab was opened in the last second; the other hosts keep the player's detent (the DRAWER: below). Routing through `go()`: tabs (`SidePanel.open(tab, anchor, from)`, `Game.openTab`'s optional `from`: 'chip' for the voice line's Review, the ticker, danger chips and portraits; 'key'; 'remedy'; 'lesson'), placing (the UI root: `place` → closed, remembered; `forget()` after a work is placed, `restore()` on cancel), the pinned inspector card (`focus` → closed; closing it restores, as does its building vanishing: `Inspector.onPin`) and the lessons (`UI.showLesson`: their tab, or `{ kind: 'lesson' }`; it waits for the founding letter). `lift('counsel')`/`drop('counsel')`: the voice line's tap unfolds the card inside the sheet at half and folds it back; a closed sheet folds it. Free rect: below the HUD, above the sheet at its detent's height and the bar (above the placing banner while placing), left of `#map-col`. The tool column `MapColumn` (`#map-col`: Via, Mappae, `#zoom-ctl`) sits 8 px above the sheet (`--sheet-now`), hides at full, wraps beside the zoom on a short strip; its popovers (Via's tools, Mappae holding `#overlay-bar`) are `BACK_RANK.popover` layers. `reveal` proxies on the SHEET (`REVEAL.sheet`): `#overlay-bar` → `#map-mappae` (an explicit Show me opens the popover: `bringTarget`/`registerBringer`, and a target that shows after all glows itself), `#objective` → `#hud`, `#ticker` → `#counsel`, `#tab-annals` → `#hud-menu`. The bar's slot tap while placing ends the placing first (the open tab's slot then shows its tab, never folds it); toasts stand under the HUD (over the bar at full) and stay tappable. Pure helpers: `sheetHeights`, `snapDetent`, `cycleDetent`, `slotTap`, `barSlot`, `hostEntryDetent`; module accessors `currentHost`, `currentDetent`, `routeIntent`, `moveDetent`, `revealTarget`, `bringTarget`.
+- **The SHEET's slot and banner** (P2c). One card at a time stands where the sheet was, over the bar (`Layout.dock(el)`: `#app[data-card]` hides `#side`, the free rect ends above the card, `--dock-h` carries the tool column on it, and the card's height is observed): the **context card** (the inspector's `.ins-popup` with `data-docked`: no `place()` beside its target; its target glides clear above it, `view.ensureVisible` then `dodge`; a brief of the parts `briefParts` picks, pure, and More; a work's labour line, `labourEl`, staffs it in place) and the **event card** (`#choice[data-docked]`: a new dispatch arrives folded, as the voice line's `CounselItem` 'event' right after a Periculum, 'NVNTIVS · … · 28 d' with Read; Read docks it, ≤ 70% tall, answers pinned; folding, Back (`BACK_RANK.card`, 45), a bar slot or a building tapped gives the slot back). Opening either is a `focus` (closed, remembered); one taking the slot from the other keeps it closed; closing the last restores the detent and the tab body's scroll, that tab's only (UI root: `Inspector.onPin`/`onDock`, `ChoiceCard.onStage`, re-told when a turn of the phone docks or undocks an unfolded card, `SidePanel.onSlotTap`, which `SidePanel.open` also calls on the SHEET: any tab opened steps the card aside first). Placing hides the context card (sheet.css) until it ends; a dispatch that waits shows on it as a Read row (the 'choice' anchor). The **placing banner** is 76 px over the bar (name and cost; the verdict; the reason row, `placingWhy`: the lesson job or the advisory that asked; ⟳, Place, ✕), the column riding on it; pure `startAt` (a finger's ghost, or any on the SHEET, starts on the best plot) and `afterPlace` (⟳ on touch is Shift-click: the ghost moves to the free plot nearest the last), the ⟳ state in the UI-owned key `castravaleria.ui.keepPlacing.v1`. Aedificia at half draws the build tray (one panel, `trayShown()` in its signature); `Intent` 'open' carries the anchor, and an anchor the tray lacks (`trayHolds`, pure: the Agenda, the works queue, the tools) opens Aedificia at full. A lesson whose job is a tray card arrives folded (`lessonFolds`, pure), and VIII points the tray at its cards ('cards': every category). ⟳ shows on the phones' banners (the SHEET's, the DRAWER's; P4 owns the tablet's). Lesson I carries its job in its card (`CARD_LESSONS`, `hostPointer`: no tab opens; `CARD_ROWS` glows the card's Annona row); Show me folds any other lesson's card into its line. Modals on the SHEET are full-screen sheets (`.modal-head` sticky, `.modal-actions` sticky, or `.modal-foot` holding the actions and their `.modal-status`; box-less elsewhere).
+- **The DRAWER** (landscape phones and short windows, P3; `drawer.css`, the same nodes as the SHEET in another arrangement, `isPhone` wherever the two share a behaviour). `#app` runs under the safe areas (`inset: 0`); the HUD is one 44 px row (hud.css; its rule a shadow), the figures in their order and the speed pair `[❚❚][1× ▾]` and the menu at the right, and `Hud.fit` (priority+, pure `priorityDrops`) gives `.hud-drop` to the date, then spirits, souls, coin, Aqua and Grain as the row's width runs out (refitted when its width or its figures' words change; dropped off the DRAWER). `#tabs` (re-hosted to `#app`, `aria-orientation: vertical`, Up/Down arrows, an `aria-label` per icon) is the 56 px **spine** at the right edge (`--spine-w`, plus the right safe area; 0 while no tab is revealed); a `drawer-spine` size container drops Annales' icon when six do not fit (REVEAL: the menu, which has its Annales row on both phones, as do the ACTA lines). `#side` is the **pane** left of the spine: `drawerWidths` (pure: half clamp(280, 42% of `#app`, 360), full everything left of the spine, closed none) written as `--drawer-half|full`; `setDetent` slides it sideways (`SheetHooks.slide`, the axis per host; `translateX` from the wider extent, the width set at rest), a drag of its left-edge grabber (`.sheet-grip`: a 30 px strip, 8 px over the map, and its 44 × 64 handle `#sheet-grab` across the border) follows the finger with the pane's live width and snaps by `snapDetent` over the widths, a tap on the handle (only: a tap beside it on the strip does nothing) cycles; closed, it waits under the spine, hidden (`[data-rest='closed']`); at full it runs from `#app`'s left edge under the notch, its grabber and sections padded clear of the left safe area. While placing or with a card in the slot it stays away (`:is(.placing, [data-card])`, as the SHEET's sheet does), the tool column and toasts keep their closed places and the free rect ignores it; `lift()` holds back while a card is docked (the counsel's lesson card then waits folded), and on a phone `SidePanel.open()` ends a placing first for any tab but a lesson's (a Breviarium row, a key: as a bar slot or spine icon does), so a lesson's tab opened meanwhile shows once the placing ends. The voice line's slot (`#sheet-voice`) heads the open pane and, closed, floats at the bottom-left of the map as a child of `#app` (`SheetHooks.floating`; `slide()` places it before the layout measures; ≤ 380 px wide, 44 px tall); a tab icon routes as a bar slot (`slotTap`; route: half, a switch at full stays full). The tool column (`MapColumn`, fitted from its foot) stands left of the spine or the pane at half, hidden at full; the card slot (`Layout.dock`: the docked context card and event card at the bottom-left, ≤ half the free map wide, ≤ 80% tall; `#app[data-card]` hides the floating line) and the one-row placing banner (56 px, up to the tool column; ⟳ as on the SHEET) at the foot. Free rect: inside the safe area (`Layout.safeRect()`, `safeArea()`: `#safe-box` against `#app`), below the HUD, left of the spine, the pane at its detent's width and the tool column, and clear (pure `clearOf`: above, or beside a tall card) of the card, else the floating voice line, else the banner. The tool column's popovers keep within the map left of the column and the safe area, and where that strip is narrower than 220 px (the half pane of a 568 or 667 px phone) open to the column's right, over the pane (`.map-pop-over`). Populus' census is two columns there. Entering the DRAWER keeps the player's detent (`hostEntryDetent`), a colony entered closes it; half and full are Back layers; lesson VIII points its Aedificia at the catalogue (`hostPointer`: 'cards'), the others as everywhere; `REVEAL.drawer` = the SHEET's proxies. A pre-positioned ghost stays when a banner or card appears under a resting mouse (view.ts: only a ghost the mouse moved leaves with it).
+- **The DOCK** (tablets, foldables, 800-px mouse windows, touch laptops under 1,440 px; P4; `dock.css`). `#app` stays inside the safe areas. The HUD is one 56 px grid row of named areas (the full tablets with label, trend and strip; coin over souls; spirits; from 960 px dignitas, the date and the materials; then `#view-ctl`, `#speed`, the menu); `Hud.fitDock` (priority+, `priorityDrops`) drops the date, dignitas and the materials, folds the speeds to the `[❚❚][1× ▾]` pair (`.fold`), bares the view control's label (`.bare`), then drops spirits, coin with souls, Aqua and Grain; last, the materials' cells the strip cannot show whole step out from the last (`.hud-cut`: never a stock cut mid-number). `#side` is docked at the right (`dockWidths`: clamp(300, 40%, 360) under 960, clamp(340, 30%, 400) from 960; written as `--dock-half|full`), a `dock-pane` size container: `#sheet-voice` (order −1) holds `#objective` in its one-line form (its `.obj-fold` ▾ unfolds it) over `#counsel` drawn as the voice line (counsel.ts `voiceLine`: chip and +n pip; unfolded at most 40% of the pane), then `#tabs` (3 × 2; one row of six wide) and `#tab-body`. `SheetHost` slides it sideways (transform; `data-rest` keeps the detent the layout follows while it moves); closed it is the 56 px spine (`#side[data-rest='closed']`) with the head afloat top-right (`SheetHooks.floating()` returns it at rest there, and the free rect is the larger part clear of it, `clearOf`, written as `--dock-free-t|r` for the event card); wide it is the whole width under 960 and all but 320 px from 960, where `Tray.column` stands `#tray` in it as the first grid column (`brevColumn`; no ✕, grip or Back layer; a HUD figure scrolls it). Under 960 the phones' tool column serves it (`toolColumn`: `MapColumn.mount(host, w)`, the overlay bar in Mappae, `DOCK_TOOLS` reveal); from 960 the desktop's `#map-tools` with the minimap. The inspector stays a popup beside its target, bounded by the free rect; the event card floats centred in the free map; placing keeps a docked pane (a wide one docks, remembered) and uses the slim 76 px banner (`slimBanner`: the reason row and ⟳). Rotating keeps the host and the detent (only the width class changes; mounts run on a width-class change too); a phone's closed panel (its default) unfolded or widened into the DOCK or the COLUMNS docks there (`hostEntryDetent`); a colony entered on either never starts wide (`Layout.settle`, UI.hideTitle).
+- **The view control** (DOCK and COLUMNS): `VIEWS` (Urbs · City closed, Mensa · Map & ledger half, Tabularium · Ledgers full), `#view-ctl` (hud.ts: three segments, the one in use pressed and labelled with its Latin name; each one's tooltip and aria-label `Urbs · City`, `Mensa · Map & ledger`, `Tabularium · Ledgers` with its key) in the DOCK's HUD row and, on the COLUMNS, re-hosted into `#app` at the top-left of the map beside the left column (`Hud.mountView`, an `onMount`; columns.css), so the desktop's HUD row and its materials strip stay as they were, keys C, M, I and Shift+E/V/B/P/T/L (`keyAction`, pure; keys.ts) through `moveDetent` and `route` (`from: 'key'`, `shift`).
+- **The COLUMNS** (the desktop: a mouse from 1,280 px, anything from 1,440; P5; `columns.css`). Docked (Mensa, the default) is today's desktop: the 64 px HUD, the 300 px left column (`#left`: the Res Gestae, the counsel, the hover card) and the 380 px panel. The hover card (`#inspector`, the transient card; a click's is the popup) takes none of the counsel's room (left.css): `#inspector` is the room under the counsel (flex-basis 0, the column's gap given back, letting the map's hover through), and the card stands at its foot as tall as that room, scrolling inside, as it always did (1,440 × 900, 1,920 × 1,080); where the room is less than its name and first lines (129 px × the text scale: a 1,366 × 768 laptop's 1,366 × 657 window) it is that tall all the same, over the counsel's foot while the mouse is on the map. A hover in and out never resizes the counsel, nor brings up or takes away its scrollbar. `columnsWidths` (pure; `COLUMNS`) gives the panel's width per detent, written as `--cols-half|full` (`Layout.sizeColumns`), and `SheetHost` slides it sideways between them as the DOCK's (`data-rest`; its voice slot stays empty, the left column keeping the Res Gestae and the counsel). Closed (Urbs) it is a **64 px badge spine** at the right edge under the HUD, as tall as its six tab icons (40 px with a mouse, 44 for a finger) with their badges and NEW stickers at 12 px (`#side[data-rest='closed']`; a click opens that tab docked: `route` open from 'tab'; their names in an aria-label there only, `SidePanel.spineNames`: docked or wide the buttons' own words name them, badge and NEW included, as before), `#side-toggle` (◂ ▸) beside it expanding and folding it as before; the free rect ends at the spine (`W − 64`), the map tools, ticker, placing banner and event card keep clear of it (`--side-w` is `--cols-now`); the left column stays as it is. Wide (Tabularium) the panel covers the map but for **630 px of it** (`COLUMNS.map`: the view control, the map tools and the ticker as beside the docked panel), `#tray` its first grid column (`brevColumn`, `clamp(250px, 26%, 340px)`) and the page beside it (two columns from the tab body's 520 px query). `columnsRoom` says how the room is found, and the layout writes it on `#app` for columns.css: from 1,750 px (`left + map + brev + body`) the left column stays beside the map (`W − 940`); under that it folds away while the panel is wide (`[data-fold]`: columns.css hides `#left`, and `--cols-map-l`, where the map begins, is 0; the panel is `W − 630`: x 630–1440 at 1,440 px, a one-column page at 1,366 and 1,280); but never while the opening lessons run (`introRunning`: their card is the left column's counsel; `[data-strip]`: the map gives way to the panel instead, down to a 320 px strip with the minimap and the zoom, the overlay bar and the ticker stepping aside, O still cycling; the UI root has the layout measure again when they begin or end). Leaving wide, the Breviarium column stays until the slide rests (the UI root watches `#side`'s `data-rest`), so the page never lays out again across the wide panel without it. ⤢ (`#side-wide`, panels.ts) hangs under the ▸ toggle on the panel's edge, docked or wide (the 3 × 2 tabs need 365 of the docked header's 378 px): it widens the panel and docks it again (⤡), as I and M do (`aria-pressed` while wide: `SidePanel.syncWide`). Toasts stand clear of the handles and never reach the view control (wide, under it); the event card stands below the view control's row (`top` from its height: 44 px buttons for a finger), wide centred in the map the panel leaves (in the lessons' strip over the page, under the tabs). Placing from wide docks the panel (remembered); asking for wide while placing (I, ⤢, the view control, Shift with a tab's key) ends the placing first (`Layout.setDetent`, the DOCK's too); Esc and Back step wide → docked; the spine is no layer (Esc goes on to the menu). The HUD's materials strip shows each cell's amount, cap (from 90% full) and day's net on one 12 px line while it has the room; `Hud.fitColumns` measures it (refitted when the strip's room or its words change) and, when it overflows, hides the nets (`.no-rate`), then the caps (`.no-cap`), both in the hover cards and the Breviarium; past that the strip scrolls under its fade as before.
+- **The focus row** (`focusrow.ts`, the DOCK and the COLUMNS, `FOCUS_HOSTS`, `keepsFocus`: a click, never a hover): rows carry `data-focus` (`b:<id>` a building or site: works queue, gentes, an advisory with a centring remedy; `w:<type>:<tile>` an Agenda wish; `c:<cat>` a labour category, the builders' being the sites in hand, else, while its crew raises it, the town wall's next stretch: `wallStretch`; `decl` the declining homes), one capture-phase listener on `#tab-body` lights the row (`.focus-row`, repainted after rebuilds) and answers on the map: `route({ kind: 'focus' })` first (the medium wide pane docks), then one object centred and flashed, several brought into view (`ensureVisible` of their union) and each flashed. Pure `parseFocus`, `focusRects`, `wallStretch`, `unionRect`, `focusOfAdvisory`, `keepsFocus` (tests/focusrow.test.ts). On the COLUMNS a works-queue row's click also selects its site (the popup beside it in the free map); hovering a row does nothing.
+
+### 13.11 The installable app (P7: `public/`, `scripts/`, `ui/platform.ts`, H)
+- **Manifest** (`public/manifest.webmanifest`): name *Castra Valeria*, short name *Castra*, `display: standalone`,
+  `start_url` and `scope` `.` (the app's folder: the GitHub Pages sub-path; no `id`, which would resolve against the
+  origin every Pages repo of the account shares), background and theme `#15100d`; icons 192 and 512 (`any`), 512
+  `maskable`, and the favicon SVG. **Icons** (`public/icons/`): `apple-touch-icon-180.png` (iOS: opaque), `icon-192.png`,
+  `icon-512.png`, `icon-512-maskable.png`, painted by `node scripts/icons.mjs` from `f_aquila`'s 32 × 32 rows
+  (`sprites.ts spriteGrid`, loaded through Vite's SSR loader: no browser) at whole-number scales (×5, ×5, ×14; ×9 on the
+  maskable one, inside its 80% safe circle) on the chrome's ground, written with node's zlib and committed.
+- **Service worker** (`public/sw.js`): registered by `main.ts` in production builds only (`import.meta.env.PROD`,
+  `platform.ts registerWorker`, `./sw.js`: its scope is the app's folder). `vite.config.ts` runs `swPlugin()`
+  (`scripts/precache.ts`): after the build is written it lists `dist/` (`precacheFiles`: all but the worker, source
+  maps and a woff whose woff2 is there), hashes their bytes (`buildId`) and writes `BUILD` and `PRECACHE` into
+  `dist/sw.js` (`swSource`, which refuses a template without those lines). Install precaches the folder's page and every
+  listed file, fetched past the HTTP cache (`cache: 'reload'`: an older page Pages' `max-age` left there is never
+  stored beside the new build's files), in the cache `castra-<folder>-<BUILD>` (Cache Storage is the origin's, shared by
+  every Pages repo of the account: the name carries the folder); activate deletes this folder's other caches only and
+  claims the page. A navigation to the app's page (the folder, or its `index.html`) is network first, revalidated
+  (`cache: 'no-cache'`), the answer kept for offline under the folder's URL when it is HTML; a navigation to any other
+  file of the folder (`sw.js`, an icon) is left to the network and never kept as the page; anything else of the folder
+  is cache first; other origins and other folders are never touched (tests/pwa.test.ts runs the written worker over
+  stand-in caches and network). A new build is new bytes, so a new worker and a new cache. An online launch runs the
+  newest page at once; `controllerchange` (not the first install) toasts that the next launch runs the new version only
+  when this page is older than the worker that took over (its own script, main.ts's `import.meta.url`, is in no cache
+  once that worker is activated, the old cache deleted: a launch offline, or one served before the deploy; the
+  controller changes as the activation starts, so the check waits for `activated`).
+- **Platform** (`ui/platform.ts`, pure part tested in tests/pwa.test.ts over probes of `matchMedia` and `navigator`):
+  `isStandalone` (display-mode standalone, fullscreen or minimal-ui, or `navigator.standalone`), `isIOS` (also an
+  iPadOS 'MacIntel' with touch points), `isSafari` (no other browser's brand, HeadlessChrome included), `safariTab`,
+  `keepCopyWhy` (the keep-a-copy reminder: Safari's 7-day rule only in a Safari tab, "this app" in the app; the
+  export toast, the away letter's KEEP A COPY line, How to play), `menuEntries` (Copy save in a browser tab on iOS only,
+  whose Home Screen app keeps its storage apart: an installed app on Android or a desktop shares the browser's; Full
+  screen where `document.fullscreenEnabled`, not iOS, not a mouse; the storage line where `persisted()` exists),
+  `bringLabel` (an iOS Home Screen app with no save), `persistLine`. The app asks `navigator.storage.persist()` once at launch when standalone (and,
+  as before, after the first good save anywhere: `askPersist`, once a session). **The hand-off**: Menu → *Copy save for
+  the Home Screen app* writes `exportSave()` to the clipboard (recorded as an exported copy; with no clipboard the
+  Export / Import sheet opens); the app's title, standalone on iOS with no save, leads with *Bring your colony from
+  Safari*, which reads the clipboard (`pasteText`, waiting at most 10 s on the browser's prompt; a colony founded or
+  loaded meanwhile is left alone, and a second press waits on the first), checks it (`importText`) and loads it;
+  otherwise the Import sheet takes it pasted. *Full screen* (`toggleFullscreen` on
+  `document.documentElement`) reads *Leave full screen* while `document.fullscreenElement` is set.
 
 ---
 
@@ -1986,7 +2219,7 @@ keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/a
 - Implement every name of §12.3 with the sizes of DESIGN §16.3, the palette of §16.2 (only `PAL` keys), 2 variants per house tier, seasonal variants for fields, olive rows and oaks, forum stages 0–4, Capitolium stages 1–4 and the three crowns, portraits with 3 moods (palette/mouth-row swaps), meander/seal/aquila.
 - Acceptance: `art.test.ts` — every `REQUIRED_SPRITES` name registered, `validateArt()` returns `[]`, sizes as declared; visual sheet `?dev&sheet` (rendered by `view.ts` debug hook) reviewed in the PR with a screenshot. Readability rule: every building identifiable at level 1 by silhouette alone.
 
-**WP-H · UI shell** — owns `src/main.ts`, `ui/index.ts`, `hud.ts`, `vitals.ts`, `objective.ts`, `counsel.ts`, `ticker.ts`, `toasts.ts`, `banner.ts`, `modals.ts`, `dispatch.ts`, `title.ts`, `audio.ts`, `keys.ts`, and `base.css hud.css left.css map-ui.css modals.css title.css mobile.css`.
+**WP-H · UI shell** — owns `src/main.ts`, `ui/index.ts`, `hud.ts`, `vitals.ts`, `tray.ts`, `objective.ts`, `counsel.ts`, `ticker.ts`, `toasts.ts`, `banner.ts`, `modals.ts`, `dispatch.ts`, `title.ts`, `audio.ts`, `keys.ts`, `textsize.ts`, and `base.css hud.css left.css map-ui.css modals.css title.css tray.css mobile.css`.
 - Implement §13.2–13.9 and DESIGN §15.1–15.2, §15.4 (place banner, overlay bar, zoom), §15.5–15.8, §11.8, §11.10 (resource/date/morale/dignitas tooltips), §11.11 (vital tablets + 12-month strip), §17 (all 17 sfx), the catch-up veil, the three parchment dispatches, autosave and offline flow (§11.4–11.5).
 - Acceptance: layouts at 1,280 × 800, 1,000 × 700, 390 × 844; the beat sheet of DESIGN §11.12 plays with the counsel card showing exactly one item by the priority rule; HUD numbers match `rates` and `forecast`; modals pause and trap focus; Esc chain; toasts ≤ 4 and batched; away report renders from `simulateOffline` fixtures; no `innerHTML` with game strings.
 
@@ -2034,10 +2267,19 @@ keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L, O / Shift+O, R, H, WASD/a
 | `advisors.test.ts` | E | always | 22 rule fixtures, hysteresis, flapping, remedies never throw |
 | `guide.test.ts` | E | always (+ `INTEGRATED` beat sheet) | tip graph, order, beat sheet with seed 42 |
 | `art.test.ts` | G | always | `REQUIRED_SPRITES` registered, `validateArt()` clean |
+| `camera.test.ts` | F | always | camera insets at DPR 1, 2, 2.625, 3: screen ↔ world round trips, free-rect centring, the clamp keeps 25% of the free rect, `ensureVisibleDelta` 0 inside and minimal outside |
+| `voice.test.ts` | H | always | `awaitingItems` order and filters (the lesson under way where the line ranks it), the `remedyChip` table (Place for a building remedy, a row's first remedy, none), `voiceAction` per kind of item, `waitingBeyond` (the voice line's '+n') |
+| `layout.test.ts` | H | always | `classify` over the 35 measured window sizes and the design's own (touch, mixed, mouse; tiny), the `route` table, the lessons' table covers every `LessonId`, every lesson's pointer shows on every host and detent (the SHEET's through its `REVEAL` proxies), `keepDetent`, the SHEET's `sheetHeights` (half leaves the tab body 200 px, 160 on the SE in Safari), `snapDetent`, `cycleDetent`, `slotTap` and `BAR_SLOTS`, the DRAWER (`drawerWidths`, `clearOf`, `clearAround`, `priorityDrops`), the DOCK (`dockWidths`, `isLayer`, `backDetent`, `hostEntryDetent`, every lesson's pointer at both widths), `VIEWS` and `keyAction` over every letter and host, `howToControls`, the COLUMNS (`columnsRoom`, `columnsWidths`, `brevColumn`), the inspector's `roomShift` and `dodge`, `mapCovered` (P7: the SHEET and DRAWER full, the DOCK wide under 960 px, a phone's modal) |
+| `sheet.test.ts` | H | always | the phones' finishing: the context card's brief (`briefParts`), a placing's first ghost and what Place does next (`startAt`, `afterPlace`, `keepable`, `placingWhy`), the held ± (`holdSteps`), lesson I in its own card (`hostPointer`, `CARD_ROWS`), the build tray or the whole Aedificia by anchor (`trayHolds`, `route`, `lessonFolds`), a dispatch through the voice line (`pickCounsel`) |
+| `focusrow.test.ts` | H | always | `data-focus` values built and read back (`parseFocus`), `focusRects` (a building, an Agenda wish, a labour category's works, the declining homes), `unionRect`, `focusOfAdvisory`, `FOCUS_HOSTS`/`keepsFocus` |
+| `history.test.ts` | H | always | `backStep` (the open layer of the highest rank closes; none open: warn, then leave within `LEAVE_MS`), `rearm` |
+| `css-floor.test.ts` | H | always | no font size under 12 px in `src/styles` at Normal and Large (every `--fs-*` token wherever set again), canvas font literals and map labels ≥ 12 CSS px (`labelPx`, `labelLines`, `canvasDpr`), no sheet or pane height in `vh`, the Text size storage |
+| `loop.test.ts` | H | always | the loop's clock (`game/loop.ts`): 30 s at 5× is 150 ticks and one state hash at 12 and 60 Hz; with speed changes and a pause, 124 ticks and one hash at 12, 15 (covered clamp), 60 and 120 Hz; uneven rates add up exactly; DT_CLAMP drops the time of 250 ms turns, the covered clamp does not; a paused colony keeps its part tick; MAX_STEPS drops a backlog; time never runs backwards |
+| `pwa.test.ts` | H | always | `platform.ts` probes (standalone, iOS, Safari over real user agents), the Safari reminder only in a Safari tab, the Menu's and the title's entries by platform; `scripts/precache.ts` (`precacheFiles`, `buildId`, `swSource` on `public/sw.js`); the written worker run over stand-in caches and network (install past the HTTP cache into `castra-<folder>-<BUILD>`, activate drops only the folder's older caches, the page network first and kept only when it is the app's HTML, another file opened in a tab left alone, offline the kept page); the manifest, `index.html`'s relative links, the icons' sizes, opaque ground and whole-number art (the maskable one inside its safe circle) |
 | `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |
 | `balance.test.ts` | J | `INTEGRATED`; full bands with `BAL_FULL=1` | DESIGN §18.5 |
-| `perf.test.ts` | J | `INTEGRATED` | tick, offline, map generation budgets |
+| `perf.test.ts` | J | `npm run perf` only (`PERF=1`; vite.config.ts leaves it out of `npm test`) | tick, offline, map generation budgets |
 | `trace.test.ts` | J | `npm run trace` only | prints the tuning table |
 
 `tests/util.ts` (S) exports `INTEGRATED`, `fresh(seed = 42): GameState`, `run(s, days, onDay?)`, `ctx(offline = false)`, `setJobs(s, plan)`, `place(s, type, x, y, opts?)`, `noNaN(s): string[]`, `forceEvent(s, id)`.

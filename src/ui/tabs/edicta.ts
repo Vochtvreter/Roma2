@@ -10,7 +10,7 @@ import { edictOption, edictWindow, isUnlocked, petitionNeeds, settingValue, swit
 import { nextTeaser, sectionRevealed } from '../../game/reveal';
 import { introduced } from '../../game/intro';
 import { councilReport } from '../../game/ordo/index';
-import { DUTY_DEFS, granted, learned, wishDuty } from '../../game/ordo/duties';
+import { DUTY_DEFS, granted, learned, pendingOffers, wishDuty } from '../../game/ordo/duties';
 import { reasonText } from '../../game/ordo/reasons';
 import { view } from '../../game/sim';
 import { census } from '../../game/census';
@@ -254,19 +254,29 @@ function wouldLine(g: Game, d: DutyId): string | null {
   return w && wishDuty(w.reason) === d ? `The Ordo would raise: ${BUILDING_DEFS[w.type].name}. ${reasonText(w.reason)}` : null;
 }
 
-/** The duties' discrete state for the signature: held, learned, and which duty the Ordo's would-be work belongs to. */
+/** The duties' discrete state for the signature: held, learned, offered and not yet answered (the Mandata then lead the
+ *  tab, with the offer's answer), and which duty the Ordo's would-be work belongs to. */
 function dutiesKey(s: GameState): string {
   const would = councilReport(s).would;
-  return `${DUTIES.map((d) => `${+granted(s, d)}${+learned(s, d)}`).join('')}:${would.build ? wishDuty(would.build.reason) ?? '' : ''}`
+  return `${DUTIES.map((d) => `${+granted(s, d)}${+learned(s, d)}`).join('')}:${pendingOffers(s).join(',')}:${would.build ? wishDuty(would.build.reason) ?? '' : ''}`
     + `${+Object.values(would.labour).some((n) => (n ?? 0) > 0)}${+!!would.trade}`;
 }
 
 /** The Mandata (DESIGN §10.2): every duty, whether the Ordo holds it, how to learn it, and for a duty the player keeps
- *  what the Ordo would do today (Apply once). */
+ *  what the Ordo would do today (Apply once). While the counsel offers chores learned, the answer to the offer leads
+ *  the section, pinned while it scrolls: Hand over all / Keep them all. */
 export function dutiesSec(g: Game, up: Updater[]): HTMLElement {
   const s = g.state;
   const sec = section('Mandata', 'What the Ordo does for you', { guide: 'manual', anchor: 'mandates',
     note: 'Every chore is yours until you have done it yourself. Then hand it to the Ordo, or keep it; take it back whenever you like.' });
+  const offers = pendingOffers(s);
+  if (offers.length) {
+    sec.append(h('div', { class: 'ed-offer' },
+      h('span', { class: 'ed-offer-text' }, `${offers.length === 1 ? `${DUTY_DEFS[offers[0]].name} learned` : `${offers.length} chores learned`}: the Ordo can carry ${offers.length === 1 ? 'it' : 'them'} for you.`),
+      h('div', { class: 'ed-offer-btns' },
+        btn(g, offers.length === 1 ? 'Hand it over' : 'Hand over all', () => A.handOverAll(g.state, offers), { cls: 'primary', tip: offers.map((d) => DUTY_DEFS[d].name).join(', ') }),
+        btn(g, offers.length === 1 ? 'Keep it mine' : 'Keep them all', () => A.keepDuties(g.state, offers), { tip: 'Yours for now: hand any of them over below whenever you like.' }))));
+  }
   for (const d of DUTIES) {
     const def = DUTY_DEFS[d];
     const on = granted(s, d);
@@ -285,7 +295,7 @@ export function dutiesSec(g: Game, up: Updater[]): HTMLElement {
     sec.append(row);
   }
   const more = s.ordo.learned.filter((d) => !granted(s, d));
-  if (more.length >= 2) {
+  if (more.length >= 2 && !offers.length) {   // while an offer waits, its own Hand over all leads the section
     sec.append(h('div', { class: 'tab-row-end' }, btn(g, 'Hand over all you have learned', () => A.handOverAll(g.state),
       { cls: 'primary', tip: more.map((d) => DUTY_DEFS[d].name).join(', ') })));
   }
@@ -318,16 +328,21 @@ export const panel: Panel = {
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;
+    // while the counsel offers chores learned, the Mandata come first (a phone sheet would bury them under the charter,
+    // the focus and every edict); once the offer is answered they go back to the end
+    const offered = pendingOffers(s).length > 0;
     // while the lessons run, Edicta is the duties and the founding charter alone (§11.13); its other orders come with
     // their own lesson
     if (!introduced(s, 'edicts')) {
+      if (offered && introduced(s, 'mandates')) body.append(dutiesSec(g, up));
       if (introduced(s, 'goals')) {
         if (!s.decisions.paths.charter) body.append(crossroads(g, up));
         else { const st = story(s); if (st) body.append(st); }
       }
-      if (introduced(s, 'mandates')) body.append(dutiesSec(g, up));
+      if (!offered && introduced(s, 'mandates')) body.append(dutiesSec(g, up));
       return;
     }
+    if (offered && sectionRevealed(s, 'manual')) body.append(dutiesSec(g, up));
     body.append(crossroads(g, up));
     if (sectionRevealed(s, 'story')) { const st = story(s); if (st) body.append(st); }
     if (sectionRevealed(s, 'focus')) body.append(focusSec(g, up));
@@ -336,7 +351,7 @@ export const panel: Panel = {
     if (sectionRevealed(s, 'switches')) { const e = switchesSec(g); if (e) body.append(e); }
     const teaser = nextTeaser(s);
     if (teaser) body.append(h('div', { class: 'ed-teaser' }, img('i_laurel', 1), h('span', null, h('b', null, `Next: ${teaser.label}`), ` · ${teaser.at}`)));
-    if (sectionRevealed(s, 'manual')) body.append(dutiesSec(g, up));
+    if (!offered && sectionRevealed(s, 'manual')) body.append(dutiesSec(g, up));
   },
   badge(g: Game) {
     if (!introduced(g.state, 'goals')) return null;   // the charter's call waits for its lesson (§11.13)

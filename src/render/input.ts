@@ -29,12 +29,13 @@ export interface InputHandlers {
   cancel(): void;
 }
 
-interface Press { id: number; x: number; y: number; lx: number; ly: number; moved: boolean; button: 0 | 2; tool: boolean; touch: boolean }
+interface Press { id: number; x: number; y: number; lx: number; ly: number; moved: boolean; button: 0 | 2; tool: boolean; touch: boolean; mute: boolean }
 
 /** Pointer/wheel/pinch input for one element; `enabled = false` ignores everything (catch-up veil, modals). */
 export class Input {
   enabled = true;
   private press: Press | null = null;
+  private muteId: number | null = null;   // the pointer whose press is no tap (muteTap)
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch: { d: number; mx: number; my: number; t0: number; moved: boolean } | null = null;
   private wheelAcc = 0;
@@ -50,6 +51,13 @@ export class Input {
     this.on('pointerleave', (e) => { if ((e as PointerEvent).pointerType === 'mouse' && !this.press) this.h.leave(); });
     this.on('wheel', (e) => this.wheel(e as WheelEvent), { passive: false });
     el.style.touchAction = 'none';
+  }
+
+  /** The press of this pointer, about to land here, closes something that stood over the map (the Breviarium): its tap
+   *  does nothing, while a drag or a pinch that starts with it still pans and zooms. Called from a capture-phase
+   *  pointerdown, before the press reaches the element. */
+  muteTap(pointerId: number): void {
+    this.muteId = pointerId;
   }
 
   /** Removes every listener. */
@@ -86,7 +94,9 @@ export class Input {
     const button: 0 | 2 = e.button === 2 ? 2 : 0;
     const touch = e.pointerType !== 'mouse';
     const tool = button === 0 && this.h.toolDrag('start', p.x, p.y, e.shiftKey);
-    this.press = { id: e.pointerId, x: p.x, y: p.y, lx: p.x, ly: p.y, moved: false, button, tool, touch };
+    const mute = this.muteId === e.pointerId;
+    this.muteId = null;
+    this.press = { id: e.pointerId, x: p.x, y: p.y, lx: p.x, ly: p.y, moved: false, button, tool, touch, mute };
     this.trail = [{ x: p.x, y: p.y, t: e.timeStamp }];
   }
 
@@ -150,6 +160,7 @@ export class Input {
       }
       return;
     }
+    if (pr.mute) return;   // the press closed something above the map (muteTap): it selects nothing
     if (pr.button === 2) { this.h.cancel(); return; }
     this.h.tap(p.x, p.y, { button: pr.button, shift: e.shiftKey, touch: pr.touch });
   }

@@ -13,6 +13,7 @@ import { TILE } from './camera';
 import type { Drawn } from './buildings';
 import { footprintRect } from './buildings';
 import { looks } from './decor';
+import { labelSize } from './placement';
 
 type Kind = 'dust' | 'star' | 'coin' | 'smoke' | 'steam' | 'spark' | 'flame' | 'petal' | 'sparkle' | 'wisp' | 'text' | 'icon' | 'pennant' | 'peg';
 interface P { k: Kind; x: number; y: number; vx: number; vy: number; g: number; life: number; max: number; size: number; color?: string; text?: string }
@@ -46,6 +47,11 @@ export class Particles {
   constructor() {
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     this.cap = coarse ? 300 : 600;
+  }
+
+  /** True while any particle is in flight (the view keeps drawing until the last one fades, paused or not). */
+  get busy(): boolean {
+    return this.list.length > 0;
   }
 
   /** Removes every particle and emitter. */
@@ -207,7 +213,8 @@ export class Particles {
   draw(g: CanvasRenderingContext2D, view: Rect): void {
     if (!this.list.length) return;
     g.save();
-    g.font = '7px Silkscreen, monospace';
+    const px = labelSize(g), plate = px + 2;   // the floating words: the map labels' size (12 CSS px or more)
+    g.font = `${px}px Silkscreen, monospace`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     for (const p of this.list) {
@@ -245,9 +252,9 @@ export class Particles {
           break;
         }
         case 'text': {
-          const t = p.text ?? '', w = Math.ceil(g.measureText(t).width) + 6;
+          const t = p.text ?? '', w = Math.ceil(g.measureText(t).width) + Math.round(px * 0.75);
           g.globalAlpha = Math.min(1, a * 2);
-          g.fillStyle = 'rgba(14,11,22,0.85)'; g.fillRect(Math.round(x - w / 2), y - 5, w, 10);
+          g.fillStyle = 'rgba(14,11,22,0.85)'; g.fillRect(Math.round(x - w / 2), y - plate / 2, w, plate);
           g.fillStyle = p.color ?? '#f2c94c'; g.fillText(t, x, y + 0.5);
           break;
         }

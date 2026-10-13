@@ -9,4 +9,9 @@
 @import './panels.css';
 @import './tabs.css';
 @import './inspector.css';
+@import './tray.css';
 @import './mobile.css';
+@import './sheet.css';
+@import './drawer.css';
+@import './dock.css';
+@import './columns.css';

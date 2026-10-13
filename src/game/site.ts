@@ -11,7 +11,7 @@ import { dayEpoch as dayEpoch$, layoutEpoch as layoutEpoch$, memo as memo$, stru
 import { fxAdd as fxAdd$ } from './fx';
 import { coverage, desirability, previewCovered, previewDesir, type PreviewLayer } from './coverage';
 import { needWant } from './housing';
-import { routeAqueduct, validSlots } from './place';
+import { canPlace, routeAqueduct, validSlots } from './place';
 import { getBuilding as getBuilding$ } from './lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { GH as GH$, GW as GW$, PrefixSum, rectGap as rectGap$, rectTiles as rectTiles$, sideTiles as sideTiles$ } from './world/grid';
@@ -426,6 +426,31 @@ export function bestSlot(s: GameState, type: BuildingId, opts?: { owner?: Owner;
     }
     return best;
   });
+}
+
+/** Where a placement the player starts puts its ghost first (DESIGN §15.4): `at` while it is still a valid slot (a
+ *  remedy's tile can be taken between the card's render and the tap: the Ordo built there); else the valid slot whose
+ *  centre is nearest `prefer.near` (the house whose want it answers when no slot serves it: house.ts fixSlot; the plot
+ *  just taken, for ⟳ keep placing); else the best slot.
+ *  Undefined when the type has no valid slot at all. Pure: reads the memoised slot maps only. */
+export function resolvePlaceAt(s: GameState, type: BuildingId, at?: number, owner: Owner = 'player',
+  prefer?: { near?: Rect }): number | undefined {
+  if (at !== undefined && canPlace(s, type, at, { owner }).ok) return at;
+  const slots = validSlots(s, type, owner);
+  if (slots.size === 0) return undefined;
+  const near = prefer?.near;
+  if (near) {
+    const cx = near.x + near.w / 2, cy = near.y + near.h / 2;
+    let pick = -1, d2 = Infinity;
+    for (const t of sortedTiles(slots)) {   // ascending: the lowest tile wins a tie
+      const x = t % GW, y = Math.floor(t / GW);
+      const [w, h] = sizeOf(type, classAt(s, type, x, y));
+      const d = (x + w / 2 - cx) ** 2 + (y + h / 2 - cy) ** 2;
+      if (d < d2) { d2 = d; pick = t; }
+    }
+    if (pick >= 0) return pick;
+  }
+  return bestSlot(s, type, { owner })?.tile;
 }
 
 /** Everything a fast type's scores read besides its own slot parts: the structure (rank, footprints, the slot set),

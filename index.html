@@ -6,11 +6,18 @@
   <meta name="theme-color" content="#15100d" />
   <title>Castra Valeria</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Castra" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 </head>
 <body>
   <div id="app">
     <canvas id="map" aria-label="Map of the colony"></canvas>
     <header id="hud"></header>
+    <div id="tray"></div>
     <aside id="left">
       <section id="objective"></section>
       <section id="counsel"></section>
@@ -26,6 +33,7 @@
       <canvas id="minimap"></canvas>
       <div id="zoom-ctl"></div>
     </div>
+    <nav id="map-col"></nav>
     <aside id="side">
       <button id="side-toggle" aria-label="Toggle panel"></button>
       <nav id="tabs" role="tablist"></nav>
