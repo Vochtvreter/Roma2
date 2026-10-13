@@ -24,7 +24,7 @@ import { BUILDING_DEFS } from '../game/data/buildings';
 
 // ───────────────────────────── pure ─────────────────────────────
 /** What a row names on the map: a building or site, a work the Ordo means to raise on a tile, the works a labour
- *  category staffs (the builders: the sites in hand and the town wall while its crew raises it), or the homes in decline. */
+ *  category staffs (the builders: the sites in hand, else the town wall while its crew raises it), or the homes in decline. */
 export type FocusSpec =
   | { kind: 'building'; id: number }
   | { kind: 'wish'; type: BuildingId; tile: number }
@@ -75,7 +75,7 @@ function footRect(s: GameState, b: { type: BuildingId; x: number; y: number }): 
 
 /** The tile rects a row names in a state (pure; tests/focusrow.test.ts), one per object, in the state's order: a
  *  building's footprint (none once it is gone); a wish's footprint at its tile (the work itself once it stands there); a
- *  labour category's finished works with posts (the builders': every site in hand, then the tile of the town wall its
+ *  labour category's finished works with posts (the builders': every site in hand, else the tile of the town wall its
  *  crew raises next); every home in decline. */
 export function focusRects(s: GameState, f: FocusSpec): Rect[] {
   switch (f.kind) {
@@ -89,7 +89,9 @@ export function focusRects(s: GameState, f: FocusSpec): Rect[] {
     case 'labour':
       if (f.cat === 'builders') {
         const out = s.buildings.filter((b) => b.status !== 'done').map((b) => footRect(s, b));
-        const at = wallStretch(s);
+        // the wall answers when it is their only work: a stretch far from the sites would widen the union past the free
+        // map, and ensureVisible would frame neither
+        const at = out.length ? null : wallStretch(s);
         if (at !== null) out.push({ x: tx(at), y: ty(at), w: 1, h: 1 });
         return out;
       }
@@ -99,7 +101,8 @@ export function focusRects(s: GameState, f: FocusSpec): Rect[] {
 }
 
 /** The tile of the town wall its crew raises next (the first not yet built, in building order: render/linear.ts
- *  builtWall), or null while no crew works on it (urbs.wallsRising: none surveyed, finished, or waiting for stone). */
+ *  builtWall), or null while no crew works on it (urbs.wallsRising: none surveyed, finished, or waiting for its stone
+ *  and coin). */
 export function wallStretch(s: GameState): number | null {
   const mo = s.urbs.moenia;
   if (!mo || !mo.tiles.length || !wallsRising(s)) return null;

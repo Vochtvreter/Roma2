@@ -74,28 +74,38 @@ describe('what a row names on the map (focusRects)', () => {
     expect(focusRects(s, { kind: 'labour', cat: 'water' }).some((r) => r.x === at.x && r.y === at.y)).toBe(false);   // not staffed until done
   });
 
-  it("the builders: the town wall's next stretch while its crew raises it", () => {
+  it("the builders: with no site in hand, the town wall's next stretch while its crew raises it", () => {
     const s = fresh();
     s.rank = 3;
+    s.buildings = s.buildings.filter((b) => b.status === 'done');        // no site in hand
     invalidate(s);
     s.res.stone = 1e6;
     s.res.denarii = 1e6;
-    const sites = focusRects(s, { kind: 'labour', cat: 'builders' });
+    const builders = () => focusRects(s, { kind: 'labour', cat: 'builders' });
     expect(wallStretch(s)).toBeNull();                                    // no wall laid out
+    expect(builders()).toEqual([]);
     expect(commissionWalls(s).ok).toBe(true);
     const mo = s.urbs.moenia!;
     expect(wallsRising(s)).toBe(true);
     const tile = (k: number) => ({ x: mo.tiles[k] % W, y: Math.floor(mo.tiles[k] / W), w: 1, h: 1 });
-    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual([...sites, tile(0)]);
+    expect(builders()).toEqual([tile(0)]);
     mo.progress = 0.5;
-    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual([...sites, tile(Math.floor(mo.tiles.length * 0.5))]);
+    expect(builders()).toEqual([tile(Math.floor(mo.tiles.length * 0.5))]);
     mo.progress = 1;
-    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual([...sites, tile(mo.tiles.length - 1)]);
+    expect(builders()).toEqual([tile(mo.tiles.length - 1)]);
+    // a site in hand: the sites alone (a stretch far from them would widen the union past the free map)
+    const at = freeSlots(s, 'puteus')[0];
+    expect(place(s, 'puteus', at.x, at.y).ok).toBe(true);
+    const sites = builders();
+    expect(sites).toHaveLength(1);
+    expect(sites[0]).toMatchObject({ x: at.x, y: at.y });
+    s.buildings = s.buildings.filter((b) => b.status === 'done');
+    invalidate(s);
     mo.done = s.day;                                                      // finished: no crew
-    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual(sites);
+    expect(builders()).toEqual([]);
     mo.done = null;
-    s.res.stone = 0;                                                      // waiting for stone: no crew either
-    expect(focusRects(s, { kind: 'labour', cat: 'builders' })).toEqual(sites);
+    s.res.stone = 0;                                                      // waiting for its stone: no crew either
+    expect(builders()).toEqual([]);
   });
 
   it('the declining homes: each of them', () => {
