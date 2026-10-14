@@ -342,6 +342,7 @@ export const B = {
     RENEW: {
       WELL_MARGIN: 0.5,                               // a well is filled only if no house beside it falls within this of its tier's need
       WELL_AGE: 365,                                  // … and only an old one (days since it was finished)
+      CARRY: 1.1,                                     // the aqueduct carries the town: its Aestas flow covers the draw × this
       COTTAGE_LEVEL: 2,                               // homes up to this tier (tentoria, casa, tegulata) may be bought out for a civic block
       SPARE: 2,                                       // beds left free elsewhere once the families are rehoused
       GAP: 60,                                        // days between two renewals

@@ -18,7 +18,7 @@ import { B } from '../src/game/balance';
 import { counselSig } from '../src/ui/counsel';
 import { remedyKey, savingLine } from '../src/ui/tabs/common';
 import { labourKey } from '../src/ui/tabs/labour';
-import { fresh, run } from './util';
+import { dryHouse, fresh, run } from './util';
 
 function fakeGame(s: GameState): Game {
   return { state: s, view: { placing: null, overlay: 'none' }, prefs: DEFAULT_PREFS, rates: emptyRates(), speed: 1, paused: false, mode: 'game', modalOpen: false } as unknown as Game;
@@ -161,6 +161,8 @@ describe('remedy buttons follow the best plot (R15)', () => {
   it('once the Ordo builds on a place remedy\'s tile, the counsel card and Consiliarii signatures change', () => {
     const s = fresh(42);
     const g = fakeGame(s);
+    dryHouse(s);                                                        // two homes beyond the founders' well: the Curator
+    dryHouse(s);                                                        // offers a well on the plot reaching them
     run(s, 5);
     const placeOf = () => {
       for (const a of activeAdvisories(s)) {

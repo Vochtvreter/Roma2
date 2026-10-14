@@ -514,7 +514,7 @@ describe('water for Aestas (DESIGN §10.5 row 2, §11.11)', () => {
     const s = r.s;
     const wells = s.buildings.filter((b) => b.type === 'puteus').length, tanks = s.buildings.filter((b) => b.type === 'cisterna').length;
     for (const d of cisterns) expect(cisterns.filter((x) => x > d - 365 && x <= d).length, `cisterns in the year to day ${d}`).toBeLessThanOrEqual(3);
-    expect(tanks).toBeLessThan(wells);                                             // yield grows with the need; room follows it
+    expect(tanks).toBeLessThanOrEqual(wells);                                      // yield grows with the need; room follows it
     expect((wells * 17.6 + tanks * 2.4) / census(s).need.water).toBeGreaterThan(0.8); // Aestas yield tracks the need
     expect(low).toBeGreaterThanOrEqual(10);                                        // the realised runway never fell below 10 days
     expect(s.stats.deathsBy.thirst).toBe(0);

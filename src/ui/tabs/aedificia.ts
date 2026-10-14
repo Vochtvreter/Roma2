@@ -17,7 +17,7 @@ import { getBuilding } from '../../game/state';
 import { resolvePlaceAt } from '../../game/site';
 import { reasonText } from '../../game/ordo/reasons';
 import { B } from '../../game/balance';
-import { BUILD_ORDER, BUILDING_DEFS, CAT_LABELS } from '../../game/data/buildings';
+import { BUILD_ORDER, BUILDING_DEFS, CAT_LABELS, slotsOf } from '../../game/data/buildings';
 import { PATH_DEFS } from '../../game/data/decisions';
 import { LAYER_META } from '../../game/data/housing';
 import { RESOURCE_DEFS } from '../../game/data/resources';
@@ -57,7 +57,7 @@ function footprint(type: BuildingId): string {
 function details(s: GameState, type: BuildingId): string {
   const d = BUILDING_DEFS[type];
   const lines = [`${d.name} · ${d.latin}`, d.desc, d.hint, `${footprint(type)} · work ${fmt(d.work)} builder-days`];
-  if (d.slots) lines.push(`${d.slots} posts${d.output ? ` · ${d.output.perWorker} ${RESOURCE_DEFS[d.output.res].name.toLowerCase()} a hand a day` : ''}`);
+  if (d.slots) lines.push(`${slotsOf(type, s.rank)} posts${d.output ? ` · ${d.output.perWorker} ${RESOURCE_DEFS[d.output.res].name.toLowerCase()} a hand a day` : ''}`);
   if (d.passive) lines.push(`${d.passive.perDay} ${RESOURCE_DEFS[d.passive.res].name.toLowerCase()} a day, unstaffed`);
   for (const sv of d.service ?? []) lines.push(`${LAYER_META[sv.layer].label} within ${sv.radius} road steps`);
   if (d.upkeep) lines.push(`Upkeep ${d.upkeep} den a day`);

@@ -14,6 +14,7 @@ import { homesEpoch, invalidate, memo, pushActionFx, structEpoch, touchPeople } 
 import { log } from './state';
 import { getBuilding } from './lookup';
 import { census, houseBeds, peopleIndex } from './census';
+import { passivePotential } from './economy';
 import { houseDesir, houseHas, previewCovered } from './coverage';
 import { rehouseGroups } from './people';
 import { firstWant, targetTier } from './housing';
@@ -28,6 +29,7 @@ import { feminine } from './data/names';
 import { GH, GN, GW, sideTiles } from './world/grid';
 
 const U = B.urbs;
+const AESTAS = 1;
 const TR = U.TRAFFIC;
 const M = U.MOENIA;
 const EPS = 1e-9;
@@ -477,23 +479,31 @@ export function wellNeedless(s: GameState, b: Building): boolean {
   return true;
 }
 
+/** The aqueduct carries the town (DESIGN §3.9): what flows without hands in Aestas, the leanest season (the castellum,
+ *  the cisterns' rain), covers what the town drinks and its works draw, with RENEW.CARRY to spare. The wells raised for
+ *  the supply are then needless for it too. */
+export function aqueductCarries(s: GameState, v: SimView): boolean {
+  return v.d.castellumActive && passivePotential(s, 'water', AESTAS) >= v.f.water.cons * U.RENEW.CARRY;
+}
+
 /** On the Kalends, once the aqueduct flows and water is plentiful all year: the Ordo fills in one old well on a house plot
  *  that the fountains have made needless (its own or the founders', never the player's, nor one it raised for the water
- *  supply in a drought or before Aestas), freeing the plot for a home. */
+ *  supply in a drought or before Aestas until the aqueduct carries the town), freeing the plot for a home. The buy-out
+ *  clock (RENEW.GAP) is its own: once the aqueduct carries the town, a well a month may go. */
 function renewWells(s: GameState, ctx: TickContext, v: SimView): void {
   if (!v.d.castellumActive || !holds(s, 'water')) return;
   const reserve = settingValue(s, 'waterReserve'), crunch = v.f.water.crunch;
   if (v.f.water.doh < reserve || (crunch && crunch.lowestDoh < reserve)) return;   // not while water is, or will be, short
+  const carried = aqueductCarries(s, v);
   for (const b of s.buildings) {
     if (b.type !== 'puteus' || b.status !== 'done' || b.owner === 'player') continue;
     if (s.day - (b.doneDay ?? b.placed) < U.RENEW.WELL_AGE) continue;
-    if (b.reason?.code === 'aestasWater' || b.reason?.code === 'survivalWater') continue;   // raised for the supply, not the street
+    if (!carried && (b.reason?.code === 'aestasWater' || b.reason?.code === 'survivalWater')) continue;   // the supply still needs it
     if (classAt(s, 'puteus', b.x, b.y) !== 'plot' || !wellNeedless(s, b)) continue;
     const place = placeName(s, idx(b.x, b.y));
     const tiles = footprintOf(b, s);
     for (const p of peopleIndex(s).byWork.get(b.id) ?? []) p.work = null;
     s.buildings = s.buildings.filter((x) => x.id !== b.id);
-    s.urbs.renewed = s.day;
     log(s, 'ordo', `The Ordo fills in the old well ${place}: the fountains water that street now, and the plot is free for a home.`, undefined);
     ctx.fx.push({ kind: 'renewed', tiles });
     invalidate(s);

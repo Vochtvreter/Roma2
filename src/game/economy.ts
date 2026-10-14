@@ -17,13 +17,13 @@ import { worksQueue } from './construction';
 import { edictOption, settingValue } from './decisions';
 import { derived as derived$, sizeOf as sizeOf$, classAt as classAt$ } from './derived';
 import { getMap as getMap$, inBounds as inBounds$, idx as idx$, W as W$ } from './map';
-import { BUILDING_DEFS as BUILDING_DEFS$, TOOL_ORDER as TOOL_ORDER$ } from './data/buildings';
+import { BUILDING_DEFS as BUILDING_DEFS$, TOOL_ORDER as TOOL_ORDER$, slotsOf as slotsOf$ } from './data/buildings';
 import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, seasonOf = seasonOf$, fx = fx$, fxAdd = fxAdd$, fxSources = fxSources$,
   censusEpoch = censusEpoch$, layoutEpoch = layoutEpoch$, memo = memo$, derived = derived$, sizeOf = sizeOf$,
-  classAt = classAt$, getMap = getMap$, inBounds = inBounds$, idx = idx$, W = W$, BUILDING_DEFS = BUILDING_DEFS$,
+  classAt = classAt$, getMap = getMap$, inBounds = inBounds$, idx = idx$, W = W$, BUILDING_DEFS = BUILDING_DEFS$, slotsOf = slotsOf$,
   TOOL_ORDER = TOOL_ORDER$, RESOURCE_DEFS = RESOURCE_DEFS$;
 
 const E = B.economy;
@@ -187,7 +187,7 @@ function rateCore(s: GameState, b: Building, season: SeasonIndex, mode: 'current
     for (const p of workers) total += outputWith(s, b, p, base, outside);
     if (mode === 'full') {
       const per = n > 0 ? total / n : outputWith(s, b, null, base, outside);
-      n = def.slots;
+      n = slotsOf(b.type, s.rank);
       total = per * n;
     }
     rateAdd(RES_IDX[def.output.res], total);
@@ -248,9 +248,16 @@ function producersOf(s: GameState, res: Essential): Producers {
     let per = 0;
     for (const p of workers) per += outputWith(s, b, p, base, act);
     per = workers.length > 0 ? per / workers.length : outputWith(s, b, null, base, act);
-    if (per > 0) out.slots.push({ type: b.type, id: b.id, n: def.slots, per });
+    if (per > 0) out.slots.push({ type: b.type, id: b.id, n: slotsOf(b.type, s.rank), per });
   }
   return out;
+}
+
+/** What an essential's works yield in a season without hands (the castellum, the cisterns' rain). */
+export function passivePotential(s: GameState, res: Essential, season: SeasonIndex): number {
+  let total = 0;
+  for (const p of producers(s, res).passive) total += p.per * seasonMult(s, p.type, season);
+  return total;
 }
 
 /** Best assignment of the workforce to existing producers of an essential (food cap applied) plus passive output. */
@@ -258,8 +265,7 @@ export function maxPotential(s: GameState, res: Essential, season: SeasonIndex):
   const c = census(s);
   const table = producers(s, res);
   let workers = res === 'grain' ? Math.floor(c.workforce * B.ordo.FOOD_CAP) : c.workforce;
-  let total = 0;
-  for (const p of table.passive) total += p.per * seasonMult(s, p.type, season);
+  let total = passivePotential(s, res, season);
   const per = table.slots.map((p) => ({ v: p.per * seasonMult(s, p.type, season), n: p.n, id: p.id }));
   per.sort((a, b) => b.v - a.v || a.id - b.id);
   for (const p of per) {

@@ -47,7 +47,7 @@ function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<num
     if (!b.open) return 0;
     const n = byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
     if (n <= 0) return 0;
-    if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);
+    if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);   // a windlass's hands add water, not reach
   }
   if (b.unpaid) r = Math.floor(r * B.economy.UNPAID);
   if (RADIUS_BONUS[layer] && r > 0) r += bonus;

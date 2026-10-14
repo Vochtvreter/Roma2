@@ -7,7 +7,7 @@ import {
 } from '../src/game/types';
 import type { BuildCat, BuildingId, Cost, Effects, GameState, PathOptionId } from '../src/game/types';
 import { RESOURCE_DEFS } from '../src/game/data/resources';
-import { BUILDING_DEFS, BUILD_ORDER, CAT_LABELS, TOOL_ORDER } from '../src/game/data/buildings';
+import { BUILDING_DEFS, BUILD_ORDER, CAT_LABELS, TOOL_ORDER, slotsOf } from '../src/game/data/buildings';
 import { LAYER_META, NEED_META, TIER_DEFS } from '../src/game/data/housing';
 import { EDICT_DEFS, FOCUS_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from '../src/game/data/decisions';
 import { RANK_DEFS } from '../src/game/data/ranks';
@@ -104,10 +104,15 @@ describe('buildings (DESIGN §5)', () => {
         expect(LAYERS as readonly string[]).toContain(sv.layer);
         expect(sv.radius).toBeGreaterThan(0);
       }
+      if (d.slotsFrom) expect(d.slotsFrom[1]).toBeGreaterThan(d.slots);   // more hands from a rank, never fewer
       expect(d.upkeep).toBeGreaterThanOrEqual(0);
       expect(d.tool).toBe(TOOL_ORDER.includes(id));
       for (const s of [d.name, d.latin, d.desc, d.benefit, d.hint]) expect(s.length).toBeGreaterThan(0);
     }
+  });
+  it('gives a well two hands in the camp and the vicus, four from the Oppidum (a windlass)', () => {
+    expect([0, 1, 2, 3, 4].map((r) => slotsOf('puteus', r))).toEqual([2, 2, 4, 4, 4]);
+    expect(slotsOf('ager', 4)).toBe(BUILDING_DEFS.ager.slots);
   });
   it('spot-checks the numbers the opening depends on (DESIGN §18.2)', () => {
     expect(BUILDING_DEFS.puteus.output).toEqual({ res: 'water', perWorker: 11 });
