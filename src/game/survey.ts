@@ -289,7 +289,7 @@ export function isFutureBlock(sv: Survey, b: Block, rank: RankIndex, razed = fal
 
 const charterCache = new WeakMap<Survey, Uint8Array[]>();
 
-/** The charter streets of a rank (DESIGN §3.7), 1 on every survey tile the town paves at Rome's cost as it rises: the
+/** The charter streets of a rank (DESIGN §3.7), 1 on every survey tile the town paves as it rises: the
  *  castrum's cardo and decumanus with their gates and causeways from Oppidum, every street of the inner city (ring 0)
  *  from Municipium, and the streets of Ring 1 and across the old wall line from Colonia. Shared; callers only read it. */
 export function charterStreets(sv: Survey, rank: RankIndex): Uint8Array {

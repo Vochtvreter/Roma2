@@ -6,7 +6,7 @@ import { B as B$ } from './balance';
 import { RESOURCES as RESOURCES$ } from './types';
 import type { ActionResult, Block, Building, BuildingId, Cost, GameState, Owner, PlaceCheck, PlaceClass, PlaceFail, PlaceOpts, ResId, WorldMap } from './types';
 import { getMap as getMap$, idx as idx$, inBounds as inBounds$, tx as tx$, ty as ty$ } from './map';
-import { WALL_RING as WALL_RING$, charterStreets as charterStreets$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, isRazed as isRazed$, plotOrigin as plotOrigin$, ringsOf as ringsOf$ } from './survey';
+import { WALL_RING as WALL_RING$, halfOrigin as halfOrigin$, isActiveBlock as isActiveBlock$, isFutureBlock as isFutureBlock$, isRazed as isRazed$, plotOrigin as plotOrigin$, ringsOf as ringsOf$ } from './survey';
 import { blockOfTile as blockOfTile$, campRect as campRect$, classAt as classAt$, derived as derived$, inCamp as inCamp$, sizeOf as sizeOf$ } from './derived';
 import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layoutEpoch$, memo as memo$, touchPeople as touchPeople$ } from './memo';
 import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
@@ -26,7 +26,7 @@ import { RULE_REASON as RULE_REASON$, ruleFail as ruleFail$, ruleTester as ruleT
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
-  WALL_RING = WALL_RING$, charterStreets = charterStreets$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$,
+  WALL_RING = WALL_RING$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$,
   isFutureBlock = isFutureBlock$, isRazed = isRazed$, ringsOf = ringsOf$, plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$,
   derived = derived$, campRect = campRect$, inCamp = inCamp$, sizeOf = sizeOf$,
   dayLayout = dayLayout$, invalidate = invalidate$, layoutEpoch = layoutEpoch$, memo = memo$,
@@ -499,16 +499,4 @@ export function paveVia(s: GameState): void {
   if (add.length === 0) return;
   s.paved = mergeSorted(s.paved, add);
   invalidate(s);
-}
-
-/** Paves the rank's charter streets that lie dirt (survey.ts charterStreets, DESIGN §3.7), at Rome's cost: on the day
- *  of the rank, and on every Kalends the streets laid since. Returns the tiles paved. */
-export function charterPaving(s: GameState): number {
-  const d = derived(s);
-  const charter = charterStreets(getMap(s.seed).survey, s.rank);
-  const add = s.roads.filter((i) => charter[i] === 1 && d.road[i] === 1);
-  if (add.length === 0) return 0;
-  s.paved = mergeSorted(s.paved, add);
-  invalidate(s);
-  return add.length;
 }

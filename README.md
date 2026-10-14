@@ -35,9 +35,9 @@ atrium *domus*, and dedicate the **Capitolium**.
 5. Close the tab whenever you like. Time away passes at half speed (up to five years), and the Ordo writes you a
    letter, the *Litterae Ordinis*, about what happened and what it decided in your name.
 
-The town does not keep the plan it was founded on. Its people wear the roads they walk into highways, and Rome paves
-its streets in stone as it rises: the camp's cardo and decumanus at Oppidum, every street of the inner city at
-Municipium, Ring 1 at Colonia (DESIGN §3.7). As a Colonia it rings the whole town with a stone wall, and once that
+The town does not keep the plan it was founded on. Its people wear the roads they walk into highways, and it paves
+its streets as it rises, as the stone allows: the camp's cardo and decumanus at Oppidum, every street of the inner city
+at Municipium, Ring 1 at Colonia (DESIGN §3.7). As a Colonia it rings the whole town with a stone wall, and once that
 stands the old camp's rampart is torn down and its ditch filled, so the camp becomes the inner city and its wall line
 new house plots; the aqueduct's water goes where it matters, and the Ordo now and then fills in a well the fountains
 made needless or buys out a block of homes for a temple, rehousing every family (DESIGN §3.9). You may lay out the

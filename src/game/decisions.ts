@@ -14,7 +14,7 @@ import { canAfford, log, pay, scaleCost } from './state';
 import { fx as fx$ } from './fx';
 import { dignitas } from './civic';
 import { houseHas } from './coverage';
-import { charterPaving, paveVia } from './place';
+import { paveVia } from './place';
 import { startCapitolium } from './construction';
 import { view } from './sim';
 import { FIRST_HIEMS_OVER, MILESTONES, housesAtLeast, milestoneDone, milestoneIndex } from './objectives';
@@ -246,7 +246,8 @@ export function choosePath(s: GameState, decision: PathDecisionId, option: PathO
   return { ok: true };
 }
 
-/** Raises the colony's rank: rings and territory (invalidate), log, the rank's charter streets paved, fx rank. */
+/** Raises the colony's rank: rings and territory (invalidate), log (with the charter streets the Kalends now pave,
+ *  urbs.ts), fx rank. */
 export function rankUp(s: GameState, rank: RankIndex): void {
   if (rank <= s.rank) return;
   s.rank = rank;
@@ -254,16 +255,16 @@ export function rankUp(s: GameState, rank: RankIndex): void {
   const def = RANK_DEFS[rank];
   const opens = def.unlocks.map((t) => BUILDING_DEFS[t].name).join(', ');
   log(s, 'rank', `${formatAuc(aucYear(s.day))} · ${inscription(`${s.name} fit ${def.name}`)}. Rome names you ${def.title}${opens ? `; open to us now: ${opens}` : ''}.`, ['highlight']);
-  const paved = charterPaving(s);
-  if (paved > 0) log(s, 'build', `At Rome's cost ${CHARTER_TEXT[rank] ?? 'the streets are'} paved in silex: ${paved} paces.`);
+  const charter = CHARTER_TEXT[rank];
+  if (charter) log(s, 'build', `The ${charter} to be paved in silex as the stone comes, ${B.map.PAVE_STONE} stone a pace, from the Kalends.`);
   pushActionFx({ kind: 'rank', rank });
 }
 
 /** What a rank's charter paves (B.map.CHARTER, survey.ts charterStreets). */
 const CHARTER_TEXT: Partial<Record<RankIndex, string>> = {
-  [B.map.CHARTER.axes]: 'the cardo and the decumanus of the camp are',
-  [B.map.CHARTER.inner]: 'the streets of the inner city are',
-  [B.map.CHARTER.outer]: 'the streets of the first ring and across the old wall line are',
+  [B.map.CHARTER.axes]: 'cardo and the decumanus of the camp are',
+  [B.map.CHARTER.inner]: 'streets of the inner city are',
+  [B.map.CHARTER.outer]: 'streets of the first ring and across the old wall line are',
 };
 
 /** Inscription capitals with V for U ("CASTRA VALERIA FIT OPPIDVM"). */

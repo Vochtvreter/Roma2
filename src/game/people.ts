@@ -603,8 +603,8 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 // ───────────────────────────── immigration (DESIGN §6.6) ─────────────────────────────
 
 /** The colony's splendour (DESIGN §6.6, §10.3): the dignitas of the works the Ordo leaves to the player — gardens and
- *  paved streets (the Ordo raises them only under the Urbs focus, which the player sets); the charter streets Rome
- *  paves as the town rises (survey.ts charterStreets) are not the town's own and do not count. */
+ *  paved streets (the Ordo raises them only under the Urbs focus, which the player sets); the charter streets
+ *  the town paves as it rises (survey.ts charterStreets, urbs.ts) are not the player's work and do not count. */
 export function splendour(s: GameState): number {
   let gardens = 0;
   for (const b of s.buildings) if (b.type === 'hortus' && b.status === 'done') gardens++;
