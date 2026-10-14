@@ -280,7 +280,7 @@ Measured for the attentive player, median over the five seeds, after each phase:
 ## 6. The Copiae screen (design for review)
 
 A new side-panel tab, *Copiae* / Stores (key `G`), revealed with the first finished work, drawn on the canvas
-**<https://claude.ai/artifact/N7EFAYm2Phb2bvHhyZPAKp>** (private to its owner until shared from its Share menu). Six
+**<https://claude.ai/artifact/N7EFAYm2Phb2bvHhyZPAKp>** (private to its owner until shared from its Share menu). Ten
 artboards:
 
 - **Why**: the measurements above and the flow from producers through the stores to the five sinks and on to progress.
@@ -296,6 +296,18 @@ artboards:
 - **Workshops and recipes** (§4.7): the smithy's and the carpenter's yard's recipes with their inputs and kit wear, what
   carts, cranes, furniture and nails each buy with the measured reason, the owner's cart example checked item by item,
   and what was left out.
+
+And four on how the economy works once all of this is in:
+
+- **How goods move**: every chain from land and producers through the workshops (each wearing tool kits) into the
+  stores, then out to the seven uses (homes every day, works, *Expolitio*, carts and cranes, fuel and grease, munera
+  and Rome's requests, sell above and buy below) and on to progress.
+- **The loop**: people → work → stores → supplied homes → taxes → aerarium → *Expolitio*, munera and imports →
+  Rome's favour → colonists, with the surplus branch to market, and why demand now grows with the town.
+- **Rank by rank**: for each rank, the new goods, what homes want, the new ways to spend, what the player manages, the
+  petition to leave, and the coin when the rank opens (measured today against the §4.8 target).
+- **Where the coin goes**: a whole game's coin by where it ends up, today (measured) against the proposed target split,
+  and an illustrative Municipium day for timber, tool kits and coin.
 
 The figures on the artboards are a plausible Municipium under this proposal, for layout; they are not measurements.
 
