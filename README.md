@@ -124,6 +124,7 @@ npm run dev        # open the printed URL; add ?dev for window.skip(days), windo
 | `npm run perf` | the wall-clock budgets of `tests/perf.test.ts`: a tick ≤ 1.5 ms median at 600 souls, a five-year absence ≤ 6 s, map generation ≤ 40 ms. Run it on a quiet machine; `PERF_SLACK=2` loosens them |
 | `npm run balance` | the full balance-bot run to the Capitolium on five seeds (`BAL_FULL=1`, slow) |
 | `npm run trace` | a tuning table per seed every 300 days: rank, souls, houses by tier, stores, coin, morale |
+| `npm run economy` | the economy ledger per rank: coin in and out by source, stores at their cap, spills, idle hands, builders' capacity used, tool kits, Rome's favour, and the whole game's coin earned, spent and unspent (`docs/ECONOMY_REVIEW.md`) |
 | `node scripts/icons.mjs` | paint the app icons (`public/icons/`) from the aquila sprite again, after the art changes |
 
 CI (`.github/workflows/ci.yml`) runs `npm ci`, `npm run typecheck`, `npm test` and `npm run build` on every push and
@@ -142,7 +143,7 @@ pull request.
 | `src/ui/`, `src/styles/` | HUD, side panels (`ui/tabs/`), inspector, advisor card, letters, title screen and keyboard; the layout engine (`ui/layout.ts`: size classes, the four hosts and their detents) and the sliding panel (`ui/sheet.ts`), the Breviarium (`ui/tray.ts`), Back (`ui/history.ts`), the focus row, Text size and the installed app's checks (`ui/platform.ts`); the CSS, one sheet per host (`sheet.css`, `drawer.css`, `dock.css`, `columns.css`) |
 | `public/`, `scripts/` | the favicon, the web app manifest, the icons and the offline worker (`sw.js`); the icon painter and the worker's build step (`scripts/precache.ts`, run by `vite.config.ts`) |
 | `tests/` | Vitest suites and the autoplayer bots behind the balance, trace and perf runs |
-| `docs/` | `DESIGN.md` (content and numbers) and `ARCHITECTURE.md` (the code contract) |
+| `docs/` | `DESIGN.md` (content and numbers) and `ARCHITECTURE.md` (the code contract); `ECONOMY_REVIEW.md`, a proposal under review |
 
 ## Credits
 
