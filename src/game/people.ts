@@ -604,13 +604,15 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 
 /** The colony's splendour (DESIGN §6.6, §10.3): the dignitas of the works the Ordo leaves to the player — gardens and
  *  paved streets (the Ordo raises them only under the Urbs focus, which the player sets); the charter streets
- *  the town paves as it rises (survey.ts charterStreets, urbs.ts) are not the player's work and do not count. */
+ *  the town paves as it rises (survey.ts charterStreets, urbs.ts) count only for the camp's cardo and decumanus, as
+ *  they always did: the rest are not the player's work, and a colony the Ordo keeps alone keeps its pace (§18.5). */
 export function splendour(s: GameState): number {
   let gardens = 0;
   for (const b of s.buildings) if (b.type === 'hortus' && b.status === 'done') gardens++;
-  const charter = charterStreets(getMap(s.seed).survey, s.rank);
+  const sv = getMap(s.seed).survey;
+  const charter = charterStreets(sv, s.rank), axes = charterStreets(sv, B.map.CHARTER.axes);
   let paved = 0;
-  for (const i of s.paved) if (charter[i] === 0) paved++;
+  for (const i of s.paved) if (charter[i] === 0 || axes[i] === 1) paved++;
   return gardens * BUILDING_DEFS.hortus.dignitas + B.dignitas.ROADS * paved;
 }
 

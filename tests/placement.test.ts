@@ -452,11 +452,17 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     const s = fresh(42);
     const sv = getMap(42).survey;
     const inner = idx(sv.ix + 5, sv.iy + 5);
+    // every Kalends until none is left, at most CHARTER.MONTH paces each
+    const paveAll = (): number => {
+      let n = 0;
+      for (let k; (k = charterPaving(s)) > 0;) { expect(k).toBeLessThanOrEqual(B.map.CHARTER.MONTH); n += k; }
+      return n;
+    };
     s.res.stone = 1e5;
     expect(charterPaving(s)).toBe(0);                                      // a camp: dirt streets
     atRank(s, 2);
-    const axes = charterPaving(s);
-    expect(axes).toBeGreaterThan(0);
+    const axes = paveAll();
+    expect(axes).toBeGreaterThan(B.map.CHARTER.MONTH);
     expect(s.res.stone).toBe(1e5 - axes * B.map.PAVE_STONE);
     for (const g of sv.gates) expect(s.paved).toContain(g.tile);
     expect(s.paved).toContain(idx(sv.ix + 3, sv.iy + 10));
@@ -468,13 +474,13 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     const out = Array.from({ length: N }, (_, i) => i).find((i) => sv.street[i] === 1 && sv.streetRing[i] === 1 && derived(s).road[i] === 0
       && derived(s).buildingAt[i] === 0 && buildRoad(s, [i]).ok && s.roads.length > ring1)!;
     expect(out).toBeDefined();
-    expect(charterPaving(s)).toBeGreaterThan(0);
+    expect(paveAll()).toBeGreaterThan(0);
     expect(s.paved).toContain(inner);
     for (const i of s.roads) if (sv.street[i] === 1 && sv.streetRing[i] === 0) expect(s.paved).toContain(i);
     expect(s.paved).not.toContain(out);
     expect(charterPaving(s)).toBe(0);                                      // nothing left to pave
     atRank(s, 4);
-    expect(charterPaving(s)).toBeGreaterThan(0);
+    expect(paveAll()).toBeGreaterThan(0);
     expect(s.paved).toContain(out);
     for (const i of s.roads) if (sv.street[i] === 1 && [0, 1, WALL_RING].includes(sv.streetRing[i])) expect(s.paved).toContain(i);
     paveVia(s);
@@ -503,7 +509,7 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     const before = charterDirt(s).length;
     run(s, 31, (st) => { st.res.stone = 1e5; });
     expect(charterDirt(s).length).toBeLessThan(before);
-    run(s, 12 * 31, (st) => { st.res.stone = 1e5; });
+    run(s, 24 * 31, (st) => { st.res.stone = 1e5; });
     expect(charterDirt(s)).toEqual([]);
     for (const i of s.roads) if (sv.street[i] === 1 && sv.streetRing[i] === 0) expect(s.paved).toContain(i);
   });

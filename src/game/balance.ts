@@ -33,9 +33,9 @@ export const B = {
     RIVER_LOAM: 2,                                    // land within 2 tiles of the river becomes loam
     LUCUS_DESIR: [3, 3], RIVER_DESIR: [1, 2], PAVED_DESIR: [1, 1],   // [value, range]
     PAVE_STONE: 2,                                    // stone per paved tile
-    // the charter streets (§3.7): the rank from which the town paves (PAVE_STONE a pace) the camp's cardo and
-    // decumanus, every street of the inner city, and those of Ring 1 and across the old wall line
-    CHARTER: { axes: 2, inner: 3, outer: 4 },
+    // the charter streets (§3.7): the rank from which the town paves (PAVE_STONE a pace, at most MONTH paces a
+    // Kalends) the camp's cardo and decumanus, every street of the inner city, and those of Ring 1 and across the old wall line
+    CHARTER: { axes: 2, inner: 3, outer: 4, MONTH: 24 },
     ROAD_COST: { flat: 1, hills: 1.7, forest: 3, rock: 2.5, street: 0.5, futureBlock: 6 },
     AQUEDUCT_COST: { hills: 0.8, flat: 1.0, forest: 1.4, river: 2.5, road: 1.2, wall: 2, plot: 3 },   // wall: over the vallum/fossa; plot: across an unbuilt surveyed plot
     CASTELLUMS_PER_FONS: 1,

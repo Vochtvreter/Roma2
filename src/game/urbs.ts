@@ -179,15 +179,15 @@ export function charterDirt(s: GameState): number[] {
   return s.roads.filter((i) => charter[i] === 1 && d.road[i] === 1).sort((a, b) => far(a) - far(b) || a - b);
 }
 
-/** Paves the rank's charter streets that lie dirt, nearest the forum first, at B.map.PAVE_STONE stone a pace as far as
- *  the stone above the Ordo's saving target allows (on the Kalends, urbsDay): from the first after the rank, the rest
- *  and the streets laid since on each one after. Returns the paces paved. */
+/** Paves the rank's charter streets that lie dirt, nearest the forum first, at B.map.PAVE_STONE stone a pace: at most
+ *  CHARTER.MONTH paces (so the renovations keep their stone), as far as the stone above the Ordo's saving target allows
+ *  (on the Kalends, urbsDay), from the first after the rank, with the streets laid since. Returns the paces paved. */
 export function charterPaving(s: GameState, ctx?: TickContext): number {
   const dirt = charterDirt(s);
   if (dirt.length === 0) return 0;
   const per = B.map.PAVE_STONE;
   const keep = savingFor(s, view(s))?.cost.stone ?? 0;
-  const n = Math.min(dirt.length, Math.floor(Math.max(0, s.res.stone - keep) / per + EPS));
+  const n = Math.min(dirt.length, B.map.CHARTER.MONTH, Math.floor(Math.max(0, s.res.stone - keep) / per + EPS));
   if (n <= 0) return 0;
   const stone = n * per;
   s.res.stone = Math.max(0, s.res.stone - stone);
