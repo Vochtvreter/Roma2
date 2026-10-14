@@ -1124,7 +1124,8 @@ export function toggleReserveBlock(s: GameState, blockId: number): ActionResult;
 export function roadPathFor(s: GameState, footprint: number[]): number[] | null;   // new tiles only
 export function streetsForBlock(s: GameState, blockId: number): number[];           // new tiles only
 export function routeAqueduct(s: GameState, x: number, y: number): { fons: number; tiles: number[] } | null;
-export function ceremonyPaving(s: GameState, what: 'castrumAxes' | 'via'): void;    // called by rankUp / Via militaris
+export function paveVia(s: GameState): void;                                       // called by Via militaris
+export function charterPaving(s: GameState): number;    // the rank's charter streets (survey.ts charterStreets); rankUp, the Kalends
 ```
 `placeBuilding`: validates; with `replaceId` first cancels that Ordo stake at 100%; affordable → pays and creates the site (`status` = `staked` for owner `ordo` unless `noStake`, else `building`); unaffordable → owner `player` makes a `plan`, owner `ordo` fails `unaffordable`. Then fells forest under rural footprints (timber to stores, `s.wood[i] = 0`, work += stock × FELL_WORK), lays streets (urban) or the auto-road (rural) instantly and free, sets `reason`/`notes`, sets `order` = next id, appends the building (ids ascending), logs (Ordo placements: kind `ordo` with the reason text), and calls `invalidate(s)`. `house` state is created when an `area` completes.
 

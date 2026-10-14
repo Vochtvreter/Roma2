@@ -7,6 +7,7 @@ import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
 import { census, canWork, houseBeds, residents } from '../src/game/census';
 import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
+import { charterPaving } from '../src/game/place';
 import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor, splendour } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
@@ -373,6 +374,13 @@ describe('people (DESIGN §6)', () => {
     expect(immigrationChance(s) / base).toBeCloseTo(want, 9);
     s.paved = [...s.roads.slice(0, 20)];
     expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas + 20 * B.dignitas.ROADS, 9);
+    // the charter streets Rome paves at Municipium are not the town's own: they add dignitas, not Rome's favour
+    s.paved = [];
+    s.rank = 3;
+    invalidate(s);
+    charterPaving(s);
+    expect(s.paved.length).toBeGreaterThan(20);
+    expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas, 9);
     gardens(400);
     expect(renownFactor(s)).toBe(R.MAX);
   });

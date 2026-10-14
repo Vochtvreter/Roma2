@@ -14,7 +14,7 @@ import { canAfford, log, pay, scaleCost } from './state';
 import { fx as fx$ } from './fx';
 import { dignitas } from './civic';
 import { houseHas } from './coverage';
-import { ceremonyPaving } from './place';
+import { charterPaving, paveVia } from './place';
 import { startCapitolium } from './construction';
 import { view } from './sim';
 import { FIRST_HIEMS_OVER, MILESTONES, housesAtLeast, milestoneDone, milestoneIndex } from './objectives';
@@ -29,7 +29,6 @@ const B = B$, PATH_DECISIONS = PATH_DECISIONS$, aucYear = aucYear$, formatAuc = 
   EDICT_DEFS = EDICT_DEFS$, FOCUS_DEFS = FOCUS_DEFS$, PATH_DEFS = PATH_DEFS$, SETTING_DEFS = SETTING_DEFS$,
   SWITCH_DEFS = SWITCH_DEFS$, BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$;
 
-const OPPIDUM = 2;
 const COLONIA = 4;
 const P = B.progress;
 
@@ -241,23 +240,31 @@ export function choosePath(s: GameState, decision: PathDecisionId, option: PathO
   if (pn.rank !== null) s.modifiers = s.modifiers.filter((m) => m.source !== 'legatus' || !m.fx.mul?.petitionFee);   // the Legate's good word is spent
   log(s, 'rank', `${PATH_DEFS[decision].name}: ${opt.name}. ${storyText(option)}.`, ['highlight']);
   if (pn.rank !== null) rankUp(s, pn.rank);
-  if (option === 'viaMilitaris') ceremonyPaving(s, 'via');
+  if (option === 'viaMilitaris') paveVia(s);
   if (pn.rank === COLONIA) startCapitolium(s);
   invalidate(s);
   return { ok: true };
 }
 
-/** Raises the colony's rank: rings and territory (invalidate), ceremony paving at Oppidum, log, fx rank. */
+/** Raises the colony's rank: rings and territory (invalidate), log, the rank's charter streets paved, fx rank. */
 export function rankUp(s: GameState, rank: RankIndex): void {
   if (rank <= s.rank) return;
   s.rank = rank;
   invalidate(s);
-  if (rank === OPPIDUM) ceremonyPaving(s, 'castrumAxes');
   const def = RANK_DEFS[rank];
   const opens = def.unlocks.map((t) => BUILDING_DEFS[t].name).join(', ');
   log(s, 'rank', `${formatAuc(aucYear(s.day))} · ${inscription(`${s.name} fit ${def.name}`)}. Rome names you ${def.title}${opens ? `; open to us now: ${opens}` : ''}.`, ['highlight']);
+  const paved = charterPaving(s);
+  if (paved > 0) log(s, 'build', `At Rome's cost ${CHARTER_TEXT[rank] ?? 'the streets are'} paved in silex: ${paved} paces.`);
   pushActionFx({ kind: 'rank', rank });
 }
+
+/** What a rank's charter paves (B.map.CHARTER, survey.ts charterStreets). */
+const CHARTER_TEXT: Partial<Record<RankIndex, string>> = {
+  [B.map.CHARTER.axes]: 'the cardo and the decumanus of the camp are',
+  [B.map.CHARTER.inner]: 'the streets of the inner city are',
+  [B.map.CHARTER.outer]: 'the streets of the first ring and across the old wall line are',
+};
 
 /** Inscription capitals with V for U ("CASTRA VALERIA FIT OPPIDVM"). */
 export function inscription(text: string): string {

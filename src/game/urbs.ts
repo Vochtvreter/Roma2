@@ -16,6 +16,7 @@ import { getBuilding } from './lookup';
 import { census, houseBeds, peopleIndex } from './census';
 import { houseDesir, houseHas, previewCovered } from './coverage';
 import { rehouseGroups } from './people';
+import { charterPaving } from './place';
 import { savingFor, treasuryFloor } from './ordo/saving';
 import { settingValue } from './decisions';
 import { granted, walkMask } from './ordo/duties';
@@ -569,11 +570,13 @@ export function buyOut(s: GameState, houseIds: readonly number[], forType: Build
 
 // ───────────────────────────── the day ─────────────────────────────
 
-/** The growing town's day (sim step 5, after the homes): on the Kalends the footfall census and a well the fountains made
- *  needless; on the Ordo's build days, a town wall once the town has outgrown its camp (the plan duty). */
+/** The growing town's day (sim step 5, after the homes): on the Kalends the footfall census, the rank's charter streets
+ *  laid since paved (place.ts charterPaving) and a well the fountains made needless; on the Ordo's build days, a town
+ *  wall once the town has outgrown its camp (the plan duty). */
 export function urbsDay(s: GameState, ctx: TickContext, v: SimView, kalends: boolean): void {
   if (kalends) {
     countFootfall(s);
+    charterPaving(s);
     renewWells(s, ctx, v);
   }
   if (s.day % B.ordo.BUILD_EVERY === 0 && holds(s, 'plan') && moeniaDue(s)) surveyWalls(s, 'ordo', (e) => ctx.fx.push(e));

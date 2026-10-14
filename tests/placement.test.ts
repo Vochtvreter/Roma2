@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { BUILDINGS, F, T } from '../src/game/types';
 import type { Building, BuildingId, GameState, Owner, PlaceFail, PlaceOpts, RankIndex } from '../src/game/types';
 import { H, W, getMap, idx, tx, ty } from '../src/game/map';
-import { blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
+import { WALL_RING, blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
 import { classAt, derived, sizeOf } from '../src/game/derived';
 import { invalidate, structEpoch } from '../src/game/memo';
 import {
-  buildRoad, canPlace, ceremonyPaving, demolish, pave, placeBuilding, placementCost, roadPathFor, routeAqueduct,
+  buildRoad, canPlace, charterPaving, demolish, pave, paveVia, placeBuilding, placementCost, roadPathFor, routeAqueduct,
   streetsForBlock, toggleReserveBlock, validSlots,
 } from '../src/game/place';
 import { bestSlot, resolvePlaceAt, siteMultAt, siteScore } from '../src/game/site';
@@ -18,6 +18,7 @@ import { fx } from '../src/game/fx';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { askOrdo } from '../src/game/ordo/actions';
+import { rankUp } from '../src/game/decisions';
 import { fresh, run } from './util';
 
 const N = W * H;
@@ -444,16 +445,53 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     expect(toggleReserveBlock(s, forum.id).ok).toBe(false);
   });
 
-  it('paves the castrum axes and the via in ceremony', () => {
+  it('paves the charter streets as the town rises (Oppidum, Municipium, Colonia) and the via in ceremony', () => {
     const s = fresh(42);
     const sv = getMap(42).survey;
-    ceremonyPaving(s, 'castrumAxes');
+    const inner = idx(sv.ix + 5, sv.iy + 5);
+    expect(charterPaving(s)).toBe(0);                                      // a camp: dirt streets
+    atRank(s, 2);
+    expect(charterPaving(s)).toBeGreaterThan(0);
     for (const g of sv.gates) expect(s.paved).toContain(g.tile);
     expect(s.paved).toContain(idx(sv.ix + 3, sv.iy + 10));
     expect(s.paved).toContain(idx(sv.ix + 15, sv.iy + 18));
-    expect(s.paved).not.toContain(idx(sv.ix + 5, sv.iy + 5));
-    ceremonyPaving(s, 'via');
+    expect(s.paved).not.toContain(inner);
+    // a street of Ring 1 laid at Municipium stays dirt until Colonia; every street of the inner city is paved
+    atRank(s, 3);
+    const ring1 = s.roads.length;
+    const out = Array.from({ length: N }, (_, i) => i).find((i) => sv.street[i] === 1 && sv.streetRing[i] === 1 && derived(s).road[i] === 0
+      && derived(s).buildingAt[i] === 0 && buildRoad(s, [i]).ok && s.roads.length > ring1)!;
+    expect(out).toBeDefined();
+    expect(charterPaving(s)).toBeGreaterThan(0);
+    expect(s.paved).toContain(inner);
+    for (const i of s.roads) if (sv.street[i] === 1 && sv.streetRing[i] === 0) expect(s.paved).toContain(i);
+    expect(s.paved).not.toContain(out);
+    expect(charterPaving(s)).toBe(0);                                      // nothing left to pave
+    atRank(s, 4);
+    expect(charterPaving(s)).toBeGreaterThan(0);
+    expect(s.paved).toContain(out);
+    for (const i of s.roads) if (sv.street[i] === 1 && [0, 1, WALL_RING].includes(sv.streetRing[i])) expect(s.paved).toContain(i);
+    paveVia(s);
     for (const i of sv.via) expect(s.paved).toContain(i);
+  });
+
+  it('a rank-up paves its charter streets at Rome\'s cost; the Kalends pave those laid since', () => {
+    const s = fresh(42);
+    const sv = getMap(42).survey;
+    const stone = s.res.stone;
+    rankUp(s, 2);
+    rankUp(s, 3);
+    expect(s.res.stone).toBe(stone);
+    for (const i of s.roads) if (sv.street[i] === 1 && sv.streetRing[i] === 0) expect(s.paved).toContain(i);
+    expect(s.log.some((e) => e.text.includes('streets of the inner city are paved'))).toBe(true);
+    // a street of Ring 1 laid after the Colonia's charter is paved on the next Kalends
+    rankUp(s, 4);
+    const n = s.roads.length;
+    const late = Array.from({ length: N }, (_, i) => i).find((i) => sv.street[i] === 1 && sv.streetRing[i] === 1 && derived(s).road[i] === 0
+      && derived(s).buildingAt[i] === 0 && buildRoad(s, [i]).ok && s.roads.length > n)!;
+    expect(s.paved).not.toContain(late);
+    run(s, 31);
+    expect(s.paved).toContain(late);
   });
 
   it('a player rural work on a future block blocks its plots until it moves', () => {

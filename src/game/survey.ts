@@ -286,3 +286,29 @@ export function isFutureBlock(sv: Survey, b: Block, rank: RankIndex, razed = fal
   const blk = sv.blocks[b.id] ?? b;
   return !blk.masked && blk.reserved === null && !activeRings(rank, razed).includes(blk.ring);
 }
+
+const charterCache = new WeakMap<Survey, Uint8Array[]>();
+
+/** The charter streets of a rank (DESIGN §3.7), 1 on every survey tile the town paves at Rome's cost as it rises: the
+ *  castrum's cardo and decumanus with their gates and causeways from Oppidum, every street of the inner city (ring 0)
+ *  from Municipium, and the streets of Ring 1 and across the old wall line from Colonia. Shared; callers only read it. */
+export function charterStreets(sv: Survey, rank: RankIndex): Uint8Array {
+  let byRank = charterCache.get(sv);
+  if (!byRank) { byRank = []; charterCache.set(sv, byRank); }
+  let out = byRank[rank];
+  if (out) return out;
+  const C = B.map.CHARTER;
+  out = new Uint8Array(W * H);
+  if (rank >= C.axes) {
+    const c = sv.castrum;
+    for (let x = c.x; x < c.x + c.w; x++) out[(sv.iy + DECUMANUS) * W + x] = 1;
+    for (let y = c.y; y < c.y + c.h; y++) out[y * W + sv.ix + CARDO] = 1;
+  }
+  for (let i = 0; i < W * H; i++) {
+    if (sv.street[i] !== 1) continue;
+    const ring = sv.streetRing[i];
+    if ((rank >= C.inner && ring === 0) || (rank >= C.outer && (ring === 1 || ring === WALL_RING))) out[i] = 1;
+  }
+  byRank[rank] = out;
+  return out;
+}
