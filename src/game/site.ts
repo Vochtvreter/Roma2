@@ -162,7 +162,7 @@ function multAt(s: GameState, type: BuildingId, x: number, y: number, one: boole
     case 'lignarius': {
       const wood = one ? woodAround(s, x, y, w, h, B.economy.WOOD.CATCHMENT).standing : aroundSum(woodSums(s).standing, x, y, w, h, B.economy.WOOD.CATCHMENT);
       const [lo, hi] = B.economy.WOOD.CATCH_FACTOR;
-      mult = Math.min(hi, Math.max(lo, wood / CATCH_FULL));
+      mult = wood > 0 ? Math.min(hi, Math.max(lo, wood / CATCH_FULL)) : 0;   // the floor is regrowth: none with nothing standing
       notes.push({ code: 'woods', value: pct(mult) });
       break;
     }

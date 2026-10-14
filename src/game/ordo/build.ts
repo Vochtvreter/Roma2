@@ -25,7 +25,7 @@ import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
-import { canSpend, capitoliumAhead, etaDays, floorOk, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
+import { canSpend, capitoliumAhead, etaDays, floorOk, fullRate, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
 import { aestasWork } from './water';
 import { houseWants as eachHouseWant, liftSlot, serveSlot } from '../advisors/util';
@@ -63,7 +63,10 @@ const NEED_OF: Partial<Record<BuildingId, NeedId>> = { lararium: 'religion', tab
 const PETITION_WORKS: BuildingId[][] = [[], ['horreum'], [], ['templum', 'macellum', 'balneum'], ['castellum', 'thermae', 'theatrum']];
 
 /** A wish: a type at the Ordo's slot, what it costs, why, and how it may spend. */
-export interface Wish { type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean; renew?: number[] }
+export interface Wish {
+  type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean; renew?: number[];
+  revive?: ResId;   // a producer of a good whose own producers have run dry (a lumber camp whose woods are felled)
+}
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
 /** What the houses want: first unmet needs by count and by house, renovation materials of houses ready to rise, T3 houses short of a domus. */
@@ -345,7 +348,7 @@ const unfinished = (v: SimView, t: BuildingId): boolean => (v.d.all[t] ?? 0) > (
 function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: string): Generator<Wish> {
   const { c, d, f } = v;
   const seen = new Set<BuildingId>();
-  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; again?: boolean; store?: boolean; serves?: NeedId; ids?: number[]; reach?: number } = {}): Wish | null => {
+  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; revive?: ResId; again?: boolean; store?: boolean; serves?: NeedId; ids?: number[]; reach?: number } = {}): Wish | null => {
     const def = BUILDING_DEFS[type];
     if (seen.has(type) || def.rank > s.rank) return null;
     if (!maskAllows(mask, { code, params }, !!o.survival)) return null;   // a duty the Ordo does not hold (duties.ts)
@@ -367,7 +370,8 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     if (o.serves && reach < (o.reach ?? 1)) return null;
     seen.add(type);
     const p = o.serves ? { type, ...params, reach } : { type, ...params };
-    const wish = { type, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock };
+    const wish: Omit<Wish, 'tile'> = { type, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock || !!o.revive };
+    if (o.revive) wish.revive = o.revive;
     return exact ? { ...wish, tile } : lazyTile(wish, () => ordoSlot(s, type, code) ?? tile);
   };
   const store = (r: ResId, forWhat?: string): Wish | null => {
@@ -472,7 +476,9 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     const feed = RESOURCES.find((r2) => (BUILDING_DEFS[own].inputs?.[r2] ?? 0) > 0 && !((full[r2] ?? 0) > 0) && PRODUCER[r2]);
     const params: Reason['params'] = { res: r, qty: Math.ceil(q), for: queue[k].for };
     if (Number.isFinite(eta)) params.eta = Math.ceil(eta);
-    const w = make(feed ? PRODUCER[feed] as BuildingId : own, queue[k].for === 'capitolium' ? 'capitolium' : 'materials', params, { unblock: !d.all[own] });
+    // its producers stand but yield nothing (the woods of every lumber camp felled): the new one comes first (walkWishes)
+    const dry = !feed && (d.all[own] ?? 0) > 0 && !s.buildings.some((b) => b.type === own && b.status === 'done' && (fullRate(s, b)[r] ?? 0) > 0);
+    const w = make(feed ? PRODUCER[feed] as BuildingId : own, queue[k].for === 'capitolium' ? 'capitolium' : 'materials', params, { unblock: !d.all[own], revive: dry ? r : undefined });
     if (!w) continue;
     yield w;
     const short = missing(s, w.cost);
@@ -577,6 +583,13 @@ export function walkWishes(s: GameState, v: SimView, full = false): Walk {
       } else if (!out.pending && !out.take) {
         out.pending = w;
         out.list.push({ wish: w, state: 'saving', lacking: missing(s, withFloor(s, w), w.survival || w.unblock ? undefined : base) });
+      } else if (w.revive && out.pending && !out.take && !out.pending.survival && (missing(s, out.pending.cost)[w.revive] ?? 0) > 0) {
+        // the wish saved for lacks a good whose producers have run dry: no saving brings it, so their replacement is
+        // saved (and traded) for first, and the other waits
+        const prev = out.list.find((e) => e.wish === out.pending);
+        if (prev) { prev.state = 'waiting'; prev.lacking = missing(s, withFloor(s, out.pending), held); }
+        out.pending = w;
+        out.list.push({ wish: w, state: 'saving', lacking: missing(s, withFloor(s, w)) });
       } else {
         out.list.push({ wish: w, state: 'waiting', lacking: missing(s, withFloor(s, w), held) });
       }
@@ -651,9 +664,12 @@ function paveBusyStreets(s: GameState, v: SimView, decided: boolean): void {
   if (pave(s, tiles).ok) log(s, 'ordo', `For the city beautiful the Ordo paves ${tiles.length} paces of our busiest streets.`, decided ? ['decided'] : undefined);
 }
 
-/** Places the pin, then the requests, as player sites (no stake, fx ordoPlaced), each from stock above the orders ahead of it. */
+/** Places the pin, then the requests, as player sites (no stake, fx ordoPlaced), each from stock above the orders ahead of
+ *  it and the goods kept for a producer replacing those run dry (Wish.revive). */
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void {
-  let above: Cost = {};
+  // the goods of a producer replacing those run dry are kept for it: the orders wait on what it brings
+  const revive = walkWishes(s, v).list.find((e) => e.wish.revive && (e.state === 'proposed' || e.state === 'saving'))?.wish;
+  let above: Cost = revive?.revive ? { [revive.revive]: revive.cost[revive.revive] ?? 0 } : {};
   const done: SavingPart[] = [];
   for (const part of savingParts(s, v)) {
     if ((part.kind === 'pin' || part.kind === 'request') && raise(s, ctx, v, part, above)) done.push(part);
