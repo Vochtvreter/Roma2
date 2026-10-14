@@ -18,9 +18,9 @@ import { fx } from '../src/game/fx';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { askOrdo } from '../src/game/ordo/actions';
-import { rankUp } from '../src/game/decisions';
 import { charterDirt, charterPaving } from '../src/game/urbs';
-import { savingFor } from '../src/game/ordo/saving';
+import { reserved } from '../src/game/ordo/saving';
+import { rankUp, settingValue } from '../src/game/decisions';
 import { view } from '../src/game/sim';
 import { fresh, run } from './util';
 
@@ -500,11 +500,14 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     for (let k = 1; k < dirt.length; k++) if (d().stepsToForum[dirt[k]] >= 0) expect(d().stepsToForum[dirt[k]]).toBeGreaterThanOrEqual(d().stepsToForum[dirt[k - 1]]);
     expect(s.log.some((e) => e.text.includes('streets of the inner city are to be paved'))).toBe(true);
     expect(charterPaving(s)).toBe(0);                                      // no stone, no paving
-    const keep = savingFor(s, view(s))?.cost.stone ?? 0;                   // the Ordo's saving target is not touched
-    s.res.stone = keep + 5 * B.map.PAVE_STONE + 1;
+    // only the share of the unreserved stone the Renovation allowance leaves (40%); the Ordo's reservation untouched
+    const keep = reserved(s, view(s)).stone ?? 0;
+    const share = 1 - settingValue(s, 'renovation');
+    s.res.stone = keep + (5 * B.map.PAVE_STONE + 1) / share;
+    const had = s.res.stone;
     expect(charterPaving(s)).toBe(5);
     expect(s.paved).toEqual(dirt.slice(0, 5).sort((a, b) => a - b));
-    expect(s.res.stone).toBeCloseTo(keep + 1, 9);
+    expect(s.res.stone).toBeCloseTo(had - 5 * B.map.PAVE_STONE, 9);
     // the stone comes: the Kalends pave the rest, as much each month as the stores hold
     const before = charterDirt(s).length;
     run(s, 31, (st) => { st.res.stone = 1e5; });

@@ -16,7 +16,8 @@ import { getBuilding } from './lookup';
 import { census, houseBeds, peopleIndex } from './census';
 import { houseDesir, houseHas, previewCovered } from './coverage';
 import { rehouseGroups } from './people';
-import { savingFor, treasuryFloor } from './ordo/saving';
+import { firstWant, targetTier } from './housing';
+import { reserved, savingFor, treasuryFloor } from './ordo/saving';
 import { settingValue } from './decisions';
 import { granted, walkMask } from './ordo/duties';
 import { placeName } from './advisors/util';
@@ -179,16 +180,28 @@ export function charterDirt(s: GameState): number[] {
   return s.roads.filter((i) => charter[i] === 1 && d.road[i] === 1).sort((a, b) => far(a) - far(b) || a - b);
 }
 
-/** Paves the rank's charter streets that lie dirt, nearest the forum first, at B.map.PAVE_STONE stone a pace: at most
- *  CHARTER.MONTH paces (so the renovations keep their stone), as far as the stone above the Ordo's saving target allows
- *  (on the Kalends, urbsDay), from the first after the rank, with the streets laid since. Returns the paces paved. */
+/** A home that could rise but for the stone its renovation lacks: the renovations come first (charterPaving). */
+export function stoneWaits(s: GameState): boolean {
+  for (const id of derived(s).houses) {
+    const b = getBuilding(s, id);
+    if (!b?.house || b.house.renovating) continue;
+    const next = targetTier(s, b);
+    if (next && (TIER_DEFS[next].renovation.stone ?? 0) > 0 && firstWant(s, b) === 'materials') return true;
+  }
+  return false;
+}
+
+/** Paves the rank's charter streets that lie dirt, nearest the forum first, at B.map.PAVE_STONE stone a pace (on the
+ *  Kalends, urbsDay, from the first after the rank, with the streets laid since). The renovations come first: no paving
+ *  while a home waits for stone to rise, and only from the share of the unreserved stone the Renovation allowance
+ *  leaves them (40% by default), at most CHARTER.MONTH paces. Returns the paces paved. */
 export function charterPaving(s: GameState, ctx?: TickContext): number {
   const dirt = charterDirt(s);
   if (dirt.length === 0) return 0;
   const per = B.map.PAVE_STONE;
-  const keep = savingFor(s, view(s))?.cost.stone ?? 0;
-  const n = Math.min(dirt.length, B.map.CHARTER.MONTH, Math.floor(Math.max(0, s.res.stone - keep) / per + EPS));
-  if (n <= 0) return 0;
+  const spare = Math.max(0, s.res.stone - (reserved(s, view(s)).stone ?? 0)) * (1 - settingValue(s, 'renovation'));
+  const n = Math.min(dirt.length, B.map.CHARTER.MONTH, Math.floor(spare / per + EPS));
+  if (n <= 0 || stoneWaits(s)) return 0;
   const stone = n * per;
   s.res.stone = Math.max(0, s.res.stone - stone);
   if (ctx) ctx.rates.cons.stone.construction = (ctx.rates.cons.stone.construction ?? 0) + stone;
