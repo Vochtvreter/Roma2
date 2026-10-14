@@ -176,7 +176,7 @@ Orientation is fixed (no rotation). Rural buildings auto-lay a free dirt road to
 - **Roads wear with their footfall** (§3.9): a little-used track is grassy and broken by turf, a track a lane, a road two ruts, the busiest a gravelled highway with a ditch either side; dirt streets in the pomerium grow grass when quiet and are churned when busy. The look only: steps and coverage do not change.
 
 ### 3.8 Aqueduct
-Placing a **castellum** (Municipium) auto-routes an aqueduct with A* from the nearest reachable `fons` to the castellum's footprint edge. Step cost: hills 0.8, flat 1.0, forest 1.4, river 2.5 (arches), road 1.2 (arch over road); buildings and reserved sites block; max 70 tiles. The route is part of the castellum: its cost and work grow with length, its tiles are reserved while it is built, and the arches are drawn progressively as work progresses (taller over low ground). Water flows (600/day) only when the castellum completes. Maximum one castellum per spring (1, or 2 if the map has two springs).
+Placing a **castellum** (Municipium) auto-routes an aqueduct with A* from the nearest reachable `fons` to the castellum's footprint edge. Step cost: hills 0.8, flat 1.0, forest 1.4, river 2.5 (arches), road 1.2 (arch over road); buildings and reserved sites block; max 70 tiles. The route is part of the castellum: its cost and work grow with length, its tiles are reserved while it is built, and the arches are drawn progressively as work progresses (taller over low ground). Water flows (2,000/day) only when the castellum completes. Maximum one castellum per spring (1, or 2 if the map has two springs).
 - **Water where it matters** (§3.9): a *lacus* may stand within 18 paces of an active castellum *or* within 8 of the finished aqueduct where it runs through the pomerium (the specus is tapped along its course); the *thermae* still need the castellum. Once the water flows the Ordo pipes it to the great houses: a fountain wherever one reaches ≥ 4 insulae or domus without one (row 5b, §10.5), so they become the *aquae* variant (§7.1).
 - The aqueduct may cross the town wall (arches through it, step cost 2, like the castrum's vallum and fossa).
 
@@ -193,7 +193,7 @@ A frontier colony did not keep the plan it was founded on, and neither does this
 - **Once it stands**: dignitas +8, morale +2, bandits on the roads ×0.6, and **the castrum is razed**: its rampart torn down (2 stone a pace salvaged; timber before Oppidum), its fossa filled, and the pitch lines across its old wall line laid as streets, so the inner city opens on the outer at every survey line. **Ring 3** — the 24 blocks of the old wall line — joins the pomerium as house plots (district *Vetus vallum*). The old camp is the **inner city**; Rings 1–3 inside the town wall the **outer city**.
 
 **Renewal.** The council replans a quarter now and then; it never touches the player's works.
-- **A needless well filled in** (the *water* duty): on the Kalends, once the aqueduct flows and water is at or above the *Water reserve* now and through the coming crunch, the Ordo fills in one of its own (or the founders') wells on a house plot — at least a year old, and never one raised for the supply (`survivalWater`, `aestasWater`) — when every home it waters a fountain reaches, and no home beside it would fall within 0.5 of its tier's desirability for want of it. The plot is free for a home.
+- **A needless well filled in** (the *water* duty): on the Kalends, once the aqueduct flows and water is at or above the *Water reserve* now and through the coming crunch, the Ordo fills in one of its own (or the founders') wells on a house plot — at least a year old, and never one raised for the supply (`survivalWater`, `aestasWater`) until **the aqueduct carries the town** (what flows without hands in Aestas, the castellum and the cisterns' rain, covers what the town drinks and its works draw, with 10% to spare) — when every home it waters a fountain reaches, and no home beside it would fall within 0.5 of its tier's desirability for want of it. The plot is free for a home. Once the aqueduct carries the town a well may go every Kalends: the 60-day clock is the buy-outs' alone.
 - **Homes bought out for a civic block** (the *services* duty): when a temple, a bathhouse or a market hall waits for ≥ 3 homes and no free block can bring it to them (row 6, §10.5), the Ordo buys out a block of its own or the founders' homes of tier ≤ *casa tegulata* (none renovating) from which it would reach ≥ 3 of the waiting homes, if the town's other homes can take every family with 2 beds to spare: the families are rehoused household by household, and the work is staked there. At most once every 60 days. Most homes reached, then fewest souls moved, then the lowest tile.
 
 ---
@@ -274,9 +274,9 @@ Per-worker output is per day before season, site, skill, tools, morale, effects 
 | `olivetum` | 4 food | 1.2 oil × site | 0.2 / 0.2 / 1.4 / **2.2** | — | — | 0 | +1/r2 | 0 |
 | `horreum` | 0 | — | — | — | grain +4,000 (safe) | 0.2 | −2/r2 | 2 |
 | `apotheca` | 0 | — | — | — | timber, stone +400; tiles, concrete, ore, iron +150; tools +10; oil, wine +300 | 0.2 | −2/r2 | 1 |
-| `puteus` | 2 water | 11 water × site | 1.0 / **0.8** / 1.0 / 1.0 | water r10 | water +50 | 0 | +1/r1 | 0 |
-| `cisterna` | 0 | passive 8 water | 1.2 / **0.3** / 1.0 / 1.5 | water r6 | water +400 | 0 | 0 | 0 |
-| `castellum` | 1 water | passive 600 water when complete | 1.0 / 0.9 / 1.0 / 1.0 | fountain r6 | water +2,000 | 1.0 | +2/r2 | 4 |
+| `puteus` | 2 water (4 from Oppidum: a windlass) | 11 water × site | 1.0 / **0.8** / 1.0 / 1.0 | water r10 | water +50 | 0 | +1/r1 | 0 |
+| `cisterna` | 0 | passive 8 water | 1.2 / **0.3** / 1.0 / 1.5 | water r6 | water +1,000 | 0 | 0 | 0 |
+| `castellum` | 1 water | passive 2,000 water when complete | 1.0 / 0.9 / 1.0 / 1.0 | fountain r6 | water +10,000 | 1.0 | +2/r2 | 4 |
 | `lacus` | 0 | — | — | fountain r12 | — | 0.1 | +3/r3 | 0.5 |
 | `lignarius` | 3 materials | 4 timber × catchment (0.2–1.3), draws forest stock | 1 / 1 / 1 / 0.7 | — | — | 0 | −2/r2 | 0 |
 | `lapicidina` | 4 materials | 3 stone × site | — | — | — | 0 | −4/r4 | 0 |
@@ -451,7 +451,7 @@ Every house exposes its **first unmet need for the next tier** as an icon bubble
 FOOD      Ager 6/wkr ─┐ Venatio 5/wkr (Hiems) ─┐ Pabulatio 4/wkr (Autumnus) ─┐
                       └──────────────► GRAIN ◄──┘ idle adults forage 0.3 ────┘ ─► eaten (children first) · export · festivals
           Olivetum 1.2/wkr (Hiems) ──► OIL ─► T4 houses (0.05/res) · export        WINE ◄─ trade only ─► domus (0.05/res), festivals
-WATER     Puteus 11/wkr · Cisterna 8 passive · Castellum 600 passive ─► WATER ─► drunk · Caementarium · Balneum 20 · Thermae 60
+WATER     Puteus 11/wkr · Cisterna 8 passive · Castellum 2,000 passive ─► WATER ─► drunk · Caementarium · Balneum 20 · Thermae 60
 TIMBER    Lignarius 4/wkr (forest stock) ─► TIMBER ─► building · Figlina 0.5 · Officina 1 · Fabrica 1 · export
 STONE     Lapicidina 3/wkr ─► STONE ─► building · renovation · Caementarium · paving · export
 TILES     Figlina: 0.5 timber ─► 2.5 TILES (clay free) ─► roofs T2+ · civic · export
@@ -1495,6 +1495,7 @@ Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Munici
 | Pomerium geometry | interior → Ring 1 (Vicus) → Ring 2 (Oppidum, final); loam masked; no farm demolition; map guarantees (§3.3–3.5). |
 | The growing town | (owner's request, after release) cities were not boxes that kept their walls and streets for centuries: footfall wears roads into a hierarchy; a town wall rings the whole town from Colonia (the player may from Municipium), and the castrum is razed into the inner city with Ring 3 on its old wall line; the Ordo fills in wells the fountains made needless and buys out its own homes for a civic block no free block can host, rehousing every family; fountains draw from the aqueduct through the town and go where they reach the great houses. Never the player's works. Map generation is unchanged (Ring 3 is appended to the survey, older block ids stand); saves migrate (v2) (§3.9). |
 | Coverage | BFS over built road tiles in integer steps; paving is cosmetic + desirability (§7.4). (Owner's request, after release) the radii were doubled or more: a well reached a dozen of the camp's sixty homes, and a town of house blocks needed well after well; a service now serves a neighbourhood (§7.4). |
+| Water works | (Owner's request, after release) a grown town raised some 40 wells and 40 cisterns, one on nearly every other plot, and 60 souls hauled water: the castellum gives 2,000 a day into a 10,000 reservoir, so the aqueduct carries the Colonia and the Ordo fills in the supply wells it made needless (§3.9); a cistern holds 1,000; a well takes four hands from the Oppidum (a windlass), two before, so the camp's first summer still needs its cistern (§11.13) and a well's full reach still needs one hand. At victory 5–19 wells (a hand each, kept for their streets' reach) and 6–9 cisterns, against 28–45 and 39–42 before. |
 | Event cadence | no events before day 300; ≥ 200 days between cards; ≥ 120 between harmful events; slow for news; explicit defaults (§12.1). |
 | Names | unique ids for tabs, toggles, focuses, edicts, advisors and hubs (ARCHITECTURE §4). |
 | UI density | one counsel card, one ticker, chips from Periculum only, toasts for completions/milestones (§15.1). |

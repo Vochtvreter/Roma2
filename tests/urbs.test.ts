@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { B } from '../src/game/balance';
 import { F, T } from '../src/game/types';
-import type { Building, BuildingId, GameState, RankIndex } from '../src/game/types';
+import type { Building, BuildingId, GameState, RankIndex, SimView } from '../src/game/types';
 import { getMap, idx, tx, ty } from '../src/game/map';
 import { derived, footprintOf, inCamp } from '../src/game/derived';
 import { invalidate, touchPeople } from '../src/game/memo';
@@ -15,11 +15,17 @@ import { deserialize, serialize, SAVE_VERSION } from '../src/game/save';
 import { newCtx, view } from '../src/game/sim';
 import { census, houseBeds, peopleIndex } from '../src/game/census';
 import { WALL_RING, isActiveBlock } from '../src/game/survey';
-import { buyOut, commissionWalls, countFootfall, footfall, homesInOut, moeniaDue, surveyLine, surveyWalls, urbsDay, wallsDay, wearOf, wellNeedless } from '../src/game/urbs';
+import { aqueductCarries, buyOut, commissionWalls, countFootfall, footfall, homesInOut, moeniaDue, surveyLine, surveyWalls, urbsDay, wallsDay, wearOf, wellNeedless } from '../src/game/urbs';
 import { fresh, run } from './util';
 
 const W = B.map.W, H = B.map.H, N = W * H;
 const M = B.urbs.MOENIA;
+
+/** The view of a town that draws more water than its aqueduct gives (the castellum does not carry it). */
+function thirsty(s: GameState): SimView {
+  const v = view(s);
+  return { ...v, f: { ...v.f, water: { ...v.f.water, cons: 1e6 } } };
+}
 
 function atRank(s: GameState, rank: RankIndex): GameState {
   s.rank = rank;
@@ -326,14 +332,15 @@ describe('renewal: the Ordo replans a quarter (DESIGN §3.9)', () => {
     insert(s, 'lacus', free.x, free.y);
     expect(wellNeedless(s, well)).toBe(true);
     s.res.water = 5000;
-    const day = (): void => { const c = newCtx(); urbsDay(s, c, view(s), true); };
+    const day = (v: SimView = view(s)): void => { const c = newCtx(); urbsDay(s, c, v, true); };
     well.owner = 'player';
+    well.doneDay = s.day - B.urbs.RENEW.WELL_AGE;
     day();
     expect(s.buildings.includes(well), 'the player\'s well stands').toBe(true);
     well.owner = 'ordo';
     well.reason = { code: 'aestasWater', params: {} };
-    day();
-    expect(s.buildings.includes(well), 'a well raised for Aestas stands').toBe(true);
+    day(thirsty(s));
+    expect(s.buildings.includes(well), 'a well raised for Aestas stands while the supply needs it').toBe(true);
     delete well.reason;
     well.doneDay = s.day - 10;
     day();
@@ -344,6 +351,26 @@ describe('renewal: the Ordo replans a quarter (DESIGN §3.9)', () => {
     expect(s.people.some((p) => p.work === well.id)).toBe(false);
     expect(s.log.some((e) => /fills in the old well/.test(e.text))).toBe(true);
     expect(canPlace(s, 'area', idx(well.x, well.y), { ignoreCost: true }).ok).toBe(true);   // the plot is free for a home
+  });
+
+  it('fills in a well raised for the supply too, once the aqueduct carries the town', () => {
+    const s = atRank(fresh(42), 3);
+    const well = s.buildings.find((b) => b.type === 'puteus')!;
+    const sv = getMap(42).survey;
+    const blk = sv.blocks[sv.blockAt[idx(well.x, well.y)]];
+    insert(s, 'castellum', 0, 0);
+    const free = [0, 1, 2, 3].map((k) => ({ x: blk.x + (k % 2) * 2, y: blk.y + Math.floor(k / 2) * 2 }))
+      .find((o) => !s.buildings.some((b) => b.x === o.x && b.y === o.y))!;
+    insert(s, 'lacus', free.x, free.y);
+    Object.assign(well, { owner: 'ordo', reason: { code: 'aestasWater', params: {} }, doneDay: s.day - B.urbs.RENEW.WELL_AGE });
+    s.res.water = 5000;
+    const day = (v: SimView): void => { const c = newCtx(); urbsDay(s, c, v, true); };
+    expect(aqueductCarries(s, thirsty(s))).toBe(false);
+    day(thirsty(s));
+    expect(s.buildings.includes(well), 'the supply still needs it').toBe(true);
+    expect(aqueductCarries(s, view(s))).toBe(true);                   // the castellum's flow covers the camp many times over
+    day(view(s));
+    expect(s.buildings.includes(well), 'the aqueduct carries the town: the supply well is filled in').toBe(false);
   });
 
   it('a fountain may draw from the aqueduct where it runs through the town, the thermae only from the castellum', () => {

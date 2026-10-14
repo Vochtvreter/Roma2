@@ -103,10 +103,10 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   puteus: {
     id: 'puteus', name: 'Well', latin: 'Puteus', cat: 'aqua',
     desc: 'A well with a trough: the colony\'s first water. It draws a fifth less in Aestas.',
-    benefit: '2 hands × 11 water a day; Aestas ×0.8; water coverage r10; +50 storage',
+    benefit: '2 hands × 11 water a day (4 from Oppidum); Aestas ×0.8; water coverage r10; +50 storage',
     hint: 'On a plot or on rural land. Off the water table it draws ×0.6.',
     place: ['plot', 'rural'], size: [2, 2], cost: { denarii: 30, timber: 10, stone: 10 }, work: 15, rank: 0,
-    slots: 2, labor: 'water', skill: 'aqua',
+    slots: 2, labor: 'water', skill: 'aqua', slotsFrom: [2, 4],   // stone-lined with a windlass from the Oppidum
     output: { res: 'water', perWorker: 11 }, seasons: [1.0, 0.8, 1.0, 1.0], fxKey: 'wells',
     service: [{ layer: 'water', radius: 10 }], storage: { water: 50 },
     upkeep: 0, desir: [1, 1], dignitas: 0, rule: 'none', tool: false,
@@ -114,24 +114,24 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   cisterna: {
     id: 'cisterna', name: 'Cistern', latin: 'Cisterna', cat: 'aqua',
     desc: 'A lined tank that catches the rain without workers. It fills in Hiems and Ver and catches little in Aestas.',
-    benefit: '8 water a day, no hands; Ver ×1.2, Aestas ×0.3, Hiems ×1.5; +400 storage; water coverage r6',
+    benefit: '8 water a day, no hands; Ver ×1.2, Aestas ×0.3, Hiems ×1.5; +1,000 storage; water coverage r6',
     hint: 'On a plot or on rural land.',
     place: ['plot', 'rural'], size: [2, 2], cost: { denarii: 50, timber: 10, stone: 20 }, work: 25, rank: 0,
     slots: 0, labor: null, skill: null,
     passive: { res: 'water', perDay: 8 }, seasons: [1.2, 0.3, 1.0, 1.5], fxKey: 'rain',
-    service: [{ layer: 'water', radius: 6 }], storage: { water: 400 },
+    service: [{ layer: 'water', radius: 6 }], storage: { water: 1000 },
     upkeep: 0, desir: [0, 0], dignitas: 0, rule: 'none', tool: false,
   },
   castellum: {
     id: 'castellum', name: 'Water tower and aqueduct', latin: 'Castellum aquae', cat: 'aqua',
     desc: 'The distribution tower of an aqueduct, auto-routed from a hill spring. Water flows only when it is complete.',
-    benefit: '600 water a day once complete; fountain coverage r6; +2,000 storage',
+    benefit: '2,000 water a day once complete; fountain coverage r6; +10,000 storage',
     hint: 'A spring must be reachable within 70 tiles. Each arch adds 4 den, 8 stone, 3 concrete and 6 work.',
     place: ['plot'], size: [2, 2], cost: { denarii: 150, stone: 40, concrete: 30 }, work: 80, rank: 3,
     perTile: { cost: { denarii: 4, stone: 8, concrete: 3 }, work: 6 },
     slots: 1, labor: 'water', skill: 'aqua',
-    passive: { res: 'water', perDay: 600 }, seasons: [1.0, 0.9, 1.0, 1.0],
-    service: [{ layer: 'fountain', radius: 6 }], storage: { water: 2000 },
+    passive: { res: 'water', perDay: 2000 }, seasons: [1.0, 0.9, 1.0, 1.0],
+    service: [{ layer: 'fountain', radius: 6 }], storage: { water: 10000 },
     upkeep: 1.0, desir: [2, 2], dignitas: 4, rule: 'none', tool: false, maxCount: 1,
   },
   lacus: {
@@ -334,3 +334,9 @@ export const CAT_LABELS: Record<BuildCat, { latin: string; english: string }> = 
 
 /** Tool-kit issue order after construction sites (DESIGN §5.3); exactly the types with `tool: true`. */
 export const TOOL_ORDER: BuildingId[] = ['ager', 'lignarius', 'lapicidina', 'fodina', 'caementarium', 'figlina', 'officina'];
+
+/** The hands a work takes at a rank: its slots, or more from the rank its `slotsFrom` names (a well from the Oppidum). */
+export function slotsOf(type: BuildingId, rank: number): number {
+  const d = BUILDING_DEFS[type];
+  return d.slotsFrom && rank >= d.slotsFrom[0] ? d.slotsFrom[1] : d.slots;
+}

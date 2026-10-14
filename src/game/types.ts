@@ -195,6 +195,7 @@ export interface BuildingDef {
   cost: Cost; work: number; rank: RankIndex;
   perTile?: { cost: Cost; work: number };    // castellum aqueduct route
   slots: number; labor: LaborCat | null; skill: SkillId | null;
+  slotsFrom?: readonly [RankIndex, number];         // from this rank the work takes this many hands (data/buildings.slotsOf)
   output?: { res: ResId; perWorker: number };
   inputs?: Partial<Record<ResId, number>>;   // per worker-day (processing)
   passive?: { res: ResId; perDay: number };
@@ -414,7 +415,7 @@ export interface UrbsState {
   traffic: Record<number, number>;                   // sparse: road tile → footfall (walkers a day, monthly average)
   moenia: Moenia | null;                             // the town wall, once surveyed
   razed: number | null;                              // day the castrum's vallum came down and its fossa was filled
-  renewed: number;                                   // last day the Ordo renewed a quarter (a well filled in, cottages bought out)
+  renewed: number;                                   // last day the Ordo renewed a quarter (cottages bought out for a civic block)
 }
 
 // ───────────────────────────── the save ─────────────────────────────

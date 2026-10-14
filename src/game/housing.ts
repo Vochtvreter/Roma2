@@ -303,6 +303,9 @@ export function housingDay(s: GameState, ctx: TickContext): void {
     const b = getBuilding(s, id);
     if (b?.house?.renovating && day >= b.house.renovating.until) { finishRenovation(s, ctx, b); changed = true; }
   }
+  // a finished rise leaves the renovations under way: the checks below read it in the desirability field instead, or a
+  // rise checked today would miss it and crowd a neighbour below its tier (five insulae finished around one stone house)
+  if (changed) { invalidateTiers(s); changed = false; }
   const win = s.counters.renovWindow;
   if (day - win.start >= H.THROTTLE_WINDOW) { win.start = day; win.count = 0; }
   const allowed = 1 + Math.floor(ids.length / H.THROTTLE_PER);
