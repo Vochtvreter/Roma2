@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { BUILDINGS, F, T } from '../src/game/types';
 import type { Building, BuildingId, GameState, Owner, PlaceFail, PlaceOpts, RankIndex } from '../src/game/types';
 import { H, W, getMap, idx, tx, ty } from '../src/game/map';
-import { blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
+import { WALL_RING, blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
 import { classAt, derived, sizeOf } from '../src/game/derived';
 import { invalidate, structEpoch } from '../src/game/memo';
 import {
-  buildRoad, canPlace, ceremonyPaving, demolish, pave, placeBuilding, placementCost, roadPathFor, routeAqueduct,
+  buildRoad, canPlace, demolish, pave, paveVia, placeBuilding, placementCost, roadPathFor, routeAqueduct,
   streetsForBlock, toggleReserveBlock, validSlots,
 } from '../src/game/place';
 import { bestSlot, resolvePlaceAt, siteMultAt, siteScore } from '../src/game/site';
@@ -18,6 +18,10 @@ import { fx } from '../src/game/fx';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { askOrdo } from '../src/game/ordo/actions';
+import { charterDirt, charterPaving } from '../src/game/urbs';
+import { reserved } from '../src/game/ordo/saving';
+import { rankUp, settingValue } from '../src/game/decisions';
+import { view } from '../src/game/sim';
 import { fresh, run } from './util';
 
 const N = W * H;
@@ -444,16 +448,73 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     expect(toggleReserveBlock(s, forum.id).ok).toBe(false);
   });
 
-  it('paves the castrum axes and the via in ceremony', () => {
+  it('paves the charter streets as the town rises (Oppidum, Municipium, Colonia), 2 stone a pace, and the via in ceremony', () => {
     const s = fresh(42);
     const sv = getMap(42).survey;
-    ceremonyPaving(s, 'castrumAxes');
+    const inner = idx(sv.ix + 5, sv.iy + 5);
+    // every Kalends until none is left, at most CHARTER.MONTH paces each
+    const paveAll = (): number => {
+      let n = 0;
+      for (let k; (k = charterPaving(s)) > 0;) { expect(k).toBeLessThanOrEqual(B.map.CHARTER.MONTH); n += k; }
+      return n;
+    };
+    s.res.stone = 1e5;
+    expect(charterPaving(s)).toBe(0);                                      // a camp: dirt streets
+    atRank(s, 2);
+    const axes = paveAll();
+    expect(axes).toBeGreaterThan(B.map.CHARTER.MONTH);
+    expect(s.res.stone).toBe(1e5 - axes * B.map.PAVE_STONE);
     for (const g of sv.gates) expect(s.paved).toContain(g.tile);
     expect(s.paved).toContain(idx(sv.ix + 3, sv.iy + 10));
     expect(s.paved).toContain(idx(sv.ix + 15, sv.iy + 18));
-    expect(s.paved).not.toContain(idx(sv.ix + 5, sv.iy + 5));
-    ceremonyPaving(s, 'via');
+    expect(s.paved).not.toContain(inner);
+    // a street of Ring 1 laid at Municipium stays dirt until Colonia; every street of the inner city is paved
+    atRank(s, 3);
+    const ring1 = s.roads.length;
+    const out = Array.from({ length: N }, (_, i) => i).find((i) => sv.street[i] === 1 && sv.streetRing[i] === 1 && derived(s).road[i] === 0
+      && derived(s).buildingAt[i] === 0 && buildRoad(s, [i]).ok && s.roads.length > ring1)!;
+    expect(out).toBeDefined();
+    expect(paveAll()).toBeGreaterThan(0);
+    expect(s.paved).toContain(inner);
+    for (const i of s.roads) if (sv.street[i] === 1 && sv.streetRing[i] === 0) expect(s.paved).toContain(i);
+    expect(s.paved).not.toContain(out);
+    expect(charterPaving(s)).toBe(0);                                      // nothing left to pave
+    atRank(s, 4);
+    expect(paveAll()).toBeGreaterThan(0);
+    expect(s.paved).toContain(out);
+    for (const i of s.roads) if (sv.street[i] === 1 && [0, 1, WALL_RING].includes(sv.streetRing[i])) expect(s.paved).toContain(i);
+    paveVia(s);
     for (const i of sv.via) expect(s.paved).toContain(i);
+  });
+
+  it('the charter streets are paved as far as the stone goes, nearest the forum first; the Kalends pave the rest', () => {
+    const s = fresh(42);
+    const sv = getMap(42).survey;
+    const d = (): ReturnType<typeof derived> => derived(s);
+    s.res.stone = 0;
+    rankUp(s, 2);
+    rankUp(s, 3);
+    expect(s.paved).toEqual([]);                                           // the Kalends pave, as the stone allows
+    const dirt = charterDirt(s);
+    expect(dirt.length).toBeGreaterThan(10);
+    for (let k = 1; k < dirt.length; k++) if (d().stepsToForum[dirt[k]] >= 0) expect(d().stepsToForum[dirt[k]]).toBeGreaterThanOrEqual(d().stepsToForum[dirt[k - 1]]);
+    expect(s.log.some((e) => e.text.includes('streets of the inner city are to be paved'))).toBe(true);
+    expect(charterPaving(s)).toBe(0);                                      // no stone, no paving
+    // only the share of the unreserved stone the Renovation allowance leaves (40%); the Ordo's reservation untouched
+    const keep = reserved(s, view(s)).stone ?? 0;
+    const share = 1 - settingValue(s, 'renovation');
+    s.res.stone = keep + (5 * B.map.PAVE_STONE + 1) / share;
+    const had = s.res.stone;
+    expect(charterPaving(s)).toBe(5);
+    expect(s.paved).toEqual(dirt.slice(0, 5).sort((a, b) => a - b));
+    expect(s.res.stone).toBeCloseTo(had - 5 * B.map.PAVE_STONE, 9);
+    // the stone comes: the Kalends pave the rest, as much each month as the stores hold
+    const before = charterDirt(s).length;
+    run(s, 31, (st) => { st.res.stone = 1e5; });
+    expect(charterDirt(s).length).toBeLessThan(before);
+    run(s, 24 * 31, (st) => { st.res.stone = 1e5; });
+    expect(charterDirt(s)).toEqual([]);
+    for (const i of s.roads) if (sv.street[i] === 1 && sv.streetRing[i] === 0) expect(s.paved).toContain(i);
   });
 
   it('a player rural work on a future block blocks its plots until it moves', () => {

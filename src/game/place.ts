@@ -26,8 +26,8 @@ import { RULE_REASON as RULE_REASON$, ruleFail as ruleFail$, ruleTester as ruleT
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, idx = idx$, inBounds = inBounds$, tx = tx$, ty = ty$,
-  WALL_RING = WALL_RING$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$, isFutureBlock = isFutureBlock$,
-  isRazed = isRazed$, ringsOf = ringsOf$, plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$,
+  WALL_RING = WALL_RING$, halfOrigin = halfOrigin$, isActiveBlock = isActiveBlock$,
+  isFutureBlock = isFutureBlock$, isRazed = isRazed$, ringsOf = ringsOf$, plotOrigin = plotOrigin$, blockOfTile = blockOfTile$, classAt = classAt$,
   derived = derived$, campRect = campRect$, inCamp = inCamp$, sizeOf = sizeOf$,
   dayLayout = dayLayout$, invalidate = invalidate$, layoutEpoch = layoutEpoch$, memo = memo$,
   touchPeople = touchPeople$, seasonOf = seasonOf$, fx = fx$, reasonText = reasonText$, BUILDING_DEFS = BUILDING_DEFS$,
@@ -492,21 +492,10 @@ export function routeAqueduct(s: GameState, x: number, y: number): { fons: numbe
   return aqueductRoute(s, x, y, w, h);
 }
 
-/** Ceremonial paving: the castrum's cardo and decumanus with gates and causeways (Oppidum), or the via (Via militaris). */
-export function ceremonyPaving(s: GameState, what: 'castrumAxes' | 'via'): void {
-  const sv = getMap(s.seed).survey;
+/** Ceremonial paving: the via, in basalt to the edge (Via militaris). */
+export function paveVia(s: GameState): void {
   const d = derived(s);
-  let tiles: number[];
-  if (what === 'via') tiles = sv.via.slice();
-  else {
-    const cx = sv.ix + (sv.interior.w - 1) / 2;
-    const cy = sv.iy + (sv.interior.h - 1) / 2;
-    const c = sv.castrum;
-    tiles = [];
-    for (let x = c.x; x < c.x + c.w; x++) tiles.push(idx(x, cy));
-    for (let y = c.y; y < c.y + c.h; y++) tiles.push(idx(cx, y));
-  }
-  const add = tiles.filter((i) => i >= 0 && i < GN && d.road[i] === 1);
+  const add = getMap(s.seed).survey.via.filter((i) => d.road[i] === 1);
   if (add.length === 0) return;
   s.paved = mergeSorted(s.paved, add);
   invalidate(s);

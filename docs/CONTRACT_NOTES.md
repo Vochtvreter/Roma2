@@ -143,7 +143,7 @@ CONTRACT NOTES**
 10. **Edict window:** when the window is open, `edictWindow.next` is `nextSeasonStart(day)`.
 11. **Advisor moods and muting:** `advisorMood` maps Periculum to 2, Monitum/Cave to 1, and anything else to 0. `mute` is allowed when there is no memo or the memo is a Nota, and the muted list is kept in RULES order. `pruneGuide` marks unseen tips whose `until` already holds as seen.
 12. **Ordo session:** `ordoActive` = `on[area] || (offline && governAway)`. `runOrdo` always calls `emergencyDay`; WP-C checks the emergency switch inside it.
-13. **Rank-up and paths:** `rankUp` has no ctx, so it raises its fx through `pushActionFx`. `choosePath` also calls `ceremonyPaving('via')` for `viaMilitaris` and calls `invalidate`.
+13. **Rank-up and paths:** `rankUp` has no ctx, so it raises its fx through `pushActionFx`. `rankUp` paves the rank's charter streets as the stone allows (`urbs.ts charterPaving`); `choosePath` also calls `paveVia` for `viaMilitaris` and calls `invalidate`.
 14. **Save defaults:** when filling missing keys, a field whose saved type doesn't match takes the default, a null where the default is a number becomes 0, and fields whose default is null keep the saved value. state.ts and save.ts import each other (SAVE_VERSION and newGame). This only works because neither uses the other's import when the module first loads.
 15. **Works order:** `derived().sites` repeats the `worksQueue` ordering (player first, then `order`, then id) so derived.ts does not need to import construction.ts.
 

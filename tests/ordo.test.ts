@@ -13,7 +13,7 @@ import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
 import { manualPlan, planLabour } from '../src/game/ordo/labour';
-import { currentReason, maxSites, ordoSites, ordoSlot, walkWishes, wishList } from '../src/game/ordo/build';
+import { currentReason, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
 import { maxPotential } from '../src/game/economy';
 import { projectEssential } from '../src/game/forecast';
@@ -21,11 +21,12 @@ import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { play } from './autoplayer';
 import { addCost } from '../src/game/state';
-import { canSpend, reserved, savingFor } from '../src/game/ordo/saving';
+import { canSpend, fullRate, reserved, savingFor } from '../src/game/ordo/saving';
+import { siteMult } from '../src/game/site';
 import { emergencyDay } from '../src/game/ordo/emergency';
 import { ordoTrade, ordoTradeWould, tradeMoves } from '../src/game/ordo/trade';
 import { reasonShort, reasonText } from '../src/game/ordo/reasons';
-import { applyOnce, askOrdo, pinBuild, setLabourPriority, setManualTarget, setOrdo } from '../src/game/ordo/actions';
+import { applyOnce, askOrdo, pinBuild, setDuty, setLabourPriority, setManualTarget, setOrdo } from '../src/game/ordo/actions';
 import { Rng } from '../src/game/rng';
 import { INTEGRATED, ctx, fresh, noNaN, run, setJobs } from './util';
 
@@ -184,6 +185,31 @@ describe('building', () => {
     setOrdo(s, 'build', false);
     s.ordo.requests = [];
     expect(askOrdo(s, 'area')).toMatchObject({ ok: false, code: 'ordoOnly' });
+  });
+
+  it('a lumber camp whose woods are felled yields nothing; its replacement is saved for before the orders that lack timber', () => {
+    const s = fresh(42);
+    const camp = built(s, 'lignarius');
+    const R = B.economy.WOOD.CATCHMENT;
+    for (let y = camp.y - R; y < camp.y + 2 + R; y++) for (let x = camp.x - R; x < camp.x + 2 + R; x++) if (getMap(42).woodMax[idx(x, y)] > 0) s.wood[idx(x, y)] = 0;
+    invalidate(s);
+    expect(siteMult(s, camp)).toBe(0);                           // not the regrowth floor: nothing stands to regrow
+    expect(fullRate(s, camp).timber ?? 0).toBe(0);
+    for (const d of ['materials', 'water', 'homes', 'services', 'food'] as const) setDuty(s, d, true);
+    s.res.timber = 15;                                           // a well asked for (10 timber), but not the camp as well
+    s.res.denarii = 2000;
+    s.res.stone = 200;
+    expect(askOrdo(s, 'puteus').ok).toBe(true);
+    const v = view(s);
+    const rv = walkWishes(s, v).list.find((e) => e.wish.revive === 'timber');
+    expect(rv?.wish.type).toBe('lignarius');
+    expect(['saving', 'proposed']).toContain(rv?.state);
+    processRequests(s, ctx(), v);
+    expect(s.buildings.some((b) => b.type === 'puteus' && b.reason?.code === 'request')).toBe(false);   // the camp's timber is kept
+    s.res.timber = 25;
+    invalidate(s);
+    processRequests(s, ctx(), view(s));
+    expect(s.buildings.some((b) => b.type === 'puteus' && b.reason?.code === 'request')).toBe(true);
   });
 
   it('saves for the pin, holds the stock back, then releases it without a long stall', () => {

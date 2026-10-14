@@ -7,6 +7,7 @@ import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
 import { census, canWork, houseBeds, residents } from '../src/game/census';
 import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
+import { charterPaving } from '../src/game/urbs';
 import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor, splendour } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
@@ -19,6 +20,7 @@ import { derived } from '../src/game/derived';
 import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
+import { charterStreets } from '../src/game/survey';
 import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run } from './util';
 import { play } from './autoplayer';
 
@@ -373,6 +375,16 @@ describe('people (DESIGN §6)', () => {
     expect(immigrationChance(s) / base).toBeCloseTo(want, 9);
     s.paved = [...s.roads.slice(0, 20)];
     expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas + 20 * B.dignitas.ROADS, 9);
+    // of the charter streets only the camp's cardo and decumanus win Rome's favour; the inner city's add dignitas alone
+    s.paved = [];
+    s.rank = 3;
+    invalidate(s);
+    for (let k = 0; k < 20; k++) { s.res.stone = 1000; charterPaving(s); }
+    const axes = charterStreets(getMap(s.seed).survey, B.map.CHARTER.axes);
+    const onAxes = s.paved.filter((i) => axes[i] === 1).length;
+    expect(onAxes).toBeGreaterThan(0);
+    expect(s.paved.length).toBeGreaterThan(onAxes);
+    expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas + onAxes * B.dignitas.ROADS, 9);
     gardens(400);
     expect(renownFactor(s)).toBe(R.MAX);
   });

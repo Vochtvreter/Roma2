@@ -239,7 +239,7 @@ export const SETTING_DEFS: Record<SettingId, SettingDef> = {
   },
   renovation: {
     id: 'renovation', name: 'Renovation allowance', latin: 'Renovatio',
-    desc: 'Share of the unreserved stock that households may use to renovate their homes.',
+    desc: 'Share of the unreserved stock that households may use to renovate their homes; the town paves its streets from the rest.',
     min: 0, max: 1, step: 0.05, initial: 0.6, unit: '%', unlock: 'tegulae',
   },
   treasuryFloor: {

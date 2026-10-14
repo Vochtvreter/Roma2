@@ -9,7 +9,7 @@ import { F, RESOURCES, T } from './types';
 import type { ActionResult, Building, BuildingId, Cost, GameState, NeedId, Person, Reason, ResId, SimView, TickContext } from './types';
 import { getMap, idx } from './map';
 import { classAt, derived, footprintOf, sizeOf } from './derived';
-import { WALL_RING, isActiveBlock, isRazed } from './survey';
+import { WALL_RING, charterStreets, isActiveBlock, isRazed } from './survey';
 import { homesEpoch, invalidate, memo, pushActionFx, structEpoch, touchPeople } from './memo';
 import { log } from './state';
 import { getBuilding } from './lookup';
@@ -17,7 +17,8 @@ import { census, houseBeds, peopleIndex } from './census';
 import { passivePotential } from './economy';
 import { houseDesir, houseHas, previewCovered } from './coverage';
 import { rehouseGroups } from './people';
-import { savingFor, treasuryFloor } from './ordo/saving';
+import { firstWant, targetTier } from './housing';
+import { reserved, savingFor, treasuryFloor } from './ordo/saving';
 import { settingValue } from './decisions';
 import { granted, walkMask } from './ordo/duties';
 import { placeName } from './advisors/util';
@@ -168,6 +169,47 @@ export function busiestDirt(s: GameState, n: number): number[] {
   const d = derived(s);
   return s.roads.filter((i) => d.road[i] === 1 && d.pomerium[i] === 1 && d.stepsToForum[i] >= 0)
     .sort((a, b) => footfall(s, b) - footfall(s, a) || d.stepsToForum[a] - d.stepsToForum[b] || a - b).slice(0, n);
+}
+
+// ───────────────────────────── the charter streets ─────────────────────────────
+
+/** The rank's charter streets still dirt (survey.ts charterStreets, DESIGN §3.7): nearest the forum first, then the
+ *  lowest tile. */
+export function charterDirt(s: GameState): number[] {
+  const d = derived(s);
+  const charter = charterStreets(getMap(s.seed).survey, s.rank);
+  const far = (i: number): number => d.stepsToForum[i] >= 0 ? d.stepsToForum[i] : GN;
+  return s.roads.filter((i) => charter[i] === 1 && d.road[i] === 1).sort((a, b) => far(a) - far(b) || a - b);
+}
+
+/** A home that could rise but for the stone its renovation lacks: the renovations come first (charterPaving). */
+export function stoneWaits(s: GameState): boolean {
+  for (const id of derived(s).houses) {
+    const b = getBuilding(s, id);
+    if (!b?.house || b.house.renovating) continue;
+    const next = targetTier(s, b);
+    if (next && (TIER_DEFS[next].renovation.stone ?? 0) > 0 && firstWant(s, b) === 'materials') return true;
+  }
+  return false;
+}
+
+/** Paves the rank's charter streets that lie dirt, nearest the forum first, at B.map.PAVE_STONE stone a pace (on the
+ *  Kalends, urbsDay, from the first after the rank, with the streets laid since). The renovations come first: no paving
+ *  while a home waits for stone to rise, and only from the share of the unreserved stone the Renovation allowance
+ *  leaves them (40% by default), at most CHARTER.MONTH paces. Returns the paces paved. */
+export function charterPaving(s: GameState, ctx?: TickContext): number {
+  const dirt = charterDirt(s);
+  if (dirt.length === 0) return 0;
+  const per = B.map.PAVE_STONE;
+  const spare = Math.max(0, s.res.stone - (reserved(s, view(s)).stone ?? 0)) * (1 - settingValue(s, 'renovation'));
+  const n = Math.min(dirt.length, B.map.CHARTER.MONTH, Math.floor(spare / per + EPS));
+  if (n <= 0 || stoneWaits(s)) return 0;
+  const stone = n * per;
+  s.res.stone = Math.max(0, s.res.stone - stone);
+  if (ctx) ctx.rates.cons.stone.construction = (ctx.rates.cons.stone.construction ?? 0) + stone;
+  s.paved = [...new Set([...s.paved, ...dirt.slice(0, n)])].sort((a, b) => a - b);
+  invalidate(s);
+  return n;
 }
 
 // ───────────────────────────── the town wall ─────────────────────────────
@@ -579,11 +621,14 @@ export function buyOut(s: GameState, houseIds: readonly number[], forType: Build
 
 // ───────────────────────────── the day ─────────────────────────────
 
-/** The growing town's day (sim step 5, after the homes): on the Kalends the footfall census and a well the fountains made
- *  needless; on the Ordo's build days, a town wall once the town has outgrown its camp (the plan duty). */
+/** The growing town's day (sim step 5, after the homes): on the Kalends the footfall census, the rank's charter streets
+ *  paved as the stone allows (charterPaving) and a well the fountains made needless; on the Ordo's build days, a town
+ *  wall once the town has outgrown its camp (the plan duty). */
 export function urbsDay(s: GameState, ctx: TickContext, v: SimView, kalends: boolean): void {
   if (kalends) {
     countFootfall(s);
+    const paved = charterPaving(s, ctx);
+    if (paved > 0) log(s, 'build', `${paved} more ${paved === 1 ? 'pace' : 'paces'} of the town's streets paved in silex (${paved * B.map.PAVE_STONE} stone).`);
     renewWells(s, ctx, v);
   }
   if (s.day % B.ordo.BUILD_EVERY === 0 && holds(s, 'plan') && moeniaDue(s)) surveyWalls(s, 'ordo', (e) => ctx.fx.push(e));

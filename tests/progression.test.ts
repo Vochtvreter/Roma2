@@ -18,6 +18,7 @@ import {
   buildingVisible, nextTeaser, overlayRevealed, resourceRevealed, revealedRef, sectionRevealed, tabRevealed, toolRevealed,
 } from '../src/game/reveal';
 import { hubOpen } from '../src/game/trade';
+import { charterPaving } from '../src/game/urbs';
 import { PATH_DEFS } from '../src/game/data/decisions';
 import { B } from '../src/game/balance';
 import { INTEGRATED, ctx, fresh, run } from './util';
@@ -141,7 +142,12 @@ describe('petitions', () => {
     s.trade.hubsTraded = ['metellianus', 'durii'];
     expect(choosePath(s, 'path2', 'arsFabrilis').ok).toBe(true);
     expect(s.rank).toBe(2);
-    expect(s.paved.length).toBeGreaterThan(0);           // cardo and decumanus paved in ceremony
+    expect(s.log.some((e) => e.text.includes('cardo and the decumanus of the camp are to be paved'))).toBe(true);
+    const stone = s.res.stone;
+    const paved = charterPaving(s);                       // the Kalends pave the cardo and decumanus, for stone
+    expect(paved).toBeGreaterThan(0);
+    expect(s.paved.length).toBe(paved);
+    expect(s.res.stone).toBe(stone - paved * B.map.PAVE_STONE);
   });
 
   it('Municipium: stone homes, staffed temple/market hall/baths, smelted iron', () => {
