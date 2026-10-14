@@ -1030,7 +1030,7 @@ export function getBuilding(s: GameState, id: number): Building | undefined;   /
 export function getPerson(s: GameState, id: number): Person | undefined;
 export function emptyRes(): Res;
 ```
-`newGame` builds: the map (`getMap`), the six start tentoria plots and the start puteus on the plots of DESIGN §18.1 (direct insertion, status `done`, owner `start`), the principia, the ager at `map.startAger`, all castrum interior street tiles + gate tiles + the via (`roads`), the roster with homes and jobs, defaults for decisions (focus `concordia`, edicts at `initial`, settings at `initial`, switches on), Ordo (all on; `manual` = 0s), trade (market 1.0), guidance (appointed annonae/aquarum/fabrum), counters, stats, the opening log line. `s.rng = (seed ^ 0x9e3779b9) | 0`.
+`newGame` builds: the map (`getMap`), the six start tentoria plots and the start puteus on the plots of DESIGN §18.1 (direct insertion, status `done`, owner `start`), the principia, the ager at `map.startAger`, with `intro` the lignarius on the Ordo's best lumber site (one woodcutter), all castrum interior street tiles + gate tiles + the via (`roads`), the roster with homes and jobs, defaults for decisions (focus `concordia`, edicts at `initial`, settings at `initial`, switches on), Ordo (all on; `manual` = 0s), trade (market 1.0), guidance (appointed annonae/aquarum/fabrum), counters, stats, the opening log line. `s.rng = (seed ^ 0x9e3779b9) | 0`.
 
 **Data** (`src/game/data/*.ts`) — transcriptions of DESIGN tables:
 | File | Exports |

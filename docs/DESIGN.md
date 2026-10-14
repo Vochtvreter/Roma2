@@ -1387,11 +1387,11 @@ Other: cypress and umbrella pine `#24402c` / `#3d6b3a`; dirt road `#9b7a52` edge
 |---|---|
 | People | the roster of §6.2 (24; 13 adults, 3 youths, 8 children); 6 families |
 | Houses | **6 tentoria plots (30 beds)**: the 4 plots of the Retentura block west/east of the forum in block row 1 (the side away from the Porta Praetoria) and the 2 forum-side plots of the block below it (row 2) |
-| Buildings | principia (stage 0); **1 puteus** on a remaining plot of that row-2 block; **1 ager** on the best loam site in Castra territory (the Ordo's site score); vallum, fossa and 4 timber gates; all castrum streets (dirt); the Via Valeria with its bridge; the altar on the Area Capitolina |
-| Jobs | Marcus Valerius on the ager; Lucius Antonius and Titus Flavius at the well (the Ordo re-plans on day 1) |
+| Buildings | principia (stage 0); **1 puteus** on a remaining plot of that row-2 block; **1 ager** on the best loam site in Castra territory (the Ordo's site score); in a new colony (with the lessons) **1 lignarius** on the Ordo's best lumber site, with one woodcutter: a trickle of timber, so a colony that has spent its timber can always build again in time, but too little to grow on alone; vallum, fossa and 4 timber gates; all castrum streets (dirt); the Via Valeria with its bridge; the altar on the Area Capitolina |
+| Jobs | Marcus Valerius on the ager; Lucius Antonius and Titus Flavius at the well; Gnaeus Aemilius at the lumber camp, where it stands (the Ordo re-plans on day 1) |
 | Stocks | denarii **600** · grain **480** (cap 600 → 23.6 days) · water **240** (cap 300 → 11.8 days) · timber **80** · stone **40** · tools **4** · others 0 |
 | Meters | morale 65 · fed index 1.0 · dignitas ≈ 5 |
-| Ordo | a new colony (with the lessons): **no duty held**, labour targets as the founders stand (water 2 · food 1 · builders 2); colonies without the lessons and the bots: labour, build and trade on, every duty held (trade inert until Vicus unless *Mercatores*) · focus *Concordia* · settings at defaults · emergency and govern-away on |
+| Ordo | a new colony (with the lessons): **no duty held**, labour targets as the founders stand (water 2 · food 1 · materials 1 · builders 2); colonies without the lessons and the bots: labour, build and trade on, every duty held (trade inert until Vicus unless *Mercatores*) · focus *Concordia* · settings at defaults · emergency and govern-away on |
 | Advisors | Annonae, Aquarum, Fabrum appointed |
 | Market | all 1.0, easing toward the Ver targets |
 
