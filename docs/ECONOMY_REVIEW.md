@@ -145,7 +145,7 @@ run over.
 - **Rome's favour is split.** Gardens and paving give at most ×2 (splendour from them capped at 0.25 per home). The rest,
   up to ×3, comes only from **improved civic works** (permanent, §4.1) and **munera** (timed, below). The colony a
   Praefectus beautifies and pays for draws colonists three times as fast; one that only plants gardens, twice; the Ordo
-  alone, once. (§18.4 bands retuned: §4.7.)
+  alone, once. (§18.4 bands retuned: §4.8.)
 - **Munera** (public benefactions; Edicta or the Copiae treasury view), repeatable, cost by head:
   - *Ludi* (games): 3 den a soul; spirits +6 and splendour +0.15 per home for 90 days; again after 180 days; ×1.5 with a
     theatrum.
@@ -180,13 +180,77 @@ Not recommended:
 
 - **Bread** (*pistrinum*): grain must stay the one staple and the vital tablet's runway stays exact (pillar 2); a
   second food would split the days-on-hand. Also on the cut list.
-- **Furniture, garum, salt, a vineyard**: more goods than the household ladder needs; the domus already has wine (import
-  only, which keeps trade mattering), and *vinea* is cut.
+- **Garum, salt, a vineyard**: more goods than the household ladder needs; the domus already has wine (import only, which
+  keeps trade mattering), and *vinea* is cut. (Furniture, once listed here, is now a recipe: §4.7.)
 
-With these, the stores go from 12 to 16: grain, water · timber, stone, tiles, concrete · ore, iron, tool kits · pottery,
-wool, cloth, oil, wine · marble.
+With these and the recipes of §4.7, the stores go from 12 to 21: grain, water · timber, stone, tiles, concrete · ore,
+iron, tool kits · planks, nails · pottery, wool, cloth, oil, wine, furniture · carts, cranes · marble.
 
-### 4.7 What "fixed" means: targets for `npm run economy`
+### 4.7 Workshops and recipes: what the tool kits make
+
+The owner's question: goods made in workshops, by recipes that need tool kits, that build equipment which moves the game
+on; for example oil, planks, bearings and nails for carts that carry more per trip. Every item below is checked against a
+lever that actually binds, measured where the bots could measure it.
+
+**The rule: every recipe wears tool kits.** A workshop uses up one kit for every so many units it makes. Kits become the
+moving part of all industry, not a buff that sits in a building: the iron chain (mine → bloomery → smithy) has work all
+year, and kits are spent three ways (recipes, *Expolitio*, carts and cranes), so the player chooses where they go.
+
+Two workshops make everything; a workshop works one recipe, or splits its hands between two, as the kiln splits its fire
+(§4.3):
+
+| Workshop | Recipe (per hand a day) | Wears | Feeds |
+|---|---|---|---|
+| **Smithy** (*fabrica*, from the Vicus, §4.1) | 1 iron + 1 timber → 0.4 tool kits (as now) | — | every recipe, *Expolitio* |
+| | **nails** (*clavi*): 1 iron + 0.5 timber → 3 | 1 kit per 30 | carts, cranes, furniture, Rome's requests |
+| **Carpenter's yard** (*officina tignaria*, new: Vicus, plot, 3 hands; *carpenter* comes from *carpentarius*, a cart-maker) | **planks** (*tabulae*): 2 timber → 3 | 1 kit per 40 | carts, cranes, furniture |
+| | **furniture** (*supellex*): 2 planks + 1 nail → 1.5 | — | insulae and domus (below) |
+| | **a cart** (*plaustrum*): 6 planks + 4 nails + 2 iron + 1 kit → 0.25 (4 hand-days) | the kit | trade (below) |
+| | **a crane** (*machina tractoria*, the treadwheel): 24 planks + 12 nails + 8 iron + 4 kits → 0.1 (10 hand-days) | the kits | building (below) |
+
+(tune, all of it.)
+
+**What each one buys:**
+
+- **Carts → trade.** A caravan that takes a cart from the stores carries 160 instead of 80, loaded as fast as 80 is now
+  (`CARGO_PER_DAY` 40 → 80 for a cart), so the trip takes no longer and each caravan slot carries twice as much. A cart
+  wears out after 6 round trips and is greased with 2 oil a trip (*axungia*, axle grease; oil spills 6–14 a day at the
+  Municipium and Colonia, so this is a sink it can take). Without a cart a caravan is a mule team of 80, as now. **When it
+  matters:** only when the colony trades in volume. The bots never had every caravan slot busy (0% of days, seeds 42 and
+  1, from the Vicus), because the Ordo keeps its stores lean. A colony run by hand is different: five slots to Pagus
+  Durii carry 25 a day (80 every 16 days each), and two fully staffed quarries make ≈ 30. That is the owner's row of
+  trade routes; carts halve it. With the standing orders (§4.5), *Postulata Romae* and imports of marble, wine, kits and
+  iron, they matter more.
+- **Cranes → building.** The Capitolium was short of hands on every one of its ≈ 2,150 days (seeds 42 and 1: the full
+  64 fabri, ≈ 149 work a day; never a material). Each crane in the stores lets 16 more fabri work it (two at most):
+  ≈ 1,720 days with one, ≈ 1,430 with two. On any block-sized work, or an improvement of one (§4.1), builders' work is
+  ×1.5 while a crane stands there; with idle hands no longer building alone (§4.2) that is felt. A crane wears out after
+  360 days at work. The §9.5 phase band (1,800–3,000 days) is retuned, or the Capitolium takes one crane only.
+- **Furniture → homes.** Insulae and domus use 0.02 a soul a day (couches, tables, chests), with the same supply rule as
+  oil (§7.6). At the Municipium (≈ 200 souls in insulae and domus) that is ≈ 4 a day: 8 planks, 4 nails, ≈ 7 hands,
+  ≈ 7 timber and 2 iron a day.
+- **Nails → Rome.** *Postulata Romae* (§4.4) may ask for nails, carts or cloth for a legion (when Legio XX left
+  Inchtuthil in the 80s it buried 875,000 nails rather than leave them), so the crafted goods have an outlet that pays in
+  Fama and a cheaper petition, not coin.
+
+**The owner's example, item by item:** planks from timber with tools, yes; nails, yes; oil, yes, as axle grease used up
+each trip; carts that carry more, yes, but worn out with use rather than kept for ever, and worth building only when
+trade runs at volume. **Bearings, no**: Roman carts turned on greased wooden axles in iron-banded hubs (the bronze balls
+under the Nemi ships' turntables are the one exception, and not on a cart). The iron tyres and hub bands are the
+cart's 2 iron.
+
+**Considered and left out:**
+
+- **Ploughs** (iron shares, more grain): grain is never short after the first Hiems (the horrea run 79–93% full), so
+  more output buys nothing (§2).
+- **Pumps and water-wheels**: water spills 35–310 a day; a better well is an *Expolitio* level, not a good.
+- **Glass** (sand → glass windows, desirability for the domus): plausible (Pompeii glazed its baths), but the lever is
+  unmeasured: domus are rare (one at the dedication on the §18.4 curve) and it is not yet shown that desirability is
+  why. Measure first.
+- **Bronze statues** (copper and tin, imported): a dignitas sink like marble, but *statua* is cut (§19).
+- **Leather, rope, barges**: more steps with no new lever; river barges are cut.
+
+### 4.8 What "fixed" means: targets for `npm run economy`
 
 Measured for the attentive player, median over the five seeds, after each phase:
 
@@ -208,13 +272,15 @@ Measured for the attentive player, median over the five seeds, after each phase:
    `data/decisions.ts` (*Ars fabrilis*), `ordo/labour.ts` step 7 (kits wanted = the queue's), `ordo/trade.ts`
    (lines), `hints.ts` and `ui/inspector.ts` (the tool factor → the level), `save.ts` (drop `toolUntil`, add `level`;
    a save migration), tests `construction`, `data`, `contract`.
-2. **Goods and the screen**: §4.3 pottery, wool, cloth, bath fuel; the *Copiae* tab (§6).
+2. **Goods, workshops and the screen**: §4.3 pottery, wool, cloth, bath fuel; §4.7 the carpenter's yard, nails, planks,
+   furniture, carts and cranes (recipes and splits in the workshop's inspector; carts in the caravan dispatch in
+   `trade.ts`; cranes in `constructionDay` and `capitoliumDay`); the *Copiae* tab (§6).
 3. **Coin into growth**: §4.4 the favour split, munera, *Postulata Romae*; marble if the owner revives it.
 
 ## 6. The Copiae screen (design for review)
 
 A new side-panel tab, *Copiae* / Stores (key `G`), revealed with the first finished work, drawn on the canvas
-**<https://claude.ai/artifact/N7EFAYm2Phb2bvHhyZPAKp>** (private to its owner until shared from its Share menu). Five
+**<https://claude.ai/artifact/N7EFAYm2Phb2bvHhyZPAKp>** (private to its owner until shared from its Share menu). Six
 artboards:
 
 - **Why**: the measurements above and the flow from producers through the stores to the five sinks and on to progress.
@@ -227,6 +293,9 @@ artboards:
 - **Phone**: the same list in the sheet, one good opened with its sell-above line and remedies.
 - **Expolitio**: the inspector card for improving a work (a tile kiln II → III), its costs against the stores (iron held
   for the petition), its gains, and the three levels.
+- **Workshops and recipes** (§4.7): the smithy's and the carpenter's yard's recipes with their inputs and kit wear, what
+  carts, cranes, furniture and nails each buy with the measured reason, the owner's cart example checked item by item,
+  and what was left out.
 
 The figures on the artboards are a plausible Municipium under this proposal, for layout; they are not measurements.
 
