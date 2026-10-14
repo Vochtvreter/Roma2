@@ -280,8 +280,19 @@ Measured for the attentive player, median over the five seeds, after each phase:
 ## 6. The Copiae screen (design for review)
 
 A new side-panel tab, *Copiae* / Stores (key `G`), revealed with the first finished work, drawn on the canvas
-**<https://claude.ai/artifact/N7EFAYm2Phb2bvHhyZPAKp>** (private to its owner until shared from its Share menu). Ten
-artboards:
+**<https://claude.ai/artifact/N7EFAYm2Phb2bvHhyZPAKp>** (private to its owner until shared from its Share menu). Eleven
+artboards. The first to open is a **playable prototype**:
+
+- **Play it: manage the economy** (top row, interactive): a Municipium of 512 souls simulated day by day on this
+  proposal's numbers. Move hands between 21 works and recipes, set sell-above and buy-below lines per good, begin
+  improvements, hold the games or the feast, answer Rome's request and send the Colonia petition; play, step a day or
+  thirty, and watch the stores, the homes supplied, Rome's favour, the coin and a score (*Prosperitas*: homes
+  supplied, favour, hands at work, nothing wasted) respond, with the council's advice and an annals log. Left alone,
+  the colony reproduces today's complaint (in a year the treasury reaches 31k while homes fall to 53% supplied); a
+  sensible plan keeps every home supplied and makes coin scarce. Its figures are a model of the proposal for feel and
+  tuning, not the game's code.
+
+The others:
 
 - **Why**: the measurements above and the flow from producers through the stores to the five sinks and on to progress.
 - **Stores** (desktop, the ledgers wide; interactive: click a row): every good grouped by chain (*Annona*, *Materia*,
