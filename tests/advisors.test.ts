@@ -39,6 +39,7 @@ import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
 import { bestFood } from '../src/game/advisors/util';
 import { residents } from '../src/game/census';
+import { houseHas } from '../src/game/coverage';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -371,14 +372,23 @@ describe('engine', () => {
   it('appoints advisors by their triggers and keeps unappointed rules silent', () => {
     const s = fresh(42);
     s.morale = 10;
-    day(s, { coin: { stock: 500, net30: -100 } });
+    day(s, { coin: { stock: 500, net30: -100 }, c: { roll: 0 } });    // the roll full: no favour advisory appoints the Aedilis
     expect(s.guidance.appointed).toContain('quaestor');               // his first coin advisory
     expect(s.guidance.advisories['quaestor.coin']?.active).toBe(true);
+    expect(s.guidance.appointed).not.toContain('aedilis');
     expect(s.guidance.advisories['aedilis.morale']).toBeUndefined();
     s.day = 242;
     day(s);
     expect(s.guidance.appointed).toContain('augur');                  // Kal. Sept. AUC DCCC
     expect(s.guidance.appointed).toEqual(ADVISORS.filter((a) => s.guidance.appointed.includes(a)));
+  });
+  it('appoints the Aedilis with his first favour advisory, though every founding home has its well within reach', () => {
+    const s = fresh(42);
+    for (const b of houses(s)) expect(houseHas(s, b.id, 'water')).toBe(true);
+    expect(s.guidance.appointed).not.toContain('aedilis');
+    day(s);
+    expect(s.guidance.appointed).toContain('aedilis');
+    expect(s.guidance.advisories['aedilis.favour']?.active).toBe(true);
   });
   it('replays identically from a JSON copy (no hidden state)', () => {
     const a = run(base(), 60);

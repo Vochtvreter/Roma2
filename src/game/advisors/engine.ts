@@ -45,8 +45,9 @@ const A = B.advisors;
 const NOTA = 0, CAVE = 2, PERICULUM = 3;
 const AUTUMNUS = 2;
 const BY_ID = new Map<RuleId, AdvisorRule>(RULE_DEFS.map((r) => [r.id, r]));
-/** Rules evaluated even before their advisor takes office: their first raise appoints him (DESIGN §11.3). */
-const APPOINTING: readonly RuleId[] = ['quaestor.coin'];
+/** Rules evaluated even before their advisor takes office: their first raise appoints him (DESIGN §11.3). Rome's favour
+ *  is the Aedilis's first word in a camp whose homes all have their wells and shrines within reach. */
+const APPOINTING: readonly RuleId[] = ['quaestor.coin', 'aedilis.favour'];
 /** Rules that never alarm their advisor's portrait (the gold Opportunitas). */
 const CALM: readonly RuleId[] = ['augur.petition'];
 /** target → the rules that hide it while they are active at ≥ its severity (DESIGN §11.4 supersede). */
@@ -239,7 +240,7 @@ function appoint(s: GameState, id: AdvisorId): void {
   log(s, 'advisor', `${d.name} takes office as ${d.office}.`);
 }
 
-/** Appoints advisors whose domain has become relevant (DESIGN §11.3): the Quaestor at Vicus or the first contract (or his first coin advisory, in advisorsDay); the Aedilis at Vicus or a house blocked ≥ 5 days; the Augur at the first event card or Kal. Sept. of the founding year. */
+/** Appoints advisors whose domain has become relevant (DESIGN §11.3): the Quaestor at Vicus or the first contract (or his first coin advisory, in advisorsDay); the Aedilis at Vicus or a house blocked ≥ 5 days (or his first favour advisory, in advisorsDay); the Augur at the first event card or Kal. Sept. of the founding year. */
 export function appointAdvisors(s: GameState): void {
   if (s.guidance.appointed.length >= ADVISORS.length) return;
   const has = (id: AdvisorId): boolean => s.guidance.appointed.includes(id);

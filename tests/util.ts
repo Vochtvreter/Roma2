@@ -1,6 +1,6 @@
 // tests/util.ts — shared headless test helpers (ARCHITECTURE §15).
 import { BUILDER } from '../src/game/types';
-import type { ActionResult, BuildingId, EventId, GameState, Owner, PlaceOpts, TickContext } from '../src/game/types';
+import type { ActionResult, Building, BuildingId, EventId, GameState, Owner, PlaceOpts, TickContext } from '../src/game/types';
 import { newGame } from '../src/game/state';
 import { newCtx, tick, view } from '../src/game/sim';
 import { W, idx } from '../src/game/map';
@@ -8,7 +8,9 @@ import { placeBuilding, validSlots } from '../src/game/place';
 import { fireEvent } from '../src/game/events';
 import { withRng } from '../src/game/rng';
 import { canWork } from '../src/game/census';
-import { touchPeople } from '../src/game/memo';
+import { invalidate, touchPeople } from '../src/game/memo';
+import { coverage } from '../src/game/coverage';
+import { sideTiles } from '../src/game/world/grid';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 
 /** False in Phase 1: tests that need another package's real behaviour use `describe.runIf(INTEGRATED)`. */
@@ -73,6 +75,25 @@ export function freeSlots(s: GameState, type: BuildingId, n = 1, owner: Owner = 
   const tiles = [...validSlots(s, type, owner).keys()].sort((a, b) => a - b).slice(0, n);
   if (tiles.length < n) throw new Error(`only ${tiles.length} free ${type} slots, ${n} wanted`);
   return tiles.map((i) => ({ x: i % W, y: Math.floor(i / W) }));
+}
+
+/** A finished tent house of the player's on the first free plot (ascending) that no water reaches. A well reaches a
+ *  neighbourhood (DESIGN §7.4), so the founders' tents all have water: a test that needs a house wanting water lays
+ *  one out beyond the founders' well. */
+export function dryHouse(s: GameState): Building {
+  const water = coverage(s).layers.water;
+  const tile = [...validSlots(s, 'area', 'player').keys()].sort((a, b) => a - b)
+    .find((t) => !sideTiles(t % W, Math.floor(t / W), 2, 2).some((i) => water[i] === 1));
+  if (tile === undefined) throw new Error('no free plot beyond the reach of water');
+  const r = placeBuilding(s, 'area', tile, { owner: 'player', ignoreCost: true });
+  if (!r.ok) throw new Error(r.reason);
+  const b = s.buildings[s.buildings.length - 1];
+  b.status = 'done';
+  b.progress = 1;
+  b.doneDay = s.day;
+  b.house = { tier: 'tentoria', pref: 'auto', okDays: 0, badDays: 0, recoverDays: 0, declining: false, declineDays: 0, renovating: null, oil: 0, wine: 0 };
+  invalidate(s);
+  return b;
 }
 
 /** Paths of every non-JSON-safe value in the state: NaN/±Infinity, undefined, functions, non-plain objects. */
