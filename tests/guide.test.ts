@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { DUTIES, TIPS } from '../src/game/types';
 import type { GameState, TipId } from '../src/game/types';
-import { INTEGRATED, fresh, run } from './util';
+import { INTEGRATED, dryHouse, fresh, run } from './util';
 import { elapsed } from '../src/game/calendar';
 import { newCtx, tick, view } from '../src/game/sim';
 import { GUIDE, dismissTip, mentorKicker, nextTip, pruneGuide } from '../src/game/guide';
@@ -215,6 +215,7 @@ describe('the opening lessons (DESIGN §11.13)', () => {
     expect(play(s, 1)).toBe('next');
     expect(currentLesson(s)?.lesson.id).toBe('homes');
     expect(introduced(s, 'souls')).toBe(true);
+    s.res.timber = Math.max(s.res.timber, 20);                        // the idle year's renovations spent the camp's timber
     raise(s, 'area');
     introStep(s);
     expect(beginNextLesson(s).ok).toBe(true);
@@ -380,6 +381,7 @@ describe('hints', () => {
   it('names a shrine in the wants tip only when a shrine is what the first waiting house wants (R03)', () => {
     const wants = GUIDE.find((g) => g.id === 'wants')!;
     const s = fresh(42);
+    dryHouse(s);                                                        // a home that waits, beyond the founders' well
     let checked = 0;
     run(s, 900, (st, _c, i) => {
       if (i % 30 !== 0 || !wants.when(st)) return;

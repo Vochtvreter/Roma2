@@ -12,7 +12,7 @@ import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, to
 import { careShare, dignitas } from './civic';
 import { log, nextId } from './state';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
-import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { BUILDING_DEFS as BUILDING_DEFS$, slotsOf as slotsOf$ } from './data/buildings';
 import { aTier } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, PRAENOMINA as PRAENOMINA$, feminine as feminine$ } from './data/names';
@@ -20,7 +20,7 @@ import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, P
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
   toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
-  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$,
+  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, slotsOf = slotsOf$, RANK_DEFS = RANK_DEFS$,
   DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$,
   getBuilding = getBuilding$, getPerson = getPerson$;
 
@@ -84,7 +84,7 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   }
   const target = (b: Building): number => {
     if (b.status !== 'done' || !b.open) return 0;
-    return Math.max(0, Math.min(BUILDING_DEFS[b.type].slots, Math.floor(plan.perBuilding[b.id] ?? 0)));
+    return Math.max(0, Math.min(slotsOf(b.type, s.rank), Math.floor(plan.perBuilding[b.id] ?? 0)));
   };
   const leastFirst = (skill: SkillId | null) => (a: Person, c: Person): number => skillOf(a, skill) - skillOf(c, skill) || c.id - a.id;
   for (const { b, list } of at.values()) {

@@ -264,6 +264,17 @@ describe('a rise that would crowd a neighbour waits (DESIGN §7.2, §7.5)', () =
     expect(a.house!.tier).toBe('insula');
   });
 
+  it('holds a house whose street sums to its minimum though the Float32 field reads a hair below it', () => {
+    const { s, houses } = setup();
+    s.rank = 2;
+    const h = houses[0];
+    setTier(s, h, 'domusParva');
+    cover(h, ALL, -1e-6);                              // two insulae rising beside it summed its street to 0 − ε
+    expect(unmetNeeds(s, h, 'domusParva')).not.toContain('desirability');
+    cover(h, ALL, -0.01);                              // a real shortfall still counts
+    expect(unmetNeeds(s, h, 'domusParva')).toContain('desirability');
+  });
+
   it('never makes a standing insula decline, and a neighbour already below its minimum does not hold the rise', () => {
     const { s, a } = pair(0.4);
     setTier(s, a, 'insula');

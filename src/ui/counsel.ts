@@ -87,7 +87,7 @@ export function glueKicker(k: string): string {
 }
 
 const APPOINTED_AT: Partial<Record<AdvisorId, string>> = {
-  quaestor: 'Appointed at Vicus, or with the first coin trouble', aedilis: 'Appointed at Vicus, or when a house is stuck',
+  quaestor: 'Appointed at Vicus, or with the first coin trouble', aedilis: 'Appointed at Vicus, or when a house is stuck or colonists come slowly',
   augur: 'Appointed with the first omen, or on Kal. Sept.',
 };
 

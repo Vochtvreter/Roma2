@@ -13,7 +13,7 @@ import { missing } from '../state';
 import { newWishes } from '../ordo/build';
 import { reasonText } from '../ordo/reasons';
 import { getBuilding as getBuilding$ } from '../lookup';
-import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$ } from '../data/buildings';
+import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$, slotsOf as slotsOf$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
   CLEAR, R, STEP, aName, bName, buildingPlace, days, held, idleBySkill, importRemedy, int, listJoin, namesOf, num, openPosts, resName, runway, three,
@@ -21,7 +21,7 @@ import {
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, LABOR_CATS = LABOR_CATS$, RESOURCES = RESOURCES$, TRADE_RES = TRADE_RES$, toRoman = toRoman$,
-  BUILDING_DEFS = BUILDING_DEFS$, BUILD_ORDER = BUILD_ORDER$, SETTING_DEFS = SETTING_DEFS$,
+  BUILDING_DEFS = BUILDING_DEFS$, BUILD_ORDER = BUILD_ORDER$, slotsOf = slotsOf$, SETTING_DEFS = SETTING_DEFS$,
   getBuilding = getBuilding$;
 
 const P = (x: unknown): number => (typeof x === 'number' ? x : 0);
@@ -55,7 +55,7 @@ function suggest(s: GameState, v: SimView): { type: BuildingId; k: number } | nu
   const fill = (t: BuildingId): number => { const r = BUILDING_DEFS[t].output?.res ?? 'grain'; return s.res[r] / Math.max(1, v.c.caps[r]); };
   const sorted = ok.sort((a, b) => fill(a) - fill(b) || BUILD_ORDER.indexOf(a) - BUILD_ORDER.indexOf(b));
   const pick = sorted.slice(0, 4).find((t) => validSlots(s, t, 'player').size > 0) ?? sorted[0];
-  return pick ? { type: pick, k: Math.min(Math.max(1, idle), BUILDING_DEFS[pick].slots) } : null;
+  return pick ? { type: pick, k: Math.min(Math.max(1, idle), slotsOf(pick, s.rank)) } : null;
 }
 
 /** What the open posts leave short: water or grain running out by their runway, as the essentials rules judge it (a

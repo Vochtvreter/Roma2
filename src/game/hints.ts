@@ -9,7 +9,7 @@ import { buildingRate, seasonMult } from './economy';
 import { fx } from './fx';
 import { siteMult } from './site';
 import { HUB_DEFS } from './data/hubs';
-import { BUILDING_DEFS, BUILD_ORDER } from './data/buildings';
+import { BUILDING_DEFS, BUILD_ORDER, slotsOf } from './data/buildings';
 import { RANK_DEFS } from './data/ranks';
 import { TIER_DEFS } from './data/housing';
 import { RESOURCE_DEFS } from './data/resources';
@@ -70,7 +70,7 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     const lock = d.rank > s.rank ? ` Rome grants it to ${rankWord(d.rank)}.` : '';
     if (d.output?.res === res) {
       const uses = d.inputs ? `, from ${listJoin(RESOURCES.filter((r) => d.inputs?.[r]).map((r) => `${num(d.inputs?.[r] ?? 0)} ${RESOURCE_DEFS[r].name.toLowerCase()}`))} a hand` : '';
-      out.push(`${d.name}: ${num(d.output.perWorker)} a day for each of ${d.slots} hands${uses}${bestSeason(t)}.${lock}`);
+      out.push(`${d.name}: ${num(d.output.perWorker)} a day for each of ${slotsOf(t, s.rank)} hands${uses}${bestSeason(t)}.${lock}`);
       if (!main && !lock) main = t;
     } else if (d.passive?.res === res) {
       out.push(`${d.name}: ${int(d.passive.perDay)} a day with no hands${bestSeason(t)}.${lock}`);
@@ -142,7 +142,7 @@ export function outputChain(s: GameState, b: Building): { label: string; value: 
   const add = (label: string, x: number): void => { if (Math.abs(x - 1) >= 0.005) out.push({ label, value: pct(x) }); };
   if (def.output) {
     const workers = s.people.filter((p) => p.work === b.id);
-    out.push({ label: 'Hands', value: `${workers.length} of ${def.slots}` }, { label: 'Per hand', value: num(def.output.perWorker) });
+    out.push({ label: 'Hands', value: `${workers.length} of ${slotsOf(b.type, s.rank)}` }, { label: 'Per hand', value: num(def.output.perWorker) });
     if (Math.abs(sm - 1) >= 0.005) out.push({ label: SEASON_NAMES[season], value: `×${num(sm)}` });
     const site = siteMult(s, b);
     const skill = def.skill && workers.length > 0

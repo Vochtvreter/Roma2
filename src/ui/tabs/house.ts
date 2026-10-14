@@ -27,12 +27,14 @@ import { article, btn, rankReason, seg } from './common';
 const SERVICE: Partial<Record<NeedId, BuildingId>> = {
   water: 'puteus', religion: 'lararium', market: 'taberna', temple: 'templum', baths: 'balneum', macellum: 'macellum', desirability: 'hortus', oil: 'olivetum',
 };
+/** A service's reach in road steps, as the data gives it. */
+const reach = (t: BuildingId): number => BUILDING_DEFS[t].service?.[0].radius ?? 0;
 const HINT: Record<NeedId, string> = {
-  street: 'A street or road beside it.', water: 'A well within 4 road steps of its street, or a public fountain.',
-  fed: 'The whole colony fed for a month (fed index ≥ 90%).', religion: 'A wayside shrine within 5 steps, or a temple.',
-  market: 'A shop row within 6 steps, or a market hall.', temple: 'A temple within 12 steps.',
+  street: 'A street or road beside it.', water: `A well within ${reach('puteus')} road steps of its street, or a public fountain.`,
+  fed: 'The whole colony fed for a month (fed index ≥ 90%).', religion: `A wayside shrine within ${reach('lararium')} steps, or a temple.`,
+  market: `A shop row within ${reach('taberna')} steps, or a market hall.`, temple: `A temple within ${reach('templum')} steps.`,
   desirability: 'A finer street: gardens, temples and fountains raise it; workshops, stores and insulae lower it.',
-  baths: 'A bathhouse within 8 steps.', macellum: 'A market hall within 10 steps.',
+  baths: `A bathhouse within ${reach('balneum')} steps.`, macellum: `A market hall within ${reach('macellum')} steps.`,
   oil: 'Oil delivered by a market hall: olive groves or imports.', wine: 'Wine delivered by a market hall: it comes only by trade.',
   rank: 'A higher charter from Rome.', materials: 'Renovation materials: the stores lack them beyond the Ordo\'s reserve.',
 };

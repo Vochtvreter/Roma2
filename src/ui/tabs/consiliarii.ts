@@ -22,7 +22,7 @@ const OPPORTUNITAS: RuleId = 'augur.petition';
 const APPOINTED_AT: Record<AdvisorId, string> = {
   annonae: 'Serves from the founding.', aquarum: 'Serves from the founding.', fabrum: 'Serves from the founding.',
   quaestor: 'Appointed at Vicus, or with the first coin trouble or contract.',
-  aedilis: 'Appointed at Vicus, or when a house has waited five days.',
+  aedilis: 'Appointed at Vicus, when a house has waited five days, or when colonists come slowly.',
   augur: 'Appointed with the first dispatch, or on Kal. Sept.',
 };
 const METRIC_UNIT = { days: ['d', 'd'], houses: ['house', 'houses'], den: ['den', 'den'], pct: ['%', '%'], souls: ['soul', 'souls'] } as const;

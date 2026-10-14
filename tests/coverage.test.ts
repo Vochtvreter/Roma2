@@ -40,17 +40,21 @@ function staff(s: GameState, b: Building, n: number): void {
   touchPeople(s);
 }
 
-/** The fixture: a 15-tile road row with a branch up from k = 6, a lararium on the row, two houses below it. */
+/** The lararium's full radius (R): the fixture is laid out around it, so the hand-computed steps hold for any radius. */
+const R = BUILDING_DEFS.lararium.service![0].radius;
+
+/** The fixture: an (R + 8)-tile road row with a branch up from k = R + 1, a lararium on the row, two houses below it:
+ *  `near` at the edge of the radius (R steps), `far` just beyond it (R + 3 steps). */
 function fixture(): { s: GameState; shrine: Building; near: Building; far: Building; row: (k: number) => number; branch: (j: number) => number } {
   const s = fresh(42);
   const row = (k: number): number => idx(OX + k, OY + 4);
-  const branch = (j: number): number => idx(OX + 6, OY + 4 - j);
-  const tiles = [...Array(15).keys()].map(row).concat([1, 2, 3, 4].map(branch), [idx(OX + 5, OY + 1)]);
+  const branch = (j: number): number => idx(OX + R + 1, OY + 4 - j);
+  const tiles = [...Array(R + 8).keys()].map(row).concat([1, 2, 3, 4].map(branch), [idx(OX + 5, OY + 1)]);
   for (const i of tiles) expect(s.roads.includes(i)).toBe(false);
   s.roads = [...new Set([...s.roads, ...tiles])].sort((a, b) => a - b);
   const shrine = insert(s, 'lararium', OX + 2, OY + 2);
-  const near = house(s, OX + 7, OY + 5);
-  const far = house(s, OX + 10, OY + 5);
+  const near = house(s, OX + R + 3, OY + 5);
+  const far = house(s, OX + R + 6, OY + 5);
   staff(s, shrine, 1);
   invalidate(s);
   return { s, shrine, near, far, row, branch };
@@ -59,12 +63,12 @@ function fixture(): { s: GameState; shrine: Building; near: Building; far: Build
 describe('coverage: BFS over built roads in whole steps (DESIGN §7.4)', () => {
   it('covers road tiles within the radius in steps from the roads beside the footprint', () => {
     const { s, shrine, row, branch } = fixture();
-    expect(effectiveRadius(s, shrine, 'shrine')).toBe(5);
+    expect(effectiveRadius(s, shrine, 'shrine')).toBe(R);
     const layer = coverage(s).layers.shrine;
     // hand-computed steps along the row: sources at k = 2, 3
     const steps = (k: number): number => (k < 2 ? 2 - k : Math.max(0, k - 3));
-    for (let k = 0; k < 15; k++) expect(layer[row(k)], `row ${k} (${steps(k)} steps)`).toBe(steps(k) <= 5 ? 1 : 0);
-    // the branch turns the corner at k = 6 (3 steps): 4, 5, 6, 7 steps up it
+    for (let k = 0; k < R + 8; k++) expect(layer[row(k)], `row ${k} (${steps(k)} steps)`).toBe(steps(k) <= R ? 1 : 0);
+    // the branch turns the corner at k = R + 1 (R − 2 steps): R − 1, R, R + 1, R + 2 steps up it
     expect([1, 2, 3, 4].map((j) => layer[branch(j)])).toEqual([1, 1, 0, 0]);
     // a road tile two tiles from the shrine but not joined to its roads stays dry
     expect(layer[idx(OX + 5, OY + 1)]).toBe(0);
@@ -86,7 +90,7 @@ describe('coverage: BFS over built roads in whole steps (DESIGN §7.4)', () => {
     const { s, shrine, far, branch } = fixture();
     s.decisions.paths.path2 = 'pietas';
     invalidate(s);
-    expect(effectiveRadius(s, shrine, 'shrine')).toBe(9);
+    expect(effectiveRadius(s, shrine, 'shrine')).toBe(R + 4);
     expect(houseHas(s, far.id, 'shrine')).toBe(true);
     expect(coverage(s).layers.shrine[branch(4)]).toBe(1);
   });
@@ -109,7 +113,7 @@ describe('coverage: BFS over built roads in whole steps (DESIGN §7.4)', () => {
     baths.status = 'building';
     expect(effectiveRadius(s, baths, 'baths')).toBe(0);
     const cistern = insert(s, 'cisterna', OX + 6, OY);                 // no slots: always active
-    expect(effectiveRadius(s, cistern, 'water')).toBe(2);
+    expect(effectiveRadius(s, cistern, 'water')).toBe(BUILDING_DEFS.cisterna.service![0].radius);
     expect(effectiveRadius(s, cistern, 'shrine')).toBe(0);
   });
 

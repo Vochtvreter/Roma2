@@ -31,7 +31,7 @@ export const SEEDS: readonly number[] = process.env.BAL_SEEDS ? process.env.BAL_
 /** DESIGN §18.4 pacing bands (elapsed days; pop at victory). */
 export const BANDS = {
   vicus: [420, 780], oppidum: [2100, 3400], municipium: [5000, 7600], colonia: [8800, 14000], victory: [11000, 17500],
-  capPhase: [1800, 3000], capStage: [350, 900], victoryPop: [700, 1400],
+  capPhase: [1800, 3000], capStage: [350, 900], victoryPop: [700, 1500],
 } as const;
 /** The idle floor (DESIGN §18.4): the Ordo alone reaches each rank this many times later than the attentive player. */
 export const ORDO_RATIO = [2.2, 3.6] as const;
