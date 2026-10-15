@@ -177,6 +177,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   derived.ts                       A   structural derived data                                    (260)
   coverage.ts                      A   road-BFS coverage + desirability                           (260)
   place.ts                         A   canPlace, placeBuilding, roads, aqueduct route, demolish   (480)
+  demolition.ts                    A   demolishMany, clearGardens, demolitionImpact, the short undo (DESIGN §5.3) (200)
   site.ts                          A   siteMultAt, siteScore, bestSlot                            (300)
   economy.ts                       B   the one formula module: production, consumption, storage   (520)
   census.ts                        B   census memo                                                (170)
@@ -226,6 +227,7 @@ src/render/
   buildings.ts                     F   building/house draw dispatch, rise(), states, overlays on sprites (300)
   linear.ts                        F   streets, roads, walls, gates, fossa, aqueduct, via          (240)
   placement.ts                     F   ghost, valid slots, coverage preview, laurel                (220)
+  demolish.ts                      F   the demolish tool's armed works, sweep and impact words (pure) (130)
   overlays.ts                      F   5 overlays as 1 px/tile layers                              (180)
   minimap.ts                       F   minimap                                                     (90)
   actors.ts                        F   walkers, carts, caravans, merchant, veterans, animals       (360)
@@ -944,7 +946,7 @@ export const B = {
   morale:  { BASE: 50, START: 65, ALPHA: 0.05, GRAIN_TERMS: [[30, 5], [15, 2], [7, -3], [0, -10]],
              RATION_TERMS: { largae: 6, plenae: 0, parcae: -6, arctae: -14 }, SHORT: 20, TIER: 2, RELIGION: 8, BATHS: 5,
              CULTURE: 6, HOMELESS: 20, DECLINING: 10, DEATHS: 2, DEATHS_CAP: 12, LEGACY: 2, LABELS: [75, 50, 30] },
-  construction: { STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25,
+  construction: { STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25, UNDO_DAYS: 10,
              CAP_CREW: 64, CAP_WORK: 320_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],
              CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 160_000 } },
   ordo:    { BUILD_EVERY: 2, TRADE_EVERY: 10, TRADE_OFFSET: 5, SITES_PER: 40, SITES_MAX: 4, FOOD_CAP: 0.75, FOOD_CAP_HUNGRY: 0.9,
@@ -1126,7 +1128,26 @@ export function roadPathFor(s: GameState, footprint: number[]): number[] | null;
 export function streetsForBlock(s: GameState, blockId: number): number[];           // new tiles only
 export function routeAqueduct(s: GameState, x: number, y: number): { fons: number; tiles: number[] } | null;
 export function paveVia(s: GameState): void;                                       // called by Via militaris
+// demolition.ts (DESIGN §5.3): several works at once, with what it would do read first, and a short undo
+export function demolitionImpact(s: GameState, ids: readonly number[], opts?: { needs?: boolean }): DemolitionImpact;
+export function demolishMany(s: GameState, ids: readonly number[]): ActionResult;   // the principia and Capitolium among them stay
+export function councilGardens(s: GameState, blockId: number): number[];           // the Ordo's horti in a block
+export function clearGardens(s: GameState, blockId: number): ActionResult;
+export function undoable(s: GameState): { works: number; until: number } | null;
+export function undoDemolition(s: GameState): ActionResult;
 ```
+`demolitionImpact` reads only: the works that would come down (`ids`; `spared` the principia and Capitolium), the houses
+among them and their residents, their workers, the sites among them, `refund` (a finished work `REFUND_DEMOLISH`, a site
+as `cancelSite`) and `frac` when every work returns the same share, and `losing`: per need, the homes left standing that
+meet it for their own tier now and would not without those works (`unmetNeeds` on a shallow copy of the state without
+them, whose coverage and desirability memo.ts builds afresh), i.e. the homes that would decline (§7.3); `needs: false`
+skips that what-if (a sweep's count while it is dragged). `demolishMany`/`clearGardens` refund, put out residents
+(`homelessSince`) and workers, log one line, `invalidate` + `touchPeople`, and keep the record of the last demolition in
+a WeakMap beside the state (never saved). `undoDemolition` within `UNDO_DAYS` (game days) re-inserts those works in id
+order as they stood, takes the refund back, and gives back each home (a family that found beds elsewhere stays there)
+and work still empty; it refuses (`occupied`, `maxCount`, `unaffordable`, `window`) when anything stands on a
+footprint, a road crosses it or a work stands on a castellum's route, a one-only type was raised again, or the salvage
+is spent. The ticks never read the record.
 `placeBuilding`: validates; with `replaceId` first cancels that Ordo stake at 100%; affordable → pays and creates the site (`status` = `staked` for owner `ordo` unless `noStake`, else `building`); unaffordable → owner `player` makes a `plan`, owner `ordo` fails `unaffordable`. Then fells forest under rural footprints (timber to stores, `s.wood[i] = 0`, work += stock × FELL_WORK), lays streets (urban) or the auto-road (rural) instantly and free, sets `reason`/`notes`, sets `order` = next id, appends the building (ids ascending), logs (Ordo placements: kind `ordo` with the reason text), and calls `invalidate(s)`. `house` state is created when an `area` completes.
 
 **`site.ts`**
@@ -1398,6 +1419,7 @@ export function outputChain(s: GameState, b: Building): { label: string; value: 
 UI, bot and remedies mutate state **only** through these (plus `applyRemedy`). Every action returns `ActionResult`, never throws, logs what it changed, and calls `invalidate`/`touchPeople` as needed. Actions needing randomness use `withRng`; actions raising visuals use `pushActionFx`.
 ```ts
 export { placeBuilding as place, demolish, buildRoad, pave, toggleReserveBlock } from './place';
+export { demolishMany, clearGardens, undoDemolition } from './demolition';
 export { cancelSite, prioritise, setOpen, setPrio } from './construction';
 export { setHousePref } from './housing';
 export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority } from './ordo/actions';
@@ -1580,7 +1602,7 @@ export function ensureVisibleDelta(c: Camera, worldRect: { x: number; y: number;
 export function defaultLevel(cssSize: number): number;   // 3, or 2 below ZOOM_SMALL_W: fed min(free width, free height)
 ```
 - **Insets** (tests/camera.test.ts at DPR 1, 2, 2.625, 3): the canvas stays full-bleed under the UI and never resizes between panel states. The UI (layout.ts) tells the view what it covers; centring, the ± zoom anchor, the clamp, the minimap rectangle and `ensureVisibleDelta` (the least move that brings a rect inside the free rect, `marginPx` clear of its edges; 0 when it is inside; a rect too big is only moved until it fills it) use the free rect. Insets that leave no free rect fall back to the whole viewport. `x, y` stay the world px at the canvas centre, so `screenToWorld`/`worldToScreen`, picking, the fling and drawing never see the insets.
-- `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
+- `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. A tool that owns the press (`toolDrag` 'start' true: road, pave, the demolish sweep) drags instead of panning (a pinch still pans); a press it never saw move stays a click when its 'end' returns false (the demolish tool). Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
 
 ### 12.2 Frame and draw order (`view.ts`)
 `frame()` is called on every turn of `main.ts`'s loop (§13.8), and draws only when the frame can differ from the last
@@ -1663,6 +1685,7 @@ export interface ViewCallbacks {
   onHover(tile: number | null, buildingId: number | null): void;
   onClick(tile: number, buildingId: number | null, e: { button: 0 | 2; shift: boolean }): void;
   onDrag(kind: 'road' | 'pave', tiles: number[], done: boolean): void;      // L-shaped path preview; done on release
+  onDemolish(ids: number[]): void;                                           // the demolish tool's second click: pull these down
   onCancel(): void;                                                          // right-click / two-finger tap while placing
   onPlacementPreview(check: PlaceCheck | null, tile: number | null): void;   // banner + inspector verdict (desktop hover, touch tap)
 }
@@ -1701,6 +1724,8 @@ export class MapView {
   readonly suspended: boolean;
   invalidate(): void;                                 // P7: something the map shows changed outside the view: draw next frame
   readonly draws: number;                             // P7: map frames drawn since the page loaded (?dev battery checks)
+  readonly armed: boolean;                            // the demolish tool holds armed works (a Back/Esc layer, BACK_RANK.armed)
+  disarm(): boolean;                                  // drops them (Esc, Back, a right-click); false when none
 }
 ```
 Covered (`suspend(true)`), `frame()` returns at once and `handleFx` drops the bursts, flashes and columns (kept, they
@@ -1709,7 +1734,7 @@ building whose crackle was heard burns when the map shows); uncovered, the next 
 going on from where they stood.
 Camera and the UI: every coordinate in and out is canvas CSS px; `mapRect()` places them in `#app`. `setInsets` never recentres, but clamps at once to the new free rect (at a map edge a wider free rect moves the limit: the step comes with the panel's slide, not with the next drag); with `host: true` (the layout changed shape) the default level is chosen again from the free map unless the player zoomed by hand since `attach`. `attach` picks the default level from min(free width, free height) (phones, landscape phones, docked tablets: 2), except on the COLUMNS host, where `setInsets({ canvasZoom: true })` keeps the canvas-width rule (desktops and 1366×768 laptops: 3) and centres the forum in the free rect. `startPlacing` with `at` glides the ghost into the free map (which ends above the placing banner) by the least it needs (`ensureVisible`, 64 px clear), never when it is there already; every `setInsets` does the same for a ghost the player set (pre-positioned or tapped, not the mouse's: `keepGhost`), so a rotation or a resized window never leaves Place staking a site out of sight. The inspector's popup (inspector.ts) glides a pinned target clear only when the UI covers it, when picked and again on a layout change (`Layout.onChange`): `ensureVisible` into the free rect, then `dodge()` (pure, tests/layout.test.ts) clear of what floats over it (the map's tools, the ticker, a phone's band of cards; what the layout floats, the DOCK's head beside the spine, by its own box: `currentFloating`); a target already in view never moves. The card stands where the room around its target holds it (`clearAround`: a house left of the DOCK's head keeps its card there), and of the sides where it fits whole it takes the one covering least of the map's tools (`#map-tools` whole, the zoom, the tool column, the overlay bar, the minimap, the ticker); when that one still covers some, a side where a shorter card (down to 180 px, scrolling inside) or one slid along its edge (its tail still on the target's middle) covers none, the tallest of those (`popupSlot`, pure, tests/layout.test.ts: a card left of a target at the top right of a tablet's map ends above the minimap).
 
-Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
+Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish (`demolish.ts`, F): the first click arms the work under it, or a press dragged across the map sweeps a rectangle (`sweepRect`, `sweepIds`: every work it touches; the tool owns the drag as the road tool does, and returns false at the 'end' of a press it never saw move, which Input then taps) and arms what it touched on release. Armed works show red under the lines of `demolitionImpact` (*"Click again to demolish all 6"* · homes and people, workers · *"3 homes lose water"* · *"25% back: 10 timber"*; `impactLines`, pure; read again when `structEpoch` changes); a second click on them (or anywhere inside an armed sweep) calls `cb.onDemolish(ids)` → `actions.demolishMany`, unless it comes under `CONFIRM_GUARD_MS` (400) after the first (`demolishTap`, pure: a double-click arms, never pulls down). No timer: a mouse leaving the armed works, a click on bare ground, a right-click, Esc or Back (`BACK_RANK.armed`, 55, above placing) disarm; a finger's stay armed until a tap elsewhere. The demolish banner carries **Undo** while `undoable(s)` (`syncPlaceBanner`, every throttled UI frame).
 
 ### 12.5 Overlays (`overlays.ts`, F)
 Each overlay is a 112 × 84 canvas (1 px per tile) rebuilt when its key changes (`structEpoch` + overlay id + layer + `day / 5` for *domus*), drawn by `view.ts` at 45% alpha and mirrored on the minimap. Sources and colours:
@@ -2008,7 +2033,7 @@ frame(t): schedule()                        // the next turn first: an animation
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
 keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs
-back (history.ts): initBack(g) registers the modal 100, placing 50 and selection 40; the phone's speed popover (hud.ts)
+back (history.ts): initBack(g) registers the modal 100, the demolish tool's armed works 55, placing 50 and selection 40; the phone's speed popover (hud.ts)
       and the tool column's Via and Mappae popovers (mapbar.ts) add 70, the Breviarium (tray.ts) 60, the event card in a
       phone's slot (ui/index.ts) 45, and the layout the panel's detent at 30 (isLayer, backDetent: full → half → closed on
       the phones, wide → docked on the COLUMNS, spine or wide → docked on the DOCK); later layers registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;

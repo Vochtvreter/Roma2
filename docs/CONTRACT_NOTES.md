@@ -168,7 +168,7 @@ CONTRACT NOTES**
    - The `zoomBy` anchor is in CSS px, like every other MapView coordinate.
    - `panBy` moves the map content like a drag, so keys pass negative values for D/→.
    - `screenOf` returns the tile centre in CSS px, or null when off-screen.
-   - Two-click demolish is armed inside the view; only the confirming click reaches `cb.onClick`.
+   - Two-click demolish is armed inside the view; only the confirming click reaches the app (now `cb.onDemolish(ids)`, for one work or a dragged area: render/demolish.ts).
    - A touch tap while placing a building only previews; the place banner's Place button confirms via `placeAt`.
 8. **Extra public members** (the frozen signatures are unchanged):
    - `UI.changed()` and the `UI.side`, `UI.inspector`, `UI.choice` fields, which App uses for `openTab` and `inspect`.

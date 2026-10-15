@@ -23,9 +23,11 @@ export interface InputHandlers {
   fling(vx: number, vy: number): void;
   zoom(steps: number, sx: number, sy: number): void;
   tap(sx: number, sy: number, info: TapInfo): void;
-  /** A tool drag (road/pave): return true from 'start' to own the drag instead of panning. 'end' commits the path;
-   *  'abort' (a second finger joins, or the pointer is cancelled) drops it without laying anything. */
-  toolDrag(phase: 'start' | 'move' | 'end' | 'abort', sx: number, sy: number, shift: boolean): boolean;
+  /** A tool drag (road/pave, the demolish sweep): return true from 'start' to own the drag instead of panning. 'end'
+   *  commits the path; a tool that takes a press it never saw move as a click returns false from 'end', and the press
+   *  taps. 'abort' (a second finger joins, or the pointer is cancelled) drops it without laying anything. `touch`: the
+   *  press is not a mouse's. */
+  toolDrag(phase: 'start' | 'move' | 'end' | 'abort', sx: number, sy: number, shift: boolean, touch?: boolean): boolean;
   cancel(): void;
 }
 
@@ -84,7 +86,7 @@ export class Input {
     this.h.fling(0, 0);
     if (this.pointers.size === 2) {
       // second finger: a pinch replaces any press (a tool drag in progress is abandoned, never committed)
-      if (this.press?.tool) this.h.toolDrag('abort', this.press.lx, this.press.ly, false);
+      if (this.press?.tool) this.h.toolDrag('abort', this.press.lx, this.press.ly, false, this.press.touch);
       this.press = null;
       const [a, b] = [...this.pointers.values()];
       this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, t0: e.timeStamp, moved: false };
@@ -93,7 +95,7 @@ export class Input {
     if (this.pointers.size > 2) return;
     const button: 0 | 2 = e.button === 2 ? 2 : 0;
     const touch = e.pointerType !== 'mouse';
-    const tool = button === 0 && this.h.toolDrag('start', p.x, p.y, e.shiftKey);
+    const tool = button === 0 && this.h.toolDrag('start', p.x, p.y, e.shiftKey, touch);
     const mute = this.muteId === e.pointerId;
     this.muteId = null;
     this.press = { id: e.pointerId, x: p.x, y: p.y, lx: p.x, ly: p.y, moved: false, button, tool, touch, mute };
@@ -125,7 +127,7 @@ export class Input {
         if (!pr.tool && pr.button === 0) this.el.style.cursor = 'grabbing';
       }
       if (pr.moved) {
-        if (pr.tool) this.h.toolDrag('move', p.x, p.y, e.shiftKey);
+        if (pr.tool) this.h.toolDrag('move', p.x, p.y, e.shiftKey, pr.touch);
         else if (pr.button === 0) this.h.pan(p.x - pr.lx, p.y - pr.ly);
       }
       pr.lx = p.x;
@@ -151,7 +153,7 @@ export class Input {
     if (!pr || pr.id !== e.pointerId) return;
     this.press = null;
     if (!this.enabled) return;
-    if (pr.tool) { this.h.toolDrag('end', p.x, p.y, e.shiftKey); return; }
+    if (pr.tool && (this.h.toolDrag('end', p.x, p.y, e.shiftKey, pr.touch) || pr.moved)) return;   // (false, unmoved: a click)
     if (pr.moved) {
       const a = this.trail[0], dt = (e.timeStamp - a.t) / 1000;
       if (pr.button === 0 && dt > 0.005 && e.timeStamp - this.trail[this.trail.length - 1].t < FLING_WINDOW_MS) {
@@ -170,7 +172,7 @@ export class Input {
     this.el.style.cursor = '';
     if (this.pointers.size < 2) this.pinch = null;
     if (this.press?.id === e.pointerId) {
-      if (this.press.tool) this.h.toolDrag('abort', this.press.lx, this.press.ly, false);
+      if (this.press.tool) this.h.toolDrag('abort', this.press.lx, this.press.ly, false, this.press.touch);
       this.press = null;
     }
   }

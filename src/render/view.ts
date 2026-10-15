@@ -29,11 +29,14 @@ import { TerrainPainter } from './terrain';
 import { ForestLayer, forestItems, natureItems } from './forest';
 import { OVERLAY_ALPHA, OverlayPainter } from './overlays';
 import { Minimap } from './minimap';
-import { Placement, label, lPath } from './placement';
+import { Placement, lPath } from './placement';
 import { Particles } from './particles';
 import { Actors } from './actors';
 import { BuildingPainter, footprintRect } from './buildings';
 import { linearItems } from './linear';
+import { demolitionImpact } from '../game/demolition';
+import type { Doom } from './demolish';
+import { covers, demolishTap, drawDoom, sweepIds, sweepRect } from './demolish';
 import { hasSprite, sprite, spriteNames, spriteSize } from './sprites';
 import { REQUIRED_SPRITES } from './art/index';
 
@@ -47,12 +50,12 @@ export interface ViewCallbacks {
   onHover(tile: number | null, buildingId: number | null): void;
   onClick(tile: number, buildingId: number | null, e: { button: 0 | 2; shift: boolean }): void;
   onDrag(kind: 'road' | 'pave', tiles: number[], done: boolean): void;      // L-shaped path preview; done on release
+  onDemolish(ids: number[]): void;                                           // the demolish tool's second click: pull these down
   onCancel(): void;                                                          // right-click / two-finger tap while placing
   onPlacementPreview(check: PlaceCheck | null, tile: number | null): void;   // banner + inspector verdict (desktop hover, touch tap)
 }
 
 const BG = '#15100d';
-const DEMOLISH_MS = 3000;
 const FLASH_MS = 1500;
 const EDGE_CSS = 64;                                // a pre-positioned ghost glides this far inside the free map (the ticker, the tools)
 const DRIFT = { r: 220, rate: 0.045 };              // title drift: world px around the forum, radians per second
@@ -90,7 +93,9 @@ export class MapView {
   private mouseGhost = false;   // the placing ghost is the mouse's (a hover moved it): the mouse leaving the map takes it away
   private flashes: { r: Rect; until: number; ms: number }[] = [];
   private time = 0;
-  private doomed: { id: number; until: number; touch: boolean } | null = null;   // touch: the label says Tap, not Click
+  private doomed: Doom | null = null;                // the demolish tool's armed works (render/demolish.ts)
+  private doomEpoch = 0;                             // … their impact as of this structure epoch
+  private sweep: { from: number; touch: boolean; doom: Doom | null } | null = null;   // a demolish sweep dragged from a tile
   private dragFrom: number | null = null;
   private titleT = 0;
   private sheetY = 0;
@@ -121,8 +126,8 @@ export class MapView {
       fling: (vx, vy) => (vx || vy ? this.motion.fling((-vx * this.ratio) / this.cam.scale, (-vy * this.ratio) / this.cam.scale) : this.motion.stop()),
       zoom: (steps, x, y) => this.zoomBy(steps, { sx: x, sy: y }),
       tap: (x, y, info) => this.onTap(x, y, info.button, info.shift, info.touch),
-      toolDrag: (phase, x, y, shift) => this.onToolDrag(phase, x, y, shift),
-      cancel: () => this.cb.onCancel(),
+      toolDrag: (phase, x, y, shift, touch) => this.onToolDrag(phase, x, y, shift, touch === true),
+      cancel: () => { if (!this.disarm()) this.cb.onCancel(); },   // a right-click first drops armed works
     });
     if (DEV_SHEET) this.sheet = sheetCanvas((dy) => { this.sheetY = Math.min(0, this.sheetY - dy * this.dpr); this.dirty = true; });
     this.resize();
@@ -141,6 +146,16 @@ export class MapView {
   get suspended(): boolean { return this.covered; }
   /** Map frames drawn since the page loaded (?dev: the battery checks count them over a few seconds). */
   get draws(): number { return this.drawn; }
+  /** The demolish tool holds armed works (a second click pulls them down; Esc and Back disarm them first). */
+  get armed(): boolean { return this.doomed !== null; }
+
+  /** Drops the demolish tool's armed works (Esc, Back, a right-click); false when none were armed. */
+  disarm(): boolean {
+    if (!this.doomed) return false;
+    this.doomed = null;
+    this.dirty = true;
+    return true;
+  }
 
   // ───────────────────────────── lifecycle ─────────────────────────────
   /** New or loaded game: drop caches, reset modes, the default zoom for the free map, centre on the forum. */
@@ -156,7 +171,7 @@ export class MapView {
     this._placing = null;
     this.prevOverlay = null;
     this._overlay = 'none';
-    this._selected = this.hoverTile = this.hoverId = this.doomed = this.dragFrom = null;
+    this._selected = this.hoverTile = this.hoverId = this.doomed = this.sweep = this.dragFrom = null;
     this.flashes = [];
     this.zoomed = false;
     this.dirty = true;
@@ -241,10 +256,10 @@ export class MapView {
    *  covers all of the map (suspend) or the map is paused and idle (nothing moves, nothing changed: see the header). */
   frame(dtMs: number, s: GameState, speed: number, paused: boolean): void {
     this.s = s;
-    this.time += dtMs;   // (the flashes and the demolish warning run out in real time, drawn or not)
+    this.time += dtMs;   // (the flashes and the demolish warning's pulse run out in real time, drawn or not)
     if (this.covered) return;
     if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
-    if (this.doomed && this.time > this.doomed.until) { this.doomed = null; this.dirty = true; }
+    if (this.doomed && structEpoch(s) !== this.doomEpoch) this.rearm(s);
     const sig = `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`;
     if (sig !== this.sig || s !== this.sigState) { this.sig = sig; this.sigState = s; this.dirty = true; }
     if (paused && !this.dirty && !this.animating()) { this.idle(s); return; }
@@ -396,7 +411,7 @@ export class MapView {
       if (auto) this.setOverlay(auto.o, auto.layer);
     }
     this._placing = p;
-    this.doomed = null;
+    this.doomed = this.sweep = null;
     this.dragFrom = null;
     this.mouseGhost = p.kind !== 'building' || p.at === undefined;   // a pre-positioned ghost stays until a hover takes it
     this.place.start(p, s);
@@ -415,7 +430,7 @@ export class MapView {
     this._placing = null;
     this.place.cancel();
     this.dragFrom = null;
-    this.doomed = null;
+    this.doomed = this.sweep = null;
     this.dirty = true;
     this.mini?.invalidate();   // (hidden while placing: it shows again with what was placed)
     if (this.prevOverlay) this.setOverlay(this.prevOverlay.o, this.prevOverlay.layer);
@@ -579,6 +594,7 @@ export class MapView {
     this.hoverId = id;
     this.dirty = true;
     this.cb.onHover(tile, id);
+    if (this.doomed && !this.doomed.touch && !covers(this.doomed, id, tile)) this.doomed = null;   // the mouse left the armed works
     if (this._placing && tileChanged && this.dragFrom === null) {
       this.mouseGhost = true;
       const check = this.place.hover(tile, s);
@@ -592,6 +608,7 @@ export class MapView {
   private onLeave(): void {
     this.hoverTile = this.hoverId = null;
     this.dirty = true;
+    if (this.doomed && !this.doomed.touch) this.doomed = null;
     this.cb.onHover(null, null);
     if (this._placing && this.s && this.dragFrom === null && this.mouseGhost) {
       this.place.hover(null, this.s);
@@ -613,18 +630,21 @@ export class MapView {
       return;
     }
     if (p?.kind === 'demolish') {
-      if (id === null) return;
-      if (this.doomed?.id === id && this.time <= this.doomed.until) {
+      const v = demolishTap(this.doomed, id, tile, this.time);
+      if (v === 'confirm' && this.doomed?.impact.ids.length) {
+        const ids = this.doomed.impact.ids;
         this.doomed = null;
-        this.cb.onClick(tile, id, { button, shift });
-      } else this.doomed = { id, until: this.time + DEMOLISH_MS, touch };
-      return;
+        this.cb.onDemolish(ids);
+      } else if (v === 'arm' && id !== null) this.arm([id], null, touch);
+      else if (v === 'disarm') this.doomed = null;
+      return;   // ('early': a second click under CONFIRM_GUARD_MS, a double-click, pulls nothing down)
     }
     this.cb.onClick(tile, id, { button, shift });
   }
 
-  private onToolDrag(phase: 'start' | 'move' | 'end' | 'abort', x: number, y: number, shift: boolean): boolean {
+  private onToolDrag(phase: 'start' | 'move' | 'end' | 'abort', x: number, y: number, shift: boolean, touch: boolean): boolean {
     const p = this._placing;
+    if (p?.kind === 'demolish') return this.onSweep(phase, x, y, touch);
     if (!p || (p.kind !== 'road' && p.kind !== 'pave')) return false;
     if (phase === 'abort') {                       // a pinch or a cancelled pointer: drop the path, never commit it
       this.dragFrom = null;
@@ -652,6 +672,54 @@ export class MapView {
     return true;
   }
 
+  /** Arms works for the demolish tool: what pulling them down would do is worked out once, here (and again when the
+   *  structure changes: rearm). A sweep that touched nothing arms nothing. */
+  private arm(ids: number[], rect: Rect | null, touch: boolean): void {
+    const s = this.s;
+    if (!s || ids.length === 0) { this.doomed = null; return; }
+    this.doomed = { ids, rect, at: this.time, touch, impact: demolitionImpact(s, ids) };
+    this.doomEpoch = structEpoch(s);
+  }
+
+  /** The structure changed under armed works (a work finished, the Ordo built, a fire): their impact is read again, and
+   *  works gone meanwhile drop out (all gone: nothing stays armed). */
+  private rearm(s: GameState): void {
+    const d = this.doomed;
+    if (!d) return;
+    const ids = d.ids.filter((id) => getBuilding(s, id));
+    if (ids.length === 0) { this.doomed = null; this.dirty = true; return; }
+    this.doomed = { ...d, ids, impact: demolitionImpact(s, ids) };
+    this.doomEpoch = structEpoch(s);
+    this.dirty = true;
+  }
+
+  /** The demolish tool owns a press: dragged, it sweeps a rectangle over the works (their count and salvage shown as it
+   *  grows) and arms them on release; a press that never moved returns false at 'end', and Input taps it instead. */
+  private onSweep(phase: 'start' | 'move' | 'end' | 'abort', x: number, y: number, touch: boolean): boolean {
+    const s = this.s, tile = this.tileAt(x, y);
+    if (phase === 'start') {
+      if (tile === null) return false;
+      this.sweep = { from: tile, touch, doom: null };
+      return true;
+    }
+    const sw = this.sweep;
+    if (phase === 'abort' || !sw || !s) { this.sweep = null; this.dirty = true; return phase !== 'end'; }
+    this.dirty = true;
+    if (phase === 'move') {
+      if (tile === null) return true;
+      const rect = sweepRect(sw.from, tile), at = sw.doom?.rect;
+      if (at && at.x === rect.x && at.y === rect.y && at.w === rect.w && at.h === rect.h) return true;
+      const ids = sweepIds(s, rect);
+      this.doomed = null;
+      sw.doom = { ids, rect, at: this.time, touch: sw.touch, impact: demolitionImpact(s, ids, { needs: false }) };
+      return true;
+    }
+    this.sweep = null;
+    if (!sw.doom) return false;                     // never dragged: a click (Input taps it)
+    this.arm(sw.doom.ids, sw.doom.rect, sw.touch);
+    return true;
+  }
+
   private drawFlashes(g: CanvasRenderingContext2D, s: GameState, xf: Xform): void {
     this.flashes = this.flashes.filter((f) => f.until > this.time);
     for (const f of this.flashes) {
@@ -660,13 +728,8 @@ export class MapView {
       g.fillStyle = `rgba(242,201,76,${a})`;
       g.fillRect(X, Y, w, 2); g.fillRect(X, Y + h - 2, w, 2); g.fillRect(X, Y, 2, h); g.fillRect(X + w - 2, Y, 2, h);
     }
-    const b = this.doomed ? getBuilding(s, this.doomed.id) : undefined;
-    if (b) {
-      const r = footprintRect(s, b);
-      g.fillStyle = `rgba(229,85,74,${0.3 + 0.2 * Math.sin(this.time / 120)})`;
-      g.fillRect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE);
-      label(g, `${this.doomed?.touch ? 'Tap' : 'Click'} again to demolish`, (r.x + r.w / 2) * TILE, r.y * TILE - 8 - 12 / xf.k, '#e5554a', this.ins);
-    }
+    const d = this.sweep?.doom ?? this.doomed;
+    if (d) drawDoom(g, s, d, d !== this.doomed, this.time, xf.k, this.ins);
   }
 
   /** ?dev&sheet: every registered and every required sprite in a labelled grid by group at 2× (missing ones in red). */

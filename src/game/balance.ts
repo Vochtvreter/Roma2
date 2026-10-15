@@ -153,6 +153,7 @@ export const B = {
   // ───────── works (DESIGN §5.3, §9.5) ─────────
   construction: {
     STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25,
+    UNDO_DAYS: 10,                                    // a demolition can be undone this long (10 s at 1×; demolition.ts)
     CAP_CREW: 64, CAP_WORK: 320_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],   // CAP_WORK tuned from 160,000 (§9.5)
     CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 160_000 },   // denarii tuned from 40,000
     TRENCH: 0.1,                                      // 0–10% of work shows the foundation trench

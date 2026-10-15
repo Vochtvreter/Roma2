@@ -23,7 +23,7 @@ import { TitleScreen } from './title';
 import { toast, toastBatch } from './toasts';
 import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
-import { MapColumn, MapTools, renderPlaceBanner } from './mapbar';
+import { MapColumn, MapTools, renderPlaceBanner, syncPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Layout, brevColumn, hostPointer, isPhone, lessonFolds } from './layout';
 import { SheetHost } from './sheet';
@@ -251,6 +251,7 @@ export class UI {
     this.ticker.update(now);
     this.tools.update();
     this.column.update();
+    syncPlaceBanner(g);   // the demolish tool's Undo, while its days last
   }
 
   /** An opening lesson's job was done (a lyre), the next lesson began (a tink), or the lessons ended (the cornu). */
