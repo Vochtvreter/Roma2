@@ -3,7 +3,7 @@
 // at most CAP_CREW builders' worth, and draws its materials pro rata to the work it receives.
 import { B as B$ } from './balance';
 import { RESOURCES as RESOURCES$ } from './types';
-import type { ActionResult, Building, BuildingId, Cost, GameState, HouseState, Person, ResId, TickContext } from './types';
+import type { ActionResult, Building, BuildingId, Cost, FxEvent, GameState, HouseState, Person, ResId, TickContext } from './types';
 import { getMap as getMap$ } from './map';
 import { invalidate as invalidate$, touchPeople as touchPeople$ } from './memo';
 import { canAfford, log, nextId, pay, refund } from './state';
@@ -13,6 +13,7 @@ import { census, peopleIndex, stageOf } from './census';
 import { buildingRate, inputShares, legacyMult, productivity } from './economy';
 import { gainSkill } from './people';
 import { savingFor } from './ordo/saving';
+import { manualReach } from './ordo/labour';
 import { settingValue } from './decisions';
 import { seasonOf as seasonOf$ } from './calendar';
 import { view } from './sim';
@@ -101,7 +102,8 @@ function complete(s: GameState, ctx: TickContext, b: Building): void {
   if (b.type === 'olivetum') b.youngUntil = s.day + B.site.OLIVE_YOUNG_DAYS;
   s.stats.built++;
   s.stats.builtBy[b.type] = (s.stats.builtBy[b.type] ?? 0) + 1;
-  ctx.fx.push({ kind: 'built', id: b.id });
+  const built: Extract<FxEvent, { kind: 'built' }> = { kind: 'built', id: b.id };
+  ctx.fx.push(built);
   log(s, 'build', `${BUILDING_DEFS[b.type].name} finished.`, undefined, b.id);
   if (b.type === 'capitolium' && !s.victory) {
     s.victory = true;
@@ -114,6 +116,13 @@ function complete(s: GameState, ctx: TickContext, b: Building): void {
     log(s, 'milestone', 'The Capitolium is dedicated: Iuppiter, Iuno and Minerva look down on the colonia.', ['highlight'], b.id);
   }
   invalidate(s);
+  // staffing by hand, its posts wait on the category's target (DESIGN §10.2): what that target lacks for it rides the
+  // fx as it stands now (the completion toast's button), since a frame can run more ticks before the toast is made, and
+  // the next day's staffing may give the work another's hands (a nearer post fills first) and leave that one empty
+  if (!s.ordo.on.labour) {
+    const short = manualReach(s, view(s), b.id);
+    if (short > 0) built.short = short;
+  }
 }
 
 /** Capitolium materials per unit of work (CAP_MAT × fx(capMat) spread over its total work). */

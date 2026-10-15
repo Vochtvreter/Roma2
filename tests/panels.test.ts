@@ -2,7 +2,7 @@
 // Headless: imports the tab modules' signature/badge functions only (no DOM is touched at import or in a signature).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
-import type { GameState, Remedy } from '../src/game/types';
+import type { FxEvent, GameState, Remedy } from '../src/game/types';
 import type { Game } from '../src/ui/types';
 import { PANELS, panelTokens } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
@@ -199,7 +199,7 @@ describe('remedy buttons follow the best plot (R15)', () => {
     const pave: Remedy = { kind: 'tool', tool: 'pave' };
     const key = (): string => remedyKey(s, { remedy: pave, check: checkRemedy(s, pave) });
     s.res.stone = 0;
-    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'unaffordable' });   // disabled: "…the stores hold 0."
+    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'unaffordable' });
     const short = key();
     s.res.stone = B.map.PAVE_STONE;
     expect(checkRemedy(s, pave).ok).toBe(true);
@@ -207,6 +207,30 @@ describe('remedy buttons follow the best plot (R15)', () => {
     expect(ready).not.toBe(short);                                      // the Consiliarii card rebuilds: no stale reason
     s.res.stone = 500;
     expect(key()).toBe(ready);                                          // more stone is no new key
+  });
+
+  it('a disabled remedy keeps its key while its reason stays, and the reason holds no live count; another reason is another key', async () => {
+    const { pave: paveRoads } = await import('../src/game/place');
+    const { derived } = await import('../src/game/derived');
+    const s = fresh(42);
+    s.guidance.milestoneDays.templum = s.day;
+    const pave: Remedy = { kind: 'tool', tool: 'pave' };
+    const key = (): string => remedyKey(s, { remedy: pave, check: checkRemedy(s, pave) });
+    const reason = (): string => { const c = checkRemedy(s, pave); return c.ok ? '' : c.reason; };
+    s.res.stone = 0;
+    const k0 = key(), r0 = reason();
+    s.res.stone = B.map.PAVE_STONE - 1;                                 // a stone in, still short of a pace
+    expect(key()).toBe(k0);                                             // no rebuild…
+    expect(reason()).toBe(r0);                                          // …and the reason it shows is still true
+    expect(r0).toBe(`Paving takes ${B.map.PAVE_STONE} stone a pace, and the stores hold less.`);
+    // every road paved: still disabled, for another reason, and the card rebuilds to say it
+    s.res.stone = 1e6;
+    const dirt = s.roads.filter((i) => derived(s).road[i] === 1);
+    expect(dirt.length).toBeGreaterThan(0);
+    expect(paveRoads(s, dirt).ok).toBe(true);
+    s.res.stone = 0;
+    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'invalid', reason: 'Every road is already paved.' });
+    expect(key()).not.toBe(k0);
   });
 });
 
@@ -278,7 +302,7 @@ describe('panelTokens (#app[data-panel], what the stylesheets key on instead of 
 });
 
 describe('a work finished while the labour is the player\'s (finding 11)', () => {
-  it('its toast counts its hands and its +N is what the category target lacks; none while the Ordo staffs', async () => {
+  it('its toast counts its hands and its button names the target that staffs it; none while the Ordo staffs', async () => {
     const { finishedStaffing } = await import('../src/ui/tabs/labour');
     const { setManualTarget, setOrdo } = await import('../src/game/actions');
     const { validSlots } = await import('../src/game/place');
@@ -295,13 +319,15 @@ describe('a work finished while the labour is the player\'s (finding 11)', () =>
     const t = finishedStaffing(s, well.id)!;
     expect(t.text).toBe('Well finished: 0/2 hands');
     expect(t.sub).toBe('You staff by hand: 2 water hands set for 4 posts.');
-    expect([t.label, t.cat, t.n, t.to]).toEqual(['+2 water', 'water', 2, 4]);
-    expect(t.tip).toBe('Raise the water target from 2 to 4.');
+    // worded as the target, not "+2": a press after another toast's, or a target raised by hand, changes nothing, and
+    // the words still say what the target is
+    expect([t.label, t.cat, t.n, t.to]).toEqual(['Water hands to 4', 'water', 2, 4]);
+    expect(t.tip).toBe('Set the water target to 4 hands (a higher one stays).');
     expect(setManualTarget(s, 'water', Math.max(s.ordo.manual.water, t.to)).ok).toBe(true);   // ui/index.ts, the button
     expect(finishedStaffing(s, well.id)).toBeNull();          // the target reaches it now
   });
 
-  it('two works finished in one frame, or a target raised by hand since: the +N buttons never overshoot', async () => {
+  it('two works finished in one frame, or a target raised by hand since: the buttons never overshoot', async () => {
     const { finishedStaffing } = await import('../src/ui/tabs/labour');
     const { setManualTarget, setOrdo } = await import('../src/game/actions');
     const { validSlots } = await import('../src/game/place');
@@ -329,5 +355,50 @@ describe('a work finished while the labour is the player\'s (finding 11)', () =>
     s.ordo.manual.water = 7;
     click(toasts[0]);
     expect(s.ordo.manual.water).toBe(7);
+  });
+
+  it('a frame that runs two ticks: the toast is the work\'s as it was finished, though the next day gave it an older well\'s hands', async () => {
+    const { finishedStaffing } = await import('../src/ui/tabs/labour');
+    const { setOrdo } = await import('../src/game/actions');
+    const { validSlots } = await import('../src/game/place');
+    const { manualPlan } = await import('../src/game/ordo/labour');
+    const { getMap } = await import('../src/game/map');
+    const { census } = await import('../src/game/census');
+    const s = fresh(42);
+    const old = s.buildings.find((b) => b.type === 'puteus' && b.status === 'done')!;
+    // a new well nearer the forum than the founders' one: by hand, the nearer posts fill first
+    const f = getMap(s.seed).survey.forum, W = getMap(s.seed).W;
+    const far = (t: number): number => Math.hypot((t % W) - (f.x + f.w / 2), Math.floor(t / W) - (f.y + f.h / 2));
+    const nearer = [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => far(a) - far(b)).find((at) => {
+      const t = structuredClone(s);
+      const r = placeBuilding(t, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
+      if (!r.ok || r.id === undefined) return false;
+      Object.assign(t.buildings.find((b) => b.id === r.id)!, { status: 'done', progress: 1 });
+      invalidate(t);
+      t.ordo.on.labour = false;
+      t.ordo.manual.water = census(t).catStaffed.water;
+      const plan = manualPlan(t, view(t)).perBuilding;
+      return (plan[r.id] ?? 0) > 0 && (plan[old.id] ?? 0) === 0;
+    });
+    expect(nearer).toBeDefined();
+    const r = placeBuilding(s, 'puteus', nearer!, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!r.ok || r.id === undefined) throw new Error('no well');
+    const well = s.buildings.find((b) => b.id === r.id)!;
+    expect(setOrdo(s, 'labour', false).ok).toBe(true);                // water 2: the old well's hands, 4 posts once it stands
+    well.progress = 1 - 1e-6;
+    // the frame's first tick finishes it; the toast is not made before the second has run (ui/index.ts onFx)
+    const fx: FxEvent[] = [];
+    run(s, 2, (_s, c) => fx.push(...c.fx));
+    const built = fx.find((e): e is Extract<FxEvent, { kind: 'built' }> => e.kind === 'built' && e.id === well.id);
+    expect(built?.short).toBe(2);                                      // the hands the target lacked for it, as it stood
+    expect(census(s).staffed[well.id]).toBe(2);                        // the second day gave it the old well's hands
+    expect(census(s).staffed[old.id] ?? 0).toBe(0);
+    expect(finishedStaffing(s, well.id)).toBeNull();                   // the state now: the target reaches the new well
+    const t = finishedStaffing(s, well.id, built?.short)!;             // the toast: the old well's posts wait for hands
+    expect(t.text).toBe('Well finished: 2/2 hands');
+    expect(t.sub).toBe('You staff by hand: 2 water hands set for 4 posts.');
+    expect([t.label, t.n, t.to]).toEqual(['Water hands to 4', 2, 4]);
+    // a work finished with the target reaching it carries none: no staffing toast
+    expect(finishedStaffing(s, well.id, 0)).toBeNull();
   });
 });

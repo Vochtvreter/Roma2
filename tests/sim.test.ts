@@ -282,7 +282,7 @@ describe('the works\' water floor (DESIGN §5.2, playtest #8)', () => {
     expect(w.have).toBeCloseTo(s.res.water / need, 9);
     const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
     const full = Math.floor(caps(s).water / need);
-    expect(idle.why).toBe(`the water reserve is not met; the stores hold ${Math.floor(w.have)} days, and the works draw only above ${Math.ceil(w.keep)}, three-quarters of the ${full} a full store holds. Under Populo prius the people drink first.`);
+    expect(idle.why).toBe(`the water reserve is not met; the stores hold ${Math.floor(w.have)} days, and the works draw only above ${Math.round(B.economy.RESERVE_ROOM * full)}, three-quarters of the ${full} a full store holds. Under Populo prius the people drink first.`);
     expect(idle.remedies.slice(0, 2)).toEqual([
       { kind: 'edict', edict: 'aquae', option: 'aequa' },
       { kind: 'setting', setting: 'waterReserve', value: Math.max(5, Math.floor(w.have) - 1) },
@@ -317,7 +317,7 @@ describe('the works\' water floor (DESIGN §5.2, playtest #8)', () => {
     expect(w.full).toBeLessThan(B.emergency.WATER_RESUME / B.economy.RESERVE_ROOM);   // a fresh colony's stores hold 17 days
     expect(w.keep).toBeCloseTo(B.economy.RESERVE_ROOM * w.full, 9);
     const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
-    expect(idle.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${Math.ceil(w.keep)} days in store, three-quarters of the ${Math.floor(w.full)} a full store holds; we hold 6.`);
+    expect(idle.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${Math.round(B.economy.RESERVE_ROOM * Math.floor(w.full))} days in store, three-quarters of the ${Math.floor(w.full)} a full store holds; we hold 6.`);
     expect(idle.remedies).toHaveLength(1);                                       // more water: a full store lifts it, no cistern needed
     expect(idle.remedies.some((r) => r.kind === 'place' && r.building === 'cisterna')).toBe(false);
     const at = freeSlots(s, 'cisterna')[0];                                     // a cistern's room: the 15 days stand
@@ -327,6 +327,30 @@ describe('the works\' water floor (DESIGN §5.2, playtest #8)', () => {
     invalidate(s);
     expect(waterHold(s, b)?.keep).toBe(B.emergency.WATER_RESUME);
     expect(waterIdle(s, view(s), b)?.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${B.emergency.WATER_RESUME} days in store; we hold 6.`);
+  });
+
+  it('stores just under 20 days: the level it lifts at and the full store agree, and the line never says we hold more', () => {
+    const { s, b } = works();
+    s.ordo.emergency.waterPause = true;
+    const full = (): number => caps(s).water / census(s).need.water;
+    while (full() < 19) {                                                         // fewer idle mouths: the store holds more days
+      s.people.splice(s.people.findIndex((p) => p.work === null), 1);
+      touchPeople(s);
+    }
+    expect(full()).toBeLessThan(20);                                             // 19.6 days: three-quarters is 14.7, under 15
+    const need = census(s).need.water;
+    s.res.water = 6 * need;
+    const w = waterHold(s, b) as NonNullable<ReturnType<typeof waterHold>>;
+    expect(Math.ceil(w.keep)).toBe(15);                                          // not "above 15, three-quarters of the 19"
+    const line = (): string | undefined => waterIdle(s, view(s), b)?.why;
+    expect(line()).toBe('the Lex de annona paused the works that draw water when it ran low. They resume above 14 days in store, three-quarters of the 19 a full store holds; we hold 6.');
+    s.res.water = (w.keep - 1e-3) * need;                                        // still paused, just under the level
+    expect(waterHold(s, b)?.why).toBe('pause');
+    expect(line()).toMatch(/resume above 14 days in store, three-quarters of the 19 a full store holds; we hold 14\.$/);
+    // the same words for the works' own floor under Populo prius (three-quarters of the store, under the 30-day reserve)
+    s.ordo.emergency.waterPause = false;
+    s.res.water = 6 * need;
+    expect(line()).toBe('the water reserve is not met; the stores hold 6 days, and the works draw only above 14, three-quarters of the 19 a full store holds. Under Populo prius the people drink first.');
   });
 });
 

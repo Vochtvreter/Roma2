@@ -298,9 +298,10 @@ export class UI {
         case 'built': {
           const b = getBuilding(s, e.id);
           const name = !b ? 'A work' : b.type === 'area' ? 'A house plot' : BUILDING_DEFS[b.type].name;
-          // staffing by hand, a work's posts wait on its category's target (DESIGN §10.2): its toast says so, +N on a button
-          // that sets the target the toast named (a higher one since, by hand or another toast's +N, stays)
-          const staff = finishedStaffing(s, e.id);
+          // staffing by hand, a work's posts wait on its category's target (DESIGN §10.2): its toast says so, as it stood
+          // when the work was finished (the fx's `short`: the ticks of this frame since may have moved hands), with a
+          // button that sets the target it names ("Water hands to 4"; a higher one since, by hand or another toast, stays)
+          const staff = finishedStaffing(s, e.id, e.short ?? 0);
           if (staff) {
             toast(staff.text, 'good', 'i_star', 8000, staff.sub, { label: staff.label, tip: staff.tip,
               run: () => { g.act(setManualTarget(g.state, staff.cat, Math.max(g.state.ordo.manual[staff.cat], staff.to)), { okSfx: 'click' }); } });

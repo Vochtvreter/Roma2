@@ -39,22 +39,24 @@ export function holdSteps(ms: number): number {
 }
 
 /** A work finished under manual labour adds posts, not hands (DESIGN §10.2): its completion toast ("Well finished:
- *  0/2 hands"), the hands its one button adds to the category's target (`n`: ordo/labour.manualReach) and the target
- *  that makes (`to`: the button sets it, or keeps a higher one, so two works finished together or a target raised by
- *  hand since are not counted twice); null while the Ordo staffs, for a work without posts, or when the target already
+ *  0/2 hands"), the hands its category's target lacks for it (`n`: ordo/labour.manualReach, or `short`, as its `built`
+ *  fx carries it from the moment it was finished: a frame can run more ticks, and by then the next day's staffing may
+ *  have given it another work's hands) and the target that makes (`to`: its one button, "Water hands to 4", sets it or
+ *  keeps a higher one, so two works finished together or a target raised by hand since are not counted twice, and its
+ *  words stay true after either); null while the Ordo staffs, for a work without posts, or when the target already
  *  reaches it (pure; tests/panels.test.ts). */
-export function finishedStaffing(s: GameState, id: number): { text: string; sub: string; label: string; tip: string; cat: LaborCat; n: number; to: number } | null {
+export function finishedStaffing(s: GameState, id: number, short?: number): { text: string; sub: string; label: string; tip: string; cat: LaborCat; n: number; to: number } | null {
   const b = getBuilding(s, id);
   const def = b ? BUILDING_DEFS[b.type] : null;
   if (!b || !def || s.ordo.on.labour || b.status !== 'done' || !def.labor || def.labor === 'builders') return null;
   const v = view(s);
-  const n = manualReach(s, v, id);
+  const n = short ?? manualReach(s, v, id);
   if (n <= 0) return null;
-  const cat = def.labor, word = CAT_LABEL[cat][1].toLowerCase(), target = s.ordo.manual[cat];
+  const cat = def.labor, word = CAT_LABEL[cat][1].toLowerCase(), target = s.ordo.manual[cat], to = target + n;
   return {
     text: `${def.name} finished: ${v.c.staffed[id] ?? 0}/${slotsOf(b.type, s.rank)} hands`,
     sub: `You staff by hand: ${target} ${word} ${target === 1 ? 'hand' : 'hands'} set for ${v.c.catSlots[cat]} posts.`,
-    label: `+${n} ${word}`, tip: `Raise the ${word} target from ${target} to ${target + n}.`, cat, n, to: target + n,
+    label: `${CAT_LABEL[cat][1]} hands to ${to}`, tip: `Set the ${word} target to ${to} hands (a higher one stays).`, cat, n, to,
   };
 }
 

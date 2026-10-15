@@ -183,11 +183,15 @@ export function waterIdle(s: GameState, v: SimView, b: Building): { why: string;
   const up = (x: number): number => Math.ceil(x - 1e-6), down = (x: number): number => Math.floor(x + 1e-6);
   const draw = (BUILDING_DEFS[b.type].inputs?.water ?? 0) * (v.c.staffed[b.id] ?? 0);
   const water: Remedy = openPosts(v, 'water') > 0 ? labourRemedy(s, v, 'water', 'water', draw) : { kind: 'place', building: 'puteus' };
-  const room = `${fractionWord(B.economy.RESERVE_ROOM)} of the ${down(w.full)} a full store holds`;
+  // a floor set by the stores' room (three-quarters of a full store) is shown as that share of the full store's days as
+  // shown, so the two numbers agree ("above 14, three-quarters of the 19", never "above 15" by a 19.9 floored to 19); it
+  // is never under the days the stores are shown to hold while the works wait (both floored)
+  const full = down(w.full), roomKeep = Math.round(B.economy.RESERVE_ROOM * full);
+  const room = `${fractionWord(B.economy.RESERVE_ROOM)} of the ${full} a full store holds`;
   if (w.why === 'pause') {
     const small = w.keep < B.emergency.WATER_RESUME - 1e-6;      // stores that hold under 20 days lift it three-quarters full
     return {
-      why: `the Lex de annona paused the works that draw water when it ran low. They resume above ${up(w.keep)} days in store`
+      why: `the Lex de annona paused the works that draw water when it ran low. They resume above ${small ? roomKeep : up(w.keep)} days in store`
         + `${small ? `, ${room}` : ''}; we hold ${down(w.have)}.`,
       remedies: [water],
     };
@@ -195,7 +199,7 @@ export function waterIdle(s: GameState, v: SimView, b: Building): { why: string;
   const people = 'Under Populo prius the people drink first.';
   const why = w.keep >= w.reserve - 1e-6
     ? `the water reserve (${w.reserve} days) is not met; the stores hold ${down(w.have)}. ${people}`
-    : `the water reserve is not met; the stores hold ${down(w.have)} days, and the works draw only above ${up(w.keep)}, ${room}. ${people}`;
+    : `the water reserve is not met; the stores hold ${down(w.have)} days, and the works draw only above ${roomKeep}, ${room}. ${people}`;
   const lower = Math.max(SETTING_DEFS.waterReserve.min, down(w.have) - 1);
   const frees = lower < w.reserve && lower < w.have - 1e-6;       // the new floor falls under the stock: the works draw
   return {

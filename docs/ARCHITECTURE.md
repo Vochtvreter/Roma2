@@ -750,7 +750,7 @@ export interface Rates {
   cons: Record<ResId, Partial<Record<RateSource, number>>>;
 }
 export type FxEvent =
-  | { kind: 'built'; id: number }
+  | { kind: 'built'; id: number; short?: number }   // short: by hand, the hands its category's target lacked for it as it was finished
   | { kind: 'evolved'; id: number; tier: HouseTierId }
   | { kind: 'declined'; id: number }
   | { kind: 'birth'; home: number | null }
@@ -1138,7 +1138,7 @@ export function snapSlot(s: GameState, type: BuildingId, tile: number): { x: num
 export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: PlaceOpts): PlaceCheck;
 export function validSlots(s: GameState, type: BuildingId, owner: Owner): Map<number, number>;   // origin tile → mult; memo on type+owner+structEpoch
 export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts?: PlaceOpts): ActionResult;
-export function demolish(s: GameState, id: number): ActionResult;
+export function demolish(s: GameState, id: number): ActionResult;   // a finished work: REFUND_DEMOLISH back, its residents and workers out; a site: cancelSite; either ends the demolish tool's Undo (forgetDemolition)
 export function buildRoad(s: GameState, tiles: number[]): ActionResult;           // fells the woods it crosses; the log says what would spill at the day's end
 export function roadPreview(s: GameState, tiles: readonly number[]): { paces: number; fell: number };   // a road drag's new paces and felling yield
 export function fellingSpill(s: GameState, fell: number, spend?: number): { cap: number; spill: number; most: boolean; words: string };   // a felling against the timber cap, `spend` paid out first (DESIGN §3.7)
@@ -1263,13 +1263,13 @@ export function setHousePref(s: GameState, id: number, pref: HousePref): ActionR
 export function worksQueue(s: GameState): Building[];                 // unfinished: player-owned first, then order, then id
 export function startStaked(s: GameState): void;                      // staked → building after STAKE_DAYS
 export function payPlans(s: GameState, ctx: TickContext): void;       // plans become sites when the stock covers them (ignores reservations except the petition fee)
-export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats
+export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats; under manual labour the built fx carries `short`, what the work's category target lacks for it then (manualReach), for its toast
 export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4;
 export function capitoliumFlow(s: GameState): CapitoliumFlow | null;   // { stage, eta, bottleneck: ResId | 'crew' | null, rate, need, supply, demand, crew, walls, spare, stock, inflow, starved }: rate/need in work units; crew/walls/spare builders (on it, ≤ CAP_CREW; on the town wall; with nothing to build); supply/demand/stock/inflow the bottleneck material (0 when the crew binds), its works counted at what their inputs allow (inputShares); starved: { works, input, share } of those works, or null
 export function capitoliumHold(f: CapitoliumFlow): string;           // the works row's and the card's words: 'crew at its maximum: 64 of 64 builders (the most that can work on it)', 'waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)'
 export function crewWords(f: CapitoliumFlow): string;                // the Fabri row's sentence by hand: '64 of 64 builders on the Capitolium (the most that can work on it); 36 more have nothing to build.'
 export function startCapitolium(s: GameState): void;                 // creates the Capitolium site on the Area Capitolina
-export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid)
+export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid); ends the demolish tool's Undo (forgetDemolition)
 export function prioritise(s: GameState, id: number): ActionResult;
 export function setOpen(s: GameState, id: number, open: boolean): ActionResult;
 export function setPrio(s: GameState, id: number, prio: 0 | 1 | 2): ActionResult;
@@ -1306,7 +1306,7 @@ export function ordoActive(s: GameState, area: OrdoArea, offline: boolean): bool
 // ordo/labour.ts
 export function planLabour(s: GameState, v: SimView): LabourPlan;    // DESIGN §10.4, a Reason per line
 export function manualPlan(s: GameState, v: SimView): LabourPlan;    // category targets → buildings (High first, then nearest the forum)
-export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number;   // the hands a work's category target lacks for it (every post, or `hands`) while each post staffed today keeps its own; the completion toast's +N and the advisors' staffing remedies
+export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number;   // the hands a work's category target lacks for it (every post, or `hands`) while each post staffed today keeps its own; the completion toast's target (on the built fx as the work is finished) and the advisors' staffing remedies
 // ordo/build.ts
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.5 (cadence, concurrency, stakes, savingFor, take/ready/pending)
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
@@ -1456,7 +1456,7 @@ export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: rea
 export function blockWorks(s: GameState, tile: number): number[] | null;   // what the advice may pull down on a block (homes, plot works); null if anything else stands there
 export function worksWord(s: GameState, ids: readonly number[]): string;   // what stands there in words: "2 gardens and a well"
 export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number>;   // house → the work answering `need`, still rising, that will reach it (they wait for it: no second one advised)
-export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null;   // manual labour: a finished work answering the need that stands short of hands (a service below `fullReachHands` serving one of `ids`, a grove, a grain work), with the hands its target lacks; its remedy (staffRemedy: assign) comes before a work to place (DESIGN §11.5)
+export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null;   // manual labour: a finished work answering the need that stands short of hands (a service below `fullReachHands` serving one of `ids`, a grove, a grain work), with the hands its target lacks; its remedy (staffRemedy: assign) comes before a work to place (DESIGN §11.5), save a store where the card's diagnosis is the stores (rules 3 and 6: the store first, then the hands)
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
@@ -2093,7 +2093,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 ### 13.7 FxEvent → UI (`UI.onFx`, H)
 | FxEvent | UI |
 |---|---|
-| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with **+N** (`setManualTarget` to the target it named, `to`, or a higher one set since) |
+| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with one button worded as the target, **Water hands to 4** (`setManualTarget` to the target it named, `to`, or a higher one set since): the hands it lacks are the fx's `short`, as the work was finished, not what the frame's later ticks left (the next day's staffing may have given it an older work's hands) |
 | `evolved` | `toastBatch('evolved', …)`, sfx `tink` (batched) |
 | `milestone` | gold toast *"Res Gestae: {text}"* + unlock line, sfx `lyre` |
 | `rank` | rank banner 8 s, sfx `cornu` |
