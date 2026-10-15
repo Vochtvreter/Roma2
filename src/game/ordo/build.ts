@@ -345,6 +345,15 @@ export function homeReach(s: GameState, type: BuildingId): string {
   return type === 'hortus' || !need ? 'near enough to lift this house\'s street' : `within ${serviceReach(s, type, need)} steps of this house`;
 }
 
+/** Whether a free plot a hand may take reaches that home (the house card's note reads the same: ui/tabs/house
+ *  noPlotNote). Where homeSlot finds none, such a plot lies on a block the Ordo leaves alone: reserved, holding a work of
+ *  the player's in hand, or kept for a work to come (keptBlocks). */
+export function homeByHand(s: GameState, type: BuildingId, home: number): boolean {
+  const need = type === 'hortus' ? 'desirability' : NEED_OF[type];
+  if (!need) return false;
+  return (type === 'hortus' ? liftSlot(s, 'player', [home]) : serveSlot(s, type, 'player', need, [home])) !== null;
+}
+
 // ── the Ordo's gardens (DESIGN §10.3, §10.5 row 11). Under Urbs a garden went every six days to the free plot nearest the
 //    forum once a single stone house stood below a domus's street, lifting nobody: in playtests the gardens took every
 //    plot the homes, the market hall, the baths and the aqueduct needed (241 gardens to 26 homes), and growth stalled.
@@ -843,6 +852,13 @@ export function isGrowth(w: { reason: Reason }): boolean {
   return GROWTH.has(w.reason.code);
 }
 
+/** Whether a wish is the Ordo's alone to raise (DESIGN §3.9): a work it raises where it clears its own gardens (make
+ *  room) or buys out a block of homes (renewal). No placement by hand clears that land, so Apply once, the Praefectus
+ *  Fabrum and the Agenda never offer it to the player's hand. */
+export function ordoAlone(w: { reason: Reason }): boolean {
+  return w.reason.code === 'renewal' || w.reason.params.gardens !== undefined;
+}
+
 /** Days until the Ordo may raise its next growth work (0: it may now). */
 export function growthWait(s: GameState): number {
   let last = NEVER;
@@ -952,20 +968,22 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
   return true;
 }
 
-/** The next `n` wishes not yet placed, with states (concurrency full → ready wishes wait), lacking goods and ETA; with
- *  `held`, only the wishes of the full walk the Ordo does not hold the duty for (what it would raise, for the player to
- *  raise once by hand): none it raises where it clears its own gardens (make room), which no placement by hand does. */
+/** The next `n` wishes not yet placed, with states (concurrency full → ready wishes wait), lacking goods and ETA (a growth
+ *  work waiting on the pace: the days until the pace lifts, and GROWTH_EVERY more for each growth work paced ahead of it,
+ *  which the Ordo raises first); with `held`, only the wishes of the full walk the Ordo does not hold the duty for (what
+ *  it would raise, for the player to raise once by hand): none that is the Ordo's alone to raise (ordoAlone). */
 export function newWishes(s: GameState, v: SimView, n: number, held?: string): WishView[] {
   const full = ordoSites(s) >= maxSites(v);
   const wait = growthWait(s);
   const out: WishView[] = [];
+  let ahead = 0;
   for (const e of walkWishes(s, v, held !== undefined).list) {
     if (out.length >= n) break;
     const wish = e.wish;
-    if (held !== undefined && (maskAllows(held, wish.reason, wish.survival) || wish.clear)) continue;
+    if (held !== undefined && (maskAllows(held, wish.reason, wish.survival) || ordoAlone(wish))) continue;
     const state: WishView['state'] = e.state !== 'proposed' ? e.state : full && !wish.survival ? 'waiting' : wait > 0 && isGrowth(wish) ? 'paced' : 'proposed';
     const w: WishView = lazyTile({ type: wish.type, state, reason: wish.reason }, () => wish.tile);
-    if (state === 'paced') w.eta = wait;
+    if (state === 'paced') w.eta = wait + B.ordo.GROWTH_EVERY * ahead++;
     if (e.lacking && RESOURCES.some((r) => (e.lacking?.[r] ?? 0) > 0)) {
       w.lacking = e.lacking;
       const eta = etaDays(s, v, e.lacking);
@@ -977,8 +995,8 @@ export function newWishes(s: GameState, v: SimView, n: number, held?: string): W
 }
 
 /** The first wish the Ordo would raise if it held every duty, among those it does not hold (null: it holds them all, or
- *  none of their wishes stands), and not where it clears its own gardens. What the Agenda, Edicta and Apply once offer
- *  the player to raise by hand. */
+ *  none of their wishes stands), and not one that is the Ordo's alone to raise (ordoAlone: where it clears its own
+ *  gardens or buys out homes). What the Agenda, Edicta and Apply once offer the player to raise by hand. */
 export function wouldRaise(s: GameState, v: SimView): WishView | null {
   const mask = walkMask(s);
   if (mask === 'all') return null;
