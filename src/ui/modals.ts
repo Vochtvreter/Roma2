@@ -130,6 +130,17 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   return close;
 }
 
+/** A question with two answers in a modal: the safe answer first (it has the focus, so Enter keeps things as they are),
+ *  then `yes`, which closes the modal and runs onYes; ✕, Esc and the backdrop close it as the safe answer does. */
+export function openConfirm(o: { kicker: string; title: string; text: string; yes: string; no: string; onYes: () => void }): void {
+  let close: () => void = () => undefined;
+  const body = h('div', null, h('p', { class: 'modal-p' }, o.text),
+    h('div', { class: 'modal-actions' },
+      h('button', { class: 'btn', type: 'button', onclick: () => close() }, o.no),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); o.onYes(); } }, o.yes)));
+  close = openModal(body, { kicker: o.kicker, title: o.title });
+}
+
 /** Two-click confirm: the first click arms the button with `armedLabel` for 3 s, the second runs fn. */
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void {
   const label = btn.textContent ?? '';

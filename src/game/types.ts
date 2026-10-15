@@ -564,6 +564,7 @@ export type Remedy =
   | { kind: 'relief' }
   | { kind: 'toggleOrdo'; area: OrdoArea; on: boolean }
   | { kind: 'building'; op: 'open' | 'close' | 'prioritise' | 'center'; id: number }
+  | { kind: 'clear'; building: BuildingId; tile: number; ids: number[] }   // pull down `ids` on the block at `tile`, then place `building` there
   | { kind: 'open'; tab: TabId; anchor?: string }
   | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId };
 

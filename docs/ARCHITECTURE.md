@@ -855,6 +855,7 @@ export type Remedy =
   | { kind: 'relief' }
   | { kind: 'toggleOrdo'; area: OrdoArea; on: boolean }
   | { kind: 'building'; op: 'open' | 'close' | 'prioritise' | 'center'; id: number }
+  | { kind: 'clear'; building: BuildingId; tile: number; ids: number[] }   // pull down `ids` on the block at `tile`, then place `building` there
   | { kind: 'open'; tab: TabId; anchor?: string }
   | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId };
 
@@ -1358,12 +1359,16 @@ export function mute(s: GameState, rule: RuleId): ActionResult;     // Nota only
 export function unmute(s: GameState, rule: RuleId): ActionResult;
 // advisors/remedies.ts
 export function checkRemedy(s: GameState, r: Remedy): ActionResult;   // never throws; disabled-with-reason
-export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them)
+export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them); clear: demolish each id
 export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, building:center
 export function remedyLabel(s: GameState, r: Remedy): string;
+export function clearPrompt(s: GameState, r: Remedy & { kind: 'clear' }): { title: string; text: string; yes: string };   // App's question before a block is cleared
 // advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
 export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
 export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null;   // the garden lifting the most of them
+export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[]): { site: ClearSite | null; why: ClearWhy };   // the block to clear for a block service no free block brings them (DESIGN §11.6 row 17), or why none
+export function blockWorks(s: GameState, tile: number): number[] | null;   // what the advice may pull down on a block (homes, plot works); null if anything else stands there
+export function worksWord(s: GameState, ids: readonly number[]): string;   // what stands there in words: "2 gardens and a well"
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
@@ -1950,6 +1955,7 @@ Never use `title=` attributes or `innerHTML` with game text (names are data); bu
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
   parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-click confirm, disarms after 3 s
+export function openConfirm(o: { kicker: string; title: string; text: string; yes: string; no: string; onYes: () => void }): void;   // a yes/no question, the safe answer first and focused
 export function openMenu(g: Game): void;
 export function openExportImport(g: Game): void;
 export function openHowTo(g: Game): void;
@@ -1970,6 +1976,8 @@ place     → startPlacing({ kind: 'building', type: r.building, at: resolvePlac
 open      → openTab(r.tab, r.anchor)
 overlay   → view.setOverlay(r.overlay, r.layer)
 contract  → prefillContract(r.spec)
+clear     → centre and flash the block; openConfirm(clearPrompt(s, r))   // modals.ts: the safe answer first
+            yes → act(applyRemedy(s, r)) (the demolish action), then startPlacing({ kind: 'building', type: r.building, at: r.tile })
 building + op 'center' → focusTile(building tile)
 otherwise → act(applyRemedy(s, r))          // sim remedies run through actions
 ```
