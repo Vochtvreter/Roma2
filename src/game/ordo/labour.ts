@@ -267,8 +267,11 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
     const want = Math.min(bCap, base + (capSite ? B.construction.CAP_CREW : 0) + (walls ? B.urbs.MOENIA.CREW : 0));
     const k = Math.max(0, Math.min(want - builders, free));
     builders += k; free -= k;
+    // the builders past the works in hand go to the town wall's crew first, then to the Capitolium's (constructionDay)
+    const onWall = walls ? Math.min(B.urbs.MOENIA.CREW, Math.max(0, builders - base)) : 0;
+    const crew = Math.min(B.construction.CAP_CREW, Math.max(0, builders - base - onWall));
     note('builders', k, capSite
-      ? reason('monument', { n: builders, crew: Math.max(0, builders - base) })
+      ? reason('monument', { n: builders, crew, max: B.construction.CAP_CREW, full: crew >= B.construction.CAP_CREW ? 1 : 0, walls: onWall || undefined })
       : reason('builderShare', { n: builders, sites: sites.length }));
   }
 
@@ -321,17 +324,43 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
   return { perBuilding: perRecord(s, all, hands), builders, lines: out };
 }
 
-/** Manual labour: the player's category targets → buildings (prioritised categories first; High first, then nearest the
- *  forum). `floor` raises a category's target for the day (the Lex de annona's hands to the fields and wells). */
-export function manualPlan(s: GameState, v: SimView, floor?: Partial<Record<LaborCat, number>>): LabourPlan {
-  const { c, d } = v;
+/** The posts in the manual order: High first, then nearest the forum by road, then lowest id. */
+function manualOrder(s: GameState, v: SimView): Post[] {
+  const d = v.d;
   const steps = (b: Building): number => {
     let m = FAR;
     for (const i of roadNeighbors(s, b)) if (d.stepsToForum[i] >= 0) m = Math.min(m, d.stepsToForum[i]);
     return m;
   };
-  const all = posts(s).map((p) => ({ p, k: steps(p.b) }))
+  return posts(s).map((p) => ({ p, k: steps(p.b) }))
     .sort((a, b) => b.p.b.prio - a.p.b.prio || a.k - b.k || a.p.b.id - b.p.b.id).map((x) => x.p);
+}
+
+/** Manual labour: how many hands its category's target lacks for a work to get `hands` (default: every post) while each
+ *  post of the category staffed today keeps its hands: the posts ahead of it in the manual order fill first, and a new
+ *  work nearer the forum would else take an older one's hands. 0 when the target already reaches it, or it has no post
+ *  today (closed, damaged, builders). The completion toast's target (taken as the work is finished, construction.ts
+ *  complete, and as the toast is made: the larger) and the advisors' staffing remedies (DESIGN §10.2). */
+export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number {
+  const all = manualOrder(s, v);
+  const me = all.find((p) => p.b.id === id);
+  if (!me) return 0;
+  const staffed = v.c.staffed;
+  let ahead = 0, need = 0;
+  for (const p of all) {
+    if (p.cat !== me.cat) continue;
+    const keep = p === me ? Math.min(p.slots, hands ?? p.slots) : Math.min(p.slots, staffed[p.b.id] ?? 0);
+    if (keep > 0) need = Math.max(need, ahead + keep);
+    ahead += p.slots;
+  }
+  return Math.max(0, need - Math.floor(s.ordo.manual[me.cat] ?? 0));
+}
+
+/** Manual labour: the player's category targets → buildings (prioritised categories first; High first, then nearest the
+ *  forum). `floor` raises a category's target for the day (the Lex de annona's hands to the fields and wells). */
+export function manualPlan(s: GameState, v: SimView, floor?: Partial<Record<LaborCat, number>>): LabourPlan {
+  const c = v.c;
+  const all = manualOrder(s, v);
   const order = [...new Set([...s.ordo.priorities.filter((p) => p.until > s.day).map((p) => p.cat), ...MANUAL_ORDER])];
   const per: Record<number, number> = {};
   const lines: LabourLine[] = [];

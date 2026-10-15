@@ -4,21 +4,25 @@
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B as B$ } from '../balance';
 import { HOUSE_TIERS as HOUSE_TIERS$, NEEDS as NEEDS$ } from '../types';
-import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
+import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
 import { moraleTarget } from '../civic';
-import { renownFactor } from '../people';
-import { sectionRevealed } from '../reveal';
+import { favourPaces, renownFactor, splendour } from '../people';
+import { sectionRevealed, toolRevealed } from '../reveal';
+import { derived } from '../derived';
+import { arrivalOutlook, favourTimes, limiterLine, paceWords } from '../settlers';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { getBuilding as getBuilding$ } from '../lookup';
+import { idx } from '../map';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { BUILDING_DEFS } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
+import { houseBeds, peopleIndex } from '../census';
 import {
-  CLEAR, R, STEP, aName, bestFood, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, liftSlot, serveSlot,
-  serviceFor, three, tierWord,
+  CLEAR, R, STEP, aName, bestFood, clearSite, fractionWord, held, houseWants, idleFor, idleHead, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, liftSlot,
+  risingReach, serveSlot, serviceFor, staffRemedy, three, tierWord, worksWord,
 } from './util';
-import type { CadencedRule, HouseWant } from './util';
+import type { CadencedRule, ClearSite, ClearWhy, HouseWant, IdleWork } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, NEEDS = NEEDS$, RANK_DEFS = RANK_DEFS$, SETTING_DEFS = SETTING_DEFS$,
@@ -46,11 +50,35 @@ function mode<T>(xs: readonly T[], order: readonly T[]): T {
   return best;
 }
 
-/** The houses that wait on exactly one next-tier need, grouped by that need; water is the Curator's (aquarum.access). */
+/** The houses that wait on exactly one next-tier need, grouped by that need; water is the Curator's (aquarum.access). A
+ *  house a work of its need still rising will reach waits for that work (util.risingReach): it is left out, so the
+ *  advice never asks for a second temple, nor a block cleared for one, for the homes the first will serve. */
 function oneShort(s: GameState, v: SimView): Map<NeedId, HouseWant[]> {
   const by = new Map<NeedId, HouseWant[]>();
-  for (const w of houseWants(s, v)) if (w.next && w.unmet.length === 1 && w.unmet[0] !== 'water') by.set(w.unmet[0], [...(by.get(w.unmet[0]) ?? []), w]);
+  const rising = new Map<NeedId, ReadonlyMap<number, number>>();   // per need, asked once
+  for (const w of houseWants(s, v)) {
+    if (!w.next || w.unmet.length !== 1 || w.unmet[0] === 'water') continue;
+    const need = w.unmet[0];
+    let reach = rising.get(need);
+    if (!reach) { reach = risingReach(s, need); rising.set(need, reach); }
+    if (!reach.has(w.id)) by.set(need, [...(by.get(need) ?? []), w]);
+  }
   return by;
+}
+
+/** The work still rising that will reach the most of the houses waiting on `need` alone (ties: the first placed), or
+ *  null: what the advice shows once the player has placed the work it asked for, until the homes it reaches rise. */
+function risingWork(s: GameState, v: SimView, need: NeedId): Building | null {
+  const reach = risingReach(s, need);
+  if (reach.size === 0) return null;
+  const n = new Map<number, number>();
+  for (const w of houseWants(s, v)) {
+    const id = w.next && w.unmet.length === 1 && w.unmet[0] === need ? reach.get(w.id) : undefined;
+    if (id !== undefined) n.set(id, (n.get(id) ?? 0) + 1);
+  }
+  let best: number | null = null, top = 0;
+  for (const [id, k] of n) if (k > top || (k === top && best !== null && id < best)) { best = id; top = k; }
+  return best === null ? null : getBuilding(s, best) ?? null;
 }
 
 /** The works that answer a coverage need, the first choice first: a fountain or else a well (a lacus must stand near
@@ -63,11 +91,22 @@ function serviceChoices(s: GameState, v: SimView, need: NeedId): BuildingId[] {
   return [first];
 }
 
-/** Remedy for a need: the answering building at the slot that serves most of `ids` (coverage needs: util.serveSlot, the
- *  same reckoning the Ordo raises a request by), or needRemedy. `remedy` is null when no free slot of any answering work
- *  reaches one of the houses (another one would stand idle: the Domus overlay shows them), and oil points to a caravan
- *  while a grove is still being raised or growing. */
-function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>): { remedy: Remedy | null; slot: number | null; k: number; type: BuildingId | null } {
+/** What serveRemedy found: the remedy (null when nothing can serve the houses), its slot, the houses it lets rise, the
+ *  work; under manual labour a work that answers the need but stands short of hands (`idle`); for a block service no
+ *  free block can bring them, the block to clear, or why none is offered (`rising`: a block would be, but a work of
+ *  that kind still rises elsewhere — `up`, its id). */
+interface Served { remedy: Remedy | null; slot: number | null; k: number; type: BuildingId | null; idle?: IdleWork; clear?: ClearSite; why?: ClearWhy | 'rising'; up?: number }
+
+/** Remedy for a need: under manual labour first the hands of a work that answers it but stands short of them (`idle`,
+ *  util.idleFor; `staff` false skips it), else the answering building at the slot that serves most of `ids` (coverage
+ *  needs: util.serveSlot, the same reckoning the Ordo raises a request by), or needRemedy. When no free slot of any
+ *  answering work reaches one of the houses, a block service offers the block to clear for it (util.clearSite: the most
+ *  of them served for the least pulled down) — one at a time: not while a work of that kind still rises (checkClear
+ *  refuses it too); else `remedy` is null (another one would stand idle: the Domus overlay shows them) and `why` says
+ *  what kept the blocks near them. Oil points to a caravan while a grove is still being raised or growing. */
+function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>, staff = true): Served {
+  const idle = staff ? idleFor(s, v, need, [...ids].sort((a, b) => a - b)) : null;
+  if (idle) return { remedy: staffRemedy(idle), slot: null, k: idle.k, type: idle.type, idle };
   if (need === 'oil' && s.buildings.some((b) => b.type === 'olivetum' && (b.status !== 'done' || (b.youngUntil ?? 0) > s.day))) {
     return { remedy: importRemedy(s, 'oil', B.ordo.CARGO), slot: null, k: 0, type: null };
   }
@@ -84,7 +123,34 @@ function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<nu
     const at = serveSlot(s, type, 'player', need, list);
     if (at) return { remedy: { kind: 'place', building: type, tile: at.tile }, slot: at.tile, k: at.k, type };
   }
-  return { remedy: null, slot: null, k: 0, type: types[0] };
+  // no free site reaches them: a block to clear for the first work that has one (the great baths before a balneum), but
+  // never while one of that kind still rises: the homes it will reach are not counted here (oneShort), and a block
+  // pulled down for the others waits until it stands
+  let why: ClearWhy = 'far', up: Building | undefined;
+  for (const type of types) {
+    const c = clearSite(s, type, need, list);
+    const rising = c.site ? s.buildings.find((b) => b.type === type && b.status !== 'done') : undefined;
+    if (c.site && !rising) return { remedy: { kind: 'clear', building: type, tile: c.site.tile, ids: c.site.ids }, slot: c.site.tile, k: c.site.k, type, clear: c.site };
+    if (rising) { up ??= rising; continue; }
+    if (c.why === 'gain' || (c.why === 'works' && why === 'far')) why = c.why;
+  }
+  if (up) return { remedy: null, slot: null, k: 0, type: up.type, why: 'rising', up: up.id };
+  return { remedy: null, slot: null, k: 0, type: types[0], why };
+}
+
+/** The souls of a block to clear in words: where they go, and whether the town has the beds for them. */
+function movers(s: GameState, v: SimView, c: ClearSite): string {
+  if (c.souls === 0) return '';
+  const byHome = peopleIndex(s).byHome;
+  let own = 0;                                         // the free beds on the block itself go with it
+  for (const id of c.ids) {
+    const b = getBuilding(s, id);
+    if (b?.house) own += Math.max(0, houseBeds(s, b) - (byHome.get(id)?.length ?? 0));
+  }
+  const spare = Math.max(0, v.c.freeBeds - own);
+  const who = c.souls === 1 ? 'The one soul who lives there' : `The ${c.souls} souls who live there`;
+  if (spare >= c.souls) return ` ${who} ${c.souls === 1 ? 'finds a bed' : 'find beds'} in the town's other homes.`;
+  return ` ${who} would find only ${spare} free ${spare === 1 ? 'bed' : 'beds'} in the town's other homes.`;
 }
 
 // ───────────────────────────── 17 · aedilis.evolve ─────────────────────────────
@@ -95,12 +161,22 @@ const evolve: CadencedRule = {
   evaluate(s, v): AdvisoryEval | null {
     const by = oneShort(s, v);
     const min = held(s, 'aedilis.evolve') ? Math.floor(R.EVOLVE_HOUSES / CLEAR) : R.EVOLVE_HOUSES;
-    // the largest group a work can still serve; when no free slot of any answering work reaches one of them, the
-    // largest group stays on the tablets as a quiet Nota — the card is for what can be done (DESIGN §11.1 rule 9)
+    // the largest group a work can still serve; when neither a free slot of any answering work nor a block to clear
+    // reaches one of them, the largest group stays on the tablets as a quiet Nota — the card is for what can be done
+    // (DESIGN §11.1 rule 9)
     const groups = NEEDS.map((n) => ({ need: n, list: by.get(n) ?? [] })).filter((g) => g.list.length >= Math.max(1, min))
       .sort((a, b) => b.list.length - a.list.length || NEEDS.indexOf(a.need) - NEEDS.indexOf(b.need));
     if (groups.length === 0) return null;
-    const open = groups.find((g) => !SERVED.includes(g.need) || serveRemedy(s, v, g.need, new Set(g.list.map((w) => w.id))).remedy !== null);
+    // a group a free site can serve first, then one a cleared block can (it costs what stands there); each group's
+    // remedy is weighed once, and only as far as the search goes
+    const rems = new Map<number, Remedy | null | undefined>();
+    const rem = (i: number): Remedy | null | undefined => {
+      const g = groups[i];
+      if (!rems.has(i)) rems.set(i, SERVED.includes(g.need) ? serveRemedy(s, v, g.need, new Set(g.list.map((w) => w.id))).remedy : undefined);
+      return rems.get(i);
+    };
+    const k = groups.findIndex((_, i) => { const r = rem(i); return r !== null && r?.kind !== 'clear'; });
+    const open = groups[k >= 0 ? k : groups.findIndex((_, i) => rem(i) !== null)];
     const { need, list } = open ?? groups[0];
     const pn = petitionNeeds(s, v);
     const dep = pn !== null && pn.rank !== null && pn.needs.some((n) => !n.met && /home|house|insula|domus|tier|T[0-4]/i.test(n.label));   // WP-D: 'Homes of …', 'Insulae and domus'
@@ -120,6 +196,9 @@ const evolve: CadencedRule = {
   text(s, v, a) {
     const need = a.params.need as NeedId;
     const ids = new Set((oneShort(s, v).get(need) ?? []).map((w) => w.id));
+    // the work it asked for is placed: until the next check lets the advice go, it says what they wait for
+    const up = ids.size === 0 ? risingWork(s, v, need) : null;
+    if (up) return `${cap1(aName(up.type))} rises ${placeName(s, idx(up.x, up.y))}: they grow once it stands.`;
     const r = serveRemedy(s, v, need, ids);
     if (need === 'rank') return `Only a charter from Rome lets them rise: petition for ${rankWord(Math.min(RANK_DEFS.length - 1, s.rank + 1))}.`;
     if (need === 'wine') return 'Wine comes only by caravan, from the markets that sell it.';
@@ -131,10 +210,22 @@ const evolve: CadencedRule = {
     if (!r.remedy && r.type && COVERED.includes(need) && BUILDING_DEFS[r.type].rank > s.rank) {
       return `Rome grants ${PLURAL_WORK[r.type] ?? `${aName(r.type)}s`} to ${rankWord(BUILDING_DEFS[r.type].rank)}: they rise once one stands near them.`;
     }
+    if (r.remedy?.kind === 'clear' && r.clear) {
+      const c = r.clear, what = aName(r.remedy.building);
+      return `No free block within reach of their doors can take ${what}. Clear the block ${placeName(s, c.tile)} (${worksWord(s, c.ids)}) and ${what} there would let ${c.k} of them grow.${movers(s, v, c)}`;
+    }
     if (!r.remedy && r.type && COVERED.includes(need)) {
       const where = BUILDING_DEFS[r.type].place.includes('block') ? 'block' : 'plot';
-      return `No free ${where} within reach of their doors can take ${aName(r.type)}, nor will the Ordo raise one where it would not serve them: they keep their roofs until a ${where} near them is cleared.`;
+      const head = `No free ${where} within reach of their doors can take ${aName(r.type)}, nor will the Ordo raise one where it would not serve them`;
+      if (where === 'plot') return `${head}: they keep their roofs until a ${where} near them is cleared.`;
+      // why no block is offered for clearing (DESIGN §11.1 rule 7)
+      const b = r.why === 'rising' && r.up !== undefined ? getBuilding(s, r.up) : undefined;
+      if (b) return `${head}. ${cap1(aName(b.type))} already rises ${placeName(s, idx(b.x, b.y))}: once it stands, a block near them can be cleared for another.`;
+      if (r.why === 'gain') return `${head}, and no block near them is worth clearing: each would let too few of them rise for the homes and works it pulls down.`;
+      if (r.why === 'works') return `${head}: the blocks near them hold what must stand (a granary, a warehouse, a civic work, or the shrine, shop or well they or their neighbours need), or are blocks you keep free.`;
+      return `${head}, and no block of the town that could take one lies within reach of them.`;
     }
+    if (r.idle) return `${idleHead(s, r.idle)}: ${r.k > 0 ? `staffed, it would let ${r.k} of them grow` : 'put hands on it before raising another'}.`;
     if (r.remedy?.kind !== 'place') return 'The Domus overlay shows what each house still wants.';
     const what = cap1(aName(r.remedy.building));
     if (r.slot !== null && r.k > 0) return `${what} ${placeName(s, r.slot)} would let ${r.k} of them grow.`;
@@ -143,11 +234,19 @@ const evolve: CadencedRule = {
   remedies(s, v, a) {
     const need = a.params.need as NeedId;
     const ids = new Set((oneShort(s, v).get(need) ?? []).map((w) => w.id));
-    return three(serveRemedy(s, v, need, ids).remedy, { kind: 'overlay', overlay: 'domus' });
+    const up = ids.size === 0 ? risingWork(s, v, need) : null;
+    if (up) return three({ kind: 'building', op: 'center', id: up.id }, { kind: 'overlay', overlay: 'domus' });
+    const r = serveRemedy(s, v, need, ids);
+    return three(r.remedy, r.idle ? serveRemedy(s, v, need, ids, false).remedy : null, { kind: 'overlay', overlay: 'domus' });
   },
 };
 
 // ───────────────────────────── 18 · aedilis.declining ─────────────────────────────
+
+/** Under manual labour, a work short of hands that answers the need the declining houses lost (util.idleFor). */
+function lapsedIdle(s: GameState, v: SimView, need: NeedId): IdleWork | null {
+  return idleFor(s, v, need, houseWants(s, v).filter((w) => w.declining && w.lapsed.includes(need)).map((w) => w.id));
+}
 
 const declining: CadencedRule = {
   every: B.housing.CHECK_EVERY,   // B, not util: rule objects are built at load time, inside an import cycle
@@ -168,14 +267,17 @@ const declining: CadencedRule = {
     const what = P(p.n) === 1 ? 'A home is declining' : `${P(p.n)} homes are declining`;
     return p.need ? `${what}: ${needWord(p.need as NeedId)} lapsed.` : `${what}.`;
   },
-  text(_s, _v, a) {
+  text(s, v, a) {
     const p = a.params;
     const back = p.need ? ` Restore ${needWord(p.need as NeedId)} for ${B.housing.RECOVER_DAYS} days and they recover.` : '';
-    return `The first falls back a tier ${inDays(P(p.d))}; a declining house pays half its taxes.${back}`;
+    const idle = p.need ? lapsedIdle(s, v, p.need as NeedId) : null;
+    const hands = idle ? ` ${idleHead(s, idle)}: ${idle.k > 0 ? `staffed, it would serve ${idle.k} of them` : 'put hands on it before raising another'}.` : '';
+    return `The first falls back a tier ${inDays(P(p.d))}; a declining house pays half its taxes.${back}${hands}`;
   },
   remedies(s, v, a) {
     const need = a.params.need as NeedId | '';
-    return three(need ? needRemedy(s, v, need) : null, { kind: 'overlay', overlay: 'domus' });
+    const idle = need ? lapsedIdle(s, v, need) : null;
+    return three(idle ? staffRemedy(idle) : null, need ? needRemedy(s, v, need) : null, { kind: 'overlay', overlay: 'domus' });
   },
 };
 
@@ -200,7 +302,8 @@ const beds: AdvisorRule = {
     const p = a.params;
     if (p.mode === 'roll') return `Rome's roll is full (${int(P(p.pop))}/${int(P(p.roll))} souls).`;
     if (P(p.homeless) > 0) return `No free beds: ${P(p.homeless)} ${P(p.homeless) === 1 ? 'soul sleeps' : 'souls sleep'} under the stars.`;
-    return 'No free beds: newcomers turn back at the gate.';
+    const free = P(p.free);
+    return free > 0 ? `Only ${int(free)} free ${free === 1 ? 'bed' : 'beds'}: most newcomers turn back at the gate.` : 'No free beds: newcomers turn back at the gate.';
   },
   text(s, _v, a) {
     const p = a.params;
@@ -279,10 +382,23 @@ const morale: AdvisorRule = {
   },
 };
 
-/** The Aedilis's rules, in RULES order. */
 // ───────────────────────────── 20b · aedilis.favour ─────────────────────────────
 // Rome sends colonists faster to a splendid town (DESIGN §6.6): gardens and paved streets, the works the Ordo leaves to
-// the player. While the gates are open and the favour is low, the Aedilis says what would draw them, and how much.
+// the player. While the gates are open and the favour is low, the Aedilis gives the pace, names what holds the settlers
+// back most (settlers.ts: a shut gate, spirits, grain, water, the favour or the edicts) and what would draw them faster:
+// a garden, the Pave brush where paving would raise the favour, the Urbs focus.
+
+/** The dirt road paces whose paving Rome marks that would lift the favour furthest (all of them, or as many as reach
+ *  ×MAX), and the favour then; k 0 when the brush is not yet ours, nothing is left to pave, or the raise is no more than
+ *  PAVE_GAIN (a few paces among many homes). The text names the raise and the Pave remedy follows it: never one alone. */
+function paved(s: GameState, f: number): { k: number; to: number } {
+  const R = B.people.RENOWN;
+  if (!toolRevealed(s, 'pave') || f >= R.MAX) return { k: 0, to: f };
+  const homes = Math.max(1, derived(s).houses.length), per = (R.K * B.dignitas.ROADS) / homes;   // the favour a pace adds
+  const k = Math.max(0, Math.min(favourPaces(s), Math.ceil((R.MAX - (1 + (R.K * splendour(s)) / homes)) / per - 1e-9)));
+  const to = Math.min(R.MAX, 1 + (R.K * splendour(s)) / homes + per * k);
+  return k > 0 && to > f + B.advisors.RULES.PAVE_GAIN ? { k, to } : { k: 0, to: f };
+}
 
 const favour: AdvisorRule = {
   id: 'aedilis.favour', advisor: 'aedilis',
@@ -292,15 +408,25 @@ const favour: AdvisorRule = {
     if (f >= R.FAVOUR_LOW * (held(s, 'aedilis.favour') ? CLEAR : 1)) return null;
     return { rule: 'aedilis.favour', severity: 1, metric: { label: 'Favour', value: Math.round(f * 100), unit: 'pct' }, params: { f } };
   },
-  title(_s, a) {
-    return `Colonists come slowly: Rome's favour stands at ×${(Math.floor(P(a.params.f) * 10) / 10).toFixed(1)}.`;
+  title(s) {
+    const a = arrivalOutlook(s);
+    return a.every === null ? 'No colonists come: Rome draws none to us at this pace.' : `Colonists come slowly: ${paceWords(a)}.`;
   },
-  text() {
-    return `Rome sends settlers faster to a splendid town, up to ×${B.people.RENOWN.MAX}. Gardens and paved streets among the homes draw them; the Ordo raises neither unless you set the Urbs focus.`;
+  text(s) {
+    const a = arrivalOutlook(s);
+    const f = renownFactor(s);
+    const first = a.shut === null && a.limiter?.id === 'favour' ? '' : `${limiterLine(s, a)} `;
+    const stands = first ? `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX} as well` : `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX}`;
+    const p = paved(s, f);
+    const pave = p.k > 0 ? ` Paving ${int(p.k)} ${p.k === 1 ? 'pace' : 'paces'} of our dirt roads (${int(p.k * B.map.PAVE_STONE)} stone) would raise it to ${favourTimes(p.to)}.` : '';
+    return `${first}${stands}: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither unless you set the Urbs focus, and then it plants gardens on free plots among the homes.${pave}`;
   },
   remedies(s) {
-    return three({ kind: 'place', building: 'hortus' }, sectionRevealed(s, 'focus') && s.decisions.focus !== 'urbs' ? { kind: 'focus', focus: 'urbs' } : null);
+    const f = renownFactor(s);
+    const pave = paved(s, f).k > 0 ? { kind: 'tool' as const, tool: 'pave' as const } : null;
+    return three({ kind: 'place', building: 'hortus' }, pave, sectionRevealed(s, 'focus') && s.decisions.focus !== 'urbs' ? { kind: 'focus', focus: 'urbs' } : null);
   },
 };
 
+/** The Aedilis's rules, in RULES order. */
 export const AEDILIS_RULES: AdvisorRule[] = [evolve, declining, beds, morale, favour];

@@ -4,10 +4,11 @@
 // · R road · H forum · WASD/arrows pan smoothly while held · + / − zoom · Esc chain: modal → placing → selection → the
 // panel above its host's default detent (the desktop's wide panel back to docked, its spine being a view of its own; on
 // the dock the spine or the wide pane, back to docked; layout.ts isLayer) → menu (the layers of history.ts, which Back
-// walks too). Ignored inside inputs and on the title (Esc still closes modals).
+// walks too). Ignored inside inputs, on the title and while a modal is open (Esc still closes modals): there Space and
+// Enter are the focused control's own, and a letter holds the focus on itself (modals.ts restingFocus).
 import { OVERLAYS } from '../game/types';
 import type { OverlayId, Speed } from '../game/types';
-import type { Game } from './types';
+import type { Game, Mode } from './types';
 import { closeTopModal, modalCount, openMenu } from './modals';
 import { closeTopLayer } from './history';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
@@ -24,6 +25,12 @@ const SPEEDS: readonly Speed[] = B.time.SPEEDS as readonly Speed[];
 
 function typing(t: EventTarget | null): boolean {
   return t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName));
+}
+
+/** Whether a key goes to the game (pure; tests/letters.test.ts): in a game, not typed into an input, and no modal open.
+ *  Under a modal Space never pauses: it is the focused control's (a letter's dialog itself, so it presses nothing). */
+export function keysToGame(mode: Mode, typingIn: boolean, modals: number): boolean {
+  return mode === 'game' && !typingIn && modals === 0;
 }
 
 /** The Esc chain: close the top modal → the open layer of the highest rank (history.ts: placing, then the selection,
@@ -54,7 +61,7 @@ export function initKeys(g: Game, dev: boolean): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.defaultPrevented) return;   // a focused control (side tabs' arrow keys, a slider) already handled it
     if (e.key === 'Escape') { e.preventDefault(); escape(g); return; }
-    if (typing(e.target) || g.mode !== 'game' || modalCount() > 0) return;
+    if (!keysToGame(g.mode, typing(e.target), modalCount())) return;
     const k = e.key.toLowerCase();
     if (PAN[k]) {
       e.preventDefault();

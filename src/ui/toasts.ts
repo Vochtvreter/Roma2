@@ -1,9 +1,10 @@
 // src/ui/toasts.ts — toasts (ARCHITECTURE §13.4; DESIGN §15.1: completions, evolutions, milestones, rank-ups and errors
 // only — Annales lines go to the ticker). Max B.ui.TOASTS_MAX visible (2 on a portrait phone), the oldest dropped;
 // repeats batch within 1.5 s.
-// A toast does not expire while the mouse rests on the stack, so the one being read or clicked never slides away.
+// A toast does not expire while the mouse rests on the stack, so the one being read or clicked never slides away; one
+// may carry a single action button (a finished work's hands under manual labour, "Water hands to 4", DESIGN §10.2).
 // Owner: WP-H.
-import { h, img } from './dom';
+import { h, img, tip } from './dom';
 import { B } from '../game/balance';
 
 const DEFAULT_MS = 4000;
@@ -15,6 +16,8 @@ const SHEET_MAX = 2;
 const ICON: Record<Kind, string> = { info: 'i_seal', good: 'i_star', bad: 'i_unpaid', gold: 'i_laurel' };
 
 type Kind = 'info' | 'good' | 'bad' | 'gold';
+/** A toast's one button: it runs, and the toast goes. */
+export interface ToastAction { label: string; run: () => void; tip?: string }
 
 function remove(el: HTMLElement): void {
   if (el.classList.contains('toast-out')) return;
@@ -28,12 +31,15 @@ function expire(el: HTMLElement): void {
   remove(el);
 }
 
-function show(text: string, kind: Kind, icon: string | undefined, ms: number, sub?: string): HTMLElement | null {
+function show(text: string, kind: Kind, icon: string | undefined, ms: number, sub?: string, action?: ToastAction): HTMLElement | null {
   const root = document.getElementById('toasts');
   if (!root) return null;
+  const act = action ? h('button', { class: 'btn small primary toast-act', type: 'button' }, action.label) : null;
+  act?.addEventListener('click', (e) => { e.stopPropagation(); action?.run(); remove(el); });
+  if (act && action?.tip) tip(act, action.tip);
   const el = h('div', { class: `toast toast-${kind}`, role: kind === 'bad' ? 'alert' : 'status' },
     img(icon ?? ICON[kind], 2, 'toast-ico'),
-    h('div', { class: 'toast-body' }, h('span', { class: 'toast-text' }, text), sub ? h('span', { class: 'toast-sub' }, sub) : null));
+    h('div', { class: 'toast-body' }, h('span', { class: 'toast-text' }, text), sub ? h('span', { class: 'toast-sub' }, sub) : null), act);
   el.addEventListener('click', () => remove(el));
   root.appendChild(el);
   const live = Array.from(root.children).filter((c) => !c.classList.contains('toast-out')) as HTMLElement[];
@@ -44,9 +50,9 @@ function show(text: string, kind: Kind, icon: string | undefined, ms: number, su
   return el;
 }
 
-/** Shows a toast (max 4 visible, the oldest dropped). `sub` adds a second, smaller line. */
-export function toast(text: string, kind: Kind = 'info', icon?: string, ms: number = DEFAULT_MS, sub?: string): void {
-  show(text, kind, icon, ms, sub);
+/** Shows a toast (max 4 visible, the oldest dropped). `sub` adds a second, smaller line; `action` one button. */
+export function toast(text: string, kind: Kind = 'info', icon?: string, ms: number = DEFAULT_MS, sub?: string, action?: ToastAction): void {
+  show(text, kind, icon, ms, sub, action);
 }
 
 const batches = new Map<string, { n: number; el: HTMLElement | null; until: number; text: (n: number) => string }>();

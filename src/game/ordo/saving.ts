@@ -23,7 +23,7 @@ const B = B$, RESOURCES = RESOURCES$, PATH_DECISIONS = PATH_DECISIONS$, SETTINGS
  *  request or a path changes (what the saving parts read), `walk` when any of those or the focus or a setting does (what
  *  the wish walk reads). Field-by-field compares instead of serialising the orders at every read; the versions come
  *  from one counter, so they are unique across states. */
-interface Orders { pin: BuildingId | null; reqs: { type: BuildingId; day: number }[]; paths: (string | undefined)[];
+interface Orders { pin: BuildingId | null; reqs: { type: BuildingId; day: number; house?: number }[]; paths: (string | undefined)[];
   focus: string; settings: number[]; parts: number; walk: number }
 const orders = new WeakMap<GameState, Orders>();
 let ordersCounter = 0;
@@ -39,7 +39,7 @@ export function ordersOf(s: GameState): Orders {
   }
   const d = s.decisions, rq = s.ordo.requests;
   let parts = o.pin === s.ordo.pin && o.reqs.length === rq.length;
-  for (let i = 0; parts && i < rq.length; i++) parts = o.reqs[i].type === rq[i].type && o.reqs[i].day === rq[i].day;
+  for (let i = 0; parts && i < rq.length; i++) parts = o.reqs[i].type === rq[i].type && o.reqs[i].day === rq[i].day && o.reqs[i].house === rq[i].house;
   for (let i = 0; parts && i < PATH_DECISIONS.length; i++) parts = o.paths[i] === d.paths[PATH_DECISIONS[i]];
   let walk = parts && o.focus === d.focus;
   for (let i = 0; walk && i < SETTINGS.length; i++) walk = o.settings[i] === d.settings[SETTINGS[i]];
@@ -53,7 +53,7 @@ export function ordersOf(s: GameState): Orders {
 function copyOrders(o: Orders, s: GameState): void {
   const d = s.decisions;
   o.pin = s.ordo.pin;
-  o.reqs = s.ordo.requests.map((r) => ({ type: r.type, day: r.day }));
+  o.reqs = s.ordo.requests.map((r) => ({ type: r.type, day: r.day, house: r.house }));
   o.paths = PATH_DECISIONS.map((p) => d.paths[p]);
   o.focus = d.focus;
   o.settings = SETTINGS.map((k) => d.settings[k]);
@@ -104,6 +104,19 @@ export function savingFor(s: GameState, v: SimView): { cost: Cost; for: SavingKi
   const cost = pending ? addCost(partsCost(parts), pending.cost) : partsCost(parts);
   if (!RESOURCES.some((r) => (cost[r] ?? 0) > 0)) return null;
   return { cost, for: parts[0]?.kind ?? 'wish' };
+}
+
+/** What the saving target keeps a good back for: the work of its first part that costs some ('petition' for the fee),
+ *  else the wish it saves for; null when none does. The Capitolium's words name it (construction.capitoliumFlow). */
+export function savingHolds(s: GameState, v: SimView, r: ResId): BuildingId | 'petition' | null {
+  const part = savingParts(s, v).find((p) => (p.cost[r] ?? 0) > 0);
+  if (part) return part.type ?? 'petition';
+  if (walking) return null;   // asked from inside the wish walk, as savingFor: no wish is saved for yet
+  walking = true;
+  try {
+    const w = walkWishes(s, v).pending;
+    return w && (w.cost[r] ?? 0) > 0 ? w.type : null;
+  } finally { walking = false; }
 }
 
 /** The next CAP_RESERVE_DAYS of Capitolium materials at its current flow (gradual materials × fx capMat). */

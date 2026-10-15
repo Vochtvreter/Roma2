@@ -6,9 +6,11 @@ import { BUILDER } from '../src/game/types';
 import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
 import { census, canWork, houseBeds, residents } from '../src/game/census';
-import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
+import { buildingRate, caps, consume, industryWaterFloor, issueTools, lastRations, maxPotential, produce, storage, waterHold, workerOutput } from '../src/game/economy';
+import { outputChain, waterIdle } from '../src/game/hints';
 import { charterPaving } from '../src/game/urbs';
 import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor, splendour } from '../src/game/people';
+import { arrivalOutlook, birthOutlook, deathsPerYear, etaWords, limiterLine, paceWords, soulsEta } from '../src/game/settlers';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
 import { forecast } from '../src/game/forecast';
@@ -21,7 +23,7 @@ import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
 import { charterStreets } from '../src/game/survey';
-import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run } from './util';
+import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run, setJobs } from './util';
 import { play } from './autoplayer';
 
 const pins = vi.hoisted(() => new Map<number, number>());
@@ -232,6 +234,126 @@ describe('storage (DESIGN §8.6)', () => {
   });
 });
 
+describe('the works\' water floor (DESIGN §5.2, playtest #8)', () => {
+  /** A finished concrete works with both hands and stone to mix, the water store full, and a Water reserve of 30 days:
+   *  more than the stores can hold (the playtests' 15-day default over 14 days of storage, in this colony's numbers). */
+  function works(): { s: GameState; b: Building } {
+    const s = fresh();
+    s.rank = 2;
+    invalidate(s);
+    const at = freeSlots(s, 'caementarium')[0];
+    const r = place(s, 'caementarium', at.x, at.y, { ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    const b = s.buildings.find((x) => x.id === r.id) as Building;
+    Object.assign(b, { status: 'done', progress: 1 });
+    invalidate(s);
+    setJobs(s, { perBuilding: { [b.id]: 2 } });
+    s.res.stone = 100;
+    s.guidance.milestoneDays.stabilitas = s.day;                                  // the Water reserve is the council's to set
+    s.decisions.settings.waterReserve = 30;
+    s.res.water = caps(s).water;
+    return { s, b };
+  }
+
+  it('a full store lets the works draw under Populo prius, though it holds less than the Water reserve', () => {
+    const { s, b } = works();
+    expect(s.decisions.edicts.aquae).toBe('populo');
+    expect(caps(s).water / census(s).need.water).toBeLessThan(30);
+    expect(industryWaterFloor(s)).toBeCloseTo(B.economy.RESERVE_ROOM * caps(s).water, 9);
+    const c = ctx();
+    produce(s, c, new Rng(1));
+    expect(c.rates.cons.water.caementarium).toBeCloseTo(2, 9);
+    expect(c.rates.prod.concrete.caementarium ?? 0).toBeGreaterThan(0);
+    expect(waterHold(s, b)).toBeNull();
+    expect(waterIdle(s, view(s), b)).toBeNull();
+  });
+
+  it('below three-quarters of a full store the people drink first, the idle line says why, and Aequa shares', () => {
+    const { s, b } = works();
+    const need = census(s).need.water;
+    s.res.water = 0.7 * caps(s).water;
+    const c = ctx();
+    produce(s, c, new Rng(1));
+    expect(c.rates.prod.concrete.caementarium ?? 0).toBe(0);
+    const w = waterHold(s, b) as NonNullable<ReturnType<typeof waterHold>>;
+    expect(w.why).toBe('reserve');
+    expect(w.reserve).toBe(30);
+    expect(w.keep).toBeCloseTo(B.economy.RESERVE_ROOM * w.full, 9);
+    expect(w.have).toBeCloseTo(s.res.water / need, 9);
+    const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
+    const full = Math.floor(caps(s).water / need);
+    expect(idle.why).toBe(`the water reserve is not met; the stores hold ${Math.floor(w.have)} days, and the works draw only above ${Math.round(B.economy.RESERVE_ROOM * full)}, three-quarters of the ${full} a full store holds. Under Populo prius the people drink first.`);
+    expect(idle.remedies.slice(0, 2)).toEqual([
+      { kind: 'edict', edict: 'aquae', option: 'aequa' },
+      { kind: 'setting', setting: 'waterReserve', value: Math.max(5, Math.floor(w.have) - 1) },
+    ]);
+    expect(idle.remedies).toHaveLength(3);                                       // and more water: the wells, or a new well
+    expect(outputChain(s, b).at(-1)).toEqual({ label: 'Total', value: '0 cubicae a day' });   // not what its hands would make
+    s.decisions.edicts.aquae = 'aequa';
+    const c2 = ctx();
+    produce(s, c2, new Rng(1));
+    expect(c2.rates.prod.concrete.caementarium ?? 0).toBeGreaterThan(0);
+    expect(waterHold(s, b)).toBeNull();
+  });
+
+  it('with room enough the floor is the Water reserve in days; the idle line names it; other edicts keep none', () => {
+    const { s, b } = works();
+    const need = census(s).need.water;
+    s.decisions.settings.waterReserve = 10;
+    expect(10 * need).toBeLessThan(B.economy.RESERVE_ROOM * caps(s).water);
+    expect(industryWaterFloor(s)).toBeCloseTo(10 * need, 9);
+    s.res.water = 6 * need;
+    expect(waterIdle(s, view(s), b)?.why).toBe('the water reserve (10 days) is not met; the stores hold 6. Under Populo prius the people drink first.');
+    s.decisions.edicts.aquae = 'operibus';
+    expect(industryWaterFloor(s)).toBe(0);
+    expect(waterHold(s, b)).toBeNull();
+  });
+
+  it('under the Lex de annona\'s pause the line says when it lifts: above 15 days, or three-quarters of a smaller store', () => {
+    const { s, b } = works();
+    s.ordo.emergency.waterPause = true;
+    s.res.water = 6 * census(s).need.water;
+    const w = waterHold(s, b) as NonNullable<ReturnType<typeof waterHold>>;
+    expect(w.full).toBeLessThan(B.emergency.WATER_RESUME / B.economy.RESERVE_ROOM);   // a fresh colony's stores hold 17 days
+    expect(w.keep).toBeCloseTo(B.economy.RESERVE_ROOM * w.full, 9);
+    const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
+    expect(idle.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${Math.round(B.economy.RESERVE_ROOM * Math.floor(w.full))} days in store, three-quarters of the ${Math.floor(w.full)} a full store holds; we hold 6.`);
+    expect(idle.remedies).toHaveLength(1);                                       // more water: a full store lifts it, no cistern needed
+    expect(idle.remedies.some((r) => r.kind === 'place' && r.building === 'cisterna')).toBe(false);
+    const at = freeSlots(s, 'cisterna')[0];                                     // a cistern's room: the 15 days stand
+    const r = place(s, 'cisterna', at.x, at.y, { ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    Object.assign(s.buildings.find((x) => x.id === r.id) as Building, { status: 'done', progress: 1 });
+    invalidate(s);
+    expect(waterHold(s, b)?.keep).toBe(B.emergency.WATER_RESUME);
+    expect(waterIdle(s, view(s), b)?.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${B.emergency.WATER_RESUME} days in store; we hold 6.`);
+  });
+
+  it('stores just under 20 days: the level it lifts at and the full store agree, and the line never says we hold more', () => {
+    const { s, b } = works();
+    s.ordo.emergency.waterPause = true;
+    const full = (): number => caps(s).water / census(s).need.water;
+    while (full() < 19) {                                                         // fewer idle mouths: the store holds more days
+      s.people.splice(s.people.findIndex((p) => p.work === null), 1);
+      touchPeople(s);
+    }
+    expect(full()).toBeLessThan(20);                                             // 19.6 days: three-quarters is 14.7, under 15
+    const need = census(s).need.water;
+    s.res.water = 6 * need;
+    const w = waterHold(s, b) as NonNullable<ReturnType<typeof waterHold>>;
+    expect(Math.ceil(w.keep)).toBe(15);                                          // not "above 15, three-quarters of the 19"
+    const line = (): string | undefined => waterIdle(s, view(s), b)?.why;
+    expect(line()).toBe('the Lex de annona paused the works that draw water when it ran low. They resume above 14 days in store, three-quarters of the 19 a full store holds; we hold 6.');
+    s.res.water = (w.keep - 1e-3) * need;                                        // still paused, just under the level
+    expect(waterHold(s, b)?.why).toBe('pause');
+    expect(line()).toMatch(/resume above 14 days in store, three-quarters of the 19 a full store holds; we hold 14\.$/);
+    // the same words for the works' own floor under Populo prius (three-quarters of the store, under the 30-day reserve)
+    s.ordo.emergency.waterPause = false;
+    s.res.water = 6 * need;
+    expect(line()).toBe('the water reserve is not met; the stores hold 6 days, and the works draw only above 14, three-quarters of the 19 a full store holds. Under Populo prius the people drink first.');
+  });
+});
+
 describe('morale, taxes and dignitas (DESIGN §8.8–8.11)', () => {
   it('moves morale 5% of the way to its target', () => {
     const s = fresh();
@@ -387,6 +509,118 @@ describe('people (DESIGN §6)', () => {
     expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas + onAxes * B.dignitas.ROADS, 9);
     gardens(400);
     expect(renownFactor(s)).toBe(R.MAX);
+  });
+
+  it('the settlers\' pace the tooltips show is the tick\'s own: its factors, what holds them back, a shut gate (playtest #6)', () => {
+    const s = fresh();
+    s.morale = 80;
+    s.res.grain = 1e5;
+    s.res.water = 1e5;
+    let a = arrivalOutlook(s);
+    expect(a.perDay).toBe(immigrationChance(s));
+    expect(a.factors.map((x) => x.id)).toEqual(['rank', 'spirits', 'food', 'water', 'favour', 'edicts']);
+    expect(a.factors.reduce((p, x) => p * x.value, 1)).toBeCloseTo(a.perDay, 12);
+    expect(a.factors[0].value).toBe(B.people.IMM_RATE[0]);
+    expect(a.every).toBeCloseTo(1 / a.perDay, 9);
+    expect(paceWords(a)).toBe(`about one family every ${Math.round(1 / a.perDay)} days`);
+    expect(a.shut).toBeNull();
+    // spirits at their best: the favour (×1 of ×3) holds them back most
+    expect(a.limiter?.id).toBe('favour');
+    expect(limiterLine(s, a)).toMatch(/^Rome's favour holds them back most \(×1\.0 of ×3\): gardens and paved streets/);
+    s.morale = 40;                                                  // ×0.25 of ×1.25 is further below its best
+    a = arrivalOutlook(s);
+    expect(a.limiter?.id).toBe('spirits');
+    expect(limiterLine(s, a)).toMatch(/^Spirits hold them back most \(40\)/);
+    s.morale = 80;
+    s.res.grain = 0;                                                // thin granaries: ×0.1
+    expect(arrivalOutlook(s).limiter?.id).toBe('food');
+    s.res.grain = 1e5;
+    s.decisions.edicts.hospites = 'clausi';                         // closed gates: ×0.2
+    a = arrivalOutlook(s);
+    expect(a.limiter?.id).toBe('edicts');
+    // the edicts named as their buttons name them, and only those that hold the newcomers back (not the Coloni's ×1.3)
+    expect(limiterLine(s, a)).toBe('The edicts hold them back most (Hospites Clausi ×0.2).');
+    s.decisions.edicts.tributum = 'grave';
+    s.decisions.paths.path1 = 'coloni';
+    a = arrivalOutlook(s);
+    expect(a.limiter?.id).toBe('edicts');
+    expect(limiterLine(s, a)).toBe('The edicts hold them back most (Tributum Grave ×0.8, Hospites Clausi ×0.2).');
+    s.decisions.edicts.tributum = 'iustum';
+    delete s.decisions.paths.path1;
+    s.decisions.edicts.hospites = 'cauti';
+    fillBeds(s);                                                    // no free bed: the gate is shut whatever the draw
+    a = arrivalOutlook(s);
+    expect(a.shut).toBe('beds');
+    expect(limiterLine(s, a)).toMatch(/^No house has a free bed/);
+    // one bed free: a lone craftsman may take it, but most households are two souls or more and turn back at the gate
+    s.people.pop();
+    touchPeople(s);
+    expect(census(s).freeBeds).toBe(1);
+    a = arrivalOutlook(s);
+    expect(a.shut).toBe('beds');
+    expect(limiterLine(s, a)).toBe('Only 1 free bed: most families need more and turn back at the gate. Raise house plots.');
+    s.people.pop();
+    touchPeople(s);
+    expect(census(s).freeBeds).toBe(B.advisors.RULES.BEDS_FREE);   // two free: the gate is open again
+    expect(arrivalOutlook(s).shut).toBeNull();
+  });
+
+  it('Rome\'s call brings the souls the outlook foretells (playtest #6)', () => {
+    const u = fresh();
+    u.morale = 80;
+    u.res.grain = 1e6;
+    u.res.water = 1e6;
+    for (const b of u.buildings) if (b.house) b.house.tier = 'insula';
+    touchPeople(u);
+    const perDay = arrivalOutlook(u).perDay, days = 1500;
+    for (let d = 0; d < days; d++) { u.day++; immigrationDay(u, ctx(), new Rng(d + 7)); }
+    expect(arrivalOutlook(u).perDay).toBeCloseTo(perDay, 12);       // nothing it reads has moved
+    const owed = perDay * B.people.CALL.SOULS * days;                // the souls the call accrued; at most a household is left on it
+    expect(u.stats.immigrants).toBeGreaterThanOrEqual(owed - B.people.CALL.TO);
+    expect(u.stats.immigrants).toBeLessThanOrEqual(owed + 2 + B.people.COUPLE_KIDS[1] - B.people.CALL.FROM);
+  });
+
+  it('births at today\'s pace, and the days until a count of souls (the petition\'s Souls line, playtest #6)', () => {
+    const s = fresh();
+    s.morale = 80;
+    s.res.grain = 1e5;
+    s.res.water = 1e5;
+    for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
+    touchPeople(s);
+    const b = birthOutlook(s);
+    const mothers = s.people.filter((w) => w.female && w.spouse !== null && (s.day - w.born) / B.time.YEAR_DAYS >= 16 && (s.day - w.born) / B.time.YEAR_DAYS < 43).length;
+    expect(b.mothers).toBe(mothers);
+    expect(b.factors.map((x) => x.id)).toEqual(['food', 'spirits', 'favour', 'edicts', 'beds']);
+    expect(b.perYear).toBeCloseTo(b.mothers * B.people.BIRTH_RATE * b.factors.reduce((p, x) => p * x.value, 1), 12);
+    expect(deathsPerYear(s)).toBeGreaterThan(0);
+    const pop = census(s).pop;
+    expect(soulsEta(s, pop)).toBe(0);
+    expect(etaWords(s, pop)).toBe('');
+    const slow = soulsEta(s, pop + 10)!;
+    expect(slow).toBeGreaterThan(0);
+    const net = arrivalOutlook(s).perDay * B.people.CALL.SOULS + (b.perYear - deathsPerYear(s)) / B.time.YEAR_DAYS;
+    expect(slow).toBe(Math.ceil(10 / net));
+    const years = slow >= 2 * B.time.YEAR_DAYS ? ` (${Math.round(slow / B.time.YEAR_DAYS)} years)` : '';
+    expect(etaWords(s, pop + 10)).toBe(`≈ ${slow.toLocaleString('en-US')} days${years} at today's pace`);
+    // a garden for every home: Rome's favour draws them faster, and the count comes sooner
+    const garden = s.buildings.find((x) => x.type === 'area')!;
+    for (let k = 0; k < derived(s).houses.length; k++) s.buildings.push({ ...garden, id: s.nextId++, type: 'hortus', house: undefined, status: 'done', x: 2 + 3 * k, y: 70 });
+    invalidate(s);
+    expect(soulsEta(s, pop + 10)!).toBeLessThan(slow);
+    // no free bed: no settler and no cradle, while the old still die; the count is never reached
+    for (const x of s.buildings) if (x.house) x.house.tier = 'tentoria';
+    fillBeds(s);
+    expect(census(s).freeBeds).toBe(0);
+    expect(soulsEta(s, census(s).pop + 10)).toBeNull();
+    expect(etaWords(s, census(s).pop + 10)).toBe('no free beds: newcomers turn back');
+    // one bed free: the ETA counts on no settler (most households would not fit), only births less deaths
+    s.people.pop();
+    touchPeople(s);
+    expect(census(s).freeBeds).toBe(1);
+    const natural = (birthOutlook(s).perYear - deathsPerYear(s)) / B.time.YEAR_DAYS;
+    expect(arrivalOutlook(s).perDay).toBeGreaterThan(0);
+    expect(soulsEta(s, census(s).pop + 10)).toBe(natural > 0 ? Math.ceil(10 / natural) : null);
+    expect(etaWords(s, census(s).pop + 10)).toBe('only 1 free bed: most newcomers turn back');
   });
 
   it('marries, bears children and buries over the years without NaN', () => {

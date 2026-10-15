@@ -92,6 +92,8 @@ button.counsel-pt:hover { filter: brightness(1.2); border-color: var(--line-2); 
 .counsel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .counsel-link { margin-left: auto; background: none; border: 0; padding: 2px 0; font-size: var(--fs-xs); color: var(--dim); }
 .counsel-link:hover { color: var(--muted); text-decoration: underline; }
+/* armed ('Skip every lesson?': modals.ts confirm2) it reads as the confirm it is, and drains along its foot (base.css) */
+.counsel-link.armed { position: relative; color: var(--bad); }
 .counsel-remedies { display: flex; flex-direction: column; gap: 5px; }
 .counsel-rem { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .counsel-rem.build { flex-wrap: nowrap; gap: 8px; padding: 5px 6px; background: rgba(0, 0, 0, .2); border: 1px solid #33251d; border-radius: 4px; }

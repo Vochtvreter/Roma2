@@ -308,7 +308,7 @@ export interface DecisionState {
 export interface OrdoState {
   on: Record<OrdoArea, boolean>;
   manual: Record<LaborCat, number>;                  // manual labour targets per category
-  requests: { type: BuildingId; day: number }[];    // "Ask the Ordo", max 3
+  requests: { type: BuildingId; day: number; house?: number }[];   // "Ask the Ordo", max 3; house: the home a house card asked for
   pin: BuildingId | null;
   reserved: number[];                                // reserved block ids (sorted)
   priorities: { cat: LaborCat; until: number }[];    // temporary "X first for N days"
@@ -399,7 +399,10 @@ export interface Stats {
   built: number; builtBy: Partial<Record<BuildingId, number>>;
   evolved: number; evolvedBy: Partial<Record<HouseTierId, number>>; devolved: number;
   denariiTaxed: number; playMs: number; startedAt: number; victoryDay: number | null;
+  atVictory?: VictoryStats;                          // the figures of the dedication day (set with victoryDay; older saves lack it)
 }
+/** The colony on the day its Capitolium was dedicated: the Victory dispatch reads these, also when read again later. */
+export interface VictoryStats { pop: number; peakPop: number; births: number; immigrants: number; built: number; evolved: number; playMs: number }
 
 // ───────────────────────────── the growing town (urbs.ts) ─────────────────────────────
 /** The town wall: surveyed around the whole town at Municipium, raised by the builders, then the castrum is razed. */
@@ -453,7 +456,7 @@ export interface Rates {
   cons: Record<ResId, Partial<Record<RateSource, number>>>;
 }
 export type FxEvent =
-  | { kind: 'built'; id: number }
+  | { kind: 'built'; id: number; short?: number }   // short: by hand, the hands its category's target lacked for it as it was finished
   | { kind: 'evolved'; id: number; tier: HouseTierId }
   | { kind: 'declined'; id: number }
   | { kind: 'birth'; home: number | null }
@@ -564,8 +567,10 @@ export type Remedy =
   | { kind: 'relief' }
   | { kind: 'toggleOrdo'; area: OrdoArea; on: boolean }
   | { kind: 'building'; op: 'open' | 'close' | 'prioritise' | 'center'; id: number }
+  | { kind: 'clear'; building: BuildingId; tile: number; ids: number[] }   // pull down `ids` on the block at `tile`, then place `building` there
   | { kind: 'open'; tab: TabId; anchor?: string }
-  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId };
+  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId }
+  | { kind: 'tool'; tool: Exclude<ToolId, 'pin'> };      // a map tool to start (the Pave brush, DESIGN §6.6)
 
 // ───────────────────────────── results ─────────────────────────────
 export type PlaceFail =
@@ -583,15 +588,25 @@ export type PlaceCheck =
 export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolean; reason?: Reason; ignoreCost?: boolean }
 
 // ───────────────────────────── offline, prefs ─────────────────────────────
-export interface Snapshot { day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>> }
+export interface Snapshot {
+  day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
+  petition: { rank: RankIndex; met: number; of: number; items: number[] } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+                                                                   // items: each line's progress 0..1 in checklist order (a work's line its site's while it rises; a yes/no line 0 or 1)
+  capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
+}
 export interface AwayReport {
   awayMs: number; daysPlanned: number; days: number;
   before: Snapshot; after: Snapshot;
   decided: string[]; highlights: LogEntry[];
   lowest: { grain: { doh: number; day: number }; water: { doh: number; day: number } };
-  awaiting: { petition: RankIndex | null; advisories: RuleId[] };
+  awaiting: {
+    petition: RankIndex | null;
+    readySince: number | null;                                      // the day the ready petition became ready (the Augur's Opportunitas raised)
+    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved toward the next rank: its unmet items, or (rank null) the Capitolium
+    advisories: RuleId[];
+  };
 }
 export interface OfflineRun { days: number; progress(): number; step(n: number): boolean; report(): AwayReport }
 export type Speed = 1 | 2 | 5 | 10 | 20;
-export interface Prefs { sound: boolean; volume: number; speed: Speed; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
+export interface Prefs { sound: boolean; volume: number; speed: Speed; paused: boolean; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
 export interface FastiEntry { name: string; seed: number; legacy: number; founded: number; dedicated: number | null; peakPop: number; paths: PathOptionId[]; playMs: number }

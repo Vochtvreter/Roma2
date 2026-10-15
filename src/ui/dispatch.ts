@@ -1,7 +1,8 @@
 // src/ui/dispatch.ts — the parchment letters (DESIGN §14, §15.5, §9.5): the Founding Dispatch, the Litterae Ordinis away
-// report and the Victory dispatch. Light parchment, ink, a code-drawn meander frame and a red wax seal. Owner: WP-H.
+// report and the Victory dispatch (read again from the Annales' Fasti). Light parchment, ink, a code-drawn meander frame
+// and a red wax seal. A letter opens with the focus on itself, not on a button (modals.ts restingFocus). Owner: WP-H.
 import { BUILDINGS, HOUSE_TIERS, PATH_DECISIONS } from '../game/types';
-import type { AwayReport, GameState, Snapshot } from '../game/types';
+import type { AwayReport, GameState, Prefs, Remedy, Snapshot, Speed, VictoryStats } from '../game/types';
 import type { Game } from './types';
 import { fmt, fmtDays, h, img } from './dom';
 import type { Kid } from './dom';
@@ -17,7 +18,7 @@ import { TIER_DEFS } from '../game/data/housing';
 import { PATH_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { B } from '../game/balance';
-import { sentence, wonWhileAway } from '../game/offline';
+import { AWAY_CAP_MS, AWAY_CAP_YEARS, capLine, pct, readyLine, sentence, stalledLine, wonWhileAway } from '../game/offline';
 import { skipIntro } from '../game/actions';
 import { typeSprite } from './tabs/common';
 
@@ -84,11 +85,31 @@ function lowest(r: AwayReport): string {
   return parts.length ? sentence(parts.join('; ')) : 'The stores never ran thin.';
 }
 
-function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null {
+/** The next rank's checklist and the Capitolium, before → after (null when neither is left to rise). */
+function progress(b: Snapshot, a: Snapshot): HTMLElement | null {
+  const parts: Kid[] = [];
+  const p = a.petition;
+  if (p) parts.push(`${RANK_DEFS[p.rank].name} petition: `, delta(b.petition?.rank === p.rank ? b.petition.met : p.met, p.met), ` of ${p.of} met`);
+  if (a.capitolium !== null && b.capitolium !== 1) {
+    parts.push(parts.length ? ' · Capitolium ' : 'Capitolium ', delta((b.capitolium ?? 0) * 100, a.capitolium * 100, (n) => pct(n / 100)));
+  }
+  return parts.length ? h('span', null, ...parts) : null;
+}
+
+function awaiting(g: Game, r: AwayReport, done: (held: boolean) => void): HTMLElement | null {
+  const close = (held = true): void => done(held);   // a button here leads on to a panel: the colony waits there (DESIGN §14)
   const s = g.state;
   const items: HTMLElement[] = [];
-  if (r.awaiting.petition !== null) {
-    items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), h('span', { class: 'disp-await-text' }, `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.`),
+  // nothing moved toward the next rank: what holds it leads (DESIGN §14), its checklist a click away
+  const stall = stalledLine(r);
+  if (stall) {
+    items.push(h('div', { class: 'disp-await s2' }, h('span', { class: 'disp-mark' }, '○'),
+      h('span', { class: 'disp-await-text' }, h('b', null, 'Stalled:'), stall.replace(/^Stalled:/, '')),
+      r.awaiting.stalled?.rank != null ? h('button', { class: 'btn small', onclick: () => { close(); g.openTab('council', 'petition'); } }, 'See the petition') : null));
+  }
+  const ready = readyLine(r);
+  if (ready) {
+    items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), h('span', { class: 'disp-await-text' }, ready),
       h('button', { class: 'btn small legate', onclick: () => { close(); g.openTab('council', 'petition'); } }, 'Petition Rome')));
   }
   for (const rule of r.awaiting.advisories) {
@@ -97,12 +118,12 @@ function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null
     const ra = renderAdvisory(s, view(s), a);
     const first = ra.remedies.find((x) => x.check.ok);
     items.push(h('div', { class: `disp-await s${a.memo.sev}` }, h('span', { class: 'disp-mark' }, '●'), h('span', { class: 'disp-await-text' }, ra.title),
-      first ? h('button', { class: 'btn small', onclick: () => { close(); g.applyRemedy(first.remedy); } }, first.label) : null));
+      first ? h('button', { class: 'btn small', onclick: () => { close(opensPanel(first.remedy)); g.applyRemedy(first.remedy); } }, first.label) : null));
   }
   return items.length ? line('AWAITING YOU', ...items) : null;
 }
 
-function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
+function awayBody(g: Game, r: AwayReport, close: (held?: boolean) => void): HTMLElement {
   const b = r.before, a = r.after;
   const coin = a.res.denarii - b.res.denarii;
   const moves = [[a.births - b.births, '+', 'births'], [a.immigrants - b.immigrants, '+', 'arrivals'], [a.deaths - b.deaths, '−', 'deaths'],
@@ -113,6 +134,8 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     ' · Coin ', delta(b.res.denarii, a.res.denarii), ` (${coin >= 0 ? '+' : '−'}${fmt(Math.abs(coin))})`);
   const w = works(b, a);
   const hm = homes(b, a);
+  const pg = progress(b, a);
+  const cap = capLine(r, awayTime);
   const hl = r.highlights.slice(-HIGHLIGHTS).reverse();
   // what waits on the Praefectus comes first, before the account of what was done: on a phone the letter is several
   // screens long, and its Return to the city stays pinned at the foot (modals.css)
@@ -120,8 +143,10 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     h('div', { class: 'disp-head' }, `from ${formatRoman(b.day)} to ${formatRoman(a.day, { year: true })}`,
       h('span', { class: 'disp-dim' }, ` · ${fmt(r.days)} days · you were away ${awayTime(r.awayMs)}`),
       wonWhileAway(g.state, r) ? h('span', { class: 'disp-dim' }, ' · the Capitolium was dedicated and the clock stopped') : null),
+    cap ? h('p', { class: 'disp-cap' }, cap) : null,
     awaiting(g, r, close),
     line('THE CITY', city),
+    pg ? line('PROGRESS', pg) : null,
     line('STORES', stores),
     line('WORKS RAISED', w.length ? h('span', { class: 'disp-works' }, w) : 'None this time.'),
     hm ? line('HOMES', hm) : null,
@@ -132,9 +157,9 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
       h('span', { class: 'disp-await-text' }, keepCopyWhy(platform())),   // Safari's week only in a Safari tab
       h('button', { class: 'btn small', onclick: () => openExportImport(g) }, 'Export a copy'))) : null,
     h('div', { class: 'disp-foot' },
-      h('span', { class: 'disp-note' }, 'Time away passes at half speed, up to five years.'),
+      h('span', { class: 'disp-note' }, `Time away passes at half speed, up to ${words(AWAY_CAP_YEARS)} years (${Math.round(AWAY_CAP_MS / 60_000)} minutes away).`),
       h('span', { class: 'disp-sign' }, '— Ordo Decurionum'),
-      h('button', { class: 'btn primary', 'data-autofocus': '', onclick: () => close() }, 'Return to the city')));
+      h('button', { class: 'btn primary', onclick: () => close() }, 'Return to the city')));
 }
 
 function foundingBody(g: Game, start: () => void): HTMLElement {
@@ -158,38 +183,75 @@ function foundingBody(g: Game, start: () => void): HTMLElement {
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-sign' }, `Datum ${formatRoman(s.day, { year: true })} · Legatus Augusti`),
       h('div', { class: 'disp-start' },
-        h('button', { class: 'btn primary big', 'data-autofocus': '', onclick: start }, 'Raise the standard'),
+        h('button', { class: 'btn primary big', onclick: start }, 'Raise the standard'),
         // a returning Praefectus needs no introduction: every panel from the first day (the mentor still speaks later)
         h('button', { class: 'disp-skip', onclick: () => { g.act(skipIntro(g.state)); start(); } }, 'I know the camp: skip the introduction'))));
 }
 
-function victoryBody(g: Game, close: () => void): HTMLElement {
-  const s: GameState = g.state;
+/** The Victory dispatch's day and figures (pure; tests/letters.test.ts): those kept on the dedication day
+ *  (stats.atVictory), so the letter reads the same when the Annales open it again; a colony dedicated before they were
+ *  kept reads its figures to date. */
+export function victoryFigures(s: GameState): VictoryStats & { day: number; years: number } {
   const st = s.stats;
-  const founded = aucYear(B.time.START_DAY);
-  const years = Math.max(0, aucYear(st.victoryDay ?? s.day) - founded);
+  const day = st.victoryDay ?? s.day;
+  const at: VictoryStats = st.atVictory
+    ?? { pop: s.people.length, peakPop: st.peakPop, births: st.births, immigrants: st.immigrants, built: st.built, evolved: st.evolved, playMs: st.playMs };
+  return { ...at, day, years: Math.max(0, aucYear(day) - aucYear(B.time.START_DAY)) };
+}
+
+/** The Victory dispatch's answers (pure; tests/letters.test.ts). On the dedication day: Keep governing, or Found a new
+ *  colony at once (Legacy N+1). Read again from the Annales (`again`) the letter is for reading: Keep governing alone.
+ *  A new colony replaces this one, and every other way to that asks first (the Menu's Abandon, the title's dialog that
+ *  names it), so a letter opened hours later only to be read never founds one at a click. */
+export function victoryAnswers(again: boolean): readonly ('keep' | 'found')[] {
+  return again ? ['keep'] : ['keep', 'found'];
+}
+
+function victoryBody(g: Game, close: () => void, again: boolean): HTMLElement {
+  const s: GameState = g.state;
+  const answers = victoryAnswers(again);
+  const fig = victoryFigures(s);
   const paths = PATH_DECISIONS.map((d) => ({ d, o: s.decisions.paths[d] })).filter((x) => x.o)
     .map((x) => PATH_DEFS[x.d].options.find((o) => o.id === x.o)?.name ?? '');
   const stat = (k: string, v: string): HTMLElement => h('div', { class: 'disp-stat' }, h('b', null, v), h('span', null, k));
-  const hours = st.playMs / 3_600_000;
+  const hours = fig.playMs / 3_600_000;
   return h('div', { class: 'disp-body letter' },
     h('div', { class: 'disp-hero' }, img('f_aquila', 2)),
-    h('p', { class: 'disp-letter' }, `On ${formatRoman(st.victoryDay ?? s.day, { year: true })} the Capitolium of ${s.name} was dedicated to Jupiter, Juno and Minerva. `
-      + `${cap1(words(s.people.length))} souls stood in the forum. Rome will remember the colony in the Fasti.`),
+    h('p', { class: 'disp-letter' }, `On ${formatRoman(fig.day, { year: true })} the Capitolium of ${s.name} was dedicated to Jupiter, Juno and Minerva. `
+      + `${cap1(words(fig.pop))} souls stood in the forum. Rome will remember the colony in the Fasti.`),
     h('div', { class: 'disp-stats' },
-      stat('years from camp to colonia', String(years)), stat('peak souls', fmt(st.peakPop)), stat('born', fmt(st.births)),
-      stat('arrived', fmt(st.immigrants)), stat('works raised', fmt(st.built)), stat('homes improved', fmt(st.evolved)),
+      stat('years from camp to colonia', String(fig.years)), stat('peak souls', fmt(fig.peakPop)), stat('born', fmt(fig.births)),
+      stat('arrived', fmt(fig.immigrants)), stat('works raised', fmt(fig.built)), stat('homes improved', fmt(fig.evolved)),
       stat('hours governed', hours < 1 ? `${Math.round(hours * 60)} min` : hours.toFixed(1)), stat('legacy', `${s.legacy}`)),
     paths.length ? h('p', { class: 'disp-story' }, 'Your story: ', paths.join(' · ')) : null,
     h('div', { class: 'disp-foot' },
-      h('span', { class: 'disp-sign' }, `Senatus Populusque Romanus · AUC ${toRoman(aucYear(s.day))}`),
-      h('button', { class: 'btn', 'data-autofocus': '', onclick: () => close() }, 'Keep governing'),
-      h('button', { class: 'btn primary disp-two', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
-        h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`))));
+      h('span', { class: 'disp-sign' }, `Senatus Populusque Romanus · AUC ${toRoman(aucYear(fig.day))}`),
+      h('button', { class: answers.includes('found') ? 'btn' : 'btn primary', onclick: () => close() }, 'Keep governing'),
+      answers.includes('found') ? h('button', { class: 'btn primary disp-two', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
+        h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`)) : null));
 }
 
-/** Opens one of the three parchment letters; closing it resumes the game as the letter says. */
-export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', report?: AwayReport): void {
+/** How a colony goes on after Continue or the away letter (DESIGN §2.1): as the player left it, held if they had paused
+ *  it (❚❚, Space, Pause on Periculum: prefs.paused), else at their last speed. `held`: the letter closed on a button
+ *  that opens a panel (the petition, a remedy that opens a tab or the contract form), so the days wait while they read
+ *  it. null: the colony stays paused. */
+export function resumeAs(p: Pick<Prefs, 'speed' | 'paused'>, held = false): Speed | null {
+  return held || p.paused ? null : p.speed;
+}
+
+/** A remedy that opens a panel (a tab, the contract form): from the away letter it leaves the colony paused. */
+export const opensPanel = (r: Remedy): boolean => r.kind === 'open' || r.kind === 'contract';
+
+/** Sets the colony going by resumeAs: at that speed, or paused (setPaused keeps it in prefs, so a reload keeps it too). */
+export function resume(g: Game, held = false): void {
+  const sp = resumeAs(g.prefs, held);
+  if (sp === null) g.setPaused(true);
+  else g.setSpeed(sp);
+}
+
+/** Opens one of the three parchment letters; closing it resumes the game as the letter says. `again`: the Victory
+ *  dispatch read again from the Annales, with no Found a new colony (victoryAnswers). */
+export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', report?: AwayReport, again = false): void {
   let close: () => void = () => undefined;
   const sealed = (body: HTMLElement): HTMLElement => h('div', { class: 'disp' }, waxSeal(), body);
   if (kind === 'founding') {
@@ -198,10 +260,11 @@ export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', rep
     return;
   }
   if (kind === 'away' && report) {
-    close = openModal(sealed(awayBody(g, report, () => close())), {
-      kicker: 'LITTERAE ORDINIS', title: `${g.state.name}: the Ordo reports`, parchment: true, wide: true, onClose: () => g.setSpeed(g.prefs.speed),
+    let held = false;   // closed by a button that opens a panel: the colony waits while the player reads it
+    close = openModal(sealed(awayBody(g, report, (hold = false) => { held = hold; close(); })), {
+      kicker: 'LITTERAE ORDINIS', title: `${g.state.name}: the Ordo reports`, parchment: true, wide: true, onClose: () => resume(g, held),
     });
     return;
   }
-  close = openModal(sealed(victoryBody(g, () => close())), { kicker: 'VICTORIA · CAPITOLIVM DEDICATVM', title: 'The Capitolium is dedicated', parchment: true, wide: true });
+  close = openModal(sealed(victoryBody(g, () => close(), again)), { kicker: 'VICTORIA · CAPITOLIVM DEDICATVM', title: 'The Capitolium is dedicated', parchment: true, wide: true });
 }

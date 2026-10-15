@@ -16,13 +16,17 @@ import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup'
 import { crowds, nextTier, shownWant, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { validSlots } from '../place';
-import { houseDesir, previewCovered, previewDesir } from '../coverage';
+import { fullReachHands, houseDesir, previewCovered, previewDesir, previewSteps } from '../coverage';
 import { siteScore } from '../site';
-import { classAt, sizeOf } from '../derived';
+import { classAt, derived, sizeOf } from '../derived';
+import { isActiveBlock, isRazed } from '../survey';
+import { peopleIndex } from '../census';
+import { ruleFail } from '../world/siterules';
 import { rectGap } from '../world/grid';
 import { fxAdd } from '../fx';
-import { layoutEpoch } from '../memo';
-import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { homesEpoch, layoutEpoch } from '../memo';
+import { manualReach } from '../ordo/labour';
+import { BUILDING_DEFS as BUILDING_DEFS$, slotsOf } from '../data/buildings';
 import { NEED_META as NEED_META$, TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { RESOURCE_DEFS as RESOURCE_DEFS$ } from '../data/resources';
@@ -225,6 +229,51 @@ const BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadius' | '
   shrine: 'shrineRadius', temple: 'shrineRadius', market: 'marketRadius', macellum: 'marketRadius', baths: 'bathsRadius',
 };
 
+/** The coverage layers that answer a house need (empty for a need no service's coverage meets). */
+export function answering(need: NeedId): readonly CoverageLayerId[] {
+  return ANSWERS[need] ?? [];
+}
+
+/** A service's reach in road steps for a house need: the farthest of its layers that answer the need, path bonuses
+ *  included; 0 when none does (DESIGN §7.4). */
+export function serviceReach(s: GameState, type: BuildingId, need: NeedId): number {
+  const layers = answering(need);
+  let r = 0;
+  for (const x of BUILDING_DEFS[type].service ?? []) {
+    const bonus = BONUS[x.layer];
+    if (layers.includes(x.layer)) r = Math.max(r, x.radius + (bonus ? fxAdd(s, bonus) : 0));
+  }
+  return r;
+}
+
+/** Road steps from a `type` at (x, y) to house `id` when it would bring the house the coverage its `need` waits for,
+ *  else null: the placement ghost's word on whether the work reaches the home that asked (DESIGN §15.4). */
+export function reachSteps(s: GameState, type: BuildingId, x: number, y: number, id: number, need: NeedId): number | null {
+  const r = serviceReach(s, type, need);
+  return r > 0 ? previewSteps(s, type, x, y, id, r) : null;
+}
+
+const NO_RISE: ReadonlyMap<number, number> = new Map();
+
+/** The houses a work answering `need` that is still rising will reach once it stands (previewCovered from its site),
+ *  each with that work (the first placed): they wait for it, not for another — a second temple, or a block cleared for
+ *  one, would serve the same homes (DESIGN §11.6 row 17). The Capitolium, the colony's long last work, is not counted.
+ *  Memo on the layout (a placement, a completion, a demolition), the rank and the radius bonuses. */
+export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number> {
+  const layers = ANSWERS[need];
+  if (!layers) return NO_RISE;
+  const key = `${layoutEpoch(s)}|${s.rank}|${fxAdd(s, 'shrineRadius')},${fxAdd(s, 'marketRadius')},${fxAdd(s, 'bathsRadius')}`;
+  return memo(s, `adv.rising.${need}`, key, () => {
+    const out = new Map<number, number>();
+    for (const b of s.buildings) {
+      const def = BUILDING_DEFS[b.type];
+      if (b.status === 'done' || def.place.includes('fixed') || !def.service?.some((x) => layers.includes(x.layer))) continue;
+      for (const p of previewCovered(s, b.type, b.x, b.y)) if (layers.includes(p.layer)) for (const h of p.houses) if (!out.has(h)) out.set(h, b.id);
+    }
+    return out;
+  });
+}
+
 /** A set of tiles as a memo key part (kept per set: the Ordo hands the same set all day). */
 function skipKey(skip: ReadonlySet<number> | undefined): string {
   if (!skip) return '';
@@ -332,6 +381,199 @@ export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly n
     }
     return best;
   });
+}
+
+// ───────────────────────────── a block to clear ─────────────────────────────
+
+/** A block the player could clear for a block service that no free block can bring to the houses waiting for it (DESIGN
+ *  §11.6 row 17): its origin tile, the works on it to pull down (`ids`, sorted), the waiting houses the service would
+ *  reach from it (`k`, none of them on the block), and the homes pulled down with the souls who live in them. */
+export interface ClearSite { tile: number; k: number; ids: number[]; homes: number; souls: number }
+/** Why no block is offered: each block within reach holds a work the advice never pulls down or is one the player keeps
+ *  free (`works`), would let too few of them rise for what it pulls down (`gain`), or no block reaches them (`far`). */
+export type ClearWhy = 'far' | 'works' | 'gain';
+const WHY_RANK: Record<ClearWhy, number> = { far: 0, works: 1, gain: 2 };
+
+/** The works on the block whose origin is `tile` that the advice may pull down for a block service, sorted: homes and
+ *  plot works (a garden, a well, a shrine, a shop row, a smithy, a cistern, a fountain), finished or rising. Null when
+ *  anything else stands on it (a granary, a warehouse, a road station, a civic work, the castellum, a rural work) or a
+ *  tile is reserved (an aqueduct's route); [] for a free block. */
+export function blockWorks(s: GameState, tile: number): number[] | null {
+  const d = derived(s);
+  const BLOCK = B.map.BLOCK, W = getMap(s.seed).W;
+  const x0 = tx(tile), y0 = ty(tile);
+  const out = new Set<number>();
+  for (let y = y0; y < y0 + BLOCK; y++) for (let x = x0; x < x0 + BLOCK; x++) {
+    const i = y * W + x;
+    if (d.reservedTile[i]) return null;
+    const id = d.buildingAt[i];
+    if (!id || out.has(id)) continue;
+    const b = getBuilding(s, id);
+    if (!b || b.type === 'castellum' || classAt(s, b.type, b.x, b.y) !== 'plot') return null;
+    out.add(id);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+/** The block to clear for `type`, a block service, that best serves the houses `ids` waiting for it (`need`) when no
+ *  free block can (DESIGN §11.6 row 17): an active block, not one the player keeps free, holding only what blockWorks
+ *  may pull down and not the only works that bring a house a need (its shrine, its shop row, its well): one of those
+ *  houses another need of its next tier (it would decline instead of rising), any other house one of its own tier (it
+ *  would decline), where the site rule allows `type`; the most of the waiting houses served less the homes pulled
+ *  down (at least CLEAR_GAIN), then the fewest souls moved, then the fewest works pulled down, then the lowest tile. With none, `why` names what kept the blocks within reach (gain over works over
+ *  far). Only blocks within the service's reach + 2 of a waiting house are previewed (as serveSlot). Memo on the
+ *  structure, the homes, the rank, the kept blocks, the radius bonuses and the arguments. */
+export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[]): { site: ClearSite | null; why: ClearWhy } {
+  const def = BUILDING_DEFS[type];
+  const layers = ANSWERS[need] ?? [];
+  const svc = (def.service ?? []).filter((x) => layers.includes(x.layer));
+  if (svc.length === 0 || ids.length === 0 || !def.place.includes('block') || def.rank > s.rank) return { site: null, why: 'far' };
+  const bonus = svc.map((x) => (BONUS[x.layer] ? fxAdd(s, BONUS[x.layer] as 'shrineRadius') : 0));
+  const key = `${structEpoch(s)}|${homesEpoch(s)}|${s.rank}|${s.ordo.reserved.join(',')}|${bonus.join(',')}|${ids.join(',')}`;
+  return memo(s, `adv.clear.${type}.${need}`, key, () => {
+    const sv = getMap(s.seed).survey, razed = isRazed(s), byHome = peopleIndex(s).byHome, BLOCK = B.map.BLOCK;
+    const want = new Set(ids);
+    const waiting: { x: number; y: number; w: number; h: number }[] = [];
+    for (const id of ids) {
+      const b = getBuilding(s, id);
+      if (!b) continue;
+      const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      waiting.push({ x: b.x, y: b.y, w, h });
+    }
+    const reach = Math.max(...svc.map((x, k) => x.radius + bonus[k])) + 2;
+    // the works whose service reaches each house, per layer, and the houses each work reaches
+    const covers = new Map<string, number[]>(), reaches = new Map<number, Set<number>>();
+    for (const b of s.buildings) {
+      if (b.status !== 'done' || !BUILDING_DEFS[b.type].service) continue;
+      const mine = new Set<number>();
+      for (const p of previewCovered(s, b.type, b.x, b.y)) for (const h of p.houses) {
+        mine.add(h);
+        const l = covers.get(`${p.layer}:${h}`);
+        if (l) l.push(b.id); else covers.set(`${p.layer}:${h}`, [b.id]);
+      }
+      reaches.set(b.id, mine);
+    }
+    // the covered needs a house must keep: a waiting one the others of its next tier (or it would decline, not rise),
+    // any other house those of its own tier (or it would decline)
+    const kept = new Map<number, NeedId[]>();
+    const keeps = (h: number): NeedId[] => {
+      let k = kept.get(h);
+      if (k) return k;
+      const b = getBuilding(s, h);
+      const tier = !b?.house ? null : want.has(h) ? nextTier(s, b) : b.house.tier;
+      k = tier ? TIER_DEFS[tier].needs.filter((n) => (n !== need || !want.has(h)) && ANSWERS[n]) : [];
+      kept.set(h, k);
+      return k;
+    };
+    let best: (ClearSite & { gain: number }) | null = null;
+    let why: ClearWhy = 'far';
+    const note = (w: ClearWhy): void => { if (WHY_RANK[w] > WHY_RANK[why]) why = w; };
+    for (const blk of sv.blocks) {
+      if (!isActiveBlock(sv, blk, s.rank, razed)) continue;
+      const r = { x: blk.x, y: blk.y, w: BLOCK, h: BLOCK };
+      if (!waiting.some((hr) => rectGap(r, hr) <= reach) || ruleFail(s, type, blk.x, blk.y, BLOCK, BLOCK)) continue;
+      const tile = blk.y * getMap(s.seed).W + blk.x;
+      const pull = s.ordo.reserved.includes(blk.id) ? null : blockWorks(s, tile);
+      if (pull?.length === 0) continue;                 // a free block: serveSlot's to weigh
+      const gone = new Set(pull ?? []);
+      const served = new Set<number>(), brings = new Map<number, Set<string>>();   // what the work brings them from here
+      for (const p of previewCovered(s, type, blk.x, blk.y)) for (const h of p.houses) {
+        if (gone.has(h)) continue;
+        if (want.has(h) && layers.includes(p.layer)) served.add(h);
+        const got = brings.get(h);
+        if (got) got.add(p.layer); else brings.set(h, new Set([p.layer]));
+      }
+      const k = served.size;
+      if (k === 0) continue;
+      // a house a work on the block reaches would lose a need it must keep when every work bringing it stands on the
+      // block and the new work does not: a waiting one would decline instead of rising, any other would decline
+      const loses = (h: number): boolean => !gone.has(h) && keeps(h).some((n) => {
+        const ls = ANSWERS[n] ?? [];
+        const by = ls.flatMap((l) => covers.get(`${l}:${h}`) ?? []);
+        return by.length > 0 && by.every((id) => gone.has(id)) && !ls.some((l) => brings.get(h)?.has(l));
+      });
+      const takes = (): boolean => [...gone].some((id) => [...(reaches.get(id) ?? [])].some(loses));
+      if (!pull || takes()) { note('works'); continue; }
+      let homes = 0, souls = 0;
+      for (const id of pull) if (getBuilding(s, id)?.house) { homes++; souls += byHome.get(id)?.length ?? 0; }
+      const gain = k - homes;
+      if (gain < R.CLEAR_GAIN) { note('gain'); continue; }
+      if (!best || gain > best.gain || (gain === best.gain && (souls < best.souls || (souls === best.souls && pull.length < best.ids.length)))) {
+        best = { tile, k, ids: pull, homes, souls, gain };   // blocks run in tile order: the lowest tile wins a tie
+      }
+    }
+    return best ? { site: { tile: best.tile, k: best.k, ids: best.ids, homes: best.homes, souls: best.souls }, why } : { site: null, why };
+  });
+}
+
+const HOUSE_ONE: Record<HouseTierId, string> = {
+  tentoria: 'a tent plot', casa: 'a hut', tegulata: 'a tiled cottage', domusParva: 'a stone house', insula: 'an insula', domus: 'an atrium house',
+};
+
+/** What stands on a block to clear, in words ("2 gardens and a well", "a hut, a shop row and a building site"). */
+export function worksWord(s: GameState, ids: readonly number[]): string {
+  const counts = new Map<string, { many: string; n: number }>();
+  for (const id of ids) {
+    const b = getBuilding(s, id);
+    if (!b) continue;
+    const name = bName(b.type);
+    const [one, many] = b.status !== 'done' ? ['a building site', 'building sites']
+      : b.house ? [HOUSE_ONE[b.house.tier], TIER_PLURAL[b.house.tier]]
+      : [aName(b.type), /y$/.test(name) ? `${name.slice(0, -1)}ies` : `${name}s`];
+    const c = counts.get(one);
+    if (c) c.n++; else counts.set(one, { many, n: 1 });
+  }
+  return listJoin([...counts].map(([one, c]) => (c.n === 1 ? one : `${c.n} ${c.many}`)));
+}
+
+// ───────────────────────────── works short of hands (manual labour) ─────────────────────────────
+
+/** A finished work of the player's that stands short of hands while the labour is theirs: finishing a work adds posts,
+ *  not hands (DESIGN §10.2), so a new well or grove waits on its category's target. `n`: the hands the target lacks for
+ *  it (ordo/labour.manualReach); `k`: how many of the houses asked about it would serve, staffed. */
+export interface IdleWork { id: number; type: BuildingId; cat: LaborCat; have: number; slots: number; n: number; k: number }
+
+/** Under manual labour, the work that answers a house need but stands short of hands, so that hands, not another work,
+ *  answer it first: for a covered need a service below the hands of its full reach (DESIGN §5.2) that, staffed, would
+ *  serve one of the houses `ids` (the most of them first); for oil an olive grove, for full bellies a grain work (the
+ *  fewest hands first, then the lowest id). Null while the Ordo staffs, or when the targets already reach every such work. */
+export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null {
+  if (s.ordo.on.labour) return null;
+  const layers = ANSWERS[need];
+  const want = new Set(ids);
+  let best: IdleWork | null = null;
+  for (const b of s.buildings) {
+    const def = BUILDING_DEFS[b.type];
+    if (b.status !== 'done' || !b.open || def.slots <= 0 || !def.labor || def.labor === 'builders') continue;
+    const slots = slotsOf(b.type, s.rank);
+    const have = v.c.staffed[b.id] ?? 0;
+    let k = 0, hands = slots;
+    if (layers) {
+      if (!def.service?.some((x) => layers.includes(x.layer))) continue;
+      hands = fullReachHands(b.type);   // a service reaches its full radius at half its base posts (coverage.radiusWith)
+      if (have >= hands) continue;
+      const served = new Set<number>();
+      for (const p of previewCovered(s, b.type, b.x, b.y)) if (layers.includes(p.layer)) for (const h of p.houses) if (want.has(h)) served.add(h);
+      k = served.size;
+      if (k === 0) continue;
+    } else {
+      const answers = need === 'oil' ? b.type === 'olivetum' : need === 'fed' && def.output?.res === 'grain';
+      if (!answers || have >= slots) continue;
+    }
+    const n = manualReach(s, v, b.id, hands);
+    if (n > 0 && (!best || k > best.k || (k === best.k && n < best.n))) best = { id: b.id, type: b.type, cat: def.labor, have, slots, n, k };
+  }
+  return best;
+}
+
+/** The remedy for a work short of hands: its category's target raised by what the work lacks. */
+export function staffRemedy(w: IdleWork): Remedy {
+  return { kind: 'assign', cat: w.cat, n: w.n };
+}
+
+/** "The olive grove 12 paces east of the walls has 0 of 4 hands" (no full stop: the rules go on). */
+export function idleHead(s: GameState, w: IdleWork): string {
+  return `The ${bName(w.type)} ${buildingPlace(s, w.id)} has ${w.have} of ${w.slots} ${w.slots === 1 ? 'hand' : 'hands'}`;
 }
 
 /** A house need as a noun phrase ("a shrine", "water"). */

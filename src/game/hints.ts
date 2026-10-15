@@ -1,11 +1,12 @@
-// src/game/hints.ts — "how to get more", benefit lines and the inspector's output chain (ARCHITECTURE §8.6,
-// DESIGN §8.1, §11.10). Owner: WP-E. Every line is generated from BUILDING_DEFS, HUB_DEFS and the live state.
+// src/game/hints.ts — "how to get more", benefit lines, the inspector's output chain and why a works stands idle for
+// water (ARCHITECTURE §8.6, DESIGN §5.2, §8.1, §11.10). Owner: WP-E. Every line is generated from BUILDING_DEFS,
+// HUB_DEFS and the live state.
 import { B } from './balance';
 import { HUBS, RESOURCES, TRADE_RES } from './types';
-import type { Building, BuildingId, Cost, GameState, ResId, SimView, TradeRes } from './types';
+import type { Building, BuildingId, Cost, GameState, Remedy, ResId, SimView, TradeRes } from './types';
 import { SEASON_NAMES, seasonOf } from './calendar';
 import { stageOf } from './census';
-import { buildingRate, seasonMult } from './economy';
+import { buildingRate, seasonMult, waterHold } from './economy';
 import { fx } from './fx';
 import { siteMult } from './site';
 import { HUB_DEFS } from './data/hubs';
@@ -13,7 +14,8 @@ import { BUILDING_DEFS, BUILD_ORDER, slotsOf } from './data/buildings';
 import { RANK_DEFS } from './data/ranks';
 import { TIER_DEFS } from './data/housing';
 import { RESOURCE_DEFS } from './data/resources';
-import { aName, bestHub, int, listJoin, num, rankWord } from './advisors/util';
+import { SETTING_DEFS } from './data/decisions';
+import { aName, bestHub, fractionWord, int, labourRemedy, listJoin, num, openPosts, rankWord, three } from './advisors/util';
 
 const STORE: Partial<Record<ResId, BuildingId>> = {
   grain: 'horreum', water: 'cisterna', timber: 'apotheca', stone: 'apotheca', tiles: 'apotheca', concrete: 'apotheca',
@@ -61,7 +63,8 @@ function bestSeason(type: BuildingId): string {
   return q[k] !== 1 ? `, best in ${SEASON_NAMES[k]} (×${num(q[k])})` : '';
 }
 
-/** Ways to get more of a resource: producers from the registry, markets that sell it, idle forage, and a live line. */
+/** Ways to get more of a resource: producers from the registry, markets that sell it, idle forage or a road felling the
+ *  woods, and a live line. */
 export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
   const out: string[] = [];
   let main: BuildingId | null = null;
@@ -77,6 +80,12 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     }
   }
   if (res === 'grain') out.push(`Idle hands forage ${num(B.economy.IDLE_FORAGE)} a day each.`);
+  // full stores, at the Ordo's own threshold (ordo.STORE_FULL): what comes in past the cap spills at the day's end
+  const store = STORE[res];
+  const full = !!store && s.res[res] >= B.ordo.STORE_FULL * v.c.caps[res];
+  // a road is free and fells the woods it crosses into the stores (place.ts buildRoad, DESIGN §3.7): taught only while
+  // they have room, never beside "the stores are full" for a felling that would all spill
+  if (res === 'timber' && !full) out.push(`Lay a road through the woods (free): the felled trees go to the stores, up to ${B.map.WOOD_DENSE} timber a pace.`);
   if (res === 'denarii') out.push(...coinLines(s));
   if ((TRADE_RES as readonly string[]).includes(res)) {
     const tr = res as TradeRes;
@@ -89,8 +98,7 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     }
   }
   if (main) out.push(liveLine(s, v, main));
-  const store = STORE[res];
-  if (store && s.res[res] >= 0.95 * v.c.caps[res]) {
+  if (store && full) {
     const lock = BUILDING_DEFS[store].rank > s.rank ? ` Rome grants it to ${rankWord(BUILDING_DEFS[store].rank)}.` : '';
     out.push(`The stores are full (${int(s.res[res])} of ${int(v.c.caps[res])}): ${aName(store)} adds room.${lock}`);
   }
@@ -161,7 +169,44 @@ export function outputChain(s: GameState, b: Building): { label: string; value: 
     if (Math.abs(sm - 1) >= 0.005) out.push({ label: SEASON_NAMES[season], value: `×${num(sm)}` });
   }
   if (b.unpaid) out.push({ label: 'Unpaid', value: `×${num(B.economy.UNPAID)}` });
-  const total = buildingRate(s, b, season, 'current')[res] ?? 0;
+  // a works held from its water makes nothing, whatever its hands (its idle line says why: waterIdle)
+  const total = waterHold(s, b) ? 0 : buildingRate(s, b, season, 'current')[res] ?? 0;
   out.push({ label: 'Total', value: `${num(total)} ${RESOURCE_DEFS[res].unit} a day` });
   return out;
+}
+
+/** Why a staffed works stands idle for want of water, and what lets it work again (DESIGN §5.2, §15.4): the inspector's
+ *  idle line, which the Praefectus Fabrum repeats for a site that waits on its goods (§11.6); null while it draws. `why`
+ *  follows "Idle: ". The fixes: under Populo prius the Aequa edict, a reserve a day under the stock (only where the
+ *  setting goes that low: one at or above the stock would release nothing), more water (the wells first, else a new
+ *  well); under the Lex de annona's pause more water (a full store always lifts it: economy.waterResume). */
+export function waterIdle(s: GameState, v: SimView, b: Building): { why: string; remedies: Remedy[] } | null {
+  const w = waterHold(s, b);
+  if (!w) return null;
+  const up = (x: number): number => Math.ceil(x - 1e-6), down = (x: number): number => Math.floor(x + 1e-6);
+  const draw = (BUILDING_DEFS[b.type].inputs?.water ?? 0) * (v.c.staffed[b.id] ?? 0);
+  const water: Remedy = openPosts(v, 'water') > 0 ? labourRemedy(s, v, 'water', 'water', draw) : { kind: 'place', building: 'puteus' };
+  // a floor set by the stores' room (three-quarters of a full store) is shown as that share of the full store's days as
+  // shown, so the two numbers agree ("above 14, three-quarters of the 19", never "above 15" by a 19.9 floored to 19); it
+  // is never under the days the stores are shown to hold while the works wait (both floored)
+  const full = down(w.full), roomKeep = Math.round(B.economy.RESERVE_ROOM * full);
+  const room = `${fractionWord(B.economy.RESERVE_ROOM)} of the ${full} a full store holds`;
+  if (w.why === 'pause') {
+    const small = w.keep < B.emergency.WATER_RESUME - 1e-6;      // stores that hold under 20 days lift it three-quarters full
+    return {
+      why: `the Lex de annona paused the works that draw water when it ran low. They resume above ${small ? roomKeep : up(w.keep)} days in store`
+        + `${small ? `, ${room}` : ''}; we hold ${down(w.have)}.`,
+      remedies: [water],
+    };
+  }
+  const people = 'Under Populo prius the people drink first.';
+  const why = w.keep >= w.reserve - 1e-6
+    ? `the water reserve (${w.reserve} days) is not met; the stores hold ${down(w.have)}. ${people}`
+    : `the water reserve is not met; the stores hold ${down(w.have)} days, and the works draw only above ${roomKeep}, ${room}. ${people}`;
+  const lower = Math.max(SETTING_DEFS.waterReserve.min, down(w.have) - 1);
+  const frees = lower < w.reserve && lower < w.have - 1e-6;       // the new floor falls under the stock: the works draw
+  return {
+    why,
+    remedies: three({ kind: 'edict', edict: 'aquae', option: 'aequa' }, frees ? { kind: 'setting', setting: 'waterReserve', value: lower } : null, water),
+  };
 }

@@ -139,7 +139,7 @@ Only pushes to `main` (and manual runs) start the deploy, so a branch push never
 ### 2.5 Other files
 - `.gitignore`: `node_modules dist *.log .DS_Store coverage test-results`.
 - `public/favicon.svg`: a 16×16 pixel aquila in SVG `<rect>`s.
-- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): the game's (save.ts `KEYS`) `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4) and `castravaleria.exported.v1` (when a copy was last exported); the UI's own, per browser and never in the save or Prefs, `castravaleria.ui.textSize.v1` (Text size, `ui/textsize.ts`) and `castravaleria.ui.keepPlacing.v1` (⟳ keep placing, `ui/mapbar.ts`). The offline worker keeps its files in Cache Storage as `castra-<folder>-<BUILD>` (§13.11). Every access is wrapped in `try/catch`.
+- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): the game's (save.ts `KEYS`) `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4), `castravaleria.exported.v1` (when a copy was last exported) and `castravaleria.backup.v1` (the previous colony: the save a new colony or an import replaced, kept `B.ui.PREVIOUS_DAYS` real days for the title's Restore, §11.4); the UI's own, per browser and never in the save or Prefs, `castravaleria.ui.textSize.v1` (Text size, `ui/textsize.ts`) and `castravaleria.ui.keepPlacing.v1` (⟳ keep placing, `ui/mapbar.ts`). The offline worker keeps its files in Cache Storage as `castra-<folder>-<BUILD>` (§13.11). Every access is wrapped in `try/catch`.
 - `?dev` query: exposes `window.cv = app`, `window.skip(days)`, key 5 = 20×, "DEV" in the title footer. Nothing else differs.
 
 ---
@@ -177,10 +177,12 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   derived.ts                       A   structural derived data                                    (260)
   coverage.ts                      A   road-BFS coverage + desirability                           (260)
   place.ts                         A   canPlace, placeBuilding, roads, aqueduct route, demolish   (480)
+  demolition.ts                    A   demolishMany, clearGardens, demolitionImpact, the short undo (DESIGN §5.3) (200)
   site.ts                          A   siteMultAt, siteScore, bestSlot                            (300)
   economy.ts                       B   the one formula module: production, consumption, storage   (520)
   census.ts                        B   census memo                                                (170)
   people.ts                        B   names, jobs assignment, aging, births, deaths, marriage, immigration (460)
+  settlers.ts                      B   the pace of souls: settlers and births with their factors, the limiter, an ETA to a count (render-time) (150)
   housing.ts                       B   needs, evolution, renovation, decline, goods                (360)
   construction.ts                  B   works queue, stakes, plans, Capitolium                      (300)
   urbs.ts                          U   the growing town: footfall, the town wall, the castrum razed, renewal (DESIGN §3.9) (450)
@@ -188,7 +190,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   forecast.ts                      B   Forecast and the 12-month prospectus                        (200)
   sim.ts                           S→B tick order, view(), emptyRates                              (140)
   ordo/index.ts                    C   runOrdo, councilReport                                      (90)
-  ordo/labour.ts                   C   planLabour, manualPlan                                      (330)
+  ordo/labour.ts                   C   planLabour, manualPlan, manualReach                         (330)
   ordo/build.ts                    C   wish list, agenda, requests                                 (360)
   ordo/trade.ts                    C   trade automation                                            (150)
   ordo/goods.ts                    C   oil/wine plan: lean-season reserve, projection, shortfall    (130)
@@ -215,7 +217,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   advisors/rules-augur.ts          E   rules 21–22                                                 (60)
   advisors/remedies.ts             E   checkRemedy, applyRemedy, remedyLabel                       (170)
   guide.ts                         E   GUIDE tips engine                                           (200)
-  hints.ts                         E   "how to get more", benefit lines                            (120)
+  hints.ts                         E   "how to get more", benefit lines, a works idle for water    (120)
   actions.ts                       S   frozen dispatcher of all player actions (§8.7)             (40)
 src/render/
   sprites.ts                       S   PAL, raster, sprite, spriteURL, mirror, outline, compose, validateArt, registerArt, registerDraw (220)
@@ -226,6 +228,7 @@ src/render/
   buildings.ts                     F   building/house draw dispatch, rise(), states, overlays on sprites (300)
   linear.ts                        F   streets, roads, walls, gates, fossa, aqueduct, via          (240)
   placement.ts                     F   ghost, valid slots, coverage preview, laurel                (220)
+  demolish.ts                      F   the demolish tool's armed works, sweep and impact words (pure) (130)
   overlays.ts                      F   5 overlays as 1 px/tile layers                              (180)
   minimap.ts                       F   minimap                                                     (90)
   actors.ts                        F   walkers, carts, caravans, merchant, veterans, animals       (360)
@@ -604,7 +607,7 @@ export interface DecisionState {
 export interface OrdoState {
   on: Record<OrdoArea, boolean>;
   manual: Record<LaborCat, number>;                  // manual labour targets per category
-  requests: { type: BuildingId; day: number }[];    // "Ask the Ordo", max 3
+  requests: { type: BuildingId; day: number; house?: number }[];   // "Ask the Ordo", max 3; house: the home a house card asked for
   pin: BuildingId | null;
   reserved: number[];                                // reserved block ids (sorted)
   priorities: { cat: LaborCat; until: number }[];    // temporary "X first for N days"
@@ -690,7 +693,10 @@ export interface Stats {
   built: number; builtBy: Partial<Record<BuildingId, number>>;
   evolved: number; evolvedBy: Partial<Record<HouseTierId, number>>; devolved: number;
   denariiTaxed: number; playMs: number; startedAt: number; victoryDay: number | null;
+  atVictory?: VictoryStats;                          // the figures of the dedication day (set with victoryDay; older saves lack it)
 }
+/** The colony on the day its Capitolium was dedicated: the Victory dispatch reads these, also when read again later. */
+export interface VictoryStats { pop: number; peakPop: number; births: number; immigrants: number; built: number; evolved: number; playMs: number }
 
 // ───────────────────────────── the growing town (urbs.ts) ─────────────────────────────
 /** The town wall: surveyed around the whole town (Colonia; the player from Municipium), raised by the builders, then the castrum is razed. */
@@ -744,7 +750,7 @@ export interface Rates {
   cons: Record<ResId, Partial<Record<RateSource, number>>>;
 }
 export type FxEvent =
-  | { kind: 'built'; id: number }
+  | { kind: 'built'; id: number; short?: number }   // short: by hand, the hands its category's target lacked for it as it was finished
   | { kind: 'evolved'; id: number; tier: HouseTierId }
   | { kind: 'declined'; id: number }
   | { kind: 'birth'; home: number | null }
@@ -855,8 +861,10 @@ export type Remedy =
   | { kind: 'relief' }
   | { kind: 'toggleOrdo'; area: OrdoArea; on: boolean }
   | { kind: 'building'; op: 'open' | 'close' | 'prioritise' | 'center'; id: number }
+  | { kind: 'clear'; building: BuildingId; tile: number; ids: number[] }   // pull down `ids` on the block at `tile`, then place `building` there
   | { kind: 'open'; tab: TabId; anchor?: string }
-  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId };
+  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId }
+  | { kind: 'tool'; tool: Exclude<ToolId, 'pin'> };      // a map tool to start (the Pave brush, DESIGN §6.6)
 
 // ───────────────────────────── results ─────────────────────────────
 export type PlaceFail =
@@ -874,17 +882,27 @@ export type PlaceCheck =
 export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolean; reason?: Reason; ignoreCost?: boolean }
 
 // ───────────────────────────── offline, prefs ─────────────────────────────
-export interface Snapshot { day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>> }
+export interface Snapshot {
+  day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
+  petition: { rank: RankIndex; met: number; of: number; items: number[] } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+                                                                   // items: each line's progress 0..1 in checklist order (a work's line its site's while it rises; a yes/no line 0 or 1)
+  capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
+}
 export interface AwayReport {
   awayMs: number; daysPlanned: number; days: number;
   before: Snapshot; after: Snapshot;
   decided: string[]; highlights: LogEntry[];
   lowest: { grain: { doh: number; day: number }; water: { doh: number; day: number } };
-  awaiting: { petition: RankIndex | null; advisories: RuleId[] };
+  awaiting: {
+    petition: RankIndex | null;
+    readySince: number | null;                                      // the day the ready petition became ready (the Augur's Opportunitas raised)
+    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved toward the next rank: its unmet items, or (rank null) the Capitolium
+    advisories: RuleId[];
+  };
 }
 export interface OfflineRun { days: number; progress(): number; step(n: number): boolean; report(): AwayReport }
 export type Speed = 1 | 2 | 5 | 10 | 20;
-export interface Prefs { sound: boolean; volume: number; speed: Speed; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
+export interface Prefs { sound: boolean; volume: number; speed: Speed; paused: boolean; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
 export interface FastiEntry { name: string; seed: number; legacy: number; founded: number; dedicated: number | null; peakPop: number; paths: PathOptionId[]; playMs: number }
 ```
 
@@ -944,7 +962,7 @@ export const B = {
   morale:  { BASE: 50, START: 65, ALPHA: 0.05, GRAIN_TERMS: [[30, 5], [15, 2], [7, -3], [0, -10]],
              RATION_TERMS: { largae: 6, plenae: 0, parcae: -6, arctae: -14 }, SHORT: 20, TIER: 2, RELIGION: 8, BATHS: 5,
              CULTURE: 6, HOMELESS: 20, DECLINING: 10, DEATHS: 2, DEATHS_CAP: 12, LEGACY: 2, LABELS: [75, 50, 30] },
-  construction: { STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25,
+  construction: { STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25, UNDO_DAYS: 10,
              CAP_CREW: 64, CAP_WORK: 320_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],
              CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 160_000 } },
   ordo:    { BUILD_EVERY: 2, TRADE_EVERY: 10, TRADE_OFFSET: 5, SITES_PER: 40, SITES_MAX: 4, FOOD_CAP: 0.75, FOOD_CAP_HUNGRY: 0.9,
@@ -955,7 +973,7 @@ export const B = {
              LUXURY_RUNWAY: 60, GOODS_FLOOR: 15 },
   emergency: { PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
              IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
-             RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365 },
+             RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365, WATER_START: 2 / 3 },
   events:  { START: 300, CHANCE: 1 / 40, CHOICE_GAP: 200, HARMFUL_GAP: 120, CHOICE_DAYS: 30, RELIEF_DAYS: 15,
              CLAMP_RES: 0.3, CLAMP_POP: 0.05, MERCHANT_P: 0.012, MERCHANT_GAP: 60, MERCHANT_STAY: 30,
              BANDIT_P: 0.08, BANDIT_DAYS: 12, BANDIT_LOSS: 0.3, VETERAN_STAY: 30 },
@@ -1087,9 +1105,11 @@ export function roadNeighbors(s: GameState, b: Building): number[];   // built r
 **`coverage.ts`**
 ```ts
 export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerId): number;   // DESIGN §5.2 activity rule + fxAdd radius bonuses; 0 when inactive/unpaid-halved
+export function fullReachHands(type: BuildingId): number;             // the hands of a service's full radius: ceil(base slots × SERVICE_FULL), whatever a rank adds (a well from the Oppidum: 1 of 4)
 export function coverage(s: GameState): Coverage;                     // BFS per layer over built roads; memo on structEpoch + effective-radius key
 export function houseHas(s: GameState, houseId: number, layer: CoverageLayerId): boolean;
 export function previewCoverage(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: Uint8Array; houses: number[] }[];   // as if built and fully staffed
+export function previewSteps(s: GameState, type: BuildingId, x: number, y: number, houseId: number, r: number): number | null;   // road steps from it to that house, searched up to r
 export function desirability(s: GameState): Float32Array;             // per tile, memo on structEpoch
 export function houseDesir(s: GameState, houseId: number): number;    // average over its 4 tiles
 export function previewDesir(s: GameState, type: BuildingId, x: number, y: number): { tile: number; v: number }[];
@@ -1118,15 +1138,40 @@ export function snapSlot(s: GameState, type: BuildingId, tile: number): { x: num
 export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: PlaceOpts): PlaceCheck;
 export function validSlots(s: GameState, type: BuildingId, owner: Owner): Map<number, number>;   // origin tile → mult; memo on type+owner+structEpoch
 export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts?: PlaceOpts): ActionResult;
-export function demolish(s: GameState, id: number): ActionResult;
-export function buildRoad(s: GameState, tiles: number[]): ActionResult;
+export function demolish(s: GameState, id: number): ActionResult;   // a finished work: REFUND_DEMOLISH back, its residents and workers out; a site: cancelSite; either ends the demolish tool's Undo (forgetDemolition)
+export function buildRoad(s: GameState, tiles: number[]): ActionResult;           // fells the woods it crosses; the log says what would spill at the day's end
+export function roadPreview(s: GameState, tiles: readonly number[]): { paces: number; fell: number };   // a road drag's new paces and felling yield
+export function fellingSpill(s: GameState, fell: number, spend?: number): { cap: number; spill: number; most: boolean; words: string };   // a felling against the timber cap, `spend` paid out first (DESIGN §3.7)
+export function fellSpend(s: GameState, chk: PlaceCheck, replaceId?: number): number;   // the timber a player's placement pays before it fells: its cost's when affordable, 0 for a plan or a Move
 export function pave(s: GameState, tiles: number[]): ActionResult;
 export function toggleReserveBlock(s: GameState, blockId: number): ActionResult;
 export function roadPathFor(s: GameState, footprint: number[]): number[] | null;   // new tiles only
 export function streetsForBlock(s: GameState, blockId: number): number[];           // new tiles only
 export function routeAqueduct(s: GameState, x: number, y: number): { fons: number; tiles: number[] } | null;
 export function paveVia(s: GameState): void;                                       // called by Via militaris
+// demolition.ts (DESIGN §5.3): several works at once, with what it would do read first, and a short undo
+export function demolitionImpact(s: GameState, ids: readonly number[], opts?: { needs?: boolean }): DemolitionImpact;
+export function demolishMany(s: GameState, ids: readonly number[]): ActionResult;   // the principia and Capitolium among them stay
+export function councilGardens(s: GameState, blockId: number): number[];           // the Ordo's horti in a block
+export function clearGardens(s: GameState, blockId: number): ActionResult;
+export function undoable(s: GameState): { works: number; until: number } | null;
+export function undoDemolition(s: GameState): ActionResult;
+export function forgetDemolition(s: GameState): void;                              // demolish and cancelSite end the undo
 ```
+`demolitionImpact` reads only: the works that would come down (`ids`; `spared` the principia and Capitolium), the houses
+among them and their residents, their workers, the sites among them, `refund` (a finished work `REFUND_DEMOLISH`, a site
+as `cancelSite`) and `frac` when every work returns the same share, and `losing`: per need, the homes left standing that
+meet it for their own tier now and would not without those works (`unmetNeeds` on a shallow copy of the state without
+them, whose coverage and desirability memo.ts builds afresh), i.e. the homes that would decline (§7.3); `needs: false`
+skips that what-if (a sweep's count while it is dragged). `demolishMany`/`clearGardens` refund, put out residents
+(`homelessSince`) and workers, log one line, `invalidate` + `touchPeople`, and keep the record of the last demolition in
+a WeakMap beside the state (never saved); `place.ts demolish` and `construction.ts cancelSite` end it
+(`forgetDemolition`: the player's last demolition is then one Undo does not hold). `undoDemolition` within `UNDO_DAYS`
+(game days) re-inserts those works in id order as they stood, takes the refund back, and gives back each home (a family
+that found beds elsewhere stays there) and work still empty; it refuses (`occupied`, `maxCount`, `unaffordable`,
+`window`) when a work, a road, an aqueduct route (`reservedTile`) or the town wall's line (`wall`) now lies on a
+footprint, or a work or another route on a castellum's route (canPlace's occupancy), a one-only type was raised again,
+or the salvage is spent. The ticks never read the record, nor end it.
 `placeBuilding`: validates; with `replaceId` first cancels that Ordo stake at 100%; affordable → pays and creates the site (`status` = `staked` for owner `ordo` unless `noStake`, else `building`); unaffordable → owner `player` makes a `plan`, owner `ordo` fails `unaffordable`. Then fells forest under rural footprints (timber to stores, `s.wood[i] = 0`, work += stock × FELL_WORK), lays streets (urban) or the auto-road (rural) instantly and free, sets `reason`/`notes`, sets `order` = next id, appends the building (ids ascending), logs (Ordo placements: kind `ordo` with the reason text), and calls `invalidate(s)`. `house` state is created when an `area` completes.
 
 **`site.ts`**
@@ -1147,9 +1192,13 @@ export function seasonMult(s: GameState, type: BuildingId, season: SeasonIndex):
 export function workerMult(s: GameState, b: Building, p: Person): number;                // capped part: min(MULT_CAP, site × skill × tool × productivity × fx × legacy)
 export function workerOutput(s: GameState, b: Building, p: Person, season: SeasonIndex): number;   // full formula DESIGN §8.1
 export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): Partial<Res>;   // net per day (inputs negative); 'full' = all slots at the building's current average worker
+export function inputShares(s: GameState): Map<number, { share: number; short: ResId }>;   // per staffed processing works held back by an input: its share of a full day tomorrow (produce()'s reservations against the stock above the floors) and that input; works not listed run in full
 export function maxPotential(s: GameState, res: Essential, season: SeasonIndex): number;   // best assignment of the workforce to existing producers (food cap applied) + passive
 export function caps(s: GameState): Res;
 export function horreaCap(s: GameState): number;
+export function industryWaterFloor(s: GameState, c?: Census): number;     // Populo prius: min(Water reserve × need, RESERVE_ROOM × water cap), so a full store always lets the works draw; 0 under Aequa/Operibus
+export function waterResume(need: number, cap: number): number;         // days in store that lift the Lex de annona's water pause: min(WATER_RESUME, RESERVE_ROOM × cap / need), so a full store always lifts it; the pause starts only under WATER_START of it
+export function waterHold(s: GameState, b: Building): WaterHold | null;  // a staffed works that mixes water and draws none tomorrow: { why: 'pause' | 'reserve', have, keep, reserve, full } in days of need
 export function produce(s: GameState, ctx: TickContext, rng: Rng): void;   // water first, then food, passive, processing with per-worker reservations and the water/grain floors, idle forage, skill XP, forest draw; writes rates.prod
 export function consume(s: GameState, ctx: TickContext): void;             // tiered rationing per resource, hunger/thirst per group, fed EMA, Watch-band log; writes rates.cons
 export function storage(s: GameState, ctx: TickContext): void;             // caps (spill), shed rot, evaporation, forest regrowth
@@ -1173,10 +1222,25 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void;   // 
 export function immigrationDay(s: GameState, ctx: TickContext, rng: Rng): void;   // one Bernoulli roll; roll and beds respected
 export function splendour(s: GameState): number;                     // dignitas of the works the Ordo leaves to the player: gardens, paved streets (DESIGN §6.6)
 export function renownFactor(s: GameState): number;                  // Rome's favour: min(RENOWN.MAX, 1 + RENOWN.K × splendour per home); ×1 for a colony kept by the Ordo alone
+export function favourPaces(s: GameState): number;                   // dirt road paces whose paving would win Rome's favour (the Aedilis's Pave remedy)
+export function arrivalFactors(s: GameState): { rank: number; spirits: number; food: number; water: number; favour: number; edicts: number };   // immigrationChance is their product, in this order
+export function birthFactors(s: GameState): { food: number; spirits: number; favour: number; edicts: number };   // a mother's yearly chance = BIRTH_RATE × these (× bedsFactor, mother by mother)
+export function bedsFactor(free: number): number;                    // births: ≥ 2 free beds 1, 1 → 0.5, else 0
+export function mothersOf(s: GameState): Person[];                    // married women of FERTILE age
+export function ageHazard(age: number): number;                      // annual hazard of an ordinary death, before care (DESIGN §6.5)
 export function makeFamily(s: GameState, rng: Rng, kind: 'couple' | 'craftsman' | 'widow' | 'veteran', gentes: readonly string[]): { family: Family; people: Person[] };
 export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Family; people: Person[] }): boolean;   // house in the most free beds nearest the forum; fx arrive
 export function rehouse(s: GameState): void;
 export function gainSkill(p: Person, skill: SkillId, amount: number): void;   // respects SKILL_MAX and SKILL_LIFETIME
+```
+**`settlers.ts`** — the pace of souls at today's rates (DESIGN §6.6 *The pace, shown*); render-time only, never read by the tick
+```ts
+export function arrivalOutlook(s: GameState): ArrivalOutlook;          // { perDay (= immigrationChance), every, shut: 'roll'|'beds'|null (beds: under BEDS_FREE free), factors, limiter }
+export function birthOutlook(s: GameState): BirthOutlook;              // { perYear, mothers, factors } (beds at today's free beds)
+export function deathsPerYear(s: GameState): number;                   // ordinary deaths (ageHazard × care) at today's ages
+export function soulsEta(s: GameState, goal: number): number | null;   // days to `goal` souls: settlers to the roll (none while the gate is shut), then births − deaths; 0 reached, null never
+export function limiterLine(s: GameState, a: ArrivalOutlook): string;  // what holds the settlers back most, in words (a shut gate first)
+export function paceWords(a: ArrivalOutlook): string; export function naturalWords(s: GameState): string; export function etaWords(s: GameState, goal: number): string;
 ```
 **`housing.ts`**
 ```ts
@@ -1199,11 +1263,14 @@ export function setHousePref(s: GameState, id: number, pref: HousePref): ActionR
 export function worksQueue(s: GameState): Building[];                 // unfinished: player-owned first, then order, then id
 export function startStaked(s: GameState): void;                      // staked → building after STAKE_DAYS
 export function payPlans(s: GameState, ctx: TickContext): void;       // plans become sites when the stock covers them (ignores reservations except the petition fee)
-export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats
+export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats; under manual labour the built fx carries `short`, what the work's category target lacks for it then (manualReach), for its toast (with the count when it is made: the larger)
 export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4;
-export function capitoliumFlow(s: GameState): { stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number; supply: number; demand: number } | null;   // rate/need in work units; supply/demand the bottleneck material per day (0 when the crew binds)
+export function capitoliumFlow(s: GameState): CapitoliumFlow | null;   // { stage, eta, bottleneck: ResId | 'crew' | null, rate, need, supply, demand, crew, walls, spare, stock, held, heldFor, inflow, starved }: rate/need in work units; crew/walls/spare builders (on it, ≤ CAP_CREW; on the town wall; with nothing to build); supply/demand/stock/inflow the bottleneck material (0 when the crew binds), its works counted at what their inputs allow (inputShares); stock is the stores' own count, held the part of it the temple may not draw (the saving target; coin also the treasury floor) and heldFor what holds it (a work, 'petition', 'floor' or null: ordo/saving savingHolds); starved: { works, input, share } of those works, or null
+export function capitoliumHold(f: CapitoliumFlow): string;           // the works row's and the card's words: 'crew at its maximum: 64 of 64 builders (the most that can work on it)', 'waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)'
+export function storeWords(f: Pick<CapitoliumFlow, 'stock' | 'held' | 'heldFor'>): string;   // the stock in those words and fabrum.capitolium's: '12 in store', '12 in store, all held for the great baths', '900 in store, all kept as the treasury floor'
+export function crewWords(f: CapitoliumFlow): string;                // the Fabri row's sentence by hand: '64 of 64 builders on the Capitolium (the most that can work on it); 36 more have nothing to build.'
 export function startCapitolium(s: GameState): void;                 // creates the Capitolium site on the Area Capitolina
-export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid)
+export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid); ends the demolish tool's Undo (forgetDemolition)
 export function prioritise(s: GameState, id: number): ActionResult;
 export function setOpen(s: GameState, id: number, open: boolean): ActionResult;
 export function setPrio(s: GameState, id: number, prio: 0 | 1 | 2): ActionResult;
@@ -1240,11 +1307,14 @@ export function ordoActive(s: GameState, area: OrdoArea, offline: boolean): bool
 // ordo/labour.ts
 export function planLabour(s: GameState, v: SimView): LabourPlan;    // DESIGN §10.4, a Reason per line
 export function manualPlan(s: GameState, v: SimView): LabourPlan;    // category targets → buildings (High first, then nearest the forum)
+export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number;   // the hands a work's category target lacks for it (every post, or `hands`) while each post staffed today keeps its own; the completion toast's target (the larger of it on the built fx as the work is finished and it as the toast is made) and the advisors' staffing remedies
 // ordo/build.ts
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.5 (cadence, concurrency, stakes, savingFor, take/ready/pending)
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
+export function homeSlot(s: GameState, v: SimView, type: BuildingId, home: number | undefined): { tile: number; k: number } | null | undefined;   // a request's home: the slot reaching it (null: none; undefined: no home to serve)
 export function wishList(s: GameState, v: SimView, n: number): WishView[];      // pure; the Agenda and the "would" ghost
 export function keptBlocks(s: GameState): readonly { rect: Rect; for: BuildingId }[];   // blocks kept free for a temple/bathhouse/market hall to come, the theatrum, the thermae (DESIGN §10.5)
+export function gardenSlot(s: GameState, v: SimView): { tile: number; n: number; k: number; lift: number } | null;   // the Ordo's garden plot under Urbs: land the homes can spare, the most lift to the stone houses (DESIGN §10.5 row 11)
 // ordo/goods.ts
 export function goodsPlan(s: GameState, v: SimView, res: 'oil' | 'wine', own?: boolean): GoodsPlan;   // demand, presses by season, lean-season reserve, export keep, projection low/empty day, shortfall (memo per day)
 // ordo/trade.ts
@@ -1252,17 +1322,18 @@ export function ordoTrade(s: GameState, ctx: TickContext, v: SimView): void;   /
 export function ordoTradeWould(s: GameState, v: SimView): Reason | null;
 export function luxuryCaravans(s: GameState, v: SimView, res: 'oil' | 'wine'): { need: number; short: number };   // standing imports the projection lacks
 // ordo/emergency.ts
-export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void; // DESIGN §8.7 steps 1–4 (step 4 calls events.triggerRelief)
+export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void; // DESIGN §8.12 steps 1–3 and 5 (step 5 calls events.triggerRelief); the water pause starts on the run-out (< WATER_PAUSE) under WATER_START × waterResume and lifts above waterResume
 // ordo/saving.ts
 export function savingFor(s: GameState, v: SimView): { cost: Cost; for: 'petition' | 'plan' | 'pin' | 'request' | 'wish' } | null;
+export function savingHolds(s: GameState, v: SimView, r: ResId): BuildingId | 'petition' | null;   // what the target keeps a good back for: the first part costing some (its work, or the fee), else the wish saved for
 export function reserved(s: GameState, v: SimView): Cost;           // saving target + next 30 days of Capitolium materials
 export function canSpend(s: GameState, cost: Cost, v: SimView, opts?: { survival?: boolean }): boolean;   // stock − reserved ≥ cost and denarii stay ≥ treasury floor (survival ignores both)
 // ordo/actions.ts
-export function askOrdo(s: GameState, type: BuildingId): ActionResult;     // max 3; needs Ordo construction on
+export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionResult;   // max 3; needs Ordo construction on; a house card's carries the home (noSlots when no free plot reaches it, or, said apart, when the only ones that do lie on blocks the Ordo leaves alone: build.homeByHand)
 export function pinBuild(s: GameState, type: BuildingId | null): ActionResult;
 export function setOrdo(s: GameState, area: OrdoArea, on: boolean): ActionResult;
 export function setManualTarget(s: GameState, cat: LaborCat, n: number): ActionResult;   // manual labour only
-export function applyOnce(s: GameState, area: OrdoArea): ActionResult;    // labour: copy the Ordo plan into manual targets; build: place wish #1 as a player site; trade: create the would-be contract
+export function applyOnce(s: GameState, area: OrdoArea): ActionResult;    // labour: copy the Ordo plan into manual targets; build: place wish #1 as a player site (wouldRaise: never one that is the Ordo's alone to raise, build.ordoAlone: where it clears its own gardens or buys out homes, DESIGN §3.9); trade: create the would-be contract
 export function setLabourPriority(s: GameState, cat: LaborCat, days: number): ActionResult;
 // ordo/reasons.ts
 export function reasonText(r: Reason): string;                        // full sentence for tooltips/Annales
@@ -1282,7 +1353,8 @@ export function setSetting(s: GameState, id: SettingId, value: number): ActionRe
 export function setSwitch(s: GameState, id: SwitchId, on: boolean): ActionResult;
 export function renameColony(s: GameState, name: string): ActionResult;
 export function nextPath(s: GameState): PathDecisionId | null;
-export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
+export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean; souls?: number }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
+export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: { label: string; met: boolean; progress?: number }[] } | null;   // the next rank's checklist, the charter's line included while it waits; null at Colonia; progress: a line's 0..1 (1 once met): a measured line as it reads (Stabilitas its streak), a work's line as its site rises (each work to staff half once raised, whole once staffed)
 export function choosePath(s: GameState, decision: PathDecisionId, option: PathOptionId): ActionResult;   // pays fee × fx(petitionFee), records, rankUp, Colonia → startCapitolium; pushActionFx
 export function rankUp(s: GameState, rank: RankIndex): void;          // rings/territory (invalidate), ceremony paving, log, fx rank
 export function isUnlocked(s: GameState, ref: UnlockRef): boolean;
@@ -1323,7 +1395,8 @@ export function buyNow(s: GameState, res: TradeRes, qty: number): ActionResult; 
 export function emergencyImport(s: GameState, ctx: TickContext, qty: number): boolean;
 // save.ts
 export const SAVE_VERSION = 2;
-export const KEYS: { save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1' };
+export const KEYS: { save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1';
+  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1'; backup: 'castravaleria.backup.v1' };
 export const MIGRATIONS: Record<number, (raw: any) => any>;          // version n → n+1
 export const DEFAULT_PREFS: Prefs;
 export function serialize(s: GameState): string;
@@ -1331,6 +1404,9 @@ export function deserialize(json: string): GameState | null;          // migrate
 export function saveGame(s: GameState, now: number): boolean;
 export function loadGame(): GameState | null;
 export function hasSave(): boolean;
+export function rawSave(): string | null;                              // the stored text, readable or not
+export function replaceSave(s: GameState, now: number): boolean;      // saveGame over the stored colony, which goes to the backup slot (§11.4)
+export function loadBackup(now: number): { raw: string; days: number } | null;   // the previous colony while kept; an older one is removed
 export function clearSave(): void;
 export function exportText(s: GameState): string;                     // 'CV1:' + base64(UTF-8 JSON)
 export function importText(text: string): GameState | null;
@@ -1342,6 +1418,16 @@ export function addFasti(e: FastiEntry): void;
 export function offlineDays(awayMs: number): number;                   // min(OFFLINE_MAX_DAYS, floor(awayMs / 1000 × OFFLINE_RATE))
 export function offlineRun(s: GameState, awayMs: number): OfflineRun | null;   // null below OFFLINE_MIN_MS
 export function simulateOffline(s: GameState, awayMs: number): AwayReport | null;
+export function wonWhileAway(s: GameState, r: AwayReport): boolean;   // the Capitolium dedicated during the absence: main.ts replays the lost victory fx
+export const AWAY_CAP_MS: number;                                      // OFFLINE_MAX_DAYS / OFFLINE_RATE × 1000: the real time that fills the cap (≈ 61 min)
+export const AWAY_CAP_YEARS: number;                                   // the cap in years (one lustrum: 5): How to play, the cap line, the letter's foot
+export function awayRule(): string;                                    // How to play's Time away sentence, in real time
+export function awayUnusedMs(r: AwayReport): number;                  // the absence past the cap, when the whole lustrum ran (≥ OFFLINE_MIN_MS, else 0)
+export const sentence: (t: string) => string;                          // ends a line in one full stop (a Roman date already ends in one)
+export const pct: (x: number) => string;                               // "34%": the Capitolium's progress, rounded down (99.9% is not yet done)
+export function capLine(r: AwayReport, dur?: (ms: number) => string): string | null;   // the letter's cap line
+export function readyLine(r: AwayReport): string | null;              // "Rome would hear our petition for Oppidum: ready since …, N days."
+export function stalledLine(r: AwayReport): string | null;            // "Stalled: nothing moved toward Oppidum. Still lacking: …"
 ```
 
 ### 8.6 Guidance (WP-E)
@@ -1358,12 +1444,21 @@ export function mute(s: GameState, rule: RuleId): ActionResult;     // Nota only
 export function unmute(s: GameState, rule: RuleId): ActionResult;
 // advisors/remedies.ts
 export function checkRemedy(s: GameState, r: Remedy): ActionResult;   // never throws; disabled-with-reason
-export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them)
-export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, building:center
+export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them); clear: demolish each id
+export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, tool, building:center
 export function remedyLabel(s: GameState, r: Remedy): string;
+export function clearPrompt(s: GameState, r: Remedy & { kind: 'clear' }): { title: string; text: string; yes: string };   // App's question before a block is cleared
+export function remedyTip(r: Remedy): string | null;                  // what a remedy sets in motion, for its button's tooltip (a focus: what the council raises under it)
 // advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
 export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
 export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null;   // the garden lifting the most of them
+export function serviceReach(s: GameState, type: BuildingId, need: NeedId): number;   // road steps its layers answering the need reach (path bonuses included)
+export function reachSteps(s: GameState, type: BuildingId, x: number, y: number, id: number, need: NeedId): number | null;   // steps to house `id` if it would serve that want (the ghost's reach hint)
+export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[]): { site: ClearSite | null; why: ClearWhy };   // the block to clear for a block service no free block brings them (DESIGN §11.6 row 17), or why none
+export function blockWorks(s: GameState, tile: number): number[] | null;   // what the advice may pull down on a block (homes, plot works); null if anything else stands there
+export function worksWord(s: GameState, ids: readonly number[]): string;   // what stands there in words: "2 gardens and a well"
+export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number>;   // house → the work answering `need`, still rising, that will reach it (they wait for it: no second one advised)
+export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null;   // manual labour: a finished work answering the need that stands short of hands (a service below `fullReachHands` serving one of `ids`, a grove, a grain work), with the hands its target lacks; its remedy (staffRemedy: assign) comes before a work to place (DESIGN §11.5), save a store where the card's diagnosis is the stores (rules 3 and 6: the store first, then the hands)
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
@@ -1392,12 +1487,14 @@ export function pendingOffers(s: GameState): DutyId[];               // learned,
 export function howToGetMore(s: GameState, res: ResId, v: SimView): string[];   // generated from BUILDING_DEFS and HUB_DEFS + a live line
 export function benefitLine(type: BuildingId): string;
 export function outputChain(s: GameState, b: Building): { label: string; value: string }[];   // DESIGN §8.1 inspector chain
+export function waterIdle(s: GameState, v: SimView, b: Building): { why: string; remedies: Remedy[] } | null;   // why a staffed works stands idle for water (economy.waterHold) and its fixes: the inspector's idle line, which fabrum.stalled repeats
 ```
 
 ### 8.7 The action API (`src/game/actions.ts`, frozen dispatcher)
 UI, bot and remedies mutate state **only** through these (plus `applyRemedy`). Every action returns `ActionResult`, never throws, logs what it changed, and calls `invalidate`/`touchPeople` as needed. Actions needing randomness use `withRng`; actions raising visuals use `pushActionFx`.
 ```ts
 export { placeBuilding as place, demolish, buildRoad, pave, toggleReserveBlock } from './place';
+export { demolishMany, clearGardens, undoDemolition } from './demolition';
 export { cancelSite, prioritise, setOpen, setPrio } from './construction';
 export { setHousePref } from './housing';
 export { askOrdo, pinBuild, setOrdo, setManualTarget, applyOnce, setLabourPriority } from './ordo/actions';
@@ -1437,7 +1534,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   goodsDay(s, ctx);              // oil and wine to T4 houses
   // 5 · works and homes
   constructionDay(s, ctx);       // builders along worksQueue(); Capitolium crew cap and materials; completions;
-                                 // Capitolium completion sets s.victory, stats.victoryDay, fx victory
+                                 // Capitolium completion sets s.victory, stats.victoryDay and atVictory, fx victory
   housingDay(s, ctx);            // houses with id % CHECK_EVERY == day % CHECK_EVERY: needs, evolution, renovation, decline
   urbsDay(s, ctx, v, kalends);   // the growing town (DESIGN §3.9): footfall census and a needless well on the Kalends;
                                  // the town wall surveyed on a build day once due (its work is in constructionDay)
@@ -1479,7 +1576,7 @@ Rules around the tick:
 3. **Iteration order** comes from sorted arrays (`people`, `buildings`, `families`, contracts, caravans by id; `roads` by tile) and from the frozen id arrays (`RESOURCES`, `BUILDINGS`, `LABOR_CATS`, …). Never drive logic by `Object.keys` of a record, `for…in`, or a `Set`/`Map` whose insertion order depends on history. Tie-breaks are explicit: lowest id, then lowest tile.
 4. **GameState is plain JSON**: no typed arrays, `Map`, `Set`, class instances, functions, `undefined` values, `NaN` or `±Infinity`. Optional fields are omitted, not set to `undefined`. Typed arrays live only in memoised derived data. A `noNaN` walker runs in every bot test.
 5. **Memo purity**: every memoised value is a pure function of `s` and is keyed on the epochs that cover its inputs. Module-level caches (`getMap` seed cache, `councilReport`'s last report, `validSlots`) never change sim outcomes. Anything the Ordo must remember between days lives in `s.ordo`.
-6. **Offline = online minus the listed differences**: the only branch on `ctx.offline` are the DESIGN §14 differences, each implemented in exactly one place (events, people death factors, housing decline stop, merchants, governAway in `ordoActive`, relief auto-accept, fx discard). UI prefs (`slowForNews`, `pauseOnCritical`, speed) never reach the sim.
+6. **Offline = online minus the listed differences**: the only branch on `ctx.offline` are the DESIGN §14 differences, each implemented in exactly one place (events, people death factors, housing decline stop, merchants, governAway in `ordoActive`, relief auto-accept, fx discard). UI prefs (`slowForNews`, `pauseOnCritical`, speed, pause) never reach the sim.
 7. **No rounding of state for storage**: the save is the exact state, so *save → load → continue* equals *never saving*. Rounding is display-only (`fmt*`).
 8. Floating-point determinism is guaranteed per JS engine (tests run in node/V8). Use `Math.exp`, `Math.pow`, `Math.sqrt` freely; never compare floats for equality in game logic (use thresholds).
 9. Tests: two 2,000-day runs of one seed serialise identically; *save → load → continue* equals the uninterrupted run; `simulateOffline(s, 200_000)` equals 100 ticks with `ctx.offline = true`; 24 h away = 1,825 days.
@@ -1498,20 +1595,22 @@ Rules around the tick:
 2. `version > SAVE_VERSION` → `null` (title explains: *"This save was made by a newer version."*).
 3. While `version < SAVE_VERSION`: `raw = MIGRATIONS[version](raw)` (each migration sets the next version).
 4. **Fill defaults**: deep-merge missing object keys from `newGame({ seed: raw.seed, now: 0 })` (objects only; arrays are kept as saved). New ids added to `EDICTS`/`SETTINGS`/`SWITCHES`/`RULES` therefore appear with their initial values.
-5. **Sanitise**: non-finite numbers in `res`, `needs`, `morale`, `fed`, counters → 0 (and clamp to ranges); unknown building types, ids, edict options, path options, hubs → dropped or reset to initial; arrays re-sorted by id and de-duplicated; `home`/`work`/`spouse` pointing at missing entities → `null`; people over `POP_CAP` are not trimmed.
+5. **Sanitise**: non-finite numbers in `res`, `needs`, `morale`, `fed`, counters → 0 (and clamp to ranges); `stats.atVictory` kept only whole and with a victory; unknown building types, ids, edict options, path options, hubs → dropped or reset to initial; arrays re-sorted by id and de-duplicated; `home`/`work`/`spouse` pointing at missing entities → `null`; people over `POP_CAP` are not trimmed.
 6. Fatal (no principia, map seed not a number, people not an array) → `null`.
 
-Unreadable save on Continue: the title shows the reason and an **Export raw save** button (the raw string in the export textarea); **Found a new colony** asks for the two-click confirm before overwriting.
+Unreadable save on Continue: the title shows the reason and an **Export raw save** button (the raw string in the export textarea); **Found a new colony** asks in its dialog first, which offers that raw text too (§11.4).
 
-**Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4.
+**Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4. An optional key added later, which older saves simply lack and the code reads as absent (`stats.atVictory`), needs no migration: there is nothing to convert.
 
 ### 11.3 Prefs, Fasti, export/import
-- `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed (a continued game resumes paused, then at this speed after the away report).
+- `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed; `paused` is the player's pause (❚❚, Space, *Pause on Periculum*, an import and the away letter's buttons that open a panel (`resume(g, true)`) set it through `setPaused`; any speed clears it), never the app's own holds (the title, a letter, the catch-up). A continued game loads paused and then goes on as the player left it (`dispatch.ts resume`: still paused if `paused`, else at `speed`), after the away report when there is one.
 - `castravaleria.fasti.v1`: `FastiEntry[]`, newest first, max 50. `addFasti` is called once at dedication (victory). A new colony after a victory gets `legacy = previous legacy + 1` and `legacyBonus += 0.05` if *Imperium* was chosen; abandoning a colony adds nothing.
-- Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves, and attaches the view. On failure: *"That text is not a Castra Valeria save."*
+- Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves (keeping the colony it replaces as the previous colony, §11.4), and attaches the view. On failure: *"That text is not a Castra Valeria save."*
 
 ### 11.4 Autosave (main.ts)
-Every `AUTOSAVE_S` (20 s) of real time in game mode (not during catch-up, not on the title); on `visibilitychange → hidden` (also records `hiddenAt`); on `pagehide`; immediately after a path choice, victory, import and new game; on **Save** and **Save & quit** in the menu. Automatic saves warn once when storage refuses; **Save** and **Save & quit** report every failure, and a Save & quit that cannot save offers the export text instead of dropping the colony.
+Every `AUTOSAVE_S` (20 s) of real time in game mode (not during catch-up, not on the title); on `visibilitychange → hidden` (also records `hiddenAt`); on `pagehide`; immediately after a path choice, victory and import, and when a new colony's standard is raised; on **Save** and **Save & quit** in the menu. Automatic saves warn once when storage refuses; **Save** and **Save & quit** report every failure, and a Save & quit that cannot save offers the export text instead of dropping the colony.
+
+**A new colony never erases the save at once.** Over a stored colony the title's *Found a new colony* opens a dialog that names it (*"Replace Castra Valeria — Vicus, 56 souls?"*) with *Export a copy first* (the raw save when it cannot be read), *Cancel* and *Found the new colony*. `App.newGame` saves a colony left from the game first (Abandon, a dedication's new colony), as `App.importSave` does (an import from the Menu: the previous colony as it stands, not as its last autosave left it); a new colony then writes nothing while the founding letter is open (`founding`: autosaves, `pagehide` and hiding the tab save nothing); *Raise the standard* (the first `setSpeed`) begins it and saves it. Back on that letter is its cancel: `toTitle` saves nothing and the stored colony drifts behind the title again. The first save over another colony (a new colony begun, an import) is `replaceSave`: the new save first, then the replaced text, readable or not, into `castravaleria.backup.v1` stamped with the wall clock (as storage allows: the older previous colony is removed first, so one that does not fit leaves none, never an older one offered as the colony just replaced). The title offers **Restore the previous colony** while it is kept (`B.ui.PREVIOUS_DAYS` = 7 real days, `loadBackup`), behind the same dialog; the restore is an import of it, so the two colonies change places.
 
 **One tab owns the save.** Each page draws a random id and writes it to `castravaleria.owner.v1` (`claimSave`) when it enters a game. Every save checks `ownsSave` first; a tab that lost the claim (a `storage` event, a return to the tab, a page restored from the back-forward cache, or its next autosave) switches to the title at once and never saves or catches up its stale copy; its Continue plays the stored colony there instead. After a throw in the loop the clock stops and nothing more is saved over the last good save.
 
@@ -1524,7 +1623,7 @@ export function offlineDays(awayMs: number): number {
 export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
   if (awayMs < B.time.OFFLINE_MIN_MS) return null;
   const days = offlineDays(awayMs); if (days < 1) return null;
-  const before = snapshot(s);                       // census pop, res, DoH, stats counters
+  const before = snapshot(s);                       // census pop, res, DoH, stats counters, next rank's checklist (met / of, each line's progress), Capitolium progress
   const lowest = { grain: { doh: Infinity, day: s.day }, water: { doh: Infinity, day: s.day } };
   const decided: string[] = []; const highlights: LogEntry[] = [];
   let done = 0, stopped = false;
@@ -1544,6 +1643,12 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
     },
     report: () => ({ awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided, highlights, lowest,
                      awaiting: { petition: readyPetitionRank(s),   // a ready petition is not listed again as augur.petition
+                                 readySince,                       // the augur.petition memo's `since` (its rank the petition's), else null
+                                 stalled,                          // nothing moved toward the next rank (no checklist line met or nearer: before/after
+                                                                   // petition.items, a work it asks for nearer while its site rises; at Colonia the Capitolium
+                                                                   // no higher; souls past the count and works the checklist does not ask for are not
+                                                                   // progress) and no petition ready: the next rank's unmet items (≤ 3, checklist order),
+                                                                   // or { rank: null } for a Capitolium that did not rise
                                  advisories: activeAdvisories(s, { forCard: true }).filter(a => petition === null || a.rule !== 'augur.petition').slice(0, 3).map(a => a.rule) } }),
   };
 }
@@ -1552,7 +1657,7 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
 `main.ts` flow:
 1. **Continue**: `awayMs = max(0, now − s.lastSave)`; **tab return**: `awayMs = now − hiddenAt`. Absences < 60 s simulate nothing (the rAF accumulator clamp drops the gap).
 2. `run = offlineRun(s, awayMs)`; if non-null → mode `catchup`: the veil *"Anni transeunt… — the years pass"* with a progress bar and **[Skip]**; each frame runs `run.step(B.time.SLICE_DAYS)` repeatedly until `SLICE_MS` (30 ms) of the frame is used; the map, HUD and date redraw from the live state; input is blocked by the veil; fx are discarded; **Skip** calls `run.step(run.days)`.
-3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes at `prefs.speed`. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
+3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes as the player left it (`resume`: paused if `prefs.paused`, else at `prefs.speed`), but a button of *Awaiting you* that opens a panel (*Petition Rome*, *See the petition*, a remedy of kind `open` or `contract`: `opensPanel`) leaves it paused, stored like the player's own pause (`setPaused`); no letter (`report.days` 0): `resume` at once. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
    A colony still on `START_DAY` (the founding letter not yet answered) is never caught up: Continue shows the founding letter again.
 4. `previewRates(s)` refreshes the HUD ledger after a load (the last tick's rates are not saved).
 
@@ -1580,7 +1685,7 @@ export function ensureVisibleDelta(c: Camera, worldRect: { x: number; y: number;
 export function defaultLevel(cssSize: number): number;   // 3, or 2 below ZOOM_SMALL_W: fed min(free width, free height)
 ```
 - **Insets** (tests/camera.test.ts at DPR 1, 2, 2.625, 3): the canvas stays full-bleed under the UI and never resizes between panel states. The UI (layout.ts) tells the view what it covers; centring, the ± zoom anchor, the clamp, the minimap rectangle and `ensureVisibleDelta` (the least move that brings a rect inside the free rect, `marginPx` clear of its edges; 0 when it is inside; a rect too big is only moved until it fills it) use the free rect. Insets that leave no free rect fall back to the whole viewport. `x, y` stay the world px at the canvas centre, so `screenToWorld`/`worldToScreen`, picking, the fling and drawing never see the insets.
-- `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
+- `input.ts` (F): pointer events on `#map`. Left button: press-drag > 6 CSS px pans, otherwise a click; right button / Esc → cancel; wheel accumulates `deltaY` and steps one level per 100 units around the cursor; two pointers → pinch (accumulated ratio, snaps to the nearest level at ≥ ×1.4 / ≤ ×0.7). Touch while placing a building: a tap previews (ghost + verdict via `onPlacementPreview`), the banner's **Place** button confirms. A tool that owns the press (`toolDrag` 'start' true: road, pave, the demolish sweep) drags instead of panning (a pinch still pans); a press it never saw move stays a click when its 'end' returns false (the demolish tool). Keyboard is not handled here (H's `keys.ts` calls `panBy`/`zoomBy`).
 
 ### 12.2 Frame and draw order (`view.ts`)
 `frame()` is called on every turn of `main.ts`'s loop (§13.8), and draws only when the frame can differ from the last
@@ -1600,7 +1705,7 @@ frame pays the minimap's held-back redraw (`Minimap.pending`) and bakes an off-s
 5. **Y-sorted objects** (by footprint bottom, then x): buildings and houses (via `buildingSprite`), walls and gates, aqueduct spans, trees/stumps/rocks/reeds/ruins, walkers and carts.
 6. **Status marks** above objects: scaffolds and `rise()`, cracked plaster (declining), CLAVSVM plank (closed), unpaid coin, unstaffed pip, Ordo seal on fresh Ordo sites, plan ⌛, want cues (level ≥ 2 only; the first unmet need): a want pip (≤ 8 px, in the colour of the need's icon) inside every wanting house's own roof box, and the full want bubble only over the selected or hovered house (a bubble over every house covers the facade of the house to its north); no want cues while the Domus overlay shows them; ↑ arrows during placement. Then the overlay's marks: houses tinted and outlined in their overlay colour over their sprites (Domus, Aqua), the want icon of one-need houses, ✕ on dry houses, red rings on unstaffed services.
 7. **Particles and floating text**.
-8. **Placement ghost**: sprite at 60% alpha snapped to the slot, red tint + ✕ when invalid, gold *+NN%* when `mult ≥ 1.05`, felling yield, laurel marker on the Ordo's best slot.
+8. **Placement ghost**: sprite at 60% alpha snapped to the slot, red tint + ✕ when invalid, gold *+NN%* when `mult ≥ 1.05`, felling yield (with `fellingSpill`'s words in ember when most of it would spill over the timber cap once the work's own timber is paid, `fellSpend`), laurel marker on the Ordo's best slot.
 9. **Selection/hover outlines** and `flash()` rectangles.
 
 Culling: tiles and objects outside `visibleTiles(margin 4)` are skipped. Budget: ≤ 6 ms per frame at 1,100 × 800, level 2, 600 buildings, 220 walkers.
@@ -1657,12 +1762,14 @@ Anchoring: a building sprite is centred horizontally on its footprint and bottom
 ### 12.4 `MapView` (view.ts, F) — the only render object the UI touches
 ```ts
 export type PlacingState =
-  | { kind: 'building'; type: BuildingId; replaceId?: number; at?: number }   // at: pre-positioned origin tile (remedies)
+  // at: pre-positioned origin tile (remedies); home: the house whose want it answers (a house card's Place)
+  | { kind: 'building'; type: BuildingId; replaceId?: number; at?: number; home?: { id: number; need: NeedId } }
   | { kind: 'road' } | { kind: 'pave' } | { kind: 'reserve' } | { kind: 'demolish' };
 export interface ViewCallbacks {
   onHover(tile: number | null, buildingId: number | null): void;
   onClick(tile: number, buildingId: number | null, e: { button: 0 | 2; shift: boolean }): void;
   onDrag(kind: 'road' | 'pave', tiles: number[], done: boolean): void;      // L-shaped path preview; done on release
+  onDemolish(ids: number[]): void;                                           // the demolish tool's second click: pull these down
   onCancel(): void;                                                          // right-click / two-finger tap while placing
   onPlacementPreview(check: PlaceCheck | null, tile: number | null): void;   // banner + inspector verdict (desktop hover, touch tap)
 }
@@ -1701,6 +1808,8 @@ export class MapView {
   readonly suspended: boolean;
   invalidate(): void;                                 // P7: something the map shows changed outside the view: draw next frame
   readonly draws: number;                             // P7: map frames drawn since the page loaded (?dev battery checks)
+  readonly armed: boolean;                            // the demolish tool holds armed works (a Back/Esc layer, BACK_RANK.armed)
+  disarm(): boolean;                                  // drops them (Esc, Back, a right-click); false when none
 }
 ```
 Covered (`suspend(true)`), `frame()` returns at once and `handleFx` drops the bursts, flashes and columns (kept, they
@@ -1709,7 +1818,7 @@ building whose crackle was heard burns when the map shows); uncovered, the next 
 going on from where they stood.
 Camera and the UI: every coordinate in and out is canvas CSS px; `mapRect()` places them in `#app`. `setInsets` never recentres, but clamps at once to the new free rect (at a map edge a wider free rect moves the limit: the step comes with the panel's slide, not with the next drag); with `host: true` (the layout changed shape) the default level is chosen again from the free map unless the player zoomed by hand since `attach`. `attach` picks the default level from min(free width, free height) (phones, landscape phones, docked tablets: 2), except on the COLUMNS host, where `setInsets({ canvasZoom: true })` keeps the canvas-width rule (desktops and 1366×768 laptops: 3) and centres the forum in the free rect. `startPlacing` with `at` glides the ghost into the free map (which ends above the placing banner) by the least it needs (`ensureVisible`, 64 px clear), never when it is there already; every `setInsets` does the same for a ghost the player set (pre-positioned or tapped, not the mouse's: `keepGhost`), so a rotation or a resized window never leaves Place staking a site out of sight. The inspector's popup (inspector.ts) glides a pinned target clear only when the UI covers it, when picked and again on a layout change (`Layout.onChange`): `ensureVisible` into the free rect, then `dodge()` (pure, tests/layout.test.ts) clear of what floats over it (the map's tools, the ticker, a phone's band of cards; what the layout floats, the DOCK's head beside the spine, by its own box: `currentFloating`); a target already in view never moves. The card stands where the room around its target holds it (`clearAround`: a house left of the DOCK's head keeps its card there), and of the sides where it fits whole it takes the one covering least of the map's tools (`#map-tools` whole, the zoom, the tool column, the overlay bar, the minimap, the ticker); when that one still covers some, a side where a shorter card (down to 180 px, scrolling inside) or one slid along its edge (its tail still on the target's middle) covers none, the tallest of those (`popupSlot`, pure, tests/layout.test.ts: a card left of a target at the top right of a tablet's map ends above the minimap).
 
-Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
+Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`; placed from a house card (`home`: that house and its want), `advisors/util.reachSteps` (the home outlined, *"Reaches this home: 9 steps"* / *"Does not reach this home"*, and the same on the place banner's verdict). The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with its new paces, cost (free) and, over woods, the timber it fells, the stores' cap and what would spill over it (`roadPreview`, `fellingSpill`; ember when most would); release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish (`demolish.ts`, F): the first click arms the work under it, or a press dragged across the map sweeps a rectangle (`sweepRect`, `sweepIds`: every work it touches; the tool owns the drag as the road tool does, and returns false at the 'end' of a press it never saw move, which Input then taps) and arms what it touched on release. Armed works show red under the lines of `demolitionImpact` (*"Click again to demolish all 6"* · homes and people, workers · *"3 homes lose water"* · *"25% back: 10 timber"*; `impactLines`, pure; read again when `structEpoch` changes: at once while paused or when an armed work is gone, else at most every `REARM_MS` (250) of real time, the last lines standing until then, `rearmDue`, pure: a large town's what-if costs milliseconds, and renovations can change the structure several times a second at 10×); a second click on them (or anywhere inside an armed sweep) calls `cb.onDemolish(ids)` → `actions.demolishMany`, unless it comes under `CONFIRM_GUARD_MS` (400) after the first (`demolishTap`, pure: a double-click arms, never pulls down). No timer: a mouse leaving the armed works, a click on bare ground, a right-click, Esc or Back (`BACK_RANK.armed`, 55, above placing) disarm; a finger's stay armed until a tap elsewhere. The demolish banner carries **Undo** while `undoable(s)` (`syncPlaceBanner`, every throttled UI frame); a work pulled down by `actions.demolish` or a site cancelled by `cancelSite` since ends it (`forgetDemolition`).
 
 ### 12.5 Overlays (`overlays.ts`, F)
 Each overlay is a 112 × 84 canvas (1 px per tile) rebuilt when its key changes (`structEpoch` + overlay id + layer + `day / 5` for *domus*), drawn by `view.ts` at 45% alpha and mirrored on the minimap. Sources and colours:
@@ -1839,9 +1948,9 @@ export interface Game {
   readonly prefs: Prefs;
   readonly rates: Rates;              // last tick's ledger (previewRates after a load)
   readonly speed: Speed; readonly paused: boolean; readonly mode: Mode; readonly modalOpen: boolean;
-  setSpeed(sp: Speed): void;          // also unpauses; stores prefs.speed
+  setSpeed(sp: Speed): void;          // also unpauses; stores prefs.speed, clears prefs.paused
   togglePause(): void;
-  setPaused(p: boolean): void;
+  setPaused(p: boolean): void;        // the player's pause: stores prefs.paused (a reload and the away letter keep it)
   changed(): void;                    // something changed outside a tick: panels re-check signatures now
   act(r: ActionResult, opts?: { okSfx?: SfxName; okToast?: string }): ActionResult;   // standard result handling: error toast with r.reason + 'error' sfx, or ok sfx; then changed()
   startPlacing(p: PlacingState): void; cancelPlacing(): void;
@@ -1922,7 +2031,7 @@ export interface Panel {
 }
 export type Updater = () => void;
 ```
-The **signature-diff pattern** (Hearthlands) applies to every panel, the inspector, the Res Gestae panel and the counsel card: compute the signature at most every 200 ms; if it changed, clear and rebuild (preserving scroll); otherwise run the updaters. Buttons are never rebuilt under the pointer within 300 ms of a click.
+The **signature-diff pattern** (Hearthlands) applies to every panel, the inspector, the Res Gestae panel and the counsel card: compute the signature at most every 200 ms; if it changed, clear and rebuild (preserving scroll); otherwise run the updaters. Buttons are never rebuilt under the pointer within 300 ms of a click, nor while a two-step confirm is armed inside (`armedWithin`); the counsel card waits while any is (`anyArmed`), so no tip unfolds above an armed button, and the Res Gestae with it (`armedOr`: busy while one is, through a new goal too), so its height never moves the card, the DOCK's pane or a pinned card's free map under one. A confirm armed out of sight (inside something `display: none`, a panel folded by C; or `visibility: hidden`) counts for neither and takes no Esc. The inspector's card (for the same target), the Breviarium, the counsel card and the Res Gestae also wait while the mouse rests on them (`steady.ts` `PointerHold`: `busy()` while a press is held or within 300 ms of a click; `holds()` also while the mouse has moved over the widget in the last 4 s and not clicked there in the last 2). Where the mouse is comes from every `pointermove` in the window, not the widget's `pointerleave` alone: a node removed from under the pointer (a rebuild, a card that folded) leaves no leave behind. The Res Gestae waits on the counsel card's hold too, but a new goal waits only on `busy()` (`objective.ts goalsWait`).
 
 ### 13.4 Helpers (`src/ui/dom.ts`, scaffold)
 ```ts
@@ -1948,14 +2057,21 @@ Never use `title=` attributes or `innerHTML` with game text (names are data); bu
 ```ts
 // modals.ts
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
-  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped
-export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-click confirm, disarms after 3 s
+  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped (restingFocus: a parchment letter on the dialog itself, else data-autofocus or the first control but ✕); a press on the backdrop closes the top closable one from B.ui.CONFIRM_MIN_MS after it opened, never a parchment letter (backdropCloses, pure)
+export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-step confirm: armed while a mouse rests on it (leave, a press elsewhere, Esc disarm), else drains for B.ui.CONFIRM_MS; a press within B.ui.CONFIRM_MIN_MS of arming is ignored
+export interface ChoiceAsk { kicker: string; title: string; lines: readonly string[]; ok: string; cancel: string; danger?: boolean }   // tabs/edicta.ts pathAsk builds the paths' (pure)
+export function confirmChoice(q: ChoiceAsk, fn: () => void): () => void;   // a permanent choice asked by name (charter, paths, abandon, quit unsaved): Cancel (focused) + ok, no timeout, ok ignored for B.ui.CONFIRM_MIN_MS
+export function confirmPress(armedAt: number | null, now: number): 'arm' | 'wait' | 'run';   // pure (tests/confirm.test.ts)
+export function armedWithin(root: Element): boolean;   // an armed confirm inside: the side panel and the inspector hold their rebuilds
+export function anyArmed(): boolean;                    // any armed confirm in sight: the counsel card holds still
+export function armedOr(hold: { holds(): boolean; busy(): boolean }): { holds(): boolean; busy(): boolean };   // that hold, also busy while anyArmed: the Res Gestae's `below` (ui/index.ts)
+export function openConfirm(o: { kicker: string; title: string; text: string; yes: string; no: string; onYes: () => void }): void;   // a yes/no question asked through confirmChoice: the safe answer first and focused
 export function openMenu(g: Game): void;
 export function openExportImport(g: Game): void;
 export function openHowTo(g: Game): void;
 export function openRename(g: Game): void;
 // toasts.ts
-export function toast(text: string, kind?: 'info' | 'good' | 'bad' | 'gold', icon?: string, ms?: number): void;   // max 4 visible, oldest dropped
+export function toast(text: string, kind?: 'info' | 'good' | 'bad' | 'gold', icon?: string, ms?: number, sub?: string, action?: ToastAction): void;   // max 4 visible, oldest dropped; one optional button
 export function toastBatch(key: string, text: (n: number) => string, kind?: 'info' | 'good' | 'gold', icon?: string): void;   // coalesces within 1.5 s
 ```
 
@@ -1969,7 +2085,10 @@ check = checkRemedy(s, r); if (!check.ok) → toast(check.reason, 'bad'); sfx 'e
 place     → startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) })   // the tile while still valid, else the best slot
 open      → openTab(r.tab, r.anchor)
 overlay   → view.setOverlay(r.overlay, r.layer)
+tool      → startPlacing({ kind: r.tool })                     // the Pave brush (aedilis.favour)
 contract  → prefillContract(r.spec)
+clear     → centre and flash the block; openConfirm(clearPrompt(s, r))   // modals.ts: the safe answer first
+            yes → act(applyRemedy(s, r)) (the demolish action), then startPlacing({ kind: 'building', type: r.building, at: r.tile })
 building + op 'center' → focusTile(building tile)
 otherwise → act(applyRemedy(s, r))          // sim remedies run through actions
 ```
@@ -1977,7 +2096,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 ### 13.7 FxEvent → UI (`UI.onFx`, H)
 | FxEvent | UI |
 |---|---|
-| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build` |
+| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with one button worded as the target, **Water hands to 4** (`setManualTarget` to the target it named, `to`, or a higher one set since): the hands it lacks are the larger of the fx's `short`, as the work was finished (the frame's later ticks may have staffed it with an older work's hands, the live count then 0), and `manualReach` now (a work finished after it in the frame, nearer the forum, fills first) |
 | `evolved` | `toastBatch('evolved', …)`, sfx `tink` (batched) |
 | `milestone` | gold toast *"Res Gestae: {text}"* + unlock line, sfx `lyre` |
 | `rank` | rank banner 8 s, sfx `cornu` |
@@ -1987,7 +2106,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 | `fire` | sfx `crackle` |
 | `event` | sfx `event`; the ChoiceCard shows `s.choice`; **slow for news**: if `prefs.slowForNews` and speed > 2 → `setSpeed(2)` |
 | `advisory` with sev 3 (new or raised) | sfx `tintinnabulum` (≤ once per `BELL_S` s); if `prefs.pauseOnCritical` → pause |
-| `victory` | Victory dispatch, sfx `victory` |
+| `victory` | Victory dispatch (read again from the Annales' Fasti, from `stats.atVictory`, with *Keep governing* alone: `victoryAnswers`), sfx `victory` |
 | `birth`, `death`, `declined`, `leave`, `caravanOut`, `season`, `ordoPlaced` | no toast (map only); `birth`/`death` sfx at most every 10 s |
 Toasts are only for completions, evolutions, milestones, rank-ups and errors (DESIGN §15.1). New Annales lines appear in the ticker, never as toasts.
 
@@ -2007,8 +2126,9 @@ frame(t): schedule()                        // the next turn first: an animation
   view.frame(dt × 1000, s, speed, paused); ui.frame(t)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
-keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs
-back (history.ts): initBack(g) registers the modal 100, placing 50 and selection 40; the phone's speed popover (hud.ts)
+      (its first save, over the stored colony: replaceSave, §11.4; Back on the letter cancels it, nothing saved)
+keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs and under a modal (keysToGame, pure)
+back (history.ts): initBack(g) registers the modal 100, the demolish tool's armed works 55, placing 50 and selection 40; the phone's speed popover (hud.ts)
       and the tool column's Via and Mappae popovers (mapbar.ts) add 70, the Breviarium (tray.ts) 60, the event card in a
       phone's slot (ui/index.ts) 45, and the layout the panel's detent at 30 (isLayer, backDetent: full → half → closed on
       the phones, wide → docked on the COLUMNS, spine or wide → docked on the DOCK); later layers registerBack({ rank, open, close })); ui.frame → syncBack(mode !== 'title') keeps one sentinel history entry in a game;
@@ -2257,7 +2377,7 @@ export class Layout {
 | `map.test.ts` | A | always | 200-seed guarantees, survey geometry, determinism of `getMap` |
 | `placement.test.ts` | A | always | every `canPlace` code in order; plans, stakes, auto-roads, aqueduct |
 | `coverage.test.ts` | A | always | BFS steps, effective radius, desirability |
-| `sim.test.ts` | B | always | opening arithmetic, rationing, hunger/thirst, storage, morale, taxes |
+| `sim.test.ts` | B | always | opening arithmetic, rationing, hunger/thirst, storage, morale, taxes, the settlers' pace and the souls ETA (settlers.ts) |
 | `housing.test.ts` | B | always | evolution, renovation, fork, decline, drop, offline stop |
 | `construction.test.ts` | B | always | queue, stakes, refunds, tools, Capitolium flow |
 | `ordo.test.ts` | C | always (+ `INTEGRATED`) | labour steps, wish list, stakes, saving, emergency ladder, toggles |
@@ -2273,11 +2393,13 @@ export class Layout {
 | `layout.test.ts` | H | always | `classify` over the 35 measured window sizes and the design's own (touch, mixed, mouse; tiny), the `route` table, the lessons' table covers every `LessonId`, every lesson's pointer shows on every host and detent (the SHEET's through its `REVEAL` proxies), `keepDetent`, the SHEET's `sheetHeights` (half leaves the tab body 200 px, 160 on the SE in Safari), `snapDetent`, `cycleDetent`, `slotTap` and `BAR_SLOTS`, the DRAWER (`drawerWidths`, `clearOf`, `clearAround`, `priorityDrops`), the DOCK (`dockWidths`, `isLayer`, `backDetent`, `hostEntryDetent`, every lesson's pointer at both widths), `VIEWS` and `keyAction` over every letter and host, `howToControls`, the COLUMNS (`columnsRoom`, `columnsWidths`, `brevColumn`), the inspector's `roomShift` and `dodge`, `mapCovered` (P7: the SHEET and DRAWER full, the DOCK wide under 960 px, a phone's modal) |
 | `sheet.test.ts` | H | always | the phones' finishing: the context card's brief (`briefParts`), a placing's first ghost and what Place does next (`startAt`, `afterPlace`, `keepable`, `placingWhy`), the held ± (`holdSteps`), lesson I in its own card (`hostPointer`, `CARD_ROWS`), the build tray or the whole Aedificia by anchor (`trayHolds`, `route`, `lessonFolds`), a dispatch through the voice line (`pickCounsel`) |
 | `focusrow.test.ts` | H | always | `data-focus` values built and read back (`parseFocus`), `focusRects` (a building, an Agenda wish, a labour category's works, the declining homes), `unionRect`, `focusOfAdvisory`, `FOCUS_HOSTS`/`keepsFocus` |
+| `steady.test.ts` | H | always | `PointerHold`: a resting mouse holds, a click's answer goes through, a move seen elsewhere (no `pointerleave`) or 4 s without one lets go, a held press holds; `goalsWait`: a new goal never waits on a resting mouse, only on `busy()`: a press or click in the panel or the counsel card, or a two-step confirm armed in sight (`armedOr`) |
 | `history.test.ts` | H | always | `backStep` (the open layer of the highest rank closes; none open: warn, then leave within `LEAVE_MS`), `rearm` |
 | `css-floor.test.ts` | H | always | no font size under 12 px in `src/styles` at Normal and Large (every `--fs-*` token wherever set again), canvas font literals and map labels ≥ 12 CSS px (`labelPx`, `labelLines`, `canvasDpr`), no sheet or pane height in `vh`, the Text size storage |
 | `loop.test.ts` | H | always | the loop's clock (`game/loop.ts`): 30 s at 5× is 150 ticks and one state hash at 12 and 60 Hz; with speed changes and a pause, 124 ticks and one hash at 12, 15 (covered clamp), 60 and 120 Hz; uneven rates add up exactly; DT_CLAMP drops the time of 250 ms turns, the covered clamp does not; a paused colony keeps its part tick; MAX_STEPS drops a backlog; time never runs backwards |
+| `resume.test.ts` | H | always | a colony comes back as the player left it (DESIGN §2.1): `resumeAs` (the last speed, or paused when `prefs.paused` or the letter closed on a panel button), `opensPanel` per remedy kind, `resume` over a stub Game (the pause stays stored for the next reload) |
 | `pwa.test.ts` | H | always | `platform.ts` probes (standalone, iOS, Safari over real user agents), the Safari reminder only in a Safari tab, the Menu's and the title's entries by platform; `scripts/precache.ts` (`precacheFiles`, `buildId`, `swSource` on `public/sw.js`); the written worker run over stand-in caches and network (install past the HTTP cache into `castra-<folder>-<BUILD>`, activate drops only the folder's older caches, the page network first and kept only when it is the app's HTML, another file opened in a tab left alone, offline the kept page); the manifest, `index.html`'s relative links, the icons' sizes, opaque ground and whole-number art (the maskable one inside its safe circle) |
-| `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
+| `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, the away letter's documents (DESIGN §14's sample adds up, §8.5 lists what the UI imports from `offline.ts`), effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |
 | `balance.test.ts` | J | `INTEGRATED`; full bands with `BAL_FULL=1` | DESIGN §18.5 |
 | `perf.test.ts` | J | `npm run perf` only (`PERF=1`; vite.config.ts leaves it out of `npm test`) | tick, offline, map generation budgets |

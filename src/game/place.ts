@@ -12,7 +12,8 @@ import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layo
 import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
 import { cancelSite } from './construction';
-import { buildingRate } from './economy';
+import { forgetDemolition } from './demolition';
+import { buildingRate, caps } from './economy';
 import { seasonOf as seasonOf$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { siteMultAt } from './site';
@@ -398,7 +399,8 @@ export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts
   return { ok: true, id };
 }
 
-/** Demolishes a finished building (25% refund) or cancels a site; never the principia or the Capitolium. */
+/** Demolishes a finished building (25% refund) or cancels a site; never the principia or the Capitolium. Either ends
+ *  the demolish tool's Undo (demolition.ts forgetDemolition): it is no longer the last demolition. */
 export function demolish(s: GameState, id: number): ActionResult {
   const b = getBuilding(s, id);
   if (!b) return { ok: false, code: 'notFound', reason: 'Nothing stands there.' };
@@ -411,6 +413,7 @@ export function demolish(s: GameState, id: number): ActionResult {
   }
   for (const f of s.families) if (f.home === id) f.home = null;
   s.buildings = s.buildings.filter((x) => x.id !== id);
+  forgetDemolition(s);
   log(s, 'build', `${BUILDING_DEFS[b.type].name} pulled down; a quarter of its cost is salvaged.`);
   invalidate(s);
   touchPeople(s);
@@ -434,11 +437,37 @@ export function buildRoad(s: GameState, tiles: number[]): ActionResult {
     add.push(i);
   }
   if (add.length === 0) return { ok: true };
+  const over = fellingSpill(s, standingTimber(s, add));
   const timber = fell(s, add);
   s.roads = mergeSorted(s.roads, add);
-  log(s, 'build', `A road of ${add.length} ${add.length === 1 ? 'pace' : 'paces'} is laid${timber > 0 ? `; ${Math.round(timber)} timber cleared` : ''}.`);
+  const spills = over.spill >= 1 ? `, but the stores hold ${Math.round(over.cap)}: ${Math.round(over.spill)} would spill at the day's end` : '';
+  log(s, 'build', `A road of ${add.length} ${add.length === 1 ? 'pace' : 'paces'} is laid${timber > 0 ? `; ${Math.round(timber)} timber cleared${spills}` : ''}.`);
   invalidate(s);
   return { ok: true };
+}
+
+/** A road drag's preview (the road tool's label; pure): the paces it would add and the timber their felling brings. */
+export function roadPreview(s: GameState, tiles: readonly number[]): { paces: number; fell: number } {
+  const d = derived(s);
+  const add = [...new Set(tiles)].filter((i) => Number.isInteger(i) && i >= 0 && i < GN && d.road[i] === 0);
+  return { paces: add.length, fell: standingTimber(s, add) };
+}
+
+/** A felling against the timber stores (DESIGN §3.7, §8.6): they keep their cap and what lies over it spills at the
+ *  day's end. `spend`: the timber paid out before the felling (a work's cost, which placeBuilding pays first). `spill`
+ *  is the part of the yield `fell` that would; `most` when more would spill than be kept; `words` "the stores hold
+ *  300", with ": 380 would spill" when some would (the previews of a road drag and a work's felling). */
+export function fellingSpill(s: GameState, fell: number, spend = 0): { cap: number; spill: number; most: boolean; words: string } {
+  const cap = caps(s).timber;
+  const spill = Math.min(fell, Math.max(0, s.res.timber - spend + fell - cap));
+  const words = `the stores hold ${Math.round(cap)}${spill >= 1 ? `: ${Math.round(spill)} would spill` : ''}`;
+  return { cap, spill, most: spill >= 1 && spill > fell - spill, words };
+}
+
+/** The timber a player's placement pays out before it fells (placeBuilding pays, then clears the land): its cost's
+ *  timber when the stores cover the cost, none for a plan (paid later) or a Move (the stake's cost returns first). */
+export function fellSpend(s: GameState, chk: PlaceCheck, replaceId?: number): number {
+  return chk.ok && replaceId === undefined && canAfford(s, chk.cost) ? chk.cost.timber ?? 0 : 0;
 }
 
 /** Paves built dirt road tiles with stone (B.map.PAVE_STONE each). */

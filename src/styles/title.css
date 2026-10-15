@@ -25,6 +25,7 @@
 .title-continue { flex-direction: column; gap: 3px; padding-top: 8px; padding-bottom: 8px; white-space: normal; }
 .title-continue > :first-child { text-wrap: balance; }   /* a long label (Bring your colony…) wraps at Text size Large */
 .title-info { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: .4px; color: #4a2a10; text-shadow: none; white-space: normal; }
+.title-restore .title-info { color: var(--muted); }   /* on a dark button: Restore the previous colony */
 .title-row { display: flex; gap: 10px; }
 .title-row .btn { flex: 1; }
 .title-warn { padding: 8px 10px; font-size: var(--fs-small); color: #ffd0c8; background: rgba(229, 85, 74, .15); border: 2px solid rgba(229, 85, 74, .5); border-radius: 4px; }

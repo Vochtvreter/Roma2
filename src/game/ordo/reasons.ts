@@ -52,7 +52,7 @@ const TEXT: Record<ReasonCode, string> = {
   reserveTopup: 'Topping up the grain: {doh} days in store and we keep {keep}[, and a winter stock ({stock} of {target})].',
   requiredService: 'Manning the {n} works our homes cannot do without.',
   builderShare: '{n} builders for the works in hand.',
-  monument: '{n} builders, {crew} of them on the Capitolium.',
+  monument: '{n} builders, {crew} of them on the Capitolium[ and {walls} on the town wall].',
   pendingInput: '{n} hands on {res}: we need {qty} more for the {for}.',
   winterStock: 'Stockpiling for Hiems ({stock} of {target}).',
   tools: 'Smiths forge tool kits: {kits} in store, we want {goal}.',
@@ -127,6 +127,11 @@ const VARIANT: Partial<Record<ReasonCode, { when: (p: Reason['params']) => boole
   },
   materials: { when: (p) => p.covered === 1, text: ['We have {res} enough for the {for}; {a:type} keeps the supply coming.', '{Type} — keeps the {res} coming'] },
   capitolium: { when: (p) => p.covered === 1, text: ['We have {res} enough for the Capitolium for now; {a:type} keeps the supply coming.', '{Type} — keeps the {res} coming for the Capitolium'] },
+  // the Capitolium's crew full: more builders would have nothing to do on it
+  monument: {
+    when: (p) => p.full === 1,
+    text: ['{n} builders: {crew} of {max} on the Capitolium (the most that can work on it)[ and {walls} on the town wall].', '{crew} of {max} builders on the Capitolium (its full crew)'],
+  },
 };
 
 /** Display name of a work in running text ('house plot', 'horreum', 'shrine', …). */
@@ -193,13 +198,21 @@ function template(r: Reason, short: boolean): string {
 /** "1 homes" → "1 home" (the templates count homes in the plural). */
 const one = (t: string): string => t.replace(/(^|[^\d.,])1 homes\b/g, '$11 home');
 
+/** A work raised where the Ordo clears its own gardens (`gardens`: how many; ordo/build.ts, make room) says so. */
+function inPlace(r: Reason, short: boolean): string {
+  const n = r.params.gardens;
+  if (typeof n !== 'number' || n <= 0) return '';
+  if (short) return ` (in place of ${n === 1 ? 'a garden' : `${n} gardens`})`;
+  return ` It takes the place of ${n === 1 ? 'one of our gardens' : `${n} of our gardens`}.`;
+}
+
 /** Full sentence for tooltips and the Annales. */
 export function reasonText(r: Reason): string {
-  return one(fill(template(r, false), r.params));
+  return one(fill(template(r, false), r.params)) + inPlace(r, false);
 }
 
 /** Ticker fragment (no trailing period); a `state` param prefixes Raising / Staked / Next / The Ordo would raise. */
 export function reasonShort(r: Reason): string {
   const st = typeof r.params.state === 'string' ? STATE[r.params.state] ?? '' : '';
-  return st + one(fill(template(r, true), r.params));
+  return st + one(fill(template(r, true), r.params)) + inPlace(r, true);
 }

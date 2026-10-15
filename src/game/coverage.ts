@@ -37,6 +37,12 @@ export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerI
   return radiusWith(b, layer, peopleIndex(s).byWork, bonus ? fxAdd(s, bonus) : 0);
 }
 
+/** The hands at which a staffed service reaches its full radius (DESIGN §5.2): half its base posts, whatever posts a rank
+ *  adds (a well stone-lined from the Oppidum has 4 and its full reach at 1); fewer reach SERVICE_PARTIAL of it. */
+export function fullReachHands(type: BuildingId): number {
+  return Math.ceil(BUILDING_DEFS[type].slots * B.economy.SERVICE_FULL);
+}
+
 /** effectiveRadius with the workers by building and the layer's path bonus already looked up. */
 function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<number, readonly unknown[]>, bonus: number): number {
   const def = BUILDING_DEFS[b.type];
@@ -47,7 +53,7 @@ function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<num
     if (!b.open) return 0;
     const n = byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
     if (n <= 0) return 0;
-    if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);   // a windlass's hands add water, not reach
+    if (n < fullReachHands(b.type)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);   // a windlass's hands add water, not reach
   }
   if (b.unpaid) r = Math.floor(r * B.economy.UNPAID);
   if (RADIUS_BONUS[layer] && r > 0) r += bonus;
@@ -217,11 +223,11 @@ const seen = new Int32Array(GN);
 let seenGen = 0;
 const extra = new Uint8Array(GN);
 
-/** Road tiles within `r` steps of the sources over the roads plus the `extra` overlay (plain BFS, sparse result). */
-function reachWithin(road: Uint8Array, sources: number[], r: number): number[] {
+/** Road tiles within `r` steps of the sources over the roads plus the `extra` overlay (plain BFS, sparse result, in
+ *  order of steps; `dist` receives each tile's steps when given). */
+function reachWithin(road: Uint8Array, sources: number[], r: number, dist: number[] = []): number[] {
   const gen = ++seenGen;
   const out: number[] = [];
-  const dist: number[] = [];
   for (const t of sources) if (seen[t] !== gen) { seen[t] = gen; out.push(t); dist.push(0); }
   for (let k = 0; k < out.length; k++) {
     const t = out[k];
@@ -272,26 +278,49 @@ export function previewCovered(s: GameState, type: BuildingId, x: number, y: num
   return out;
 }
 
-function computePreview(s: GameState, type: BuildingId, x: number, y: number): PreviewLayer[] {
-  const svc = BUILDING_DEFS[type].service ?? [];
+/** Runs `fn` with the road tiles beside a would-be building at (x, y), its block's streets or its auto-road laid in the
+ *  `extra` overlay meanwhile (the roads the work would lay). */
+function withSides<R>(s: GameState, type: BuildingId, x: number, y: number, fn: (road: Uint8Array, sides: number[]) => R): R {
   const d = derived(s);
   const cls = classAt(s, type, x, y);
   const [w, h] = sizeOf(type, cls);
   const blk = cls === 'rural' ? null : blockOfTile(s, y * GW + x);
   const lines = cls === 'rural' ? autoRoad(s, x, y, w, h) ?? [] : blk ? blockStreetTiles(s, blk.id) : [];
   for (const i of lines) extra[i] = 1;
-  const sides = sideTiles(x, y, w, h).filter((i) => d.road[i] > 0 || extra[i] === 1);
+  try {
+    return fn(d.road, sideTiles(x, y, w, h).filter((i) => d.road[i] > 0 || extra[i] === 1));
+  } finally {
+    for (const i of lines) extra[i] = 0;
+  }
+}
+
+function computePreview(s: GameState, type: BuildingId, x: number, y: number): PreviewLayer[] {
+  const svc = BUILDING_DEFS[type].service ?? [];
   const houseSides = housesBySide(s);
-  const out = svc.map((sv) => {
+  return withSides(s, type, x, y, (road, sides) => svc.map((sv) => {
     const bonus = RADIUS_BONUS[sv.layer];
     const r = sv.radius + (bonus ? fxAdd(s, bonus) : 0);
-    const tiles = sides.length > 0 ? reachWithin(d.road, sides, r) : [];
+    const tiles = sides.length > 0 ? reachWithin(road, sides, r) : [];
     const hs = new Set<number>();
     for (const i of tiles) for (const id of houseSides.get(i) ?? []) hs.add(id);
     return { layer: sv.layer, tiles, houses: [...hs].sort((a, c) => a - c) };
+  }));
+}
+
+/** Road steps from a would-be building at (x, y) to house `houseId`: the fewest steps over the roads (its streets or
+ *  auto-road included, as previewCovered lays them) to a road tile beside the house, searched up to `r` steps; null
+ *  beyond. A service whose radius is at least that many steps reaches the house (the ghost's reach hint, DESIGN §15.4). */
+export function previewSteps(s: GameState, type: BuildingId, x: number, y: number, houseId: number, r: number): number | null {
+  const b = getBuilding(s, houseId);
+  if (!b || r < 0) return null;
+  const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+  const doors = new Set(sideTiles(b.x, b.y, w, h));
+  return withSides(s, type, x, y, (road, sides) => {
+    const dist: number[] = [];
+    const tiles = sides.length > 0 ? reachWithin(road, sides, r, dist) : [];
+    for (let k = 0; k < tiles.length; k++) if (doors.has(tiles[k])) return dist[k];   // in order of steps: the first is the nearest
+    return null;
   });
-  for (const i of lines) extra[i] = 0;
-  return out;
 }
 
 /**

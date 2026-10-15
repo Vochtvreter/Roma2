@@ -14,8 +14,8 @@ import { bestSlot } from '../site';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
-  CLEAR, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, int, labourRemedy, lowLadder, namesOf, num, openPosts,
-  placeName, runway, serveSlot, serviceFor, three,
+  CLEAR, R, STEP, compass, days, fractionWord, held, houseWants, idleBySkill, idleFor, idleHead, int, labourRemedy, lowLadder, namesOf, num, openPosts,
+  placeName, runway, serveSlot, serviceFor, staffRemedy, three,
 } from './util';
 import type { CadencedRule } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
@@ -142,8 +142,9 @@ const access: CadencedRule = {
     const min = held(s, 'aquarum.access') ? Math.floor(R.ACCESS_HOUSES / CLEAR) : R.ACCESS_HOUSES;
     if (dry.length < Math.max(1, min)) return null;
     const lapsed = all.some((w) => w.declining && w.lapsed.includes('water'));
-    // no well nor fountain can reach them: a quiet Nota (the card is for what can be done), unless a house lapses
-    const stuck = !lapsed && waterWork(s, v, dryIds(s, v)) === null;
+    // no well nor fountain can reach them, nor would a well of ours short of hands (manual labour): a quiet Nota (the
+    // card is for what can be done), unless a house lapses
+    const stuck = !lapsed && waterWork(s, v, dryIds(s, v)) === null && idleFor(s, v, 'water', dryIds(s, v)) === null;
     return {
       rule: 'aquarum.access', severity: lapsed ? 2 : stuck ? 0 : 1, metric: { label: 'Dry homes', value: dry.length, unit: 'houses' },
       params: { n: dry.length, tile: dry[Math.floor(dry.length / 2)].tile },
@@ -151,6 +152,8 @@ const access: CadencedRule = {
   },
   title: (_s, a) => (P(a.params.n) === 1 ? 'A home fetches water from the river.' : `${P(a.params.n)} homes fetch water from the river.`),
   text(s, v, a) {
+    const idle = idleFor(s, v, 'water', dryIds(s, v));
+    if (idle) return `${idleHead(s, idle)}: staffed, it would reach ${idle.k} of them.`;
     const w = waterWork(s, v, dryIds(s, v));
     if (!w) return `They live ${placeName(s, P(a.params.tile))}, and no free plot near them can take a fountain or a well yet.`;
     const what = w.type === 'lacus' ? 'a fountain' : 'a well';
@@ -160,7 +163,8 @@ const access: CadencedRule = {
     const w = waterWork(s, v, dryIds(s, v));
     const type = w?.type ?? serviceFor(s, 'water', v.d.castellumActive) ?? 'puteus';
     const place: Remedy | null = w ? { kind: 'place', building: w.type, tile: w.tile } : null;
-    return three(place, { kind: 'overlay', overlay: 'aqua', layer: type === 'lacus' ? 'fountain' : 'water' });
+    const idle = idleFor(s, v, 'water', dryIds(s, v));   // a well of ours short of hands: its hands first
+    return three(idle ? staffRemedy(idle) : null, place, { kind: 'overlay', overlay: 'aqua', layer: type === 'lacus' ? 'fountain' : 'water' });
   },
 };
 

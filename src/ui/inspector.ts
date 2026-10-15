@@ -18,17 +18,20 @@ import { clear, fmt, fmtRunway, h, img, plural } from './dom';
 import * as A from '../game/actions';
 import { getBuilding } from '../game/state';
 import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
-import { derived, inCamp } from '../game/derived';
+import { blockOfTile, derived, inCamp } from '../game/derived';
 import { WALL_RING, ringsOf } from '../game/survey';
 import { footfall, wearOf } from '../game/urbs';
 import { canPlace, freePlot } from '../game/place';
-import { worksQueue } from '../game/construction';
+import { councilGardens } from '../game/demolition';
+import { capitoliumFlow, capitoliumHold, worksQueue } from '../game/construction';
 import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
 import { personName } from '../game/people';
-import { outputChain } from '../game/hints';
+import { outputChain, waterIdle } from '../game/hints';
+import { checkRemedy, remedyLabel } from '../game/advisors/remedies';
+import { view } from '../game/sim';
 import { isAquae, nextTier, unmetNeeds } from '../game/housing';
 import { reasonText } from '../game/ordo/reasons';
 import { seasonOf, formatRoman } from '../game/calendar';
@@ -39,7 +42,7 @@ import { LAYER_META, TIER_DEFS } from '../game/data/housing';
 import { RESOURCE_DEFS } from '../game/data/resources';
 import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
-import { confirm2 } from './modals';
+import { armedWithin, confirm2 } from './modals';
 import { PointerHold } from './steady';
 import { clearAround, currentFloating, currentFree, currentHost, isPhone } from './layout';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
@@ -77,6 +80,12 @@ function staffOf(s: GameState, b: Building): number {
   return census(s).staffed[b.id] ?? 0;
 }
 
+/** A works idle for want of water: its fixes and whether each can run now (a change rebuilds the card); '' while it draws. */
+function idleSig(s: GameState, b: Building): string {
+  const w = waterIdle(s, view(s), b);
+  return w ? w.remedies.map((r) => `${JSON.stringify(r)}${+checkRemedy(s, r).ok}`).join(',') : '';
+}
+
 /** Discrete facts of a target: a change rebuilds the card; everything continuous refreshes through updaters. */
 function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
   if (t.kind === 'building') {
@@ -85,7 +94,7 @@ function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
     const hs = b.house;
     const next = hs ? nextTier(s, b) : null;
     return [`b${b.id}`, b.status, b.owner, +b.open, b.prio, staffOf(s, b), hs ? `${hs.tier}:${hs.pref}:${+hs.declining}:${+!!hs.renovating}` : '',
-      next ? unmetNeeds(s, b, next).join(',') : '', +s.ordo.on.build, +s.ordo.on.labour, s.rank].join('|');
+      next ? unmetNeeds(s, b, next).join(',') : '', +s.ordo.on.build, +s.ordo.on.labour, s.rank, hs ? '' : idleSig(s, b)].join('|');
   }
   if (t.kind === 'block') {
     const p = derived(s).plotOwner;
@@ -100,13 +109,14 @@ const same = (a: InspectTarget | null, b: InspectTarget | null): boolean => JSON
 export type CardKind = 'house' | 'works' | 'site' | 'block' | 'tile';
 /** What the phone's docked card shows before More, per kind: its lines by usefulness (the first BRIEF_LINES of those it
  *  has) and its main actions. The parts are the card's own (data-part); anything else waits behind More. A house: a
- *  decline first, then what it waits for (its first want, with the button that fixes it), beds and its tier. A work: its
- *  hands and its category's labour line (staffed in place), else what it stores, serves or yields; Close it and the
- *  staffing priority. A site: how far it has come and why; ↑ Build first and Cancel. A block: its plots; Place a house
- *  plot and Reserve. Ground: what it is and the wall on it; Lay out the town wall and what could be built on it. */
+ *  decline first, then what it waits for (its first want, with the button that fixes it), beds and its tier. A work: why
+ *  it stands idle for want of water first (with its fixes), its hands and its category's labour line (staffed in place),
+ *  else what it stores, serves or yields; Close it and the staffing priority. A site: how far it has come and why;
+ *  ↑ Build first and Cancel. A block: its plots; Place a house plot and Reserve. Ground: what it is and the wall on it;
+ *  Lay out the town wall and what could be built on it. */
 export const BRIEF: Readonly<Record<CardKind, { lines: readonly string[]; acts: readonly string[] }>> = {
   house: { lines: ['declining', 'needs', 'renovating', 'beds', 'sub', 'finest'], acts: [] },
-  works: { lines: ['staff', 'labour', 'benefit', 'stores', 'service', 'passive', 'chain'], acts: ['controls'] },
+  works: { lines: ['idle', 'staff', 'labour', 'benefit', 'stores', 'service', 'passive', 'chain'], acts: ['controls'] },
   site: { lines: ['progress', 'why', 'notes'], acts: ['queue'] },
   block: { lines: ['status', 'reserved', 'plots'], acts: ['actions'] },
   tile: { lines: ['facts', 'wall'], acts: ['walls', 'buildable'] },
@@ -377,7 +387,8 @@ class InspectorCard {
       const sig = t ? `${t.kind}|${targetSig(s, t, this.sticky)}|${+this.collapsed}${+this.docked}${this.docked && s.choice ? `e${s.choice.event}:${s.choice.created}` : ''}` : '';
       const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
       const reshaped = t !== null && this.docked !== (this.root.dataset.docked !== undefined);   // the host changed: docked or not
-      if (sig !== this.sig && (!sameTarget || reshaped || !this.hold.holds(now))) this.rebuild(t, sig, this.sticky);
+      // the same target's card holds still under the mouse, and while a confirm in it is armed (Demolish? …)
+      if (sig !== this.sig && (!sameTarget || reshaped || (!this.hold.holds(now) && !armedWithin(this.root)))) this.rebuild(t, sig, this.sticky);
       else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
     }
     if (this.sticky) this.place();
@@ -626,6 +637,7 @@ class InspectorCard {
     const g = this.g;
     const def = BUILDING_DEFS[b.type];
     const line = h('div', { class: 'ins-line' });
+    const hold = h('div', { class: 'ins-small' });   // the Capitolium: what really holds it back (DESIGN §9.5)
     const pb = bar();
     const refresh = (): void => {
       const s = g.state;
@@ -636,11 +648,15 @@ class InspectorCard {
       const builders = s.people.filter((p) => p.work === BUILDER).length;
       const stage = cur.type === 'capitolium' ? ` · ${STAGES[Math.min(3, Math.floor(cur.progress * 4))]}` : '';
       line.textContent = `${Math.round(cur.progress * 100)}% of ${fmt(cur.work)} builder-days${stage} · ${plural(builders, 'builder', 'builders')} in the colony`;
+      const flow = cur.type === 'capitolium' ? capitoliumFlow(s) : null;
+      const words = flow ? capitoliumHold(flow) : '';
+      hold.textContent = words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}${flow?.eta ? `; the next stage in ≈ ${plural(flow.eta, 'day', 'days')}` : ''}.` : '';
       pb.set(cur.progress, cur.progress < B.construction.TRENCH ? 'tab-bar trench' : 'tab-bar gold');
     };
     refresh();
     this.ups.push(refresh);
     const out = [part(line, 'progress'), part(pb.el, 'progress')];
+    if (b.type === 'capitolium') out.push(part(hold, 'progress'));
     if (b.reason) out.push(part(h('div', { class: 'ins-why' }, img('i_seal', 1), reasonText(b.reason)), 'why'));
     if (b.notes?.length) out.push(part(h('div', { class: 'ins-small muted' }, `Why here: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}.`), 'notes'));
     const first = worksQueue(g.state)[0]?.id === b.id;
@@ -683,6 +699,22 @@ class InspectorCard {
           : null;
         out.push(part(h('div', { class: 'ins-labour' }, labourEl(g, this.ups, [def.labor]), ordo), 'labour'));
       }
+    }
+    // staffed but idle for want of water: why, and the fixes (hints.waterIdle, DESIGN §15.4); its numbers refresh, a
+    // change of fixes rebuilds the card (idleSig)
+    const idle = waterIdle(s, view(s), b);
+    if (idle) {
+      const line = h('div', { class: 'ins-bad' }, `Idle: ${idle.why}`);
+      this.ups.push(() => {
+        const cur = getBuilding(g.state, b.id);
+        const w = cur ? waterIdle(g.state, view(g.state), cur) : null;
+        if (w) line.textContent = `Idle: ${w.why}`;
+      });
+      const fixes = idle.remedies.map((r, i) => {
+        const check = checkRemedy(s, r);
+        return btn(g, remedyLabel(s, r), () => { g.applyRemedy(r); }, { cls: i === 0 ? 'primary' : '', reason: check.ok ? null : check.reason });
+      });
+      out.push(part(h('div', { class: 'ins-group' }, line, h('div', { class: 'ins-fix' }, fixes)), 'idle'));
     }
     const chain = h('div', { class: 'ins-chain' });
     const refreshChain = (): void => {
@@ -735,9 +767,19 @@ class InspectorCard {
 
   private demolish(b: Building): HTMLElement {
     const g = this.g;
+    const back = `${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back`;
     const d = h('button', { class: 'btn small ghost ins-demolish', type: 'button' }, 'Demolish');
-    confirm2(d, `Demolish? ${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back`, () => { g.act(A.demolish(g.state, b.id), { okSfx: 'place' }); });
-    return part(h('div', { class: 'ins-btns end' }, d), 'demolish');
+    confirm2(d, `Demolish? ${back}`, () => { g.act(A.demolish(g.state, b.id), { okSfx: 'place' }); });
+    // a garden: the council's gardens of its block come down in one go (DESIGN §5.3), not two clicks each
+    const blk = b.type === 'hortus' ? blockOfTile(g.state, idx(b.x, b.y)) : null;
+    const n = blk ? councilGardens(g.state, blk.id).filter((id) => id !== b.id).length : 0;
+    const row = h('div', { class: 'ins-btns end' }, d);
+    if (!blk || n === 0) return part(row, 'demolish');
+    const k = n + (b.owner === 'ordo' ? 1 : 0), what = k === 1 ? "the council's garden" : `the council's ${k} gardens`;
+    const all = h('button', { class: 'btn small ghost ins-demolish', type: 'button' }, `Clear ${what} here`);
+    // a row of its own: armed, its shorter words move neither it from under the pointer nor Demolish
+    confirm2(all, `Clear ${what}? ${back}`, () => { g.act(A.clearGardens(g.state, blk.id), { okSfx: 'place' }); });
+    return part(h('div', null, h('div', { class: 'ins-btns end' }, all), row), 'demolish');
   }
 
   private block(card: HTMLElement, id: number, sticky: boolean): void {

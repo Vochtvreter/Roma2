@@ -4,13 +4,15 @@
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B as B$ } from '../balance';
 import { LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, TRADE_RES as TRADE_RES$ } from '../types';
-import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
+import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
 import { toRoman as toRoman$ } from '../calendar';
-import { capitoliumFlow } from '../construction';
-import { petitionNeeds, settingValue } from '../decisions';
+import { capitoliumFlow, storeWords } from '../construction';
+import type { CapitoliumFlow } from '../construction';
+import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { missing } from '../state';
-import { newWishes } from '../ordo/build';
+import { newWishes, ordoAlone } from '../ordo/build';
+import { waterIdle } from '../hints';
 import { reasonText } from '../ordo/reasons';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$, slotsOf as slotsOf$ } from '../data/buildings';
@@ -150,6 +152,21 @@ function lackWhy(v: SimView, why: unknown): string {
 
 // ───────────────────────────── 12 · fabrum.stalled ─────────────────────────────
 
+/** The works that would make what a waiting plan lacks, staffed but idle for want of water (hints.waterIdle), or null:
+ *  the stalled site's real cause, which no day of production brings nearer. */
+function idleMaker(s: GameState, v: SimView, type: BuildingId): { b: Building; why: string; remedies: Remedy[] } | null {
+  const m = missing(s, BUILDING_DEFS[type].cost);
+  for (const r of RESOURCES) {
+    const t = (m[r] ?? 0) > 0 ? PRODUCER[r] : undefined;
+    if (!t) continue;
+    for (const b of s.buildings) {
+      const w = b.type === t ? waterIdle(s, v, b) : null;
+      if (w) return { b, ...w };
+    }
+  }
+  return null;
+}
+
 /** "40 stone and 10 tiles" for what a cost still lacks. */
 function lackWords(s: GameState, type: BuildingId): string {
   const m = missing(s, BUILDING_DEFS[type].cost);
@@ -186,14 +203,22 @@ const stalled: AdvisorRule = {
     const lack = p.lack === 'materials' ? lackWords(s, type) : 'builders';
     return `The ${bName(type)} ${buildingPlace(s, P(p.id))} has waited ${days(P(p.d))} for ${lack}.`;
   },
-  text(_s, v, a) {
+  text(s, v, a) {
     const p = a.params;
-    if (p.lack === 'materials') return 'It stays a plan until the stores cover it; every day of production brings it nearer.';
+    if (p.lack === 'materials') {
+      const idle = idleMaker(s, v, p.type as BuildingId);
+      if (!idle) return 'It stays a plan until the stores cover it; every day of production brings it nearer.';
+      const name = bName(idle.b.type);
+      return `It stays a plan until the stores cover it, and our ${name} ${buildingPlace(s, idle.b.id)} ${/s$/.test(name) ? 'stand' : 'stands'} idle: ${idle.why}`;
+    }
     return `Our ${v.c.catStaffed.builders} builders work through the queue in order; it stands ${P(p.pos)} of ${P(p.sites)}.`;
   },
-  remedies(s, _v, a) {
+  remedies(s, v, a) {
     const p = a.params;
     const type = p.type as BuildingId;
+    // a plan waiting on goods its works cannot make for want of water: what lets them work
+    const idle = p.lack === 'materials' ? idleMaker(s, v, type) : null;
+    if (idle) return idle.remedies;
     const share = SETTING_DEFS.builderShare;
     const more = Math.min(share.max, Math.round((settingValue(s, 'builderShare') + STEP.BUILDER_SHARE) * 100) / 100);
     const lacking = TRADE_RES.find((r) => (missing(s, BUILDING_DEFS[type].cost)[r] ?? 0) > 0) as TradeRes | undefined;
@@ -206,35 +231,80 @@ const stalled: AdvisorRule = {
 };
 
 // ───────────────────────────── 13 · fabrum.capitolium ─────────────────────────────
+// What really holds the Capitolium back (construction.capitoliumFlow): its crew, at most CAP_CREW fabri, or a material
+// its works cannot make for want of an input (concrete works without water). Only levers not yet in force are offered:
+// more builders only while fewer than CAP_CREW work on it (the builder share never adds to its crew), Opera Magna only
+// while the crew binds. With no lever left (the full crew under Opera Magna) the Fabrum keeps silent: it rises as fast
+// as it can.
+
+const isTrade = (r: string): r is TradeRes => (TRADE_RES as readonly string[]).includes(r);
+
+/** The levers on the Capitolium's bottleneck that are not yet in force (DESIGN §11.6 row 13). */
+function capitoliumLevers(s: GameState, v: SimView, p: AdvisoryEval['params']): Remedy[] {
+  const res = typeof p.res === 'string' ? p.res : '';
+  const magna: Remedy | null = edictOption(s, 'opera') === 'magna' ? null : { kind: 'edict', edict: 'opera', option: 'magna' };
+  if (res === 'crew' || res === '') {
+    if (P(p.full) === 1) return three(magna);   // more builders would have nothing to do on it
+    const cap = Math.max(1, Math.floor(v.c.workforce * B.ordo.BUILDERS_MAX));
+    const first = s.ordo.priorities.some((x) => x.cat === 'builders' && x.until > s.day) || v.c.catStaffed.builders >= cap;
+    const hands: Remedy | null = !s.ordo.on.labour ? { kind: 'assign', cat: 'builders', n: Math.max(1, B.construction.CAP_CREW - P(p.crew)) }
+      : first ? null : { kind: 'priority', cat: 'builders', days: B.ordo.PRIORITY_DAYS };
+    return three(hands, magna);
+  }
+  if (res === 'denarii') return three(edictOption(s, 'tributum') === 'grave' ? null : { kind: 'edict', edict: 'tributum', option: 'grave' });
+  const input = typeof p.short === 'string' && p.short !== '' ? p.short as ResId : null;
+  const place = (r: ResId): Remedy | null => (PRODUCER[r] ? { kind: 'place', building: PRODUCER[r] as BuildingId } : null);
+  // water for the works: Operibus prius lets them draw below the water reserve (not through the Lex de annona's pause)
+  const works: Remedy | null = edictOption(s, 'aquae') === 'operibus' || s.ordo.emergency.waterPause ? null : { kind: 'edict', edict: 'aquae', option: 'operibus' };
+  const fix: (Remedy | null)[] = input === 'water'
+    ? [works, { kind: 'place', building: 'puteus' }]
+    : input ? [place(input), isTrade(input) ? importRemedy(s, input, B.ordo.CARGO) : null]
+    : [place(res as ResId)];
+  return three(...fix, isTrade(res) ? importRemedy(s, res, B.ordo.CARGO) : null);
+}
 
 const capitolium: AdvisorRule = {
   id: 'fabrum.capitolium', advisor: 'fabrum',
-  evaluate(s) {
+  evaluate(s, v) {
     const f = capitoliumFlow(s);
     if (!f) return null;
     const limit = R.CAP_ETA / (held(s, 'fabrum.capitolium') ? CLEAR : 1);
     if (f.eta !== null && f.eta <= limit) return null;
-    return {
-      rule: 'fabrum.capitolium', severity: 1, metric: f.eta !== null ? { label: 'Next stage', value: Math.ceil(f.eta), unit: 'days' } : undefined,
-      params: { stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand },
+    const params = {
+      stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand,
+      crew: f.crew, full: f.crew >= B.construction.CAP_CREW ? 1 : 0, stock: f.stock, held: f.held, heldFor: f.heldFor ?? '', inflow: f.inflow,
+      short: f.starved?.input ?? '', works: f.starved?.works ?? '', share: f.starved?.share ?? 1,
     };
+    if (capitoliumLevers(s, v, params).length === 0) return null;   // nothing left to pull: it rises as fast as it can
+    return { rule: 'fabrum.capitolium', severity: 1, metric: f.eta !== null ? { label: 'Next stage', value: Math.ceil(f.eta), unit: 'days' } : undefined, params };
   },
   title(_s, a) {
     const p = a.params;
     const stage = STAGES[Math.min(STAGES.length - 1, P(p.stage))];
     const when = P(p.eta) >= 0 ? `the ${stage} rises in ${days(P(p.eta))}` : `the ${stage} will not rise`;
-    if (p.res === 'crew' || p.res === '') return `At this flow ${when}; the crew is the bottleneck (${B.construction.CAP_CREW} fabri at most).`;
-    return `At this flow ${when}; ${resName(p.res as ResId)} is the bottleneck (${num(P(p.supply))}/day of ${num(P(p.demand))}).`;
+    const cap = B.construction.CAP_CREW;
+    if (p.res === 'crew' || p.res === '') {
+      return P(p.full) === 1 ? `At this flow ${when}; the crew is at its maximum (${cap} fabri, the most that can work on it).`
+        : `At this flow ${when}; the crew is the bottleneck (${int(P(p.crew))} of the ${cap} fabri who could work on it).`;
+    }
+    const flow = `${P(p.inflow) < 0 ? '−' : '+'}${num(Math.abs(P(p.inflow)))}/day of ${num(P(p.demand))}`;
+    const hf = typeof p.heldFor === 'string' ? p.heldFor : '';   // what the Ordo keeps the stock back for (storeWords)
+    const heldFor = hf === 'petition' || hf === 'floor' || hf in BUILDING_DEFS ? hf as CapitoliumFlow['heldFor'] : null;
+    return `At this flow ${when}; it waits for ${resName(p.res as ResId)}: ${storeWords({ stock: P(p.stock), held: P(p.held), heldFor })}, ${flow}.`;
   },
-  text: (_s, _v, a) => `The Capitolium stands at stage ${toRoman(P(a.params.stage)) || 'nought'} of IV. Its materials are drawn as the work proceeds.`,
-  remedies(s, _v, a) {
-    const res = a.params.res as ResId | 'crew' | '';
-    const magna: Remedy = { kind: 'edict', edict: 'opera', option: 'magna' };
-    if (res === 'crew' || res === '') return three(magna, { kind: 'setting', setting: 'builderShare', value: Math.min(SETTING_DEFS.builderShare.max, settingValue(s, 'builderShare') + STEP.BUILDER_SHARE) });
-    if (res === 'denarii') return three({ kind: 'edict', edict: 'tributum', option: 'grave' }, magna);
-    const prod = PRODUCER[res];
-    const trade = (TRADE_RES as readonly string[]).includes(res) ? importRemedy(s, res as TradeRes, B.ordo.CARGO) : null;
-    return three(prod ? { kind: 'place', building: prod } : null, trade, magna);
+  text(_s, _v, a) {
+    const p = a.params;
+    const stage = `The Capitolium stands at stage ${toRoman(P(p.stage)) || 'nought'} of IV.`;
+    if (typeof p.short === 'string' && p.short !== '' && typeof p.works === 'string' && p.works in BUILDING_DEFS) {
+      const def = BUILDING_DEFS[p.works as BuildingId];
+      return `The ${def.latin} (${def.name.toLowerCase()}) gets ${P(p.share) < 0.05 ? 'no' : 'too little'} ${resName(p.short as ResId)}, so the temple waits for its ${resName(p.res as ResId)}. ${stage}`;
+    }
+    if (p.res === 'crew' || p.res === '') return `${stage} ${P(p.full) === 1 ? 'More builders would only stand by.' : 'Every builder on it raises it faster.'}`;
+    return `${stage} Its materials are drawn as the work proceeds.`;
+  },
+  remedies(s, v, a) {
+    const r = capitoliumLevers(s, v, a.params);
+    return r.length > 0 ? r : three({ kind: 'open', tab: 'build' });   // a lever pulled while the counsel fades: the works row says the rest
   },
 };
 
@@ -247,7 +317,10 @@ const agenda: AdvisorRule = {
   id: 'fabrum.agenda', advisor: 'fabrum',
   evaluate(s, v) {
     if (!s.ordo.on.build) return null;
-    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined);
+    // (not a work that is the Ordo's alone to raise, where it clears its own gardens or buys out homes: no placement by
+    //  hand can take that land. The next one a hand can raise comes a pace later for each such work ahead of it, which
+    //  its ETA counts: newWishes)
+    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined && !ordoAlone(x));
     if (!w) return null;
     return {
       rule: 'fabrum.agenda', severity: 1, metric: { label: 'In', value: w.eta ?? 1, unit: 'days' },

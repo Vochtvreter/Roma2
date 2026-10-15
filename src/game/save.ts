@@ -17,16 +17,19 @@ import { buildingShape, personShape, stateShape } from './shapes';
 
 /** Current save format version (written by newGame). 2: the growing town (`urbs`: footfall, the town wall, the razed castrum). */
 export const SAVE_VERSION = 2;
-/** Namespaced localStorage keys: the save, prefs, Fasti, the tab that owns the save, and when a copy was last exported. */
+/** Namespaced localStorage keys: the save, prefs, Fasti, the tab that owns the save, when a copy was last exported, and
+ *  the backup slot (the previous colony: the one a new colony or an import replaced). */
 export const KEYS: {
   save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1';
-  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1';
+  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1'; backup: 'castravaleria.backup.v1';
 } = {
   save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1',
-  owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1',
+  owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1', backup: 'castravaleria.backup.v1',
 };
 /** Days past START_DAY a save may claim (a corrupt day of 1e12 would otherwise break the calendar for good). */
 const DAY_SPAN = 1_000_000;
+/** A real day in wall-clock ms (the previous colony is kept B.ui.PREVIOUS_DAYS of them). */
+const REAL_DAY_MS = 86_400_000;
 /** Migrations: MIGRATIONS[n] turns a version-n save into version n + 1 (and sets the new version); `any` is allowed here only. */
 export const MIGRATIONS: Record<number, (raw: any) => any> = {
   // 1 → 2: the growing town arrives with no footfall counted yet, no town wall and the castrum standing; `urbs` sits after
@@ -44,7 +47,7 @@ export const MIGRATIONS: Record<number, (raw: any) => any> = {
   },
 };
 /** Preferences of a first visit. */
-export const DEFAULT_PREFS: Prefs = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false };
+export const DEFAULT_PREFS: Prefs = { sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false };
 
 const EXPORT_PREFIX = 'CV1:';
 const B64_CHUNK = 0x8000;                      // bytes per String.fromCharCode call
@@ -54,6 +57,7 @@ const SPEED_SET: readonly number[] = [...B.time.SPEEDS, B.time.DEV_SPEED];
 type Obj = Record<string, unknown>;
 const STATUSES: readonly string[] = ['plan', 'staked', 'building', 'done'];
 const PREFS: readonly string[] = ['auto', 'insula', 'domus'];
+const VICTORY_STATS = ['pop', 'peakPop', 'births', 'immigrants', 'built', 'evolved', 'playMs'] as const;
 
 function isObj(v: unknown): v is Obj {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -227,6 +231,9 @@ function sanitise(s: GameState): void {
   for (const q of [s.needs.hunger, s.needs.thirst]) for (let g = 0; g < 4; g++) q[g] = clamp(finite(q[g]), 0, NEED_MAX);
   sanitiseNumbers(s.counters as unknown as Obj);
   sanitiseNumbers(s.stats as unknown as Obj);
+  // the dedication day's figures (the Victory dispatch): whole and with a victory, else none (the letter reads today's)
+  const av: unknown = s.stats.atVictory;
+  if (av !== undefined && (!s.victory || !isObj(av) || VICTORY_STATS.some((k) => typeof av[k] !== 'number'))) delete s.stats.atVictory;
 
   sanitiseDecisions(s);
   sanitiseEntities(s);
@@ -241,6 +248,7 @@ function sanitise(s: GameState): void {
   const o = s.ordo;
   if (o.pin !== null && !BUILDINGS.includes(o.pin)) o.pin = null;
   o.requests = Array.isArray(o.requests) ? o.requests.filter((r) => isObj(r) && BUILDINGS.includes(r.type) && Number.isFinite(r.day)) : [];
+  for (const r of o.requests) if ('house' in r && !Number.isInteger(r.house)) delete r.house;   // the home a house card asked for
   o.reserved = sortedTiles(o.reserved);
   o.priorities = Array.isArray(o.priorities) ? o.priorities.filter((p) => isObj(p) && LABOR_CATS.includes(p.cat) && Number.isFinite(p.until)) : [];
   for (const k of LABOR_CATS) o.manual[k] = Math.max(0, Math.round(finite(o.manual[k])));
@@ -350,6 +358,48 @@ export function loadGame(): GameState | null {
   }
 }
 
+/** The stored save as it stands (readable or not), or null when there is none or storage is blocked. */
+export function rawSave(): string | null {
+  try {
+    return localStorage.getItem(KEYS.save);
+  } catch {
+    return null;
+  }
+}
+
+/** Writes `s` over the stored colony (a new colony whose standard is raised, an import, a restore) and keeps that one,
+ *  readable or not, in the backup slot from `now`: the previous colony. False when the save is refused (nothing changes
+ *  then). The save goes first: a new colony is smaller than most it replaces, so both fit where one did; a backup that
+ *  still does not fit is not kept (the title's confirm offers an export first). The older previous colony goes before
+ *  it is written: one that does not fit leaves no previous colony, never an older one that the title would offer (with
+ *  its old days left) as the colony just replaced. */
+export function replaceSave(s: GameState, now: number): boolean {
+  const prev = rawSave();
+  if (!saveGame(s, now)) return false;
+  if (prev !== null) {
+    try {
+      localStorage.removeItem(KEYS.backup);
+      localStorage.setItem(KEYS.backup, `${now}\n${prev}`);
+    } catch { /* storage full or blocked */ }
+  }
+  return true;
+}
+
+/** The previous colony's save text and the real days it is still kept (B.ui.PREVIOUS_DAYS from its replacement), or
+ *  null; one kept longer is removed. */
+export function loadBackup(now: number): { raw: string; days: number } | null {
+  try {
+    const v = localStorage.getItem(KEYS.backup);
+    if (v === null) return null;
+    const i = v.indexOf('\n');
+    const left = Number(v.slice(0, Math.max(0, i))) + B.ui.PREVIOUS_DAYS * REAL_DAY_MS - now;
+    if (i <= 0 || !Number.isFinite(left) || left <= 0) { localStorage.removeItem(KEYS.backup); return null; }
+    return { raw: v.slice(i + 1), days: Math.min(B.ui.PREVIOUS_DAYS, Math.ceil(left / REAL_DAY_MS)) };
+  } catch {
+    return null;
+  }
+}
+
 /** True when a save is stored (readable or not). */
 export function hasSave(): boolean {
   try {
@@ -422,6 +472,7 @@ export function loadPrefs(): Prefs {
       if (typeof o.sound === 'boolean') p.sound = o.sound;
       if (typeof o.volume === 'number' && Number.isFinite(o.volume)) p.volume = clamp(o.volume, 0, 1);
       if (typeof o.speed === 'number' && SPEED_SET.includes(o.speed)) p.speed = o.speed as Speed;
+      if (typeof o.paused === 'boolean') p.paused = o.paused;
       if (typeof o.tips === 'boolean') p.tips = o.tips;
       if (typeof o.slowForNews === 'boolean') p.slowForNews = o.slowForNews;
       if (typeof o.pauseOnCritical === 'boolean') p.pauseOnCritical = o.pauseOnCritical;

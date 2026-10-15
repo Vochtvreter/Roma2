@@ -2,7 +2,8 @@
 // hush/mute, appointment, and remedies that never throw (ARCHITECTURE §14.2 WP-E, §15). Owner: WP-E.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADVISORS, BUILDINGS, EDICTS, HUBS, LABOR_CATS, ORDO_AREAS, OVERLAYS, RULES, SETTINGS, TABS, TRADE_RES } from '../src/game/types';
-import type { Census, CoverageLayerId, EssentialForecast, Forecast, GameState, HouseTierId, Remedy, RuleId, Severity, SimView, TickContext } from '../src/game/types';
+import type { CapitoliumFlow } from '../src/game/construction';
+import type { Building, BuildingId, Census, CoverageLayerId, EssentialForecast, Forecast, GameState, HouseTierId, Remedy, RuleId, Severity, SimView, TickContext } from '../src/game/types';
 
 const ctl = vi.hoisted(() => ({ pet: null as unknown, flow: null as unknown, morale: null as unknown, covered: null as string[] | null, wishes: null as unknown }));
 vi.mock('../src/game/decisions', async (orig) => {
@@ -29,17 +30,22 @@ vi.mock('../src/game/coverage', async (orig) => {
 // The rule modules are imported first on purpose: the real modules import each other in cycles, and a module first
 // loaded from inside one of the mocks' importOriginal() would bind the original export instead of the mock.
 import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
-import { applyRemedy, checkRemedy, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
-import { fresh, run } from './util';
+import { applyRemedy, checkRemedy, clearPrompt, isUiRemedy, remedyLabel, remedyTip } from '../src/game/advisors/remedies';
+import { freeSlots, fresh, place, run, setJobs } from './util';
+import { follow } from './autoplayer';
 import { EDICT_DEFS, SETTING_DEFS } from '../src/game/data/decisions';
 import { B } from '../src/game/balance';
 import { Rng } from '../src/game/rng';
-import { invalidate } from '../src/game/memo';
+import { invalidate, touchPeople } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
-import { bestFood } from '../src/game/advisors/util';
-import { residents } from '../src/game/census';
-import { houseHas } from '../src/game/coverage';
+import { bestFood, blockWorks, buildingPlace, clearSite, idleFor, int, serveSlot } from '../src/game/advisors/util';
+import { favourPaces, immigrationChance, renownFactor } from '../src/game/people';
+import { canPlace, placeBuilding, validSlots } from '../src/game/place';
+import { getMap, tx, ty } from '../src/game/map';
+import { census, residents } from '../src/game/census';
+import { effectiveRadius, fullReachHands, houseHas, previewCovered } from '../src/game/coverage';
+import { BUILDING_DEFS, slotsOf } from '../src/game/data/buildings';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -118,6 +124,12 @@ const merchant = (s: GameState): void => {
 };
 const pet = (ready: boolean, label = '50 souls') => ({ decision: 'path1', rank: 1, ready, fee: { denarii: 9e9 }, affordable: false, needs: [{ label, met: ready }] });
 
+/** A Capitolium flow for the mocked capitoliumFlow: the Cella 400 days off, its full crew of 64 at work. */
+const FLOW: CapitoliumFlow = {
+  stage: 1, eta: 400, bottleneck: 'crew', rate: 3, need: 1200, supply: 0, demand: 0, crew: 64, walls: 0, spare: 0, stock: 0, held: 0, heldFor: null,
+  inflow: 0, starved: null,
+};
+
 const FIX: Record<RuleId, Fix> = {
   'annonae.grain.runout': runout('grain', A.RULES.GRAIN_RUNOUT),
   'annonae.famine': { levels: [[3, () => ({ grain: { ...ess(250, -50), maxPotential: 20, structural: true } })]], clear: () => ({ grain: { maxPotential: 90 } }) },
@@ -164,8 +176,8 @@ const FIX: Record<RuleId, Fix> = {
     clear: () => { ctl.wishes = []; },
   },
   'fabrum.capitolium': {
-    levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 }; }]],
-    clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 1100, supply: 0, demand: 0 }; },
+    levels: [[1, () => { ctl.flow = { ...FLOW, bottleneck: 'stone', supply: 1.7, demand: 3.8, stock: 12, inflow: 1.3 }; }]],
+    clear: () => { ctl.flow = { ...FLOW, eta: 100, bottleneck: null, rate: 11, need: 1100 }; },
   },
   'quaestor.coin': {
     levels: [[3, () => ({ coin: { stock: 1000, net30: -100 } })], [2, () => ({ coin: { stock: 3000, net30: -100 } })], [1, () => ({ coin: { stock: 8000, net30: -100 } })],
@@ -251,6 +263,442 @@ describe('the Aedilis counsels what can be done (fix batch G)', () => {
     const place = r.remedies[0].remedy;
     expect(place).toMatchObject({ kind: 'place', building: 'templum' });
     expect(r.text).toMatch(/^A temple .* would let \d+ of them grow\.$/);
+  });
+});
+
+describe('a block to clear for the work the homes wait for (playtest #2, DESIGN §11.6 row 17)', () => {
+  const E = 'aedilis.evolve';
+  /** A finished work of the player's at (x, y) (a home when `tier` is given). */
+  const put = (s: GameState, type: BuildingId, x: number, y: number, tier?: HouseTierId): Building => {
+    const b: Building = { id: s.nextId++, type, x, y, owner: 'player', status: 'done', placed: 0, doneDay: 0, progress: 1, work: 1, paid: true, order: 1, open: true, prio: 1 };
+    if (tier) b.house = { tier, pref: 'auto', okDays: 0, badDays: 0, recoverDays: 0, declining: false, declineDays: 0, renovating: null, oil: 0, wine: 0 };
+    s.buildings.push(b);
+    invalidate(s);
+    return b;
+  };
+  /** One `type` on every block a temple could take (its top-left plot, or its top half), so no free block is left. */
+  const fill = (s: GameState, type: BuildingId, tier?: HouseTierId): void => {
+    for (const tile of [...validSlots(s, 'templum', 'player').keys()].sort((a, b) => a - b)) put(s, type, tx(tile), ty(tile), tier);
+  };
+  /** The founders' homes wait for a temple at Oppidum (tiled cottages that have everything else). */
+  const wait = (s: GameState): void => {
+    setTier(s, 'tegulata');
+    s.rank = 2;
+    s.fed = 1;
+    ctl.covered = ALL_LAYERS.filter((l) => l !== 'temple');
+    invalidate(s);
+  };
+  const raise = (s: GameState) => {
+    for (let i = 0; i < every(E); i++) { wait(s); day(s); }
+    const m = s.guidance.advisories[E]!;
+    return { m, r: renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: m }) };
+  };
+  const waiting = (s: GameState): number[] => houses(s).filter((b) => b.owner === 'start').map((b) => b.id).sort((a, b) => a - b);
+
+  it('no free block reaches them: the Aedilis names a block to clear, and the remedy clears it for the temple', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'hortus');
+    expect(validSlots(s, 'templum', 'player').size).toBe(0);
+    const { m, r } = raise(s);
+    expect(m.sev).toBe(1);                                                // on the card: something can be done
+    const rem = r.remedies[0].remedy;
+    expect(rem).toMatchObject({ kind: 'clear', building: 'templum' });
+    if (rem.kind !== 'clear') throw new Error('no clear remedy');
+    expect(r.remedies[0].label).toBe('Clear this block for a temple');
+    expect(r.remedies[0].check.ok).toBe(true);
+    expect(r.text).toMatch(/^No free block within reach of their doors can take a temple\. Clear the block .+ \(a garden\) and a temple there would let \d+ of them grow\.$/);
+    expect(blockWorks(s, rem.tile)).toEqual(rem.ids);
+    expect(clearPrompt(s, rem)).toMatchObject({ yes: 'Clear it for a temple' });
+    expect(clearPrompt(s, rem).text).toMatch(/^A garden comes down, and a quarter of its cost is salvaged\. Then you place a temple on the cleared block\.$/);
+    // the sim part pulls down what stands there; the temple may then stand on the block
+    const t = structuredClone(s);
+    expect(applyRemedy(t, rem).ok).toBe(true);
+    expect(t.buildings.some((b) => rem.ids.includes(b.id))).toBe(false);
+    expect(canPlace(t, 'templum', rem.tile, { owner: 'player', ignoreCost: true }).ok).toBe(true);
+    // once the block changes, the remedy says so instead of pulling down what it did not name
+    put(s, 'puteus', tx(rem.tile) + 2, ty(rem.tile) + 2);
+    expect(checkRemedy(s, rem)).toMatchObject({ ok: false, code: 'notReady' });
+    expect(checkRemedy(t, rem)).toMatchObject({ ok: false, code: 'notReady' });   // cleared already: a place remedy now
+  });
+
+  it('once the temple rises on the cleared block, the homes it will reach wait for it: no second block to clear', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'hortus');
+    const { r } = raise(s);
+    const rem = r.remedies[0].remedy;
+    if (rem.kind !== 'clear') throw new Error('no clear remedy');
+    const ids = waiting(s);
+    expect(applyRemedy(s, rem).ok).toBe(true);
+    expect(placeBuilding(s, 'templum', rem.tile, { owner: 'player' }).ok).toBe(true);
+    const temple = s.buildings.find((b) => b.type === 'templum')!;
+    expect(temple.status).not.toBe('done');
+    // at once, before the next check lets the advice go: it says what they wait for, and shows the site
+    const now = renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: s.guidance.advisories[E]! });
+    expect(now.text).toMatch(/^A temple rises .+: they grow once it stands\.$/);
+    expect(now.remedies[0].remedy).toEqual({ kind: 'building', op: 'center', id: temple.id });
+    // the checks that follow while the temple is still a site (coverage is mocked: it never reaches them) offer no
+    // second block, and the advice lets go
+    for (let i = 0; i < 4 * every(E); i++) {
+      wait(s);
+      day(s);
+      const m = s.guidance.advisories[E]!;
+      if (!m.active) continue;
+      const q = renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: m });
+      expect(q.remedies.some((x) => x.remedy.kind === 'clear')).toBe(false);
+      expect(q.text).not.toMatch(/Clear the block/);
+    }
+    expect(s.guidance.advisories[E]!.active).toBe(false);
+    // a second block for the same homes, however it was found, is refused while a temple rises
+    const again = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(checkRemedy(s, { kind: 'clear', building: 'templum', tile: again.tile, ids: again.ids }))
+      .toMatchObject({ ok: false, code: 'chosen', reason: 'A temple is already being raised.' });
+  });
+
+  it('one block at a time: while a temple rises out of their reach, the Nota says the block waits until it stands', () => {
+    const s = base();
+    wait(s);
+    // a temple already rising on a block that reaches none of them; a garden on every other block
+    const ids = waiting(s);
+    const far = [...validSlots(s, 'templum', 'player').keys()].sort((a, b) => a - b)
+      .find((t) => !previewCovered(s, 'templum', tx(t), ty(t)).some((p) => p.layer === 'temple' && p.houses.some((h) => ids.includes(h))))!;
+    expect(placeBuilding(s, 'templum', far, { owner: 'player' }).ok).toBe(true);
+    fill(s, 'hortus');
+    const { m, r } = raise(s);
+    expect(m.sev).toBe(0);
+    expect(r.remedies.some((x) => x.remedy.kind === 'clear')).toBe(false);
+    expect(r.text).toMatch(/^No free block within reach of their doors can take a temple, nor will the Ordo raise one where it would not serve them\. A temple already rises .+: once it stands, a block near them can be cleared for another\.$/);
+    // once it stands, the block is offered
+    const t = s.buildings.find((b) => b.type === 'templum')!;
+    t.status = 'done';
+    t.progress = 1;
+    invalidate(s);
+    const after = raise(s);
+    expect(after.m.sev).toBe(1);
+    expect(after.r.remedies[0].remedy).toMatchObject({ kind: 'clear', building: 'templum' });
+  });
+
+  it('the advisor-follower clears one block and places the temple there, then waits for it to stand', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'hortus');
+    raise(s);
+    const count = (type: BuildingId): number => s.buildings.filter((b) => b.type === type).length;
+    const gardens = count('hortus');
+    follow(s);
+    expect(count('templum')).toBe(1);
+    expect(count('hortus')).toBe(gardens - 1);
+    for (let i = 1; i <= 40; i++) {
+      wait(s);
+      day(s);
+      if (i % 10 === 0) follow(s);
+    }
+    expect(count('templum')).toBe(1);
+    expect(count('hortus')).toBe(gardens - 1);
+  });
+
+  it('names who must move when the block holds homes, and whether the town has the beds', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'area', 'tegulata');                                           // a home on every block: they wait for a temple too
+    for (const h of houses(s).filter((b) => b.owner === 'player')) {   // a soul in each (a copy of a founder)
+      const p = structuredClone(s.people[0]);
+      p.id = s.nextId++;
+      p.home = h.id;
+      s.people.push(p);
+    }
+    touchPeople(s);
+    const { m, r } = raise(s);
+    expect(m.sev).toBe(1);
+    const rem = r.remedies[0].remedy;
+    if (rem.kind !== 'clear') throw new Error('no clear remedy');
+    expect(r.text).toMatch(/ \(a tiled cottage\) and a temple there would let \d+ of them grow\. The (one soul who lives there finds a bed|\d+ souls who live there find beds) in the town's other homes\.$/);
+    expect(clearPrompt(s, rem).text).toMatch(/^A tiled cottage comes down, and a quarter of its cost is salvaged\. The .+ there looks? for (a bed|beds) in the town's other homes\. Then you place a temple on the cleared block\.$/);
+  });
+
+  it('weighs the cost: a block of homes only when it lets more homes rise than one of gardens', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    invalidate(s);
+    fill(s, 'hortus');
+    const ids = waiting(s);
+    const first = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(first.homes).toBe(0);
+    expect(first.k).toBeGreaterThanOrEqual(B.advisors.RULES.CLEAR_GAIN);
+    // two homes with a family each go up on that block: another block of gardens serves them at less cost
+    const x = tx(first.tile), y = ty(first.tile);
+    const h1 = put(s, 'area', x + 2, y, 'casa'), h2 = put(s, 'area', x, y + 2, 'casa');
+    s.people.filter((p) => p.home !== null).slice(0, 4).forEach((p, k) => { p.home = k < 2 ? h1.id : h2.id; });
+    touchPeople(s);
+    const next = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(next.tile).not.toBe(first.tile);
+    expect(next.homes).toBe(0);
+    expect(next.k).toBeGreaterThanOrEqual(first.k - 2);
+    // granaries everywhere: only the founders' own blocks could be cleared, and pulling down homes to raise the same
+    // homes gains nothing; kept free by the player, those are not offered either — and the advice says which it was
+    const g = fresh(42);
+    g.rank = 2;
+    invalidate(g);
+    fill(g, 'horreum');
+    expect(clearSite(g, 'templum', 'temple', waiting(g))).toEqual({ site: null, why: 'gain' });
+    const map = getMap(42);
+    g.ordo.reserved = [...new Set(houses(g).map((b) => map.survey.blockAt[b.y * map.W + b.x]))].sort((a, b) => a - b);
+    invalidate(g);
+    expect(clearSite(g, 'templum', 'temple', waiting(g))).toEqual({ site: null, why: 'works' });
+  });
+
+  it('never pulls down the only shop row (shrine, well) that brings a waiting home another need of its next tier', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    for (const b of houses(s)) b.house!.tier = 'tegulata';              // a stone house needs a market too
+    invalidate(s);
+    fill(s, 'hortus');
+    const ids = waiting(s);
+    const first = clearSite(s, 'templum', 'temple', ids).site!;
+    // the garden there gives way to the town's one shop row: the same block, the same cost, but their market with it
+    s.buildings = s.buildings.filter((b) => b.id !== first.ids[0]);
+    const shop = put(s, 'taberna', tx(first.tile), ty(first.tile));
+    const next = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(next.tile).not.toBe(first.tile);
+    expect(next.ids).not.toContain(shop.id);
+  });
+
+  it('never pulls down the only shop row (shrine, well) of a home that does not wait: it would decline', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    for (const b of houses(s)) b.house!.tier = 'tegulata';              // a tiled cottage needs a market already
+    invalidate(s);
+    fill(s, 'hortus');
+    const first = clearSite(s, 'templum', 'temple', waiting(s)).site!;
+    // the garden there gives way to the town's one shop row, the only market of the homes it reaches; those homes are
+    // left out of the waiting group, so only the others are asked about
+    s.buildings = s.buildings.filter((b) => b.id !== first.ids[0]);
+    const shop = put(s, 'taberna', tx(first.tile), ty(first.tile));
+    const served = previewCovered(s, 'taberna', shop.x, shop.y).find((p) => p.layer === 'market')?.houses ?? [];
+    const others = waiting(s).filter((id) => served.includes(id));
+    expect(others.length).toBeGreaterThan(0);
+    const ids = waiting(s).filter((id) => !others.includes(id));
+    const next = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(next).not.toBeNull();
+    expect(next.tile).not.toBe(first.tile);
+    expect(next.ids).not.toContain(shop.id);
+  });
+
+  it('when no block may be cleared the Nota says why; a work with no site says why too', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'horreum');
+    const { m, r } = raise(s);
+    expect(m.sev).toBe(0);
+    expect(r.remedies.some((x) => x.remedy.kind === 'clear')).toBe(false);
+    expect(r.text).toBe('No free block within reach of their doors can take a temple, nor will the Ordo raise one where it would not serve them, '
+      + 'and no block near them is worth clearing: each would let too few of them rise for the homes and works it pulls down.');
+    expect(checkRemedy(s, { kind: 'place', building: 'templum' })).toMatchObject({ ok: false, code: 'noSlots', reason: 'Every block of the town is built on: pull down what stands on one to clear it.' });
+    const k = fresh(42);
+    k.rank = 2;
+    k.ordo.on.build = true;
+    k.ordo.reserved = getMap(42).survey.blocks.map((b) => b.id);
+    invalidate(k);
+    expect(checkRemedy(k, { kind: 'ask', building: 'templum' })).toMatchObject({ ok: false, reason: 'Every free block is one you keep from the Ordo: place it yourself, or release one.' });
+    const t = fresh(42);
+    t.rank = 3;
+    invalidate(t);
+    expect(checkRemedy(t, { kind: 'place', building: 'thermae' })).toMatchObject({ ok: false, reason: 'No free block can take great baths: no castellum within 18 paces.' });
+  });
+
+  it('asked of the Ordo with no site, it names what keeps the Ordo off the free plots: a work of yours still rising there, a block kept free', () => {
+    const s = fresh(42);
+    s.ordo.on.build = true;
+    const sv = getMap(42).survey;
+    const plots = [...validSlots(s, 'area', 'player').keys()].sort((a, b) => a - b);
+    const mineBlk = sv.blockAt[plots[0]];
+    const keptBlk = sv.blockAt[plots.find((t) => sv.blockAt[t] !== mineBlk)!];
+    expect(place(s, 'area', tx(plots[0]), ty(plots[0]), { ignoreCost: true }).ok).toBe(true);   // a house plot of yours, still rising
+    const mine = s.buildings.find((b) => b.owner === 'player' && b.status !== 'done')!;
+    for (const t of plots) if (sv.blockAt[t] !== mineBlk && sv.blockAt[t] !== keptBlk) expect(placeBuilding(s, 'area', t, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    s.ordo.reserved = [keptBlk];
+    invalidate(s);
+    expect(validSlots(s, 'area', 'ordo').size).toBe(0);
+    const where = `the house plot ${buildingPlace(s, mine.id)}`;
+    expect(checkRemedy(s, { kind: 'ask', building: 'area' })).toMatchObject({ ok: false, code: 'noSlots',
+      reason: `Every free plot lies in a block you keep from the Ordo or beside a work of yours not yet finished (${where}): place it yourself, or release one.` });
+    // the block kept free is released and built on: only your own work keeps the Ordo off, and there is nothing to release
+    s.ordo.reserved = [];
+    invalidate(s);
+    for (const t of plots) if (sv.blockAt[t] === keptBlk) expect(placeBuilding(s, 'area', t, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    expect(validSlots(s, 'area', 'ordo').size).toBe(0);
+    expect(validSlots(s, 'area', 'player').size).toBeGreaterThan(0);
+    expect(checkRemedy(s, { kind: 'ask', building: 'area' })).toMatchObject({ ok: false, code: 'noSlots',
+      reason: `Every free plot lies in a block beside a work of yours not yet finished (${where}): the Ordo leaves those to you, so place it yourself.` });
+    // a work that may also stand on rural land: once that land is gone too, the blocks kept from the Ordo are named
+    const m = fresh(42);
+    m.rank = 1;
+    m.ordo.on.build = true;
+    m.ordo.reserved = sv.blocks.map((b) => b.id);
+    /** Road stations, finished, on every site by the via left to the Ordo. */
+    const stations = (owner: 'player' | 'ordo'): void => {
+      invalidate(m);
+      for (let at = [...validSlots(m, 'mansio', 'ordo').keys()]; at.length > 0; at = [...validSlots(m, 'mansio', 'ordo').keys()]) {
+        expect(placeBuilding(m, 'mansio', at[0], { owner, ignoreCost: true }).ok).toBe(true);
+        for (const b of m.buildings) if (b.type === 'mansio') Object.assign(b, { status: 'done', progress: 1 });
+        invalidate(m);
+      }
+    };
+    stations('player');
+    expect(checkRemedy(m, { kind: 'ask', building: 'mansio' })).toMatchObject({ ok: false, reason: 'Every free half-block lies in a block you keep from the Ordo: place it yourself, or release one.' });
+    m.ordo.reserved = [];
+    stations('ordo');
+    expect(checkRemedy(m, { kind: 'ask', building: 'mansio' })).toMatchObject({ ok: false, reason: 'No free land in our territory can take a road station: must touch the via.' });
+  });
+});
+
+describe('staffing by hand: hands before another work (finding 11)', () => {
+  /** Manual labour with no targets: every work's hands go home (a work finished under manual labour stands so). */
+  const byHand = (s: GameState): void => {
+    s.ordo.on.labour = false;
+    for (const p of s.people) p.work = null;
+    touchPeople(s);
+    invalidate(s);
+  };
+  const render = (s: GameState, id: RuleId, p: Patch = {}) =>
+    renderAdvisory(s, fake(s, p), { rule: id, advisor: ruleDef(id).advisor, memo: s.guidance.advisories[id]! });
+
+  it('aedilis.declining: the empty well that would serve the houses comes before another well, and is named', () => {
+    const s = base();
+    byHand(s);
+    for (const b of houses(s)) Object.assign(b.house!, { tier: 'casa', declining: true, declineDays: 5 });
+    invalidate(s);
+    for (let i = 0; i < every('aedilis.declining'); i++) day(s);
+    expect(s.guidance.advisories['aedilis.declining']?.params.need).toBe('water');
+    const r = render(s, 'aedilis.declining');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'water', n: 1 });   // a well reaches its full radius at one hand of two
+    expect(r.remedies[0].check.ok).toBe(true);
+    expect(r.remedies[0].label).toBe('Put 1 more hand on the wells');
+    expect(r.remedies[1].remedy).toMatchObject({ kind: 'place', building: 'puteus' });
+    expect(r.text).toMatch(/ The well .+ has 0 of 2 hands: staffed, it would serve \d+ of them\.$/);
+    expect(applyRemedy(s, r.remedies[0].remedy).ok).toBe(true);
+    expect(s.ordo.manual.water).toBe(1);
+    s.ordo.on.labour = true;   // the Ordo staffs: its remedy is the work, as before
+    expect(render(s, 'aedilis.declining').remedies[0].remedy).toMatchObject({ kind: 'place', building: 'puteus' });
+  });
+
+  it('aquarum.access: the dry homes wait on the well\'s hands, not on a new well (and it is no quiet Nota)', () => {
+    const s = base();
+    byHand(s);
+    setTier(s, 'tentoria');
+    invalidate(s);
+    for (let i = 0; i < every('aquarum.access'); i++) day(s);
+    const m = s.guidance.advisories['aquarum.access']!;
+    expect(m.active).toBe(true);
+    expect(m.sev).toBe(1);
+    const r = render(s, 'aquarum.access');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'water', n: 1 });
+    expect(r.text).toMatch(/^The well .+ has 0 of 2 hands: staffed, it would reach \d+ of them\.$/);
+    s.ordo.manual.water = 2;   // the target reaches it: the hands come with the next day's staffing
+    expect(render(s, 'aquarum.access').remedies[0].remedy.kind).not.toBe('assign');
+  });
+
+  it('from the Oppidum a well has 4 posts but its full reach at 1 hand: 1 is asked, not 2, and a well with it is not short', () => {
+    const s = base();
+    byHand(s);
+    s.rank = 2;
+    setTier(s, 'tentoria');
+    invalidate(s);
+    const well = s.buildings.find((b) => b.type === 'puteus')!;
+    expect(slotsOf('puteus', s.rank)).toBe(4);
+    expect(fullReachHands('puteus')).toBe(1);   // the reach coverage.radiusWith gives it: ceil(2 × 0.5), not ceil(4 × 0.5)
+    for (let i = 0; i < every('aquarum.access'); i++) day(s);
+    const r = render(s, 'aquarum.access');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'water', n: 1 });
+    expect(r.text).toMatch(/^The well .+ has 0 of 4 hands: staffed, it would reach \d+ of them\.$/);
+    // one hand on it: its full reach already, so it is no longer a work short of hands
+    s.ordo.manual.water = 1;
+    setJobs(s, { perBuilding: { [well.id]: 1 } });
+    expect(census(s).staffed[well.id]).toBe(1);
+    expect(effectiveRadius(s, well, 'water')).toBe(BUILDING_DEFS.puteus.service![0].radius);
+    expect(idleFor(s, view(s), 'water', houses(s).map((b) => b.id))).toBeNull();
+    expect(render(s, 'aquarum.access').remedies[0].remedy.kind).not.toBe('assign');
+  });
+
+  it('annonae.hiems.forecast: a field short of hands is staffed before a lodge is raised', () => {
+    const s = base();
+    s.ordo.on.labour = false;
+    s.ordo.manual.food = census(s).catStaffed.food;
+    const p: Patch = { grain: { crunch: crunch(3, 60, 0)(s), cap: 2500 } };   // room for the 2,000 needed in store
+    day(s, p);
+    const field = s.buildings.find((b) => b.type === 'ager')!;
+    const have = census(s).staffed[field.id] ?? 0;
+    const r = render(s, 'annonae.hiems.forecast', p);
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'food', n: 6 - have });
+    expect(r.text).toMatch(new RegExp(`with room for 2,500\\. The field .+ has ${have} of 6 hands\\.$`));
+    s.ordo.on.labour = true;   // the Ordo staffs: the works and the reserve as before, which the hands now lead
+    expect(r.remedies.slice(1).map((x) => x.remedy)).toEqual(render(s, 'annonae.hiems.forecast', p).remedies.slice(0, 2).map((x) => x.remedy));
+  });
+
+  it('annonae.hiems.forecast: when even full stores are too small, the granary comes first and the field\'s hands after', () => {
+    const s = base();
+    s.ordo.on.labour = false;
+    s.ordo.manual.food = census(s).catStaffed.food;
+    const p: Patch = { grain: { crunch: crunch(3, 60, 0)(s), cap: 1500 } };   // 2,000 needed in store
+    day(s, p);
+    const field = s.buildings.find((b) => b.type === 'ager')!;
+    const have = census(s).staffed[field.id] ?? 0;
+    const r = render(s, 'annonae.hiems.forecast', p);
+    expect(r.text).toMatch(new RegExp(` Even full, our stores are too small\\. The field .+ has ${have} of 6 hands\\.$`));
+    expect(r.remedies.slice(0, 2).map((x) => x.remedy)).toEqual([{ kind: 'place', building: 'horreum' }, { kind: 'assign', cat: 'food', n: 6 - have }]);
+  });
+
+  it('annonae.goods: an olive grove standing empty is staffed before another is planted', () => {
+    const s = base();
+    s.rank = 1;
+    const at = [...validSlots(s, 'olivetum', 'player').keys()].sort((a, b) => a - b)[0];
+    const res = { ...s.res };
+    const placed = placeBuilding(s, 'olivetum', at, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!placed.ok) throw new Error(placed.reason);
+    s.res = res;
+    const grove = s.buildings.find((b) => b.id === placed.id)!;
+    Object.assign(grove, { status: 'done', progress: 1 });
+    s.ordo.on.labour = false;
+    s.ordo.manual.food = 6;   // the fields' posts all asked for: the grove's 4 hands are what the target lacks
+    invalidate(s);
+    setTier(s, 'tentoria');
+    houses(s)[0].house!.tier = 'insula';
+    houses(s)[0].house!.oil = 1;
+    s.res.oil = 3;
+    day(s);
+    expect(s.guidance.advisories['annonae.goods']?.active).toBe(true);
+    const r = render(s, 'annonae.goods');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'food', n: 4 });
+    expect(r.remedies[0].label).toBe('Put 4 more hands on the food');
+    expect(r.text).toMatch(/ The olive grove .+ has 0 of 4 hands\.$/);
+    // stores too small for the lean season: the card's diagnosis is the stores, so the oil store comes first
+    const small: Patch = { c: { caps: { ...census(s).caps, oil: 1 } } };
+    day(s, small);
+    const q = render(s, 'annonae.goods', small);
+    expect(q.text).toMatch(/: the stores must hold [\d,]+ when Ver begins, and they hold 1\. A house without its oil falls back a tier\. The olive grove .+ has 0 of 4 hands\.$/);
+    expect(q.remedies.slice(0, 2).map((x) => x.remedy)).toEqual([{ kind: 'place', building: 'apotheca' }, { kind: 'assign', cat: 'food', n: 4 }]);
+  });
+
+  it('aedilis.evolve: the empty shrine near the waiting houses is staffed first, and the work to place follows', () => {
+    const s = base();
+    s.rank = 1;
+    s.fed = 1;
+    setTier(s, 'casa');
+    ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple');
+    invalidate(s);
+    const ids = houses(s).map((b) => b.id);
+    const slot = serveSlot(s, 'lararium', 'player', 'religion', ids)!;
+    const placed = placeBuilding(s, 'lararium', slot.tile, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!placed.ok) throw new Error(placed.reason);
+    Object.assign(s.buildings.find((b) => b.id === placed.id)!, { status: 'done', progress: 1 });
+    s.ordo.on.labour = false;
+    invalidate(s);
+    for (let i = 0; i < every('aedilis.evolve'); i++) day(s);
+    const r = render(s, 'aedilis.evolve');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'services', n: 1 });
+    expect(r.text).toMatch(/^The wayside shrine .+ has 0 of 1 hand: staffed, it would let \d+ of them grow\.$/);
+    expect(r.remedies[1].remedy.kind).toBe('place');
   });
 });
 
@@ -455,6 +903,86 @@ describe('annonae.storage: full sheds (R12)', () => {
   });
 });
 
+describe('aedilis.favour: the pace, what holds the settlers back, the Pave brush (playtest #6)', () => {
+  const F = 'aedilis.favour';
+  const PAVE: Remedy = { kind: 'tool', tool: 'pave' };
+  const render = (s: GameState) => renderAdvisory(s, view(s), { rule: F, advisor: 'aedilis', memo: s.guidance.advisories[F]! });
+  const remedies = (s: GameState): Remedy[] => render(s).remedies.map((x) => x.remedy);
+  const plenty = (s: GameState): void => { s.res.grain = 1e5; s.res.water = 1e5; };
+
+  it('gives the pace in days and names what holds the settlers back most', () => {
+    const s = base();
+    plenty(s);
+    s.morale = 80;
+    day(s);
+    expect(s.guidance.advisories[F]?.active).toBe(true);
+    let r = render(s);
+    expect(r.title).toBe(`Colonists come slowly: about one family every ${int(1 / immigrationChance(s))} days.`);
+    expect(r.text).toMatch(/^Rome's favour stands at ×1\.0 of ×3: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither/);
+    s.morale = 40;                                                   // spirits now hold them back more than the favour
+    r = render(s);
+    expect(r.text).toMatch(/^Spirits hold them back most \(40\): .* Rome's favour stands at ×1\.0 of ×3 as well: /);
+    s.morale = 25;                                                   // below 30 Rome draws none at all
+    expect(render(s).title).toBe('No colonists come: Rome draws none to us at this pace.');
+  });
+
+  it('offers the Pave brush once it is ours, where paving would raise the favour; the garden stays first', () => {
+    const s = base();
+    plenty(s);
+    s.res.stone = 50;
+    day(s);
+    expect(remedies(s)[0]).toEqual({ kind: 'place', building: 'hortus' });   // the advisor-follower bot's pick is unchanged
+    expect(remedies(s)).not.toContainEqual(PAVE);                            // the brush comes with the Templum (Res Gestae)
+    expect(checkRemedy(s, PAVE)).toMatchObject({ ok: false, code: 'locked', reason: 'Unlocked by the Res Gestae: Raise a Templum' });
+    s.guidance.milestoneDays.templum = s.day;
+    expect(favourPaces(s)).toBeGreaterThan(0);                               // the camp's dirt streets, the via
+    expect(remedies(s)[1]).toEqual(PAVE);
+    // as many paces as lift the favour to its height (×3 for the camp's few homes), not every dirt road there is
+    const homes = houses(s).length, R = B.people.RENOWN;
+    const k = Math.min(favourPaces(s), Math.ceil(((R.MAX - renownFactor(s)) * homes) / (R.K * B.dignitas.ROADS)));
+    expect(k).toBeLessThan(favourPaces(s));
+    expect(render(s).text).toMatch(new RegExp(` Paving ${k} paces of our dirt roads \\(${k * B.map.PAVE_STONE} stone\\) would raise it to ×3\\.0\\.$`));
+    expect(checkRemedy(s, PAVE).ok).toBe(true);
+    expect(isUiRemedy(PAVE)).toBe(true);                                     // App starts the brush (ARCHITECTURE §13.6)
+    expect(remedyLabel(s, PAVE)).toBe(`Pave roads (${B.map.PAVE_STONE} stone a pace)`);
+    const before = JSON.stringify(s);
+    expect(applyRemedy(s, PAVE)).toEqual({ ok: true });
+    expect(JSON.stringify(s)).toBe(before);
+    s.res.stone = 1;
+    expect(checkRemedy(s, PAVE)).toMatchObject({ ok: false, code: 'unaffordable' });
+    // every road paved: nothing left to raise the favour with the brush
+    s.paved = [...s.roads];
+    invalidate(s);
+    expect(favourPaces(s)).toBe(0);
+    expect(remedies(s)).not.toContainEqual(PAVE);
+    expect(checkRemedy(s, PAVE).ok).toBe(false);
+  });
+
+  it('offers the brush only where its sentence names the raise: none for a few paces among many homes', () => {
+    const s = base();
+    plenty(s);
+    s.res.stone = 50;
+    s.guidance.milestoneDays.templum = s.day;
+    extraHouses(s, 0);                                                     // 16 homes: a pace adds ×0.0125
+    day(s);
+    expect(s.guidance.advisories[F]?.active).toBe(true);
+    // two dirt paces left that Rome would mark: ×0.025 more, too little to name
+    const all = [...s.roads];
+    s.roads = [];
+    s.paved = [];
+    for (const i of all) {
+      invalidate(s);
+      if (favourPaces(s) >= 2) break;
+      s.roads.push(i);
+    }
+    expect(favourPaces(s)).toBe(2);
+    expect(renownFactor(s)).toBeLessThan(B.people.RENOWN.MAX);
+    const r = render(s);
+    expect(r.text).not.toMatch(/Paving/);
+    expect(r.remedies.map((x) => x.remedy)).not.toContainEqual(PAVE);
+  });
+});
+
 describe('aedilis.morale under emergency rations (R19)', () => {
   it('offers no rations edict while the Lex de annona\'s cut sets the portion, but food for the granary', () => {
     const s = base();
@@ -500,13 +1028,115 @@ describe('the Legate\'s relief remedy (R20) and dates in remedy reasons (R48)', 
   });
 });
 
-describe('fabrum.capitolium in the bottleneck material\'s own units (R23)', () => {
-  it('reads "stone is the bottleneck (1.7/day of 3.8)"', () => {
+describe('fabrum.capitolium names what really holds it back (R23, playtest #7)', () => {
+  const C = 'fabrum.capitolium';
+  const say = (s: GameState) => renderAdvisory(s, view(s), { rule: C, advisor: 'fabrum', memo: s.guidance.advisories[C]! });
+  const levers = (s: GameState) => say(s).remedies.map((x) => x.remedy);
+
+  it('a material in its own units: what is in store and what comes in a day, against what the crew would use', () => {
     const s = base();
-    ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 };
+    ctl.flow = { ...FLOW, bottleneck: 'stone', supply: 1.7, demand: 3.8, stock: 12, inflow: 1.3, crew: 64 };
     day(s);
-    const m = s.guidance.advisories['fabrum.capitolium']!;
-    expect(renderAdvisory(s, view(s), { rule: 'fabrum.capitolium', advisor: 'fabrum', memo: m }).title).toBe('At this flow the Cella rises in 400 days; stone is the bottleneck (1.7/day of 3.8).');
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; it waits for stone: 12 in store, +1.3/day of 3.8.');
+    expect(levers(s)).toContainEqual({ kind: 'place', building: 'lapicidina' });
+    expect(levers(s)).not.toContainEqual({ kind: 'edict', edict: 'opera', option: 'magna' });   // harder work lays no more stone
+  });
+
+  it('the stock as the stores panel counts it, and what the Ordo keeps back of it for another work (fix3)', () => {
+    const s = base();
+    ctl.flow = { ...FLOW, eta: null, rate: 0, bottleneck: 'concrete', demand: 3.9, stock: 12, held: 12, heldFor: 'thermae' };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella will not rise; it waits for concrete: 12 in store, all held for the great baths, +0/day of 3.9.');
+    ctl.flow = { ...FLOW, bottleneck: 'stone', supply: 0.5, demand: 3.8, stock: 40, held: 25, heldFor: 'petition', inflow: 0 };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; it waits for stone: 40 in store, 25 held for the petition, +0/day of 3.8.');
+  });
+
+  it('concrete works without water: it names the water, and the remedies bring water to the works', () => {
+    const s = base();
+    ctl.flow = { ...FLOW, eta: null, rate: 0, bottleneck: 'concrete', demand: 3.9, starved: { works: 'caementarium', input: 'water', share: 0 } };
+    day(s);
+    const r = say(s);
+    expect(r.title).toBe('At this flow the Cella will not rise; it waits for concrete: 0 in store, +0/day of 3.9.');
+    expect(r.text).toBe('The Caementarium (concrete works) gets no water, so the temple waits for its concrete. The Capitolium stands at stage I of IV.');
+    expect(levers(s)).toEqual([{ kind: 'edict', edict: 'aquae', option: 'operibus' }, { kind: 'place', building: 'puteus' }]);
+    s.decisions.edicts.aquae = 'operibus';                          // a lever in force is not offered again
+    day(s);
+    expect(levers(s)).toEqual([{ kind: 'place', building: 'puteus' }]);
+    s.decisions.edicts.aquae = 'populo';
+    s.ordo.emergency.waterPause = true;                              // nor one the Lex de annona's water pause overrules
+    day(s);
+    expect(levers(s)).toEqual([{ kind: 'place', building: 'puteus' }]);
+  });
+
+  it('the full crew: "at its maximum", Opera Magna the one lever, and silence once it is in force', () => {
+    const s = base();
+    ctl.flow = { ...FLOW };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; the crew is at its maximum (64 fabri, the most that can work on it).');
+    expect(levers(s)).toEqual([{ kind: 'edict', edict: 'opera', option: 'magna' }]);   // never the builder share: it adds no crew
+    s.decisions.edicts.opera = 'magna';
+    for (let i = 0; i < LIFE; i++) day(s);
+    expect(s.guidance.advisories[C]!.active).toBe(false);
+  });
+
+  it('a crew short of 64: more builders (by hand, or builders first), not the builder share', () => {
+    const s = base();
+    ctl.flow = { ...FLOW, crew: 40 };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; the crew is the bottleneck (40 of the 64 fabri who could work on it).');
+    expect(levers(s)).toEqual([{ kind: 'priority', cat: 'builders', days: B.ordo.PRIORITY_DAYS }, { kind: 'edict', edict: 'opera', option: 'magna' }]);
+    s.ordo.on.labour = false;
+    day(s);
+    expect(levers(s)[0]).toEqual({ kind: 'assign', cat: 'builders', n: 24 });
+    expect(levers(s).some((x) => x.kind === 'setting')).toBe(false);
+  });
+});
+
+describe('fabrum.stalled: a plan that waits on works idle for water (playtest #8)', () => {
+  it('names the idle concrete works and why, and offers Aequa, a reserve the stock meets and water, not patience', () => {
+    const s = base();
+    s.rank = 2;
+    invalidate(s);
+    const at = freeSlots(s, 'caementarium')[0];
+    const r = place(s, 'caementarium', at.x, at.y, { ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    const works = s.buildings.find((b) => b.id === r.id)!;
+    Object.assign(works, { status: 'done', progress: 1 });
+    invalidate(s);
+    setJobs(s, { perBuilding: { [works.id]: 2 } });
+    s.res.concrete = 0;
+    s.res.water = 8 * census(s).need.water;                                      // 8 days: below the 15-day reserve
+    s.buildings.push({ id: s.nextId++, type: 'balneum', x: 2, y: 2, owner: 'player', status: 'plan', placed: s.day - 30, progress: 0, work: 160, paid: false, order: 1, open: true, prio: 1 });
+    invalidate(s);
+    day(s);
+    const m = s.guidance.advisories['fabrum.stalled']!;
+    expect(m.active).toBe(true);
+    const out = renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m });
+    expect(out.title).toMatch(/has waited \d+ days for .*20 concrete/);
+    // a fresh colony's stores hold 17 days: the works may draw above three-quarters of them, 13 days, not the 15 asked
+    expect(out.text).toMatch(/^It stays a plan until the stores cover it, and our concrete works .+ stand idle: the water reserve is not met; the stores hold 8 days, and the works draw only above 13, three-quarters of the 17 a full store holds\. Under Populo prius the people drink first\.$/);
+    expect(out.remedies.map((x) => x.remedy).slice(0, 2)).toEqual([
+      { kind: 'edict', edict: 'aquae', option: 'aequa' }, { kind: 'setting', setting: 'waterReserve', value: 7 },   // a day under the stock
+    ]);
+    expect(out.remedies).toHaveLength(3);
+    // near the setting's 5-day minimum: the minimum while it still frees some water; at or under it no reserve is offered
+    // (one at or above the stock would leave the works idle, and the button would vanish having done nothing): the water
+    // remedies come forward
+    const levers = () => renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m }).remedies.map((x) => x.remedy);
+    s.res.water = 5.5 * census(s).need.water;
+    expect(levers()[1]).toEqual({ kind: 'setting', setting: 'waterReserve', value: 5 });
+    for (const d of [5, 4]) {
+      s.res.water = d * census(s).need.water;
+      expect(levers()[0]).toEqual({ kind: 'edict', edict: 'aquae', option: 'aequa' });
+      expect(levers().some((x) => x.kind === 'setting')).toBe(false);
+      expect(levers()).toHaveLength(2);
+    }
+    // with the water flowing to the works again, the plan only waits: the old counsel
+    s.decisions.edicts.aquae = 'aequa';
+    const calm = renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m });
+    expect(calm.text).toBe('It stays a plan until the stores cover it; every day of production brings it nearer.');
+    expect(calm.remedies[0].remedy).toEqual({ kind: 'building', op: 'prioritise', id: m.params.id });
   });
 });
 
@@ -538,6 +1168,13 @@ describe('remedies', () => {
     expect(remedyLabel(s, { kind: 'edict', edict: 'tributum', option: 'grave' })).toBe('Edict: Tributum Grave');
     expect(checkRemedy(s, { kind: 'place', building: 'thermae' })).toMatchObject({ ok: false, code: 'rankLocked' });
   });
+  it('a focus remedy says before it is applied what the council will raise (Urbs: gardens on free plots)', () => {
+    expect(remedyTip({ kind: 'focus', focus: 'urbs' })).toMatch(/^Urbs · The city beautiful\n.*gardens on free plots/);
+    expect(remedyTip({ kind: 'place', building: 'hortus' })).toBeNull();
+    const s = base();
+    const memo = { rule: 'aedilis.favour' as const, active: true, sev: 1 as const, since: s.day, lowerSince: null, params: { f: 1.2 }, flips: [] };
+    expect(renderAdvisory(s, view(s), { rule: 'aedilis.favour', advisor: 'aedilis', memo }).text).toContain('then it plants gardens on free plots');
+  });
   it('never throws over random states and random remedies', () => {
     const rng = new Rng(7);
     const pick = <T>(xs: readonly T[]): T => xs[rng.int(0, xs.length - 1)];
@@ -560,12 +1197,24 @@ describe('remedies', () => {
         { kind: 'contract', spec: { hub: pick(HUBS), mode: pick(['import', 'export'] as const), res: pick(TRADE_RES), qty: rng.int(-5, 200), repeat: false } },
         { kind: 'buyNow', res: pick(TRADE_RES), qty: rng.int(0, 500) }, { kind: 'relief' }, { kind: 'toggleOrdo', area: pick(ORDO_AREAS), on: rng.chance(0.5) },
         { kind: 'building', op: pick(['open', 'close', 'prioritise', 'center'] as const), id: rng.int(0, 200) },
+        { kind: 'clear', building: pick(BUILDINGS), tile: rng.int(-5, 99999), ids: [rng.int(0, 200)] },
         { kind: 'open', tab: pick(TABS), anchor: 'petition' }, { kind: 'overlay', overlay: pick(OVERLAYS) },
+        { kind: 'tool', tool: pick(['road', 'pave', 'reserve', 'demolish'] as const) },
       ];
       for (const r of remedies) {
         expect(() => { checkRemedy(s, r); remedyLabel(s, r); applyRemedy(structuredClone(s), r); }).not.toThrow();
       }
       for (const a of activeAdvisories(s)) expect(() => renderAdvisory(s, v, a)).not.toThrow();
     }
+  });
+});
+
+describe('aedilis.beds title', () => {
+  it('says one free bed is not none: most households need more', () => {
+    const s = fresh(42);
+    const rule = RULE_DEFS.find((r) => r.id === 'aedilis.beds')!;
+    const title = (free: number): string => rule.title(s, { params: { mode: 'beds', homeless: 0, free } } as unknown as Parameters<typeof rule.title>[1]);
+    expect(title(0)).toBe('No free beds: newcomers turn back at the gate.');
+    expect(title(1)).toBe('Only 1 free bed: most newcomers turn back at the gate.');
   });
 });

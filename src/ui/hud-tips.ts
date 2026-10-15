@@ -6,7 +6,7 @@ import type { Game } from './types';
 import { fmt, fmtDays, fmtRate, h, plural, realTime, sentence } from './dom';
 import { caps, tipCard, tipHead, tipKicker, tipNote, tipRow, tipSep } from './tipkit';
 import { census } from '../game/census';
-import { renownFactor } from '../game/people';
+import { arrivalOutlook, birthOutlook, favourTimes, limiterLine, naturalWords, paceWords, times } from '../game/settlers';
 import { B } from '../game/balance';
 import { forecast } from '../game/forecast';
 import { ONE_OFF_SOURCES, steadyNet, view } from '../game/sim';
@@ -151,23 +151,52 @@ function nextKalends(day: number): number {
   return d.month === 12 ? dayOf(d.year + 1, 1, 1) : dayOf(d.year, d.month + 1, 1);
 }
 
-/** Souls tooltip: population by life stage, beds, Rome's roll, workers. */
+/** Souls tooltip: population by life stage, beds, workers, then the newcomers and the births at today's pace. */
 export function soulsTip(g: Game): Node {
   const c = census(g.state);
-  const [ch, yo, ad, el] = c.byStage;
   return tipCard(
     tipHead('Souls', 'Populus'),
     tipNote(`${c.pop} souls in ${c.beds} beds · ${c.freeBeds} free${c.homeless ? ` · ${c.homeless} homeless` : ''}`, 'tip-big'),
-    tipSep(),
-    tipRow('Children', String(ch)), tipRow('Youths', String(yo)), tipRow('Adults', String(ad)), tipRow('Elders', String(el)),
-    tipSep(),
+    tipNote(c.byStage.map((n, i) => `${n} ${STAGE_WORD[i]}`).join(' · ')),
     tipRow('Able to work', String(c.workforce)), tipRow('Idle hands', String(c.idle.length), c.idle.length ? 'neg' : ''),
-    tipRow("Rome's roll", `${c.pop} / ${c.roll}`, c.pop >= c.roll ? 'neg' : ''),
-    tipRow("Rome's favour", `×${(Math.floor(renownFactor(g.state) * 10) / 10).toFixed(1)} of ×${B.people.RENOWN.MAX}`),
-    tipNote(c.pop >= c.roll ? "The roll is full: petition Rome for a higher rank to admit new colonists."
-      : c.freeBeds < 2 ? 'No free beds: newcomers turn back at the gate. Raise house plots.'
-        : 'Families settle where beds are free. Gardens and paved streets win Rome\'s favour: settlers come faster.'),
+    tipSep(), ...settlersRows(g), tipSep(), ...birthRows(g),
   );
+}
+
+const STAGE_WORD = ['children', 'youths', 'adults', 'elders'] as const;
+
+/** Rome's settlers at today's pace (DESIGN §6.6): "about one family every N days", Rome's roll, each factor with its
+ *  reading (the one that holds them back most in red), and what holds them back most, in words. The souls tooltip and
+ *  the Populus census's Newcomers line. */
+export function settlersRows(g: Game): Node[] {
+  const s = g.state;
+  const c = census(s);
+  const a = arrivalOutlook(s);
+  const when = a.every !== null ? ` (${realTime(a.every, g.speed)})` : '';
+  // under BEDS_FREE free beds the gate is as good as shut: a lone craftsman may still find the one, most families not
+  const few = a.shut === 'beds' && c.freeBeds > 0;
+  const why = a.shut === 'roll' ? "Rome's roll is full" : few ? `only ${c.freeBeds} ${c.freeBeds === 1 ? 'bed is' : 'beds are'} free` : 'no bed is free';
+  const pace = a.shut ? `${few ? 'Hardly any' : 'None'} while ${why}; then ${paceWords(a)}.`
+    : `${paceWords(a).replace(/^./, (x) => x.toUpperCase())}${when}.`;
+  return [
+    tipKicker('NEWCOMERS · HOSPITES'),
+    tipNote(pace, a.shut ? 'bad' : 'tip-big'),
+    tipRow("Rome's roll", `${c.pop} / ${c.roll}`, c.pop >= c.roll ? 'neg' : ''),
+    ...a.factors.map((x) => x.id === 'rank' ? tipRow(x.label, `1 in ${fmt(1 / x.value)} d`)
+      : tipRow(x.label, x.id === 'favour' ? `${favourTimes(x.value)} of ×${B.people.RENOWN.MAX}` : times(x.value), x === a.limiter ? 'neg' : x.value > 1 + 1e-9 ? 'pos' : '')),
+    tipNote(limiterLine(s, a)),
+  ];
+}
+
+/** The births at today's pace (DESIGN §6.5): births and deaths a year, the mothers, and each factor of a mother's chance. */
+export function birthRows(g: Game): Node[] {
+  const s = g.state;
+  const b = birthOutlook(s);
+  return [
+    tipKicker('BIRTHS · NATALES'),
+    tipNote(naturalWords(s)),
+    tipNote(b.factors.map((x) => `${x.label} ${times(x.value)}`).join(' · '), b.factors.some((x) => x.value <= 0) ? 'bad' : 'muted'),
+  ];
 }
 
 /** Spirits tooltip: every morale term signed, and where it is heading. */

@@ -9,15 +9,19 @@ import type { BuildingId, CoverageLayerId, GameState, OverlayId, PlaceCheck, Too
 import type { Game, PlacingState } from './types';
 import type { Host, Layout, WClass } from './layout';
 import { currentHost, registerBringer, safeArea, slimBanner, toolColumn } from './layout';
-import { clear, costEl, fmt, h, img, tip } from './dom';
+import { clear, costEl, fmt, h, img, plural, tip } from './dom';
 import { idx } from '../game/map';
+import { fellSpend, fellingSpill } from '../game/place';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { BACK_RANK, registerBack } from './history';
 import { present, shows } from './intro';
 import { Home } from './sheet';
-import { notePractice } from '../game/actions';
+import { notePractice, undoDemolition } from '../game/actions';
+import { undoable } from '../game/demolition';
+import { B } from '../game/balance';
 import { currentLesson } from '../game/intro';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
+import { reachSteps } from '../game/advisors/util';
 import { view } from '../game/sim';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
@@ -161,7 +165,7 @@ const VIA: readonly { id: Exclude<ToolId, 'pin'>; label: string; sub: string }[]
   { id: 'road', label: 'Road', sub: 'drag across the land' },
   { id: 'pave', label: 'Pave', sub: 'basalt over built roads' },
   { id: 'reserve', label: 'Reserve block', sub: 'the Ordo leaves it alone' },
-  { id: 'demolish', label: 'Demolish', sub: 'tap a work twice' },
+  { id: 'demolish', label: 'Demolish', sub: 'tap a work or drag over several, then tap again' },
 ];
 const POP_GAP = 8;   // CSS px kept between a popover and the HUD, the column and the screen's (safe) edge
 const POP_W = 264;   // a popover's width (sheet.css), less where the map left of the column is narrower
@@ -371,6 +375,13 @@ export function openPlacing(view: Pick<Game['view'], 'startPlacing'>, banner: (p
   view.startPlacing(p, s);
 }
 
+/** Shows the demolish banner's Undo while the last demolition can be undone (game/demolition.ts undoable: its days, in
+ *  game time), and hides it after. Every throttled UI frame (ui/index.ts). */
+export function syncPlaceBanner(g: Game): void {
+  const b = document.querySelector<HTMLButtonElement>('#place-banner .place-undo');
+  if (b) b.hidden = g.view.placing?.kind !== 'demolish' || !undoable(g.state);
+}
+
 /** Fills #place-banner for a placing state (hidden when null): sprite, name, cost, verdict, help; Place on touch. On a
  *  phone it carries the reason (the lesson job or the advisory that asked for the work: placingWhy; else the help) and
  *  at the right ⟳ keep placing, Place and ✕ (DESIGN §15.7): the SHEET's is the 76 px banner over the bar (the name and
@@ -395,7 +406,7 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
       road: ['Road', roadHelp()],
       pave: ['Paving', 'DRAG OVER ROADS TO PAVE THEM IN BASALT'],
       reserve: ['Reserve a block', `${tap ? 'TAP' : 'CLICK'} A BLOCK TO KEEP IT FOR YOURSELF, OR RELEASE IT`],
-      demolish: ['Demolish', `${tap ? 'TAP' : 'CLICK'} A BUILDING, THEN AGAIN TO CONFIRM`],
+      demolish: ['Demolish', `${tap ? 'TAP' : 'CLICK'} A BUILDING OR DRAG OVER SEVERAL, THEN ${tap ? 'TAP' : 'CLICK'} AGAIN`],
     }[p.kind];
     const help = h('div', { class: 'place-help' }, tap ? what[1] : `${what[1]} · ESC TO CANCEL`);
     // a finger has no Shift: ↕ turns a road's (or paving's) drag after its vertical leg instead
@@ -404,14 +415,24 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
         g.view.verticalFirst = on;
         if (p.kind === 'road') help.textContent = roadHelp();
       }) : null;
+    // the last demolition stands to be undone for UNDO_DAYS (game/demolition.ts): syncPlaceBanner shows and hides Undo
+    const undo = p.kind === 'demolish' ? h('button', { class: 'btn small place-undo', type: 'button', hidden: !undoable(g.state),
+      onclick: () => { g.act(undoDemolition(g.state), { okSfx: 'build' }); syncPlaceBanner(g); } }, 'Undo') : null;
+    if (undo) tip(undo, `Raise the works you last pulled down, as they stood; the salvage goes back (for ${B.construction.UNDO_DAYS} days)`);
     root.appendChild(h('div', { class: 'place-box tool' }, img(`i_tool_${p.kind}`, 3, 'place-ico'),
-      h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), help), h('div', { class: 'place-btns' }, vert, cancel)));
+      h('div', { class: 'place-main' }, h('div', { class: 'place-name' }, what[0]), help), h('div', { class: 'place-btns' }, vert, undo, cancel)));
     return;
   }
   const def = BUILDING_DEFS[p.type];
+  // a house card's Place: whether the work on this plot would reach the home that asked (DESIGN §15.4)
+  const reach = check?.ok && p.home ? reachSteps(g.state, p.type, check.x, check.y, p.home.id, p.home.need) : undefined;
+  // a felling most of which would spill over the stores' cap, once the work's own timber is paid, says so (DESIGN §3.7)
+  const spill = check?.ok && check.fell > 0 ? fellingSpill(g.state, check.fell, fellSpend(g.state, check, p.replaceId)) : null;
   const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
     : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
-      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
+      reach === undefined ? null : reach === null ? h('span', { class: 'place-far' }, ' · ✕ does not reach this home') : ` · ✔ reaches this home (${plural(reach, 'step', 'steps')})`,
+      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', spill?.most ? h('span', { class: 'place-warn' }, ` · ${spill.words}`) : null,
+      check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
       check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok

@@ -5,10 +5,10 @@ import type { ActionResult, BuildingId, CouncilReport, Cost, GameState, Remedy, 
 import type { Game, Panel, Updater } from '../types';
 import { fmtCost, h, img, sentence, tip } from '../dom';
 import type { Kid } from '../dom';
-import { pressWord } from '../pointer';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
 import { DUTY_DEFS, wishDuty } from '../../game/ordo/duties';
+import { ordoAlone } from '../../game/ordo/build';
 import { checkRemedy } from '../../game/advisors/remedies';
 import { reasonText } from '../../game/ordo/reasons';
 import { formatRoman } from '../../game/calendar';
@@ -72,24 +72,6 @@ export function btn(g: Game, label: Kid, run: () => ActionResult | void, o: BtnO
   });
   if (o.reason) tip(b, o.reason);
   else if (o.tip) tip(b, o.tip);
-  return b;
-}
-
-const ARM_MS = 3000;
-
-/** Two-click confirm for a button with rich content: the first click arms it and shows `note`, the second runs `fn`. */
-export function confirmRich(b: HTMLButtonElement, note: string, fn: () => void): HTMLButtonElement {
-  let timer = 0;
-  const tag = h('span', { class: 'tab-confirm' }, note);
-  const disarm = (): void => { window.clearTimeout(timer); b.classList.remove('armed'); tag.remove(); };
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (b.classList.contains('armed')) { disarm(); fn(); return; }
-    b.classList.add('armed');
-    tag.textContent = pressWord(note);   // 'Click again…' says Tap to a finger
-    b.append(tag);
-    timer = window.setTimeout(disarm, ARM_MS);
-  });
   return b;
 }
 
@@ -165,10 +147,13 @@ export function savingLine(g: Game, sv: Saving): string {
 
 /** A remedy's discrete identity for a panel signature: a building remedy's type, its target tile and whether it (and the
  *  "Ask the Ordo" beside it) can be used — all structural, so the card rebuilds when the best plot moves or is taken —
- *  any other remedy by its kind only; never live numbers. */
+ *  any other remedy by its kind, whether it can be used and, if not, the code of why (the Pave brush once the stone for
+ *  a pace comes in, or once every road is paved: its button is no longer disabled with the reason it had); never live
+ *  numbers, so a reason that quotes one (buyNow's cost against the aerarium) refreshes only when the card rebuilds. */
 export function remedyKey(s: GameState, x: { remedy: Remedy; check: ActionResult }): string {
   const r = x.remedy;
-  if (r.kind !== 'place' && r.kind !== 'ask') return r.kind;
+  if (r.kind === 'clear') return `clear:${r.building}@${r.tile}:${r.ids.join('.')}:${x.check.ok ? 1 : 0}`;   // another block, or the same one changed
+  if (r.kind !== 'place' && r.kind !== 'ask') return x.check.ok ? `${r.kind}:1` : `${r.kind}:0:${x.check.code}`;
   const ask = r.kind === 'ask' ? x.check.ok : s.ordo.on.build && checkRemedy(s, { kind: 'ask', building: r.building }).ok;
   return `${r.kind}:${r.building}@${r.kind === 'place' ? r.tile ?? '' : ''}:${x.check.ok ? 1 : 0}${ask ? 1 : 0}`;
 }
@@ -184,7 +169,9 @@ export function rankReason(s: GameState, type: BuildingId): string | null {
   return r > s.rank ? `Rome grants this to ${article(RANK_DEFS[r].name)}.` : null;
 }
 
-/** A wish's state in words: 'staked: starts in 3 d', 'building 40%', 'saving: 40 stone ≈ 9 d', … */
+/** A wish's state in words: 'staked: starts in 3 d', 'building 40%', 'saving: 40 stone ≈ 9 d', … A growth work on the
+ *  pace asks to be raised by hand, unless it is the Ordo's alone to raise (where it clears its own gardens or buys out
+ *  homes, DESIGN §3.9). */
 export function wishState(g: Game, w: WishView): string {
   const s = g.state;
   const site = w.siteId !== undefined ? getBuilding(s, w.siteId) : undefined;
@@ -193,7 +180,7 @@ export function wishState(g: Game, w: WishView): string {
     case 'building': return `building ${Math.round((site?.progress ?? 0) * 100)}%`;
     case 'saving': return w.lacking ? `saving: ${fmtCost(w.lacking)}${w.eta !== undefined ? ` ≈ ${Math.max(0, Math.round(w.eta))} d` : ''}` : 'saving';
     case 'waiting': return 'waiting for builders';
-    case 'paced': return `the Ordo raises it in ${Math.max(1, w.eta ?? 1)} d: raise it yourself for sooner`;
+    case 'paced': return `the Ordo raises it in ${Math.max(1, w.eta ?? 1)} d${ordoAlone(w) ? '' : ': raise it yourself for sooner'}`;
     case 'proposed': return 'proposed';
   }
 }
@@ -250,7 +237,7 @@ export function agendaEl(g: Game, up: Updater[]): HTMLElement {
       btn(g, '✕', () => A.pinBuild(g.state, null), { cls: 'ghost', tip: 'Release the pin.' })));
   }
   for (const r of s.ordo.requests) {
-    box.append(h('div', { class: 'tab-agenda-pin' }, img('i_request', 1), sentence(`You asked for ${article(BUILDING_DEFS[r.type].name.toLowerCase())} on ${formatRoman(r.day)}`)));
+    box.append(h('div', { class: 'tab-agenda-pin' }, img('i_request', 1), sentence(`You asked for ${article(BUILDING_DEFS[r.type].name.toLowerCase())}${r.house !== undefined ? ' within reach of a home' : ''} on ${formatRoman(r.day)}`)));
   }
   return box;
 }

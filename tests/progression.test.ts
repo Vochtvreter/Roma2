@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // decisions.ts is imported first on purpose: the real civic.ts imports housing.ts → decisions.ts, so if decisions.ts were
 // first loaded from inside the civic mock's importOriginal() it would bind the original dignitas, not the mock below.
 import {
-  choosePath, edictWindow, isUnlocked, nextColonyLegacy, nextPath, pathStory, petitionNeeds, rankUp, setEdict, setFocus, setSetting,
-  setSwitch, settingValue,
+  choosePath, edictWindow, isUnlocked, nextColonyLegacy, nextPath, nextRankNeeds, pathStory, petitionNeeds, rankUp, setEdict, setFocus,
+  setSetting, setSwitch, settingValue,
 } from '../src/game/decisions';
 import { HUBS, MILESTONE_IDS, PATH_DECISIONS } from '../src/game/types';
 import type { Building, BuildingId, GameState, HouseTierId, MilestoneId, MulKey, AddKey } from '../src/game/types';
@@ -101,6 +101,8 @@ describe('petitions', () => {
     const pn = (): NonNullable<ReturnType<typeof petitionNeeds>> => petitionNeeds(s, view(s))!;
     expect(pn().rank).toBe(1);
     expect(pn().needs.map((n) => n.met)).toEqual([true, false, false, false, false, false]);
+    // the Souls line names its count, for the ETA the checklist shows beside it (settlers.ts, playtest #6)
+    expect(pn().needs.map((n) => n.souls)).toEqual([undefined, B.progress.PETITION.vicus.POP, undefined, undefined, undefined, undefined]);
     growTo(s, 50);
     s.day = FIRST_HIEMS_OVER;
     addBuilding(s, 'horreum');
@@ -135,8 +137,10 @@ describe('petitions', () => {
     const pn = (): NonNullable<ReturnType<typeof petitionNeeds>> => petitionNeeds(s, view(s))!;
     expect(pn().rank).toBe(2);
     expect(pn().ready).toBe(false);                       // the stub coverage reaches nobody
+    expect(nextRankNeeds(s, view(s))!.needs[2].progress).toBe(0);   // how far the reach line is, as it reads (the away letter's stall)
     hooks.covered = true;
     expect(pn().ready).toBe(true);
+    expect(nextRankNeeds(s, view(s))!.needs[2].progress).toBe(1);
     s.trade.hubsTraded = ['durii'];
     expect(pn().ready).toBe(false);
     s.trade.hubsTraded = ['metellianus', 'durii'];
@@ -166,10 +170,12 @@ describe('petitions', () => {
     expect(pn().needs.find((n) => !n.met)?.label).toContain('missing: Temple');
     staff(s, t); staff(s, m);
     expect(pn().ready).toBe(false);
+    expect(nextRankNeeds(s, view(s))!.needs[3].progress).toBe(5 / 6);   // two of the three works staffed, the baths raised (the away letter's stall)
     staff(s, b);
     expect(pn().ready).toBe(true);
     s.counters.ironMade = 59;
     expect(pn().ready).toBe(false);
+    expect(nextRankNeeds(s, view(s))!.needs[4].progress).toBe(59 / 60);
     s.counters.ironMade = 60;
     expect(choosePath(s, 'path3', 'iusLatii').ok).toBe(true);
     expect(s.res.iron).toBe(20_000 - 60);
@@ -196,6 +202,48 @@ describe('petitions', () => {
     expect(s.buildings.some((b) => b.type === 'capitolium' && b.status === 'building')).toBe(true);
     expect(petitionNeeds(s, view(s))).toBeNull();
     expect(nextPath(s)).toBeNull();
+  });
+
+  it('a work the checklist asks for comes nearer while its site rises, and the Stabilitas line as its streak reads (the away letter\'s stall)', () => {
+    const s = fresh();
+    s.buildings = s.buildings.filter((b) => b.type !== 'horreum');
+    invalidate(s);
+    const line = (x: GameState, start: string): number | undefined => nextRankNeeds(x, view(x))!.needs.find((n) => n.label.startsWith(start))!.progress;
+    expect(line(s, 'A Horreum')).toBe(0);
+    const h = addBuilding(s, 'horreum', { status: 'building', progress: 0.3 });
+    addBuilding(s, 'horreum', { status: 'staked', progress: 0 });
+    expect(line(s, 'A Horreum')).toBe(0.3);                 // the furthest site
+    h.status = 'done'; h.progress = 1; invalidate(s);
+    expect(line(s, 'A Horreum')).toBe(1);
+    s.counters.stabStreak = 3;
+    expect(line(s, 'Stabilitas')).toBe(0.3);                // "(3 / 10)"
+    s.counters.stabStreak = 7;                              // broken while away and begun again, nearer as it reads
+    expect(line(s, 'Stabilitas')).toBe(0.7);
+    s.counters.stabStreak = 12;
+    expect(line(s, 'Stabilitas')).toBe(1);
+
+    const c = fresh();
+    c.decisions.paths = { charter: 'veterani', path1: 'pagus', path2: 'pietas', path3: 'annonaPublica' };
+    c.rank = 3;
+    growTo(c, 60);
+    expect(line(c, 'The aqueduct flows')).toBe(0);
+    const cas = addBuilding(c, 'castellum', { status: 'building', progress: 0.4 });
+    expect(line(c, 'The aqueduct flows')).toBe(0.4);        // its arches rising
+    cas.status = 'done'; cas.progress = 1; invalidate(c);
+    expect(line(c, 'The aqueduct flows')).toBe(1);
+    // each of the two works counts half once raised and whole once staffed: the baths rising from 10% to 70% come nearer
+    const staffed = 'Great baths, Theatre staffed';
+    expect(line(c, staffed)).toBe(0);
+    const th = addBuilding(c, 'thermae', { status: 'building', progress: 0.1 });
+    expect(line(c, staffed)).toBe(0.1 / 4);
+    th.progress = 0.7;
+    expect(line(c, staffed)).toBe(0.7 / 4);
+    th.status = 'done'; th.progress = 1; invalidate(c);
+    expect(line(c, staffed)).toBe(1 / 4);                   // raised, no hands yet
+    staff(c, th);
+    expect(line(c, staffed)).toBe(2 / 4);
+    staff(c, addBuilding(c, 'theatrum'));
+    expect(line(c, staffed)).toBe(1);
   });
 
   it('the Legate\'s good word lowers the next fee once', () => {

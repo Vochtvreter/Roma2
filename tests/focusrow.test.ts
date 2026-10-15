@@ -29,11 +29,13 @@ describe('a row\'s data-focus', () => {
     expect(keepsFocus(null)).toBe(false);   // before the layout runs
   });
 
-  it('an advisory names the building its remedy centres, the Aedilis\' decline every declining home, else nothing', () => {
+  it('an advisory names the building its remedy centres, the block it would clear, the Aedilis\' decline every declining home, else nothing', () => {
     const centre: Remedy = { kind: 'building', op: 'center', id: 7 };
     const overlay: Remedy = { kind: 'overlay', overlay: 'aqua' };
     expect(focusOfAdvisory('aquarum.something', [{ remedy: overlay }, { remedy: centre }])).toBe('b:7');
     expect(focusOfAdvisory('aedilis.declining', [{ remedy: overlay }])).toBe('decl');
+    // a block to clear names the block, as the work's footprint on it (the card's click shows it on the map)
+    expect(focusOfAdvisory('aedilis.evolve', [{ remedy: { kind: 'clear', building: 'templum', tile: 2345, ids: [4, 9] } }, { remedy: overlay }])).toBe(focusOfWish('templum', 2345));
     expect(focusOfAdvisory('annonae.grain', [{ remedy: overlay }, { remedy: { kind: 'building', op: 'open', id: 3 } }])).toBeNull();
     expect(focusOfAdvisory('annonae.grain', [])).toBeNull();
   });

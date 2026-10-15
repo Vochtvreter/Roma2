@@ -371,6 +371,21 @@ describe('hints', () => {
     for (let k = 0; k < 6; k++) s.buildings.push({ ...ager[0], id: 9000 + k });   // seven fields: "raise an 8th"
     expect(howToGetMore(s, 'grain', view(s)).some((l) => / raise an 8th \(/.test(l))).toBe(true);
   });
+  it('teaches timber from the woods a free road fells (§3.7)', () => {
+    const s = run(fresh(42), 2);
+    const lines = howToGetMore(s, 'timber', view(s));
+    expect(lines[0]).toMatch(/^Lumber camp: /);
+    expect(lines).toContain('Lay a road through the woods (free): the felled trees go to the stores, up to 100 timber a pace.');
+    expect(howToGetMore(s, 'stone', view(s)).join(' ')).not.toMatch(/road through the woods/);
+    // only while the stores have room: a felling into full stores would all spill, so it is never taught beside "full"
+    const cap = view(s).c.caps.timber;
+    s.res.timber = Math.ceil(B.ordo.STORE_FULL * cap);
+    const full = howToGetMore(s, 'timber', view(s));
+    expect(full.some((l) => l.startsWith('The stores are full'))).toBe(true);
+    expect(full.join(' ')).not.toMatch(/road through the woods/);
+    s.res.timber = Math.floor(B.ordo.STORE_FULL * cap) - 1;
+    expect(howToGetMore(s, 'timber', view(s))).toContain('Lay a road through the woods (free): the felled trees go to the stores, up to 100 timber a pace.');
+  });
   it('says when a full store\'s building is not yet granted (R03)', () => {
     const s = run(fresh(42), 2);
     s.res.timber = 300;

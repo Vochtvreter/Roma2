@@ -36,6 +36,8 @@ describe('the context card\'s brief (briefParts)', () => {
     ['house', ['sub', 'beds', 'who', 'finest', 'demolish'], ['sub', 'beds', 'finest']],
     // a staffed work: its hands and its category's labour line, staffed in place, and its controls
     ['works', ['benefit', 'staff', 'names', 'labour', 'chain', 'site', 'flags', 'controls', 'demolish'], ['benefit', 'staff', 'labour', 'controls']],
+    // a staffed work idle for want of water: why, with its fixes, before what it does
+    ['works', ['benefit', 'staff', 'names', 'labour', 'idle', 'chain', 'site', 'flags', 'controls', 'demolish'], ['staff', 'labour', 'idle', 'controls']],
     // a work with no posts: what it does and what it stores
     ['works', ['benefit', 'stores', 'site', 'demolish'], ['benefit', 'stores']],
     ['works', ['benefit', 'service', 'service', 'site', 'demolish'], ['benefit', 'service']],

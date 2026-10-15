@@ -9,15 +9,34 @@ import { RANK_DEFS } from './data/ranks';
 import { newCtx, tick, view } from './sim';
 import { census } from './census';
 import { activeAdvisories } from './advisors/engine';
-import { petitionNeeds } from './decisions';
+import { nextRankNeeds, petitionNeeds } from './decisions';
+import { int } from './advisors/util';
 
 const DECIDED_MAX = 12;       // "decided in your name" lines kept (ARCHITECTURE §11.5)
 const HIGHLIGHTS_MAX = 40;    // highlight entries kept, newest
 const AWAITING_MAX = 3;       // advisories listed under "Awaiting you"
+const LACKING_MAX = 3;        // unmet petition items a stalled letter names
 
 /** Days to simulate for an absence: min(OFFLINE_MAX_DAYS, floor(awayMs / 1000 × OFFLINE_RATE)). */
 export function offlineDays(awayMs: number): number {
   return Math.min(B.time.OFFLINE_MAX_DAYS, Math.floor((awayMs / 1000) * B.time.OFFLINE_RATE));
+}
+
+/** The real time an absence takes to fill the cap: OFFLINE_MAX_DAYS / OFFLINE_RATE seconds (3,650 s, ≈ 61 min). */
+export const AWAY_CAP_MS = (B.time.OFFLINE_MAX_DAYS / B.time.OFFLINE_RATE) * 1000;
+/** The cap in years (one lustrum: 5). */
+export const AWAY_CAP_YEARS = Math.round(B.time.OFFLINE_MAX_DAYS / B.time.YEAR_DAYS);
+
+/** How time away runs, in real time (How to play, DESIGN §14): the rate, the cap and when it is reached. */
+export function awayRule(): string {
+  return `Time away passes at half speed: each minute you are gone is ${60 * B.time.OFFLINE_RATE} days in the colony, up to ${AWAY_CAP_YEARS} years. `
+    + `That takes ${Math.round(AWAY_CAP_MS / 60_000)} minutes; time away beyond it is not counted.`;
+}
+
+/** The part of an absence the cap left uncounted: 0 unless the whole lustrum ran and a minute or more was left over. */
+export function awayUnusedMs(r: AwayReport): number {
+  const over = r.awayMs - AWAY_CAP_MS;
+  return r.days >= B.time.OFFLINE_MAX_DAYS && over >= B.time.OFFLINE_MIN_MS ? over : 0;
 }
 
 function doh(stock: number, need: number): number {
@@ -26,12 +45,38 @@ function doh(stock: number, need: number): number {
 
 function snapshot(s: GameState): Snapshot {
   const c = census(s);
+  const next = nextRankNeeds(s, view(s));
+  const cap = s.buildings.find((b) => b.type === 'capitolium');
   return {
     day: s.day, pop: s.people.length, rank: s.rank, morale: s.morale, res: { ...s.res },
     grainDoh: doh(s.res.grain, c.need.grain), waterDoh: doh(s.res.water, c.need.water),
     births: s.stats.births, deaths: s.stats.deaths, immigrants: s.stats.immigrants, emigrants: s.stats.emigrants,
     built: s.stats.built, evolvedBy: { ...s.stats.evolvedBy }, builtBy: { ...s.stats.builtBy },
+    petition: next ? {
+      rank: next.rank, met: next.needs.filter((n) => n.met).length, of: next.needs.length, items: next.needs.map((n) => n.progress ?? (n.met ? 1 : 0)),
+    } : null,
+    capitolium: cap ? (cap.status === 'done' ? 1 : cap.progress) : null,
   };
+}
+
+/** True when the absence moved the colony toward its next rank: a line of its checklist met or nearer as it reads
+ *  (souls still short, dignitas, homes of the tier asked, the Stabilitas streak, …) or a work it asks for higher on its
+ *  site (the Horreum, the aqueduct, the Thermae), or at Colonia the Capitolium higher. Growth the checklist does not ask
+ *  for is not progress: souls past the count, the Ordo's cisterns and gardens (DESIGN §14). */
+function moved(b: Snapshot, a: Snapshot): boolean {
+  const pb = b.petition, pa = a.petition;
+  if (pa?.rank !== pb?.rank) return true;   // a rank gained
+  if (pa && pb) return pa.met > pb.met || pa.items.some((x, i) => x > (pb.items[i] ?? 0));
+  return (a.capitolium ?? 0) > (b.capitolium ?? 0);
+}
+
+/** What holds the next rank when nothing moved toward it and no petition waits on the player (DESIGN §14 "Stalled"): the
+ *  next rank's unmet items in checklist order, or (rank null) the Capitolium that did not rise; null when something moved. */
+function stalled(s: GameState, b: Snapshot, a: Snapshot, ready: boolean): AwayReport['awaiting']['stalled'] {
+  if (ready || moved(b, a)) return null;
+  const next = nextRankNeeds(s, view(s));
+  if (next) return { rank: next.rank, lacking: next.needs.filter((n) => !n.met).slice(0, LACKING_MAX).map((n) => n.label) };
+  return a.capitolium !== null && a.capitolium < 1 ? { rank: null, lacking: [] } : null;
 }
 
 function track(lowest: AwayReport['lowest'], s: GameState): void {
@@ -108,10 +153,14 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
     },
     report: () => {
       const petition = readyPetitionRank(s);
+      const after = snapshot(s);
+      const opp = s.guidance.advisories['augur.petition'];   // raised the day the petition became ready (the Augur's Opportunitas)
       return {
-        awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided: decidedLines(decided), highlights: highlights.slice(), lowest,
+        awayMs, daysPlanned: days, days: done, before, after, decided: decidedLines(decided), highlights: highlights.slice(), lowest,
         awaiting: {
           petition,
+          readySince: petition !== null && opp?.active && opp.params.rank === petition ? opp.since : null,
+          stalled: stalled(s, before, after, petition !== null),
           // the ready petition has its own line (with its button): the Augur's advisory saying the same is left out
           advisories: activeAdvisories(s, { forCard: true }).filter((a) => petition === null || a.rule !== 'augur.petition')
             .slice(0, AWAITING_MAX).map((a) => a.rule),
@@ -149,8 +198,48 @@ export const sentence = (t: string): string => (t.endsWith('.') ? t : `${t}.`);
 const signed = (n: number): string => (n >= 0 ? `+${Math.round(n)}` : `−${Math.round(-n)}`);
 const days = (d: number): string => (Number.isFinite(d) ? `${Math.round(d)} days` : 'plenty');
 
+/** "34%": the Capitolium's progress, rounded down (99.9% is not yet done). */
+export const pct = (x: number): string => `${Math.floor(x * 100 + 1e-9)}%`;
+
+/** The cap's line when an absence ran past it (DESIGN §14): "The colony ran 5 years, the most it runs without you; 6 h 59 min
+ *  of your absence went uncounted." `dur` words the real time (the dispatch passes its own). */
+export function capLine(r: AwayReport, dur: (ms: number) => string = awayDuration): string | null {
+  const unused = awayUnusedMs(r);
+  return unused > 0 ? `The colony ran ${AWAY_CAP_YEARS} years, the most it runs without you; ${dur(unused)} of your absence went uncounted.` : null;
+}
+
+/** The ready petition's line: "Rome would hear our petition for Oppidum: ready since a.d. III Id. Iul. AUC DCCCV, 412 days."
+ *  (without the date when the Augur never raised it). */
+export function readyLine(r: AwayReport): string | null {
+  const rank = r.awaiting.petition, since = r.awaiting.readySince;
+  if (rank === null) return null;
+  const head = `Rome would hear our petition for ${RANK_DEFS[rank].name}`;
+  if (since === null) return `${head}.`;
+  const d = r.after.day - since;
+  return d > 0 ? `${head}: ready since ${formatRoman(since, { year: true })}, ${int(d)} ${d === 1 ? 'day' : 'days'}.` : `${head}: ready as of today.`;
+}
+
+/** The stall's line, leading Awaiting you when nothing moved toward the next rank: the rank and what it still lacks
+ *  (the checklist's "Souls: 120 / 180" read "Souls 120 / 180"), or the Capitolium that did not rise. */
+export function stalledLine(r: AwayReport): string | null {
+  const st = r.awaiting.stalled;
+  if (!st) return null;
+  if (st.rank === null) return `Stalled: the Capitolium did not rise past ${pct(r.after.capitolium ?? 0)}.`;
+  const lack = st.lacking.map((l) => l.replace(/: (?=[\d,]+ \/ )/, ' '));
+  return `Stalled: nothing moved toward ${RANK_DEFS[st.rank].name}.${lack.length ? ` Still lacking: ${lack.join(' · ')}.` : ''}`;
+}
+
+/** The progress line: the next rank's checklist and the Capitolium, before → after ("Oppidum petition 2 → 4 of 5 met"). */
+function progressLine(b: Snapshot, a: Snapshot): string | null {
+  const parts: string[] = [];
+  const p = a.petition;
+  if (p) parts.push(`${RANK_DEFS[p.rank].name} petition: ${b.petition?.rank === p.rank ? b.petition.met : p.met} → ${p.met} of ${p.of} met`);
+  if (a.capitolium !== null && b.capitolium !== 1) parts.push(`Capitolium ${pct(b.capitolium ?? 0)} → ${pct(a.capitolium)}`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 /** The Litterae Ordinis as text lines (DESIGN §14), built from a report: the dispatch renders these as it likes. */
-export function describeAway(r: AwayReport): { heading: string; city: string; stores: string; works: string; homes: string; decided: string[]; lowest: string; awaiting: string | null } {
+export function describeAway(r: AwayReport): { heading: string; cap: string | null; city: string; stores: string; progress: string | null; works: string; homes: string; decided: string[]; lowest: string; awaiting: string | null; stalled: string | null } {
   const b = r.before, a = r.after;
   const heading = `Litterae Ordinis · from ${formatRoman(b.day + 1)} to ${formatRoman(a.day, { year: true })} (${r.days} days · you were away ${awayDuration(r.awayMs)})`;
   const births = a.births - b.births, deaths = a.deaths - b.deaths, arr = a.immigrants - b.immigrants, left = a.emigrants - b.emigrants;
@@ -170,11 +259,10 @@ export function describeAway(r: AwayReport): { heading: string; city: string; st
   const g = r.lowest.grain, w = r.lowest.water;
   const low = g.doh <= w.doh ? { what: 'Grain', ...g } : { what: 'Water', ...w };
   const lowest = Number.isFinite(low.doh) ? sentence(`${low.what} fell to ${Math.round(low.doh)} days on ${formatRoman(low.day)}`) : 'Grain and water never ran short.';
-  const awaiting = r.awaiting.petition !== null ? `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.` : null;
   return {
-    heading, city, stores,
+    heading, cap: capLine(r), city, stores, progress: progressLine(b, a),
     works: works.length ? works.join(' · ') : 'No works finished.',
     homes: homes.length ? homes.join(' · ') : 'No home changed its roof.',
-    decided: r.decided, lowest, awaiting,
+    decided: r.decided, lowest, awaiting: readyLine(r), stalled: stalledLine(r),
   };
 }

@@ -117,6 +117,9 @@ export const B = {
     SERVICE_PARTIAL: 0.6,                             // otherwise floor(0.6 × r)
     SPILL_LOG_DAYS: 30,                               // overflow logged at most once per 30 days per resource
     OPERIBUS_CONCRETE: 1.05,                          // Aquae: Operibus prius — concrete ×1.05 (off the effect bus, §10.9)
+    RESERVE_ROOM: 0.75,                               // Populo prius: the works' water floor is at most ¾ of the water store,
+                                                      // so a full store always lets them draw (§5.2); the Lex de annona's
+                                                      // water pause lifts at that level at most (economy.waterResume, §8.12)
   },
 
   // ───────── houses (DESIGN §7) ─────────
@@ -153,6 +156,7 @@ export const B = {
   // ───────── works (DESIGN §5.3, §9.5) ─────────
   construction: {
     STAKE_DAYS: 5, FULL_REFUND_DAYS: 5, REFUND_CANCEL: 0.75, REFUND_DEMOLISH: 0.25,
+    UNDO_DAYS: 10,                                    // a demolition can be undone this long (10 s at 1×; demolition.ts)
     CAP_CREW: 64, CAP_WORK: 320_000, CAP_STAGES: [0.25, 0.5, 0.75, 1],   // CAP_WORK tuned from 160,000 (§9.5)
     CAP_MAT: { stone: 24_000, concrete: 9_000, tiles: 4_000, iron: 1_800, denarii: 160_000 },   // denarii tuned from 40,000
     TRENCH: 0.1,                                      // 0–10% of work shows the foundation trench
@@ -191,6 +195,11 @@ export const B = {
     STORES_PER_RANK: 1,                               // horrea/apothecae for full stores ≤ 1 + rank × this
     STORE_RESERVE: 2,                                 // …more horrea while grain capacity < 2 × the grain reserve × need
     FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
+    // the Ordo's gardens under Urbs (DESIGN §10.5 row 11): a beauty garden lifts the stone houses it reaches by LIFT_MIN
+    // desirability in all (each up to what it lacks of a domus's street) or brings one clear; at most PER_BLOCK gardens on
+    // a block and one for every 1/PER_HOME homes; none while the free house plots (off the kept blocks) are down to
+    // KEEP_PLOTS. Make room (§3.9) clears one only if no home beside it falls within MARGIN of its tier's need
+    GARDEN: { LIFT_MIN: 1, PER_BLOCK: 1, PER_HOME: 0.5, KEEP_PLOTS: 6, MARGIN: 0.5 },
   },
 
   // ───────── Ordo site scoring (DESIGN §10.5) ─────────
@@ -220,6 +229,8 @@ export const B = {
     PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
     IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
     RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365,
+    WATER_START: 2 / 3,                               // the water pause starts only under this share of the level that
+                                                      // lifts it (economy.waterResume), so each pause refills a third first
   },
 
   // ───────── events and festivals (DESIGN §12) ─────────
@@ -279,7 +290,9 @@ export const B = {
       STALLED: [20, 40], CAP_ETA: 365,
       COIN_RUNOUT: [15, 45, 120], COIN_WINDOW: 30,
       EVOLVE_HOUSES: 3, DECLINING_P: 0.1,
+      CLEAR_GAIN: 3,                                    // a block is worth clearing when ≥ 3 more waiting homes rise than it pulls down
       BEDS_FREE: 2, BEDS_WINDOW: 30, FAVOUR_LOW: 1.5,
+      PAVE_GAIN: 0.05,                                  // the Pave remedy (and its sentence) only where paving lifts the favour more
       MORALE: [50, 35, 25], MORALE_FALL: 0.3, MORALE_FALL_DAYS: 10,
       CHOICE_SOON: 7, REMEDY_DAYS: 30, BUY_DAYS: 20,
       // remedy steps: Spare beds +4 · Builder share +5 points · Trade reserve −10 · Ask/Place house plots ×2
@@ -366,8 +379,11 @@ export const B = {
     ZOOM_LEVELS: [1, 2, 3, 4, 5], ZOOM_DEFAULT: 3, ZOOM_SMALL: 2, ZOOM_SMALL_W: 700,   // §3.1 (× devicePixelRatio)
     RUNWAY_WEEKS: 21, RUNWAY_MONTHS: 120,             // stores shown in days < 3 weeks ≤ weeks < 4 months ≤ months (§8.6)
     NEWS_SPEED: 2,                                    // "Slow for news": a new choice card drops the speed to 2× (§2.1)
-    FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 3000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
+    FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 8000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
+    CONFIRM_MIN_MS: 400,                              // a confirm ignores a press this soon after arming (a double-click); one
+                                                      // armed with no mouse on it drains for CONFIRM_MS (§15.5)
     ROSTER: 60, BEDS_LOW: 2,                          // Populus roster of the 60 oldest; souls chip amber below 2 free beds
     NEW_DAYS: 30,                                     // a NEW sticker stays this many days after a reveal
+    PREVIOUS_DAYS: 7,                                 // real days the title can restore the colony a new one (or an import) replaced
   },
 } as const;

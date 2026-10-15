@@ -10,7 +10,7 @@ import { costEl, fmt, h, img, scrollWithin, tip } from '../dom';
 import * as A from '../../game/actions';
 import { buildingVisible, toolRevealed } from '../../game/reveal';
 import { introduced, plainWork, taughtWorks } from '../../game/intro';
-import { capitoliumFlow, capitoliumStage, worksQueue } from '../../game/construction';
+import { capitoliumFlow, capitoliumHold, capitoliumStage, worksQueue } from '../../game/construction';
 import { derived } from '../../game/derived';
 import { idx } from '../../game/map';
 import { getBuilding } from '../../game/state';
@@ -33,9 +33,9 @@ import { focusOfBuilding } from '../focusrow';
 
 const TOOLS: { id: Exclude<ToolId, 'pin'>; label: string; tip: string }[] = [
   { id: 'road', label: 'Road', tip: 'Drag dirt roads across the land (R). Inside the pomerium streets follow the survey.' },
-  { id: 'pave', label: 'Pave', tip: 'Pave built roads in basalt: 2 stone a tile, desirability +1.' },
+  { id: 'pave', label: 'Pave', tip: 'Pave built roads in basalt: 2 stone a tile, desirability +1. Streets you pave win Rome\'s favour: settlers come faster.' },
   { id: 'reserve', label: 'Reserve block', tip: 'Mark a block the Ordo must leave alone.' },
-  { id: 'demolish', label: 'Demolish', tip: 'Click a building twice to pull it down (25% refund).' },
+  { id: 'demolish', label: 'Demolish', tip: `Click a building, or drag over several, then click again to pull them down (${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back; Undo for ${B.construction.UNDO_DAYS} days).` },
 ];
 const CATS: readonly BuildCat[] = ['domus', 'annona', 'aqua', 'materia', 'officinae', 'mercatus', 'religio', 'salus', 'ornamenta'];
 const STAGES = ['Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
@@ -88,9 +88,10 @@ function queueRow(g: Game, b: Building, first: boolean, up: Updater[]): HTMLElem
       status.textContent = `staked by the Ordo: builders start in ${Math.max(0, cur.placed + B.construction.STAKE_DAYS - s.day)} d`;
       pb.set(1, 'tab-bar staked');
     } else if (cur.type === 'capitolium') {
+      // what really holds it back: the crew (at most 64) or a material, and the input its works lack (DESIGN §9.5)
       const flow = capitoliumFlow(s);
       const st = capitoliumStage(cur);
-      status.textContent = `${STAGES[Math.min(3, st)]} rising · ${Math.round(cur.progress * 100)}%${flow?.bottleneck ? ` · bottleneck: ${flow.bottleneck === 'crew' ? 'builders' : RESOURCE_DEFS[flow.bottleneck].name.toLowerCase()}` : ''}${flow?.eta ? ` · next stage ≈ ${flow.eta} d` : ''}`;
+      status.textContent = `${STAGES[Math.min(3, st)]} rising · ${Math.round(cur.progress * 100)}%${flow ? ` · ${capitoliumHold(flow)}` : ''}${flow?.eta ? ` · next stage ≈ ${flow.eta} d` : ''}`;
       pb.set(cur.progress, 'tab-bar gold');
     } else {
       const trench = cur.progress < B.construction.TRENCH;

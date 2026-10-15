@@ -20,7 +20,7 @@ import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { nextColonyLegacy } from './game/decisions';
 import { introStep, introduced } from './game/intro';
 import {
-  KEYS, addFasti, claimSave, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, ownsSave, saveGame, savePrefs,
+  KEYS, addFasti, claimSave, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, ownsSave, replaceSave, saveGame, savePrefs,
 } from './game/save';
 import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
@@ -33,7 +33,7 @@ import { BUILDING_DEFS } from './game/data/buildings';
 import { blockOfTile, derived } from './game/derived';
 import { resolvePlaceAt } from './game/site';
 import * as actions from './game/actions';
-import { applyRemedy as applySimRemedy, checkRemedy } from './game/advisors/remedies';
+import { applyRemedy as applySimRemedy, checkRemedy, clearPrompt } from './game/advisors/remedies';
 import { MapView } from './render/view';
 import type { PlacingState } from './render/view';
 import { registerAllArt } from './render/art/index';
@@ -45,7 +45,8 @@ import { initBack } from './ui/history';
 import { setTitleNotice } from './ui/title';
 import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
-import { closeAllModals, exportDue, modalCount } from './ui/modals';
+import { closeAllModals, exportDue, modalCount, openConfirm } from './ui/modals';
+import { resume } from './ui/dispatch';
 import { prefill } from './ui/tabs/commercium';
 import { afterPlace, keepPlacing, keepable, openPlacing, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
@@ -57,6 +58,8 @@ import { askPersist, keepCopyWhy, platform, registerWorker } from './ui/platform
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
 const SAVE_FAIL = 'Could not save: storage is full or blocked. Use Menu → Export.';
+const CLEAR_LIFT = 140;        // CSS px a block to clear rises above the middle of the map, clear of the question
+const CLEAR_FLASH_MS = 3000;   // how long it flashes while the question is asked
 const BROKEN = 'Something went wrong and the clock stopped. Use Menu → Export to keep a copy of the colony, then reload.';
 
 /** The running application: owns the state, the loop and the mode; the UI talks to it through Game. */
@@ -84,6 +87,11 @@ class App implements Game {
   private broken = false;
   private titleFailed = false;
   private nudged = false;
+  /** A new colony's founding letter is open: nothing is saved until its standard is raised (begin), so the stored colony
+   *  stays whole until then, and Back on the letter cancels the new one (toTitle). */
+  private founding = false;
+  /** The next save goes over another colony (a new colony begun, an import): that one is kept as the previous colony. */
+  private replacing = false;
 
   constructor() {
     registerAllArt();
@@ -100,6 +108,7 @@ class App implements Game {
       onHover: (tile, id) => this.onHover(tile, id),
       onClick: (tile, id, e) => this.onClick(tile, id, e.shift),
       onDrag: (kind, tiles, done) => this.onDrag(kind, tiles, done),
+      onDemolish: (ids) => this.onDemolish(ids),
       onCancel: () => (this.view.placing ? this.cancelPlacing() : this.select(null)),
       onPlacementPreview: (check) => this.ui.showPlaceBanner(this.view.placing, check),
     });
@@ -138,22 +147,27 @@ class App implements Game {
   }
 
   setSpeed(sp: Speed): void {
+    if (this.founding) this.begin();   // Raise the standard: the founding letter's answer
     if (!introduced(this.state, 'speed')) sp = 1;   // the faster speeds come with their lesson (§11.13)
     else if (sp > 1) actions.notePractice(this.state, 'speed');
     this.speed = sp;
     this.paused = false;
     this.prefs.speed = sp;
+    this.prefs.paused = false;
     savePrefs(this.prefs);
     this.changed();
   }
 
   togglePause(): void {
-    this.paused = !this.paused;
-    this.changed();
+    this.setPaused(!this.paused);
   }
 
+  /** The player's pause (❚❚, Space, Pause on Periculum): kept in prefs, so a reload and the away letter keep the colony
+   *  paused (dispatch.ts resume). The app's own holds (the title, a letter, the catch-up) set `paused` alone. */
   setPaused(p: boolean): void {
     this.paused = p;
+    this.prefs.paused = p;
+    savePrefs(this.prefs);
     this.changed();
   }
 
@@ -269,6 +283,7 @@ class App implements Game {
       case 'open': this.openTab(r.tab, r.anchor, 'remedy'); return;
       case 'overlay': this.view.setOverlay(r.overlay, r.layer); return;
       case 'contract': this.prefillContract(r.spec); return;
+      case 'tool': this.startPlacing({ kind: r.tool }); return;
       case 'building':
         if (r.op === 'center') {
           const b = getBuilding(s, r.id);
@@ -277,20 +292,55 @@ class App implements Game {
         }
         this.act(applySimRemedy(s, r));
         return;
+      case 'clear': this.clearBlock(r); return;
       default: this.act(applySimRemedy(s, r));
     }
   }
 
+  /** A block to clear for a work (DESIGN §11.5): the block is shown on the map and the player is asked, naming what
+   *  comes down; on yes the sim remedy pulls it down (the demolish action) and the work's ghost waits on the cleared
+   *  block, as a place remedy's does. */
+  private clearBlock(r: Extract<Remedy, { kind: 'clear' }>): void {
+    const n = B.map.BLOCK, x = tx(r.tile), y = ty(r.tile);
+    this.showOnMap();
+    this.view.centerOn({ x, y, w: n, h: n });
+    // the question opens in the middle of the screen: the block glides up above it, in sight while the player decides
+    const box = this.view.screenRect(x, y, n, n);
+    this.view.panBy(0, -((box.bottom - box.top) / 2 + CLEAR_LIFT));
+    this.view.flash(r.tile, n, n, CLEAR_FLASH_MS);
+    const q = clearPrompt(this.state, r);
+    openConfirm({
+      kicker: 'AEDILIS', title: q.title, text: q.text, yes: q.yes, no: 'Keep the block',
+      onYes: () => {
+        if (!this.act(applySimRemedy(this.state, r), { okSfx: 'place' }).ok) return;
+        this.startPlacing({ kind: 'building', type: r.building, at: r.tile });
+        this.view.flash(r.tile, n, n);
+      },
+    });
+  }
+
   newGame(opts?: { afterVictory?: boolean }): void {
     void opts;   // legacy follows the previous colony itself (WP-D): +1 after a dedication, unchanged when abandoned
-    const prev = hasSave() ? loadGame() : null;
+    // a colony left from the game (Abandon, a dedication's Found a new colony) is saved first: it is the one kept as
+    // the previous colony once the new one begins
+    if (this.mode === 'game') this.write(false);
+    const prev = this.mode === 'game' ? this.state : hasSave() ? loadGame() : null;
     const { legacy, legacyBonus } = prev ? nextColonyLegacy(prev) : { legacy: 0, legacyBonus: 0 };
     const now = Date.now();
     const s = newGame({ seed: hashStr(String(now)), legacy, legacyBonus, now, intro: true });   // the opening lessons (§11.13)
     this.enter(s);
     this.paused = true;
-    this.write(false);
+    // not saved yet: the stored colony is replaced only when the standard is raised (begin), never by the letter alone
+    this.founding = true;
+    this.replacing = true;
     this.ui.showDispatch('founding');
+  }
+
+  /** The founding letter is answered (Raise the standard): the new colony is begun and saved for the first time, over
+   *  the stored colony, which is kept as the previous colony (save.ts replaceSave) for the title's Restore. */
+  private begin(): void {
+    this.founding = false;
+    this.write(false);
   }
 
   continueGame(): void {
@@ -304,10 +354,11 @@ class App implements Game {
     const awayMs = Math.max(0, Date.now() - s.lastSave);
     const run = offlineRun(s, awayMs);
     if (run) this.startCatchup(run);
-    else { this.setSpeed(this.prefs.speed); this.remindExport(); }
+    else { resume(this); this.remindExport(); }   // paused if the player had paused it, else at their speed
   }
 
   toTitle(): void {
+    const cancel = this.founding;   // Back on a new colony's founding letter: it was never begun
     if (this.mode === 'game') this.write(false);
     closeAllModals();
     this.cancelPlacing();
@@ -315,7 +366,17 @@ class App implements Game {
     this.mode = 'title';
     this.paused = true;
     this.view.setInputEnabled(true);
+    if (cancel) this.unfound();
     this.ui.showTitle();
+  }
+
+  /** A new colony cancelled on its founding letter: nothing of it was saved, and the stored colony it would have replaced
+   *  drifts behind the title again, whole (Continue plays it). */
+  private unfound(): void {
+    this.founding = false;
+    this.replacing = false;
+    this.state = loadGame() ?? this.titleState();
+    try { this.view.attach(this.state); } catch { this.state = this.titleState(); this.view.attach(this.state); }
   }
 
   /** A save the player asked for (Menu → Save, Save & quit): a failure is reported every time. */
@@ -331,8 +392,12 @@ class App implements Game {
     const s = importText(text);
     if (!s) { toast('That text is not a Castra Valeria save.', 'bad'); this.sfx('error'); return false; }
     closeAllModals();
+    // an import from the game (Menu → Export / Import) saves the colony it leaves first, as newGame does: the previous
+    // colony is kept as it stands, not as its last autosave left it
+    if (this.mode === 'game') this.write(false);
     this.enter(s);
-    this.paused = true;
+    this.setPaused(true);   // it waits for a speed, after a reload too
+    this.replacing = true;   // the colony it replaces is kept as the previous colony (a restore swaps the two)
     this.write(false);
     toast(`${s.name} restored.`, 'good');
     return true;
@@ -358,6 +423,8 @@ class App implements Game {
     this.state = s;
     this.mode = 'game';
     this.broken = false;
+    this.founding = false;
+    this.replacing = false;
     claimSave(this.sid);
     setTitleNotice(null);
     this.clock = zeroOwed(this.clock);
@@ -399,7 +466,7 @@ class App implements Game {
     this.view.setInputEnabled(true);
     this.write(false);
     if (report.days >= 1) this.ui.showDispatch('away', report);   // the letter carries its own keep-a-copy line
-    else { this.setSpeed(this.prefs.speed); this.remindExport(); }
+    else { resume(this); this.remindExport(); }
     this.changed();
   }
 
@@ -422,13 +489,15 @@ class App implements Game {
     }
   }
 
-  /** Writes the save. Not on the title, after a crash, or once another tab owns the save (this tab then yields).
+  /** Writes the save. Not on the title, before a new colony's standard is raised, after a crash, or once another tab
+   *  owns the save (this tab then yields). The first save over another colony keeps that one as the previous colony.
    *  `loud`: report every failure (the player asked); otherwise the failure toast shows once until a save succeeds. */
   private write(loud: boolean): boolean {
-    if (this.mode !== 'game') return false;
+    if (this.mode !== 'game' || this.founding) return false;
     if (this.broken) { if (loud) toast(BROKEN, 'bad', undefined, 8000); return false; }
     if (!ownsSave(this.sid)) { this.yieldToOtherTab(); return false; }
-    const ok = saveGame(this.state, Date.now());
+    const ok = this.replacing ? replaceSave(this.state, Date.now()) : saveGame(this.state, Date.now());
+    if (ok) this.replacing = false;
     savePrefs(this.prefs);
     if (!ok && (loud || !this.saveWarned)) toast(SAVE_FAIL, 'bad', undefined, 8000);
     this.saveWarned = !ok;
@@ -503,9 +572,6 @@ class App implements Game {
           this.act(actions.toggleReserveBlock(s, blk.id), { okSfx: 'click' });
           return;
         }
-        case 'demolish':
-          if (id !== null) this.act(actions.demolish(s, id), { okSfx: 'place' });
-          return;
         default: return;
       }
     }
@@ -513,6 +579,12 @@ class App implements Game {
     this.select(null);
     const blk = blockOfTile(s, tile);
     this.inspect(blk ? { kind: 'block', block: blk.id } : { kind: 'tile', tile }, true);
+  }
+
+  /** The demolish tool's second click on armed works (one, or a sweep's): they come down; the banner offers Undo. */
+  private onDemolish(ids: number[]): void {
+    if (this.mode !== 'game' || this.modalOpen) return;
+    this.act(actions.demolishMany(this.state, ids), { okSfx: 'place' });
   }
 
   private onDrag(kind: 'road' | 'pave', tiles: number[], done: boolean): void {

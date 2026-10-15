@@ -6,11 +6,12 @@
 import type { BuildingId, CoverageLayerId, GameState, PlaceCheck, Rect, SeasonIndex } from '../game/types';
 import { H, W, getMap, idx, inBounds } from '../game/map';
 import { T } from '../game/types';
-import { canPlace, snapSlot, validSlots } from '../game/place';
+import { canPlace, fellSpend, fellingSpill, roadPreview, snapSlot, validSlots } from '../game/place';
 import { bestSlot } from '../game/site';
 import { blockOfTile, classAt, derived, sizeOf } from '../game/derived';
 import { previewCoverage, previewDesir } from '../game/coverage';
 import { housesUnlockedBy } from '../game/housing';
+import { reachSteps } from '../game/advisors/util';
 import { structEpoch } from '../game/memo';
 import { B } from '../game/balance';
 import { LAYER_META } from '../game/data/housing';
@@ -75,7 +76,9 @@ export function label(g: CanvasRenderingContext2D, text: string, x: number, y: n
 }
 
 interface Slot { r: Rect; mult: number; rural: boolean }
-interface Preview { cov: { layer: CoverageLayerId; tiles: Uint8Array }[]; houses: number[]; desir: { tile: number; v: number }[] }
+/** A valid origin's previews; `home`: the road steps to the home that asked (a house card's Place), null when the work
+ *  would not reach it, undefined when no home asked. */
+interface Preview { cov: { layer: CoverageLayerId; tiles: Uint8Array }[]; houses: number[]; desir: { tile: number; v: number }[]; home?: number | null }
 
 const redCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 function reddened(c: HTMLCanvasElement): HTMLCanvasElement {
@@ -149,10 +152,17 @@ export class Placement {
       this.origin = at;
       const x = at % W, y = Math.floor(at / W);
       this.preview = this.check.ok
-        ? { cov: previewCoverage(s, p.type, x, y), houses: housesUnlockedBy(s, p.type, x, y), desir: previewDesir(s, p.type, x, y) }
+        ? { cov: previewCoverage(s, p.type, x, y), houses: housesUnlockedBy(s, p.type, x, y), desir: previewDesir(s, p.type, x, y),
+          home: p.home ? reachSteps(s, p.type, x, y, p.home.id, p.home.need) : undefined }
         : null;
     }
     return this.check;
+  }
+
+  /** The ghost's reach to the home that asked (road steps), null when it would not reach it; undefined when no home asked
+   *  or the ghost stands on no valid plot. */
+  get homeReach(): number | null | undefined {
+    return this.preview?.home;
   }
 
   /** Under-layer (step 4): glowing valid slots, coverage preview on road tiles, the desirability footprint, tool paths. */
@@ -233,7 +243,8 @@ export class Placement {
     }
   }
 
-  /** Over-layer (step 8): the ghost, verdict, bonus, felling yield, laurel, ↑ over houses that could evolve, costs. */
+  /** Over-layer (step 8): the ghost, verdict, bonus, felling yield (and its spill), laurel, ↑ over houses that could evolve,
+   *  costs; a road drag's paces and felling. */
   drawOver(g: CanvasRenderingContext2D, s: GameState, time: number, season: SeasonIndex, ins: Insets = NO_INSETS): void {
     const p = this.state;
     if (!p) return;
@@ -251,11 +262,20 @@ export class Placement {
         g.globalAlpha = 1;
       }
       this.ghost(g, s, p.type, time, season, ins);
-    } else if ((p.kind === 'road' || p.kind === 'pave') && this.path?.length) {
+    } else if (p.kind === 'road' && this.path?.length) {
+      // a road over woods fells them into the stores: what it brings, what they hold, ember when most would spill
+      const last = this.path[this.path.length - 1], x = (last % W) * TILE + 8;
+      const r = roadPreview(s, this.path);
+      let y = Math.floor(last / W) * TILE - 8;
+      if (r.fell >= 1) {
+        const f = fellingSpill(s, r.fell);
+        y -= label(g, f.words, x, y, f.most ? C.ember : C.white, ins);
+      }
+      label(g, `${r.paces} new · free${r.fell >= 1 ? ` · fells ${Math.round(r.fell)} timber` : ''}`, x, y, C.white, ins);
+    } else if (p.kind === 'pave' && this.path?.length) {
       const d = derived(s), last = this.path[this.path.length - 1];
-      const n = this.path.filter((t) => (p.kind === 'road' ? d.road[t] === 0 : d.road[t] === 1)).length;
-      const text = p.kind === 'road' ? `${n} new · free` : `${n} × ${B.map.PAVE_STONE} stone`;
-      label(g, text, (last % W) * TILE + 8, Math.floor(last / W) * TILE - 8, C.white, ins);
+      const n = this.path.filter((t) => d.road[t] === 1).length;
+      label(g, `${n} × ${B.map.PAVE_STONE} stone`, (last % W) * TILE + 8, Math.floor(last / W) * TILE - 8, C.white, ins);
     } else if (this.hoverTile !== null && p.kind === 'demolish') {
       const id = derived(s).buildingAt[this.hoverTile];
       const b = id ? s.buildings.find((x) => x.id === id) : undefined;
@@ -287,8 +307,20 @@ export class Placement {
       return;
     }
     if (c.mult >= GOLD_MULT) y -= label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold, ins);
-    if (c.fell > 0) y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
+    if (c.fell > 0) {
+      // most of the felling over the stores' cap, once the work's own timber is paid: the warning under its yield
+      const f = fellingSpill(s, c.fell, fellSpend(s, c, this.state?.kind === 'building' ? this.state.replaceId : undefined));
+      if (f.most) y -= label(g, f.words, cx, y, C.ember, ins);
+      y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
+    }
     if (c.route?.length) y -= label(g, `~${c.route.length} arches from the spring`, cx, y, C.spring, ins);
+    const home = this.state?.kind === 'building' ? this.state.home : undefined, reach = this.preview?.home;
+    if (home && reach !== undefined) {
+      // the home that asked, outlined, and whether this plot's work would reach it (DESIGN §15.4)
+      const hb = s.buildings.find((x) => x.id === home.id);
+      if (hb) { g.fillStyle = reach === null ? C.bad : C.ok; edge(g, footprintRect(s, hb), 2); }
+      y -= label(g, reach === null ? 'Does not reach this home' : `Reaches this home: ${reach} ${reach === 1 ? 'step' : 'steps'}`, cx, y, reach === null ? '#ff9b8f' : C.ok, ins);
+    }
     const houses = this.preview?.houses ?? [];
     if (houses.length) {
       label(g, `+${houses.length} ${houses.length === 1 ? 'house' : 'houses'} could evolve`, cx, y, C.ok, ins);

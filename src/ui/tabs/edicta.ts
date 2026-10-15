@@ -2,7 +2,7 @@
 // next-unlock teaser and the Mandata, the duties the player hands to the Ordo (DESIGN §9.1–9.2, §10.2, §10.8–10.10,
 // §15.3). Owner: WP-I.
 import { DUTIES, EDICTS, FOCUSES, PATH_DECISIONS, SETTINGS, SWITCHES } from '../../game/types';
-import type { ActionResult, DutyId, EdictId, GameState, LaborCat, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
+import type { ActionResult, Cost, DutyId, EdictId, GameState, LaborCat, PathDecisionId, PathOptionId, SectionId, SettingId, SwitchId } from '../../game/types';
 import type { Game, Panel, Updater } from '../types';
 import { costEl, fmt, fmtCost, h, img, sentence, tip } from '../dom';
 import * as A from '../../game/actions';
@@ -14,14 +14,19 @@ import { DUTY_DEFS, granted, learned, pendingOffers, wishDuty } from '../../game
 import { reasonText } from '../../game/ordo/reasons';
 import { view } from '../../game/sim';
 import { census } from '../../game/census';
+import { etaWords } from '../../game/settlers';
+import { birthRows, settlersRows } from '../hud-tips';
+import { tipCard, tipSep } from '../tipkit';
 import { portion } from '../../game/economy';
 import { aucYear, formatAuc, formatRoman } from '../../game/calendar';
 import { B } from '../../game/balance';
 import { EDICT_DEFS, FOCUS_DEFS, PATH_DEFS, SETTING_DEFS, SWITCH_DEFS } from '../../game/data/decisions';
 import { RANK_DEFS } from '../../game/data/ranks';
 import { BUILDING_DEFS } from '../../game/data/buildings';
-import { WISH_STATE, btn, caps, confirmRich, fresh, lackLine, lacking, newMark, savingLine, section, seg, toggle } from './common';
+import { WISH_STATE, btn, caps, fresh, lackLine, lacking, newMark, savingLine, section, seg, toggle } from './common';
 import { CAT_LABEL } from './labour';
+import { confirmChoice } from '../modals';
+import type { ChoiceAsk } from '../modals';
 
 /** How each permanent choice reads in "Your story" (DESIGN §9.2). */
 const STORY: Record<PathOptionId, string> = {
@@ -67,6 +72,23 @@ function impact(g: Game, id: EdictId, opt: string): string {
   return '';
 }
 
+/** A permanent path asked by name before it is taken (pure; tests/confirm.test.ts; DESIGN §15.5): the charter is
+ *  proclaimed ('Proclaim Colonia veteranorum?'), a path petitions Rome for its rank ('Petition Rome for Oppidum:
+ *  Pietas?') and names the fee Rome takes; each says what the choice does, what the town will show, and that it is for
+ *  good. */
+export function pathAsk(decision: PathDecisionId, id: PathOptionId, fee: Cost | null): ChoiceAsk {
+  const def = PATH_DEFS[decision];
+  const o = def.options.find((x) => x.id === id);
+  const said = [o?.desc ?? '', o?.visible ? `You will see: ${o.visible}` : ''];
+  if (decision === 'charter') {
+    return { kicker: 'LEX COLONIAE', title: `Proclaim ${o?.name ?? id}?`, ok: 'Proclaim it', cancel: 'Not yet',
+      lines: [...said, 'This is for good: the charter is the first line of your story.'].filter((x) => x) };
+  }
+  const rank = RANK_DEFS[def.grants].name;
+  return { kicker: `PETITIO · ${caps(rank)}`, title: `Petition Rome for ${rank}: ${o?.name ?? id}?`, ok: 'Petition Rome', cancel: 'Not yet',
+    lines: [...said, fee ? `Rome takes the fee: ${fmtCost(fee)}.` : '', 'This is for good: the path shapes the town.'].filter((x) => x) };
+}
+
 /** The Crossroads card: the charter or the next petition, its checklist, fee, note and the three permanent paths. */
 function crossroads(g: Game, up: Updater[]): HTMLElement {
   const s = g.state;
@@ -85,13 +107,21 @@ function crossroads(g: Game, up: Updater[]): HTMLElement {
     h('div', { class: 'ed-path-title' }, charter ? 'Proclaim the law of the colony' : `Petition Rome: ${rank?.name ?? def.name}`),
     h('p', { class: 'ed-path-prompt' }, def.prompt));
   if (rank) {
+    // the Souls line carries its ETA at today's pace (settlers.ts), reckoned once a day: it reads every soul's age
+    const eta = { day: -1, text: '' };
+    const line = (n: { label: string; met: boolean; souls?: number }): string => {
+      if (n.souls === undefined || n.met) return n.label;
+      if (eta.day !== g.state.day) { eta.day = g.state.day; eta.text = etaWords(g.state, n.souls); }
+      return eta.text ? `${n.label} · ${eta.text}` : n.label;
+    };
     const items = pn.needs.map((n) => {
-      const el = h('li', { class: n.met ? 'met' : 'unmet' }, n.met ? '✔ ' : '○ ', n.label);
+      const el = h('li', { class: n.met ? 'met' : 'unmet' }, n.met ? '✔ ' : '○ ', line(n));
+      if (n.souls !== undefined) tip(el, () => tipCard(...settlersRows(g), tipSep(), ...birthRows(g)), { wide: true });
       return el;
     });
     up.push(() => {
       const now = petitionNeeds(g.state, view(g.state));
-      now?.needs.forEach((n, i) => { const el = items[i]; if (el) { el.textContent = `${n.met ? '✔' : '○'} ${n.label}`; el.className = n.met ? 'met' : 'unmet'; } });
+      now?.needs.forEach((n, i) => { const el = items[i]; if (el) { el.textContent = `${n.met ? '✔' : '○'} ${line(n)}`; el.className = n.met ? 'met' : 'unmet'; } });
     });
     card.append(h('ul', { class: 'ed-checklist' }, items,
       h('li', { class: pn.affordable ? 'met' : 'unmet' }, pn.affordable ? '✔ ' : '○ ', 'Fee ', costEl(s, pn.fee))));
@@ -115,8 +145,12 @@ function crossroads(g: Game, up: Updater[]): HTMLElement {
     const body = [h('span', { class: 'ed-opt-name' }, o.name), h('span', { class: 'ed-opt-desc' }, o.desc),
       o.visible ? h('span', { class: 'ed-opt-vis' }, `You will see: ${o.visible}`) : null];
     if (reason) { opts.append(btn(g, body, () => undefined, { cls: 'ed-opt', reason })); continue; }
-    opts.append(confirmRich(h('button', { class: 'ed-opt', type: 'button' }, body), 'Click again to choose. This is for good.',
-      () => { g.act(A.choosePath(g.state, pn.decision, o.id), { okSfx: 'cornu' }); }));
+    // for good: a press asks it by name in a dialog (Not yet · Proclaim it / Petition Rome), never a timed second press
+    opts.append(h('button', { class: 'ed-opt', type: 'button', onclick: (e: Event) => {
+      e.stopPropagation();
+      g.sfx('click');
+      confirmChoice(pathAsk(pn.decision, o.id, charter ? null : pn.fee), () => { g.act(A.choosePath(g.state, pn.decision, o.id), { okSfx: 'cornu' }); });
+    } }, body));
   }
   card.append(opts);
   return card;

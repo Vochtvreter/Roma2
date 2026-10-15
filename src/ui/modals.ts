@@ -1,6 +1,8 @@
 // src/ui/modals.ts — the modal stack, menu, export/import, how-to-play and rename (ARCHITECTURE §13.4, DESIGN §15.5). Owner: WP-H.
 // The sim pauses while any modal is open (App.modalOpen reads modalCount()). Esc (keys.ts) closes the top closable modal.
-// Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close. On the phone
+// Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close; a parchment
+// letter holds it on itself (restingFocus), so a key pressed by reflex never closes it unread, nor does a press on the
+// backdrop around it (backdropCloses). On the phone
 // hosts (the SHEET and the DRAWER) every modal is a full-screen sheet within the safe areas (sheet.css): its head (✕,
 // kicker, title) sticks to the top and its actions to the foot while the body scrolls between them; a letter keeps its
 // parchment and pinned foot. The Menu carries the platform's entries (platform.ts menuEntries): in an iPhone's or an
@@ -13,6 +15,7 @@ import { toast } from './toasts';
 import { renameColony } from '../game/actions';
 import { B } from '../game/balance';
 import { lastExported, markExported } from '../game/save';
+import { awayRule } from '../game/offline';
 import type { GameState } from '../game/types';
 import { finePointer, pressWord, touchInput } from './pointer';
 import { tabShown } from './intro';
@@ -28,9 +31,8 @@ function sheetHost(): boolean {
   return host === 'sheet' || host === 'drawer';
 }
 
-interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; close: () => void; prevFocus: Element | null }
+interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; letter: boolean; close: () => void; prevFocus: Element | null }
 const stack: Entry[] = [];
-const ARM_MS = 3000;
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const EXPORT_DUE_MS = 2 * 24 * 3_600_000;   // real time without an exported copy before the game reminds you to keep one
 
@@ -66,6 +68,28 @@ function focusables(el: HTMLElement): HTMLElement[] {
   return Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((e) => !e.hasAttribute('disabled') && !e.hidden && e.offsetParent !== null);
 }
 
+/** Where focus rests in a modal as it opens, or comes back to it (pure; tests/letters.test.ts). A parchment letter (the
+ *  Founding, Litterae Ordinis and Victory dispatches) holds it on the dialog itself: Space (the pause key) or Enter
+ *  pressed by reflex as it opens presses none of its buttons (nor scrolls it: openModal), so it is never closed unread;
+ *  Tab reaches them, the arrows scroll a long letter. Any other modal: its data-autofocus control, else its first
+ *  control but ✕. */
+export function restingFocus<T>(letter: boolean, box: T, autofocus: T | null, controls: readonly T[], isX: (c: T) => boolean): T {
+  if (letter) return box;
+  return autofocus ?? controls.find((c) => !isX(c)) ?? controls[0] ?? box;
+}
+
+function rest(e: Entry): HTMLElement {
+  return restingFocus(e.letter, e.box, e.box.querySelector<HTMLElement>('[data-autofocus]'), focusables(e.box), (c) => c.classList.contains('modal-x'));
+}
+
+/** Whether a press on the backdrop closes a modal (pure; tests/letters.test.ts). A parchment letter never: a click
+ *  meant for the map as it arrives (the Victory dispatch while the player builds, the away letter as the catch-up ends)
+ *  would close it unread, and the away letter cannot be read again; its ✕, Esc and its buttons close it. Any other
+ *  closable modal does, but not the second half of the double-click (or double tap) that opened it. */
+export function backdropCloses(letter: boolean, closable: boolean, sinceOpenMs: number): boolean {
+  return closable && !letter && sinceOpenMs >= B.ui.CONFIRM_MIN_MS;
+}
+
 let trapping = false;
 /** Focus that leaves the top modal (click on the backdrop of a lower one, programmatic focus) is pulled back. Installed
  *  on the first modal, so importing this module does no DOM work (headless tests import the panels that import it). */
@@ -74,11 +98,12 @@ function trapFocus(): void {
   trapping = true;
   document.addEventListener('focusin', (e) => {
     const top = stack[stack.length - 1];
-    if (top && e.target instanceof Node && !top.box.contains(e.target)) (focusables(top.box)[0] ?? top.box).focus();
+    if (top && e.target instanceof Node && !top.box.contains(e.target)) rest(top).focus();
   });
 }
 
-/** Opens a modal over the stack; returns close(). Focus is trapped inside; Esc closes it when closable (default). */
+/** Opens a modal over the stack; returns close(). Focus is trapped inside (a letter's on itself: restingFocus); Esc
+ *  closes it when closable (default). */
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
   parchment?: boolean; onClose?: () => void }): () => void {
   trapFocus();
@@ -95,7 +120,7 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
       opts?.title ? h('h2', { class: 'modal-title' }, opts.title) : null),
     h('div', { class: 'modal-body' }, content));
   const back = h('div', { class: 'modal-back' }, box);
-  const entry: Entry = { el: back, box, closable, close: () => undefined, prevFocus: document.activeElement };
+  const entry: Entry = { el: back, box, closable, letter: !!opts?.parchment, close: () => undefined, prevFocus: document.activeElement };
   const close = (): void => {
     if (closed) return;
     closed = true;
@@ -103,18 +128,22 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
     if (i >= 0) stack.splice(i, 1);
     back.classList.add('modal-out');
     window.setTimeout(() => back.remove(), 160);
-    // focus goes back where it was: the button that opened this modal (also inside the modal underneath), else that
-    // modal's first control
+    // focus goes back where it was: the button that opened this modal (also inside the modal underneath), else where
+    // that modal rests it
     const next = stack[stack.length - 1];
     const prev = entry.prevFocus instanceof HTMLElement && entry.prevFocus.isConnected ? entry.prevFocus : null;
-    if (next) (prev && next.box.contains(prev) ? prev : focusables(next.box).find((x) => !x.classList.contains('modal-x')) ?? focusables(next.box)[0] ?? next.box).focus();
+    if (next) (prev && next.box.contains(prev) ? prev : rest(next)).focus();
     else prev?.focus();
     opts?.onClose?.();
   };
   entry.close = close;
   box.querySelector('.modal-x')?.addEventListener('click', close);
-  back.addEventListener('pointerdown', (e) => { if (e.target === back && closable) close(); });
+  // a press on the backdrop closes it, but never a letter, nor on the second half of the double-click that opened it
+  const openedAt = performance.now();
+  back.addEventListener('pointerdown', (e) => { if (e.target === back && backdropCloses(entry.letter, closable, performance.now() - openedAt)) close(); });
   box.addEventListener('keydown', (e) => {
+    // on the letter itself Space does nothing: not even scroll a long one past what waits at its head (the arrows do)
+    if (e.key === ' ' && e.target === box && entry.letter) { e.preventDefault(); return; }
     if (e.key !== 'Tab') return;
     const f = focusables(box);
     if (!f.length) { e.preventDefault(); return; }
@@ -124,24 +153,138 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   });
   stack.push(entry);
   root.appendChild(back);
-  const f = focusables(box);
-  (box.querySelector<HTMLElement>('[data-autofocus]') ?? f.find((x) => !x.classList.contains('modal-x')) ?? f[0] ?? box).focus({ preventScroll: true });
+  rest(entry).focus({ preventScroll: true });
   box.scrollTop = 0;
   return close;
 }
 
-/** Two-click confirm: the first click arms the button with `armedLabel` for 3 s, the second runs fn. */
+/** A question with two answers in a modal (the cleared-block remedy, main.ts): the safe answer has the focus, so Enter
+ *  keeps things as they are, and `yes` closes it and runs onYes. Asked as a permanent choice is (confirmChoice): no
+ *  timeout, and a press within B.ui.CONFIRM_MIN_MS of its opening does nothing. */
+export function openConfirm(o: { kicker: string; title: string; text: string; yes: string; no: string; onYes: () => void }): void {
+  confirmChoice({ kicker: o.kicker, title: o.title, lines: [o.text], ok: o.yes, cancel: o.no, danger: true }, o.onYes);
+}
+
+/** What a press on a two-step confirm does (pure; tests/confirm.test.ts): the first arms it; one within
+ *  B.ui.CONFIRM_MIN_MS of the arming (the second click of a double-click, a double tap) changes nothing; a later one
+ *  runs it. A confirm dialog counts from its opening the same way (confirmChoice). */
+export function confirmPress(armedAt: number | null, now: number): 'arm' | 'wait' | 'run' {
+  if (armedAt === null) return 'arm';
+  return now - armedAt < B.ui.CONFIRM_MIN_MS ? 'wait' : 'run';
+}
+
+const armed = new Map<HTMLButtonElement, () => void>();   // the armed two-step confirms, each with its disarm
+let escWatch = false;
+
+/** An armed confirm the player can see: in the page and shown, not inside something display: none (a panel folded by
+ *  C, a tab that closed) nor hidden (a pinned card whose target was panned away). One out of sight takes no Esc and
+ *  holds nothing still: it disarms by itself (its drain) or at the next press. */
+function inSight(b: HTMLButtonElement): boolean {
+  return b.isConnected && b.offsetParent !== null && getComputedStyle(b).visibility !== 'hidden';
+}
+
+/** Esc disarms the armed confirms in sight before anything else answers it (keys.ts skips a key already handled).
+ *  Installed with the first confirm, so importing this module does no DOM work. */
+function watchEsc(): void {
+  if (escWatch) return;
+  escWatch = true;
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && [...armed.keys()].some(inSight)) { e.preventDefault(); for (const off of [...armed.values()]) off(); }
+  });
+}
+
+/** True while a two-step confirm inside `root` is armed: the side panel and the inspector hold their rebuilds, so the
+ *  armed button keeps its state and its place. */
+export function armedWithin(root: Element): boolean {
+  return [...armed.keys()].some((b) => b.isConnected && root.contains(b));
+}
+
+/** True while a two-step confirm in sight is armed: the counsel card holds still (no tip unfolds above an armed button),
+ *  and the Res Gestae with it (armedOr). */
+export function anyArmed(): boolean {
+  return [...armed.keys()].some(inSight);
+}
+
+/** A widget's hold (steady.ts PointerHold) that is also busy while any confirm is armed (anyArmed): what the Res Gestae
+ *  waits on below it (objective.ts goalsWait, ui/index.ts). Its rebuild changes its height, so it would move the counsel
+ *  card, the DOCK's pane under its head, or the free map a pinned card glides into, out from under the second press;
+ *  it waits as on a press under way, a new goal too (a confirm disarms within B.ui.CONFIRM_MS unless a mouse rests on it). */
+export function armedOr(hold: { holds(): boolean; busy(): boolean }): { holds(): boolean; busy(): boolean } {
+  return { holds: () => hold.holds(), busy: () => anyArmed() || hold.busy() };
+}
+
+/** Two-step confirm (DESIGN §15.5): the first press arms the button with `armedLabel` ('Click again…' says Tap to a
+ *  finger), the second runs fn. A mouse keeps it armed while it rests on the button; it disarms when the mouse leaves,
+ *  at a press anywhere else, or on Esc. Armed with no mouse over it (a finger, a pen, a key) it drains along its foot for
+ *  B.ui.CONFIRM_MS and disarms. A second press within B.ui.CONFIRM_MIN_MS of arming does nothing: a double-click never
+ *  confirms. A button whose armed label wraps it away from a still mouse drains rather than disarming. */
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void {
+  watchEsc();
   const label = btn.textContent ?? '';
+  let armedAt: number | null = null;
   let timer = 0;
-  const disarm = (): void => { btn.dataset.armed = ''; btn.textContent = label; btn.classList.remove('armed'); };
+  let over = false;   // a mouse rests on the button
+  let at = '';        // where it last moved there
+  const outside = (e: PointerEvent): void => { if (!(e.target instanceof Node && btn.contains(e.target))) disarm(); };
+  const disarm = (): void => {
+    if (armedAt === null) return;
+    armedAt = null;
+    window.clearTimeout(timer);
+    armed.delete(btn);
+    document.removeEventListener('pointerdown', outside, true);
+    btn.dataset.armed = '';
+    btn.textContent = label;
+    btn.classList.remove('armed', 'draining');
+  };
+  const drain = (): void => {
+    if (armedAt === null || btn.classList.contains('draining')) return;
+    btn.style.setProperty('--drain-ms', `${B.ui.CONFIRM_MS}ms`);
+    btn.classList.add('draining');
+    timer = window.setTimeout(disarm, B.ui.CONFIRM_MS);
+  };
+  const track = (e: PointerEvent): void => { if (e.pointerType === 'mouse') { over = true; at = `${e.clientX},${e.clientY}`; } };
+  btn.addEventListener('pointerenter', track);
+  btn.addEventListener('pointermove', track);
+  btn.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    over = false;
+    if (`${e.clientX},${e.clientY}` === at) drain(); else disarm();
+  });
   btn.addEventListener('click', () => {
-    if (btn.dataset.armed === '1') { window.clearTimeout(timer); disarm(); fn(); return; }
+    const now = performance.now();
+    const step = confirmPress(armedAt, now);
+    if (step === 'wait') return;
+    if (step === 'run') { disarm(); fn(); return; }
+    armedAt = now;
+    armed.set(btn, disarm);
+    document.addEventListener('pointerdown', outside, true);
     btn.dataset.armed = '1';
     btn.textContent = pressWord(armedLabel);   // 'Click again…' says Tap to a finger
     btn.classList.add('armed');
-    timer = window.setTimeout(disarm, ARM_MS);
+    if (!over) drain();
   });
+}
+
+/** A permanent choice asked by name (confirmChoice): the kicker and the question ('Proclaim Colonia veteranorum?'), the
+ *  lines that say what follows, and the two buttons' words. */
+export interface ChoiceAsk { kicker: string; title: string; lines: readonly string[]; ok: string; cancel: string; danger?: boolean }
+
+/** A permanent choice (the charter, a path, abandoning the colony, quitting unsaved) asked as a dialog that names it
+ *  (DESIGN §15.5), with `cancel` (focused) and `ok`, and no timeout; the sim waits while it stands, as under any modal.
+ *  A press on `ok` within B.ui.CONFIRM_MIN_MS of the opening does nothing (the second half of a double-click or a double
+ *  tap that opened it, landing where the button now stands). Returns close(). */
+export function confirmChoice(q: ChoiceAsk, fn: () => void): () => void {
+  const opened = performance.now();
+  let close: () => void = () => undefined;
+  const ok = h('button', { class: `btn ${q.danger ? 'danger' : 'primary'}`, type: 'button', onclick: () => {
+    if (confirmPress(opened, performance.now()) !== 'run') return;
+    close();
+    fn();
+  } }, q.ok);
+  const body = h('div', { class: 'modal-confirm' }, q.lines.map((t) => h('p', { class: 'modal-p' }, t)),
+    h('div', { class: 'modal-actions' }, h('button', { class: 'btn', type: 'button', 'data-autofocus': '', onclick: () => close() }, q.cancel), ok));
+  close = openModal(body, { kicker: q.kicker, title: q.title });
+  return close;
 }
 
 /** A labelled on/off switch row. */
@@ -210,8 +353,10 @@ export function openMenu(g: Game): void {
     oninput: (e: Event) => { const v = Number((e.target as HTMLInputElement).value); g.setPref('volume', v); volLabel.textContent = `${Math.round(v * 100)}%`; },
     onchange: () => g.sfx('coin'),
   });
-  const abandon = h('button', { class: 'btn danger' }, 'Abandon this colony');
-  confirm2(abandon, 'Click again: the colony is lost', () => { close(); g.newGame(); });
+  // for good: asked by name, never on a timer (DESIGN §15.5)
+  const abandon = h('button', { class: 'btn danger', onclick: () => confirmChoice({ kicker: 'RELINQVERE', title: `Abandon ${g.state.name}?`,
+    lines: ['The colony is lost for good: a new one is founded in its place.', 'To keep a copy, choose Export / Import first.'],
+    ok: 'Abandon it', cancel: 'Keep governing', danger: true }, () => { close(); g.newGame(); }) }, 'Abandon this colony');
   const body = h('div', { class: 'modal-menu' },
     h('div', { class: 'modal-col' },
       h('button', { class: 'btn primary', onclick: () => close() }, 'Resume'),
@@ -270,12 +415,13 @@ export function openExportImport(g: Game): void {
   area.select();
 }
 
-/** Save & quit could not save: the colony's text to copy, back to the game, or quit and lose it (two clicks). */
+/** Save & quit could not save: the colony's text to copy, back to the game, or quit and lose it (asked by name). */
 function openUnsaved(g: Game): void {
   let close: () => void = () => undefined;
   const { area, copy, status } = exportBlock(g);
-  const quit = h('button', { class: 'btn danger' }, 'Quit without saving');
-  confirm2(quit, 'Click again: the colony is lost', () => { close(); g.toTitle(); });
+  const quit = h('button', { class: 'btn danger', onclick: () => confirmChoice({ kicker: 'TABVLAE', title: 'Quit without saving?',
+    lines: ['What was not saved is lost for good, unless you copied the colony\'s text.'],
+    ok: 'Quit and lose it', cancel: 'Keep governing', danger: true }, () => { close(); g.toTitle(); }) }, 'Quit without saving');
   const body = h('div', null,
     h('p', { class: 'modal-p' }, 'The colony could not be saved. Copy the text below and keep it: Import a save on the title brings the colony back.'),
     area, h('div', { class: 'modal-foot' }, h('div', { class: 'modal-actions' }, copy, h('button', { class: 'btn primary', 'data-autofocus': '', onclick: () => close() }, 'Keep governing'), quit), status));
@@ -327,7 +473,7 @@ export function openHowTo(_g: Game): void {
     sec('Grain and water in days', h('p', null, 'The two tablets count days on hand, with the year ahead beneath: green is safe, gold is thin, red is danger. Every warning comes with a remedy.')),
     sec('Build where you like', h('p', null, build)),
     sec('Seasons and the two crunches', h('p', null, 'Aestas dries the wells; Hiems starves the fields. Fill the cisterns in Ver and the horrea before the Kalends of December.')),
-    sec('Time away', h('p', null, `Time away passes at half speed, up to five years. The Ordo governs and writes you a letter. ${keepCopyWhy(platform())} Keep a copy with Menu → Export.`)),
+    sec('Time away', h('p', null, `${awayRule()} The Ordo governs and writes you a letter. ${keepCopyWhy(platform())} Keep a copy with Menu → Export.`)),
     sec('Controls', controls),
   ), { kicker: 'QVOMODO LVDITVR', title: 'How to play', wide: true });
 }

@@ -23,7 +23,7 @@ import { TitleScreen } from './title';
 import { toast, toastBatch } from './toasts';
 import { showBanner } from './banner';
 import { openDispatch } from './dispatch';
-import { MapColumn, MapTools, renderPlaceBanner } from './mapbar';
+import { MapColumn, MapTools, renderPlaceBanner, syncPlaceBanner } from './mapbar';
 import { SidePanel } from './panels';
 import { Layout, brevColumn, hostPointer, isPhone, lessonFolds } from './layout';
 import { SheetHost } from './sheet';
@@ -32,10 +32,11 @@ import { FocusRow } from './focusrow';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
 import { BACK_RANK, registerBack, syncBack } from './history';
+import { armedOr } from './modals';
 import { watchPointer } from './pointer';
 import { applyTextSize, onTextSize } from './textsize';
 import { getBuilding } from '../game/state';
-import { dismissTip } from '../game/actions';
+import { dismissTip, setManualTarget } from '../game/actions';
 import { aucYear, formatRoman, toRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { TIER_DEFS } from '../game/data/housing';
@@ -47,6 +48,7 @@ import { B } from '../game/balance';
 import { present, shows } from './intro';
 import { currentLesson, introRunning } from '../game/intro';
 import { DUTY_DEFS } from '../game/ordo/duties';
+import { finishedStaffing } from './tabs/labour';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
@@ -69,6 +71,7 @@ export class UI {
   private hud!: Hud;
   private objective!: Objective;
   private counsel!: Counsel;
+  private belowGoals!: ReturnType<typeof armedOr>;   // what the Res Gestae waits on below it: the counsel card, an armed confirm
   private ticker!: Ticker;
   private title!: TitleScreen;
   private last = -Infinity;
@@ -98,6 +101,7 @@ export class UI {
     this.hud.onFigure = (fig, from, key) => this.tray.toggle(fig, from, key);
     this.hud.quiet = (fig) => this.tray.covers(fig);   // a hover card that would drop over the open tray (which shows it) holds back
     this.counsel = new Counsel(g, el('counsel'));
+    this.belowGoals = armedOr(this.counsel.pointer);
     this.ticker = new Ticker(g, el('ticker'));
     this.title = new TitleScreen(g, el('title-screen'));
     this.side = new SidePanel(g, el('side'));
@@ -246,11 +250,14 @@ export class UI {
     present(g, el('overlay-bar'), shows(g, 'overlays'));
     this.hud.update();
     this.tray.update(now);
-    this.objective.update(this.counsel.held);
+    // the Res Gestae holds still with the counsel card below it, and, as that card does, while a confirm is armed: its
+    // rebuild changes its height and would move what stands under it (modals.ts armedOr)
+    this.objective.update(this.belowGoals);
     this.counsel.update();
     this.ticker.update(now);
     this.tools.update();
     this.column.update();
+    syncPlaceBanner(g);   // the demolish tool's Undo, while its days last
   }
 
   /** An opening lesson's job was done (a lyre), the next lesson began (a tink), or the lessons ended (the cornu). */
@@ -291,7 +298,15 @@ export class UI {
         case 'built': {
           const b = getBuilding(s, e.id);
           const name = !b ? 'A work' : b.type === 'area' ? 'A house plot' : BUILDING_DEFS[b.type].name;
-          toastBatch('built', (n) => (n === 1 ? `${name} finished` : `${n} works finished`), 'good', 'i_star');
+          // staffing by hand, a work's posts wait on its category's target (DESIGN §10.2): its toast says so, by the larger
+          // of what the target lacked for it as it was finished (the fx's `short`: the ticks of this frame since may have
+          // moved hands) and what it lacks now (a work finished after it, nearer the forum, fills first), with a button
+          // that sets the target it names ("Water hands to 4"; a higher one since, by hand or another toast, stays)
+          const staff = finishedStaffing(s, e.id, e.short);
+          if (staff) {
+            toast(staff.text, 'good', 'i_star', 8000, staff.sub, { label: staff.label, tip: staff.tip,
+              run: () => { g.act(setManualTarget(g.state, staff.cat, Math.max(g.state.ordo.manual[staff.cat], staff.to)), { okSfx: 'click' }); } });
+          } else toastBatch('built', (n) => (n === 1 ? `${name} finished` : `${n} works finished`), 'good', 'i_star');
           g.sfx(b && SPLASH.includes(b.type) ? 'splash' : 'build');
           break;
         }

@@ -216,6 +216,42 @@ export function buildingRateOf(s: GameState, b: Building, season: SeasonIndex, m
   return v;
 }
 
+/** Each staffed processing works' share of a full day's work tomorrow (0..1) and the input that holds it back, by
+ *  building id: produce() reserves inputs hand by hand against the start-of-day stock above the reserve floors (DESIGN
+ *  §5.2), so a works whose input stands at 0 makes nothing however well staffed, which buildingRate's nominal rate
+ *  does not show; a works the Lex de annona's water pause idles has share 0 for want of water. Works that are not
+ *  listed run in full. */
+export function inputShares(s: GameState): Map<number, { share: number; short: ResId }> {
+  const out = new Map<number, { share: number; short: ResId }>();
+  const ix = peopleIndex(s);
+  const season = seasonOf(s.day);
+  const procs: Building[] = [];
+  let industryWater = 0;
+  for (const b of s.buildings) {   // as produce(): the same works, the same water draw
+    if (b.status !== 'done') continue;
+    const def = BUILDING_DEFS[b.type];
+    if (def.waterDraw && serviceActive(s, b) && !waterPaused(s, b)) industryWater += def.waterDraw;
+    if (phaseOf(b) !== 'process') continue;
+    if (waterPaused(s, b)) { if (b.open) out.set(b.id, { share: 0, short: 'water' }); continue; }
+    industryWater += (def.inputs?.water ?? 0) * (ix.byWork.get(b.id)?.length ?? 0);
+    procs.push(b);
+  }
+  const pool = industryPool(s, s.res, census(s), industryWater);
+  for (const b of procs) {
+    const n = b.open ? ix.byWork.get(b.id)?.length ?? 0 : 0;
+    if (n === 0 || activeFactor(s, b) * seasonMult(s, b.type, season) <= 0) continue;
+    const inputs = BUILDING_DEFS[b.type].inputs ?? {};
+    let served = n, short: ResId | null = null;
+    for (const r of RESOURCES) {
+      const k = inputs[r] ?? 0;
+      if (k > 0 && Math.max(0, pool[r]) / k < served) { served = Math.max(0, pool[r]) / k; short = r; }
+    }
+    for (const r of RESOURCES) pool[r] -= (inputs[r] ?? 0) * served;
+    if (short) out.set(b.id, { share: served / n, short });
+  }
+  return out;
+}
+
 interface Producers { slots: { type: BuildingId; id: number; n: number; per: number }[]; passive: { type: BuildingId; per: number }[] }
 
 /** Producers of an essential with their season-free per-worker output (current average worker, else an unskilled one). */
@@ -403,12 +439,45 @@ function phaseOf(b: Building): Phase | null {
   return 'extract';
 }
 
+/** The water the works may not draw (DESIGN §5.2): under Aquae Populo prius the Water reserve in days of today's need,
+ *  but never above RESERVE_ROOM of what the stores hold, so a full store always lets them draw (a reserve the stores
+ *  cannot hold would idle them for good); none under the other edicts, which share the water instead. */
+export function industryWaterFloor(s: GameState, c: Census = census(s)): number {
+  if (edictOption(s, 'aquae') !== 'populo') return 0;
+  return Math.min(settingValue(s, 'waterReserve') * c.need.water, E.RESERVE_ROOM * caps(s).water);
+}
+
+/** The days of water in store above which the Lex de annona's water pause lifts (DESIGN §8.12): WATER_RESUME, but
+ *  never above RESERVE_ROOM of what the stores hold, so a full store always lifts it (as industryWaterFloor). */
+export function waterResume(need: number, cap: number): number {
+  return Math.min(B.emergency.WATER_RESUME, need > 0 ? (E.RESERVE_ROOM * cap) / need : Infinity);
+}
+
+/** A works held from its water, in days of today's need: `have` in store, `keep` the floor it waits for (the pause:
+ *  the level that lifts it), `reserve` the Water reserve setting, `full` what the stores hold. */
+export interface WaterHold { why: 'pause' | 'reserve'; have: number; keep: number; reserve: number; full: number }
+
+/** Why a staffed works that mixes water draws none of it tomorrow, or null: the Lex de annona's water pause, or Populo
+ *  prius keeping the stock for the people (at or below industryWaterFloor; tomorrow's pool is today's closing stock). */
+export function waterHold(s: GameState, b: Building): WaterHold | null {
+  if (b.status !== 'done' || !b.open || !((BUILDING_DEFS[b.type].inputs?.water ?? 0) > 0)) return null;
+  if ((peopleIndex(s).byWork.get(b.id)?.length ?? 0) === 0) return null;
+  const c = census(s);
+  const need = c.need.water;
+  if (!(need > 0)) return null;
+  const days = (x: number): number => x / need;
+  const out = { have: days(s.res.water), reserve: settingValue(s, 'waterReserve'), full: days(caps(s).water) };
+  if (waterPaused(s, b)) return { why: 'pause', keep: waterResume(need, caps(s).water), ...out };
+  const floor = industryWaterFloor(s, c);
+  return floor > 0 && s.res.water <= floor ? { why: 'reserve', keep: days(floor), ...out } : null;
+}
+
 /** Stock industry may draw: start-of-day stock above the reserve floors (Aquae edict decides the water floor). */
 function industryPool(s: GameState, start: Res, c: Census, industryWater: number): Res {
   const pool = { ...start };
   pool.grain = Math.max(0, start.grain - settingValue(s, 'grainReserve') * c.need.grain);
   const opt = edictOption(s, 'aquae');
-  if (opt === 'populo') pool.water = Math.max(0, start.water - settingValue(s, 'waterReserve') * c.need.water);
+  if (opt === 'populo') pool.water = Math.max(0, start.water - industryWaterFloor(s, c));
   else if (opt === 'aequa' && start.water < industryWater + c.need.water && industryWater > 0) {
     pool.water = (start.water * industryWater) / (industryWater + c.need.water);
   }

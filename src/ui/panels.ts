@@ -1,7 +1,8 @@
 // src/ui/panels.ts — the side panel host: tabs, badges, NEW markers, signature diffing (ARCHITECTURE §13.3, DESIGN §15.3). Owner: WP-I.
 // Signature-diff pattern (Hearthlands): at most every UI_THROTTLE_MS compute the open tab's signature; when it changed,
 // clear and rebuild, else run the updaters. Never rebuild under the pointer within 300 ms of a click, nor while a
-// dropdown is focused (its list may be open) or a slider is being dragged. Either way the
+// dropdown is focused (its list may be open) or a slider is being dragged, nor while a two-step confirm is armed in it
+// (modals.ts armedWithin: the armed button keeps its state and its place until it runs or disarms). Either way the
 // element under the mouse (else the first in view) keeps its place on screen (steady.ts): a works row finishing or a
 // caravan coming home never slides the card the player is about to click.
 // The tab buttons (#tabs) head the panel on most hosts; on the phone SHEET (layout.ts) they are its fixed bottom bar of
@@ -21,6 +22,7 @@ import { clear, h, img, scrollWithin, tip } from './dom';
 import { tabShown } from './intro';
 import { notePractice } from '../game/actions';
 import { ControlHold, PointerHold, ScrollAnchor } from './steady';
+import { armedWithin } from './modals';
 import { B } from '../game/balance';
 import { panel as edicta } from './tabs/edicta';
 import { panel as consiliarii } from './tabs/consiliarii';
@@ -147,7 +149,7 @@ export class SidePanel {
     const p = PANELS[this.cur];
     let sig = '';
     safe(`${this.cur} signature`, () => { sig = `${this.cur}|${p.signature(g)}`; });
-    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS && !this.control.holds() && !this.press.pressed(now)) { this.rebuild(sig); return; }
+    if (sig !== this.sig && now - this.lastClick > B.ui.CLICK_GUARD_MS && !this.control.holds() && !this.press.pressed(now) && !armedWithin(this.body)) { this.rebuild(sig); return; }
     if (!this.ups.length) return;
     let mark: ReturnType<ScrollAnchor['capture']> = [];
     safe('anchor', () => { mark = this.steady.capture(); });

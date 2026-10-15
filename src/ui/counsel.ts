@@ -3,6 +3,8 @@
 // (prefs.tips) › Monitum / Opportunitas advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; the card is never rebuilt
 // under the pointer within B.ui.CLICK_GUARD_MS of a click, nor while the mouse rests on it (unless to answer a click
 // there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
+// Nor while a two-step confirm is armed anywhere (modals.ts anyArmed): a tip that unfolds would push the armed button
+// away between the two presses (on a phone the card heads the panel), so it waits until the confirm runs or disarms.
 // On a phone (the SHEET and the DRAWER: layout.ts, sheet.ts) the card is the voice line at the panel's head (afloat at the
 // bottom-left of the map while the DRAWER's pane is closed): folded, its head is two rows (portrait, kicker and title)
 // with the one action chip of voiceAction and a '+n' pip for what else waits; a tap on the line unfolds the card inside
@@ -20,7 +22,7 @@ import { caps } from './tipkit';
 import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
 import { activeAdvisories, advisorMood, renderAdvisory } from '../game/advisors/engine';
-import { checkRemedy } from '../game/advisors/remedies';
+import { checkRemedy, remedyTip } from '../game/advisors/remedies';
 import { beginNextLesson, dismissTip, handOverAll, hush, keepDuties, mute, setDuty, skipIntro, skipLesson } from '../game/actions';
 import { DUTY_DEFS, pendingOffers } from '../game/ordo/duties';
 import { LESSONS, currentLesson, introduced, lessonAge, lessonPointer } from '../game/intro';
@@ -39,6 +41,7 @@ import { shows, tabShown } from './intro';
 import { CARD_LESSONS, CARD_ROWS, bringTarget, currentHost, hostPointer, isPhone, lessonFolds, registerBringer, revealTarget, routeIntent } from './layout';
 import type { Host, Layout } from './layout';
 import { labourEl } from './tabs/labour';
+import { anyArmed, confirm2 } from './modals';
 
 /** Whether the counsel is drawn as the voice line (pure): its folded two rows with the one action chip and the '+n' pip,
  *  on the phones (the SHEET, the DRAWER) and the tablet's DOCK, whose pane it heads; the desktop keeps the card. */
@@ -199,7 +202,8 @@ export function awaitAction(item: AwaitItem, s: GameState): VoiceAction | null {
 }
 
 /** The card's signature: the portrait strip, the shown item and, for an advisory, its remedies' labels and availability
- *  — a place remedy with its tile, so once the Ordo builds on the best plot the button aims at the next one. */
+ *  — a place remedy with its tile, so once the Ordo builds on the best plot the button aims at the next one; a block
+ *  to clear with its tile and what stands there. */
 export function counselSig(g: Game, item: CounselItem): string {
   const s = g.state;
   const strip = shows(g, 'portraits') ? ADVISORS.map((a) => (s.guidance.appointed.includes(a) ? `${a}${advisorMood(s, a)}` : '-')).join(',') : 'x';
@@ -210,7 +214,8 @@ export function counselSig(g: Game, item: CounselItem): string {
   if (item.kind === 'event') key = `e:${item.c.event}:${item.c.created}`;
   if (item.kind === 'advisory') {
     const r = renderAdvisory(s, view(s), item.a);
-    key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${x.remedy.kind === 'place' ? `@${x.remedy.tile ?? ''}` : ''}`).join(',')}`;
+    const at = (x: Remedy): string => (x.kind === 'place' ? `@${x.tile ?? ''}` : x.kind === 'clear' ? `@${x.tile}:${x.ids.join('.')}` : '');
+    key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : `0${x.check.code}`}${at(x.remedy)}`).join(',')}`;
   }
   // the voice line also counts what else waits ('+n'), and is built afresh for another host (the SHEET, the DRAWER and
   // the DOCK draw the same line, but only the SHEET's lesson card carries a labour line)
@@ -260,6 +265,16 @@ export function pulseTarget(target: string): void {
   go();
 }
 
+/** "Skip the lessons" on a lesson card (tests/confirm.test.ts): a two-step confirm like the others (modals.ts confirm2,
+ *  DESIGN §15.5): the first press asks "Skip every lesson?", a press within B.ui.CONFIRM_MIN_MS of it (a double-click)
+ *  does nothing, and it disarms as they do. Its state is the button's own, so a card built afresh asks again; while it
+ *  is armed the card holds still (anyArmed). */
+export function skipLessonsLink(g: Game): HTMLButtonElement {
+  const skip = h('button', { class: 'counsel-link', type: 'button' }, 'Skip the lessons');
+  confirm2(skip, 'Skip every lesson?', () => { g.act(skipIntro(g.state), { okSfx: 'click' }); });
+  return skip;
+}
+
 /** The portrait strip and the counsel card in #counsel (signature-diffed). */
 export class Counsel {
   private sig = '';
@@ -269,7 +284,6 @@ export class Counsel {
   private refresh: (() => void) | null = null;
   private open = false;                       // mobile: the card is expanded from its portrait chip
   private autoOpen = false;                   // … and it was a tip or lesson that unfolded it
-  private skipArmed = false;                  // "Skip the lessons" asks once more before it skips
   private live: Updater[] = [];               // live parts of the card (a lesson's labour line): refreshed every update
   private item: CounselItem = { kind: 'calm' };   // the item on the card
   /** The layout (UI.build): on a phone an unfolded card raises a closed panel to half and lets it drop again. */
@@ -293,9 +307,9 @@ export class Counsel {
     return true;
   }
 
-  /** True while the mouse rests on the card or the strip: the Res Gestae above holds still too (objective.ts). */
-  get held(): boolean {
-    return this.hold.holds();
+  /** The pointer on the card or the strip: the Res Gestae above holds still with it (objective.ts goalsWait). */
+  get pointer(): Pick<PointerHold, 'holds' | 'busy'> {
+    return this.hold;
   }
 
   /** Rebuilds when the shown item, the strip or the remedies' availability change; refreshes the text daily. */
@@ -304,7 +318,7 @@ export class Counsel {
     const s = g.state;
     const item = pickCounsel(g);
     const sig = counselSig(g, item);
-    if (sig !== this.sig && !this.hold.holds()) {
+    if (sig !== this.sig && !this.hold.holds() && !anyArmed()) {
       this.sig = sig;
       this.item = item;
       this.build(item);
@@ -499,11 +513,7 @@ export class Counsel {
       g.sfx('click');
       showLesson(g, l);
     };
-    const skip = h('button', { class: 'counsel-link', onclick: () => {
-      if (!this.skipArmed) { this.skipArmed = true; skip.textContent = 'Skip every lesson?'; return; }
-      this.skipArmed = false;
-      g.act(skipIntro(g.state), { okSfx: 'click' });
-    } }, 'Skip the lessons');
+    const skip = skipLessonsLink(g);
     let acts: HTMLElement;
     if (x.done) {
       acts = h('div', { class: 'counsel-actions' },
@@ -647,7 +657,11 @@ export class Counsel {
   private remedyBtn(r: Remedy, label: string, check: ActionResult, primary: boolean): HTMLElement {
     const g = this.g;
     const btn = h('button', { class: primary ? 'btn small primary' : 'btn small', disabled: !check.ok, onclick: () => { g.sfx('click'); g.applyRemedy(r); } }, label);
-    if (check.ok) return btn;
+    if (check.ok) {
+      const what = remedyTip(r);   // a focus says what the council will raise under it
+      if (what) tip(btn, what);
+      return btn;
+    }
     const why = h('span', { class: 'counsel-why' }, check.reason);
     const wrap = h('span', { class: 'counsel-btnwrap' }, btn, why);
     tip(wrap, check.reason);

@@ -127,12 +127,22 @@ export function nextPath(s: GameState): PathDecisionId | null {
   return PATH_DECISIONS.find((d) => s.decisions.paths[d] === undefined) ?? null;
 }
 
-type Need = { label: string; met: boolean };
+type Need = { label: string; met: boolean; souls?: number; progress?: number };   // souls: the count a Souls line asks for (the petition's ETA, settlers.ts)
+// progress: how far a line is, 0..1 (1 once met; the away letter's stall, offline.ts): a measured line as it reads, a
+// work's line as its site rises (rising); a yes/no line has none
 
 /** A finished building of `type` with at least one worker. */
 function staffed(s: GameState, v: SimView, type: BuildingId): boolean {
   const c = v.c;
   return s.buildings.some((b) => b.type === type && b.status === 'done' && (c.staffed[b.id] ?? 0) > 0);
+}
+
+/** How far the furthest unfinished site of `type` has risen, 0..1 (0 with none): a work the checklist asks for comes
+ *  nearer while it is raised, as the Capitolium does (the away letter's stall). */
+function rising(s: GameState, type: BuildingId): number {
+  let p = 0;
+  for (const b of s.buildings) if (b.type === type && b.status !== 'done' && b.progress > p) p = b.progress;
+  return p;
 }
 
 /** Share of houses covered by religion (shrine or temple) and a market (taberna or macellum). */
@@ -148,7 +158,9 @@ function religionMarketShare(s: GameState, v: SimView): number {
   return n / houses.length;
 }
 
-const count = (label: string, have: number, goal: number): Need => ({ label: `${label}: ${Math.floor(have)} / ${goal}`, met: have >= goal });
+const count = (label: string, have: number, goal: number): Need =>
+  ({ label: `${label}: ${Math.floor(have)} / ${goal}`, met: have >= goal, progress: have >= goal ? 1 : Math.floor(have) / goal });
+const soulsNeed = (pop: number, goal: number): Need => ({ ...count('Souls', pop, goal), souls: goal });
 
 /** The DESIGN §9.1 checklist to ENTER `rank` (1..4). */
 function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
@@ -157,37 +169,45 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
   const pop = c.pop;
   const dig = dignitas(s).value;
   const needs: Need[] = [];
+  // a work's line: met once one stands finished, else as far as its site has risen
+  const work = (label: string, type: BuildingId, met: boolean): Need => ({ label, met, progress: met ? 1 : rising(s, type) });
   const staffList = (types: BuildingId[]): Need => {
-    const missing = types.filter((t) => !staffed(s, v, t)).map((t) => BUILDING_DEFS[t].name);
+    const lacking = types.filter((t) => !staffed(s, v, t));
+    const missing = lacking.map((t) => BUILDING_DEFS[t].name);
     const all = types.map((t) => BUILDING_DEFS[t].name).join(', ');
-    return { label: missing.length ? `${all} staffed (missing: ${missing.join(', ')})` : `${all} staffed`, met: missing.length === 0 };
+    // each work counts half once raised (its site's progress toward that half while it rises), whole once staffed
+    const part = (t: BuildingId): number => (lacking.includes(t) ? ((v.d.counts[t] ?? 0) > 0 ? 1 : rising(s, t)) / 2 : 1);
+    return { label: missing.length ? `${all} staffed (missing: ${missing.join(', ')})` : `${all} staffed`, met: missing.length === 0,
+      progress: types.reduce((n, t) => n + part(t), 0) / types.length };
   };
   switch (def.id) {
     case 'vicus': {
       needs.push({ label: 'Lex coloniae proclaimed', met: s.decisions.paths.charter !== undefined });
-      needs.push(count('Souls', pop, P.PETITION.vicus.POP));
+      needs.push(soulsNeed(pop, P.PETITION.vicus.POP));
       needs.push({ label: `First Hiems weathered (${formatRoman(FIRST_HIEMS_OVER, { year: true })})`, met: s.day >= FIRST_HIEMS_OVER });
-      needs.push({ label: 'A Horreum', met: (v.d.counts.horreum ?? 0) > 0 });
+      needs.push(work('A Horreum', 'horreum', (v.d.counts.horreum ?? 0) > 0));
       const stab = milestoneDone(s, 'stabilitas') || s.counters.stabStreak >= P.STAB.DAYS;
+      const streak = Math.min(s.counters.stabStreak, P.STAB.DAYS);
       needs.push({
         label: `Stabilitas: grain ≥ ${P.STAB.GRAIN} d, water ≥ ${P.STAB.WATER} d, spirits ≥ ${P.STAB.MORALE} for ${P.STAB.DAYS} days`
-          + (stab ? '' : ` (${Math.min(s.counters.stabStreak, P.STAB.DAYS)} / ${P.STAB.DAYS})`),
-        met: stab,
+          + (stab ? '' : ` (${streak} / ${P.STAB.DAYS})`),
+        met: stab, progress: stab ? 1 : streak / P.STAB.DAYS,   // as it reads: a streak broken and begun again counts where it stands
       });
       break;
     }
     case 'oppidum': {
       const q = P.PETITION.oppidum;
       const share = religionMarketShare(s, v);
-      needs.push(count('Souls', pop, q.POP));
+      needs.push(soulsNeed(pop, q.POP));
       needs.push(count('Homes of Casa tegulata or better', housesAtLeast(c, 2), q.T2_HOUSES));
-      needs.push({ label: `Shrine and market reach ${Math.round(q.COVERAGE * 100)}% of homes (now ${Math.round(share * 100)}%)`, met: share >= q.COVERAGE });
+      needs.push({ label: `Shrine and market reach ${Math.round(q.COVERAGE * 100)}% of homes (now ${Math.round(share * 100)}%)`, met: share >= q.COVERAGE,
+        progress: share >= q.COVERAGE ? 1 : Math.round(share * 100) / Math.round(q.COVERAGE * 100) });
       needs.push(count('Caravans returned from markets', s.trade.hubsTraded.length, q.HUBS));
       break;
     }
     case 'municipium': {
       const q = P.PETITION.municipium;
-      needs.push(count('Souls', pop, q.POP));
+      needs.push(soulsNeed(pop, q.POP));
       needs.push(count('Homes of Domus parva or better', housesAtLeast(c, 3), q.T3_HOUSES));
       needs.push(count('…of which insulae or domus', housesAtLeast(c, 4), q.T4_HOUSES));
       needs.push(staffList(['templum', 'macellum', 'balneum']));
@@ -196,8 +216,8 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
     }
     case 'colonia': {
       const q = P.PETITION.colonia;
-      needs.push(count('Souls', pop, q.POP));
-      needs.push({ label: 'The aqueduct flows', met: v.d.castellumActive });
+      needs.push(soulsNeed(pop, q.POP));
+      needs.push(work('The aqueduct flows', 'castellum', v.d.castellumActive));
       needs.push(staffList(['thermae', 'theatrum']));
       needs.push(count('Insulae and domus', housesAtLeast(c, 4), q.T4_HOUSES));
       needs.push(count('Markets traded with by contract', s.trade.hubsTraded.length, q.HUBS));
@@ -211,7 +231,7 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
 }
 
 /** The next petition: decision, rank it grants, checklist, readiness, fee and affordability; null when none is left. */
-export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean }[]; ready: boolean; fee: Cost; affordable: boolean } | null {
+export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean; souls?: number }[]; ready: boolean; fee: Cost; affordable: boolean } | null {
   const decision = nextPath(s);
   if (!decision) return null;
   const grants = PATH_DEFS[decision].grants;
@@ -219,6 +239,14 @@ export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisio
   const needs = rank !== null ? rankNeeds(s, v, rank) : [];
   const fee: Cost = rank !== null ? scaleCost(RANK_DEFS[rank].fee, fx(s, 'petitionFee')) : {};
   return { decision, rank, needs, ready: needs.every((n) => n.met), fee, affordable: canAfford(s, fee) };
+}
+
+/** The next rank's checklist, its Lex coloniae line included while the charter waits (the away letter's progress,
+ *  offline.ts); null once the colony is a Colonia. */
+export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: Need[] } | null {
+  if (s.rank >= COLONIA) return null;
+  const rank = (s.rank + 1) as RankIndex;
+  return { rank, needs: rankNeeds(s, v, rank) };
 }
 
 /** Decides the next path: pays the fee × fx(petitionFee), records it, ranks up; Colonia begins the Capitolium. */

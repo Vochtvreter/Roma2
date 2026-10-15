@@ -1,5 +1,6 @@
 // src/ui/tabs/annales.ts — Annales / Chronicle: filter chips, the log by year with short Roman dates, the Fasti (one line
-// per Parilia) and the Fasti coloniarum, the colony's record, and the Commentarii of seen tips (DESIGN §15.3). Owner: WP-I.
+// per Parilia; after the dedication, the Victory dispatch to read again) and the Fasti coloniarum, the colony's record,
+// and the Commentarii of seen tips (DESIGN §15.3). Owner: WP-I.
 import type { DeathCause, GameState, LogEntry, LogKind } from '../../game/types';
 import type { Game, Updater } from '../types';
 import { fmt, h, img } from '../dom';
@@ -9,6 +10,7 @@ import { idx } from '../../game/map';
 import { GUIDE } from '../../game/guide';
 import { loadFasti } from '../../game/save';
 import { B } from '../../game/balance';
+import { openDispatch } from '../dispatch';
 import { btn, kv, section } from './common';
 import type { TabPanel } from './common';
 
@@ -83,11 +85,18 @@ function record(g: Game, up: Updater[]): HTMLElement {
   return grid;
 }
 
-function fasti(s: GameState): HTMLElement | null {
+function fasti(g: Game): HTMLElement | null {
+  const s = g.state;
   const lines = s.log.filter((e) => e.kind === 'fasti').reverse();
   const colonies = loadFasti();
-  if (!lines.length && !colonies.length) return null;
+  if (!lines.length && !colonies.length && !s.victory) return null;
   const sec = section('Fasti', 'One line for each year, at the Parilia', { anchor: 'fasti' });
+  // the Victory dispatch opens once, at the dedication: here it can be read again (the figures of that day), to read
+  // only: no Found a new colony at a click (dispatch.ts victoryAnswers)
+  if (s.victory) {
+    sec.append(h('div', { class: 'ann-victory' }, h('span', null, `The Capitolium was dedicated on ${formatRoman(s.stats.victoryDay ?? s.day, { year: true })}`),
+      btn(g, 'Read the dispatch again', () => { g.sfx('click'); openDispatch(g, 'victory', undefined, true); })));
+  }
   if (lines.length) sec.append(h('ul', { class: 'ann-fasti' }, lines.map((e) => h('li', null, h('span', { class: 'ann-date num' }, formatAuc(aucYear(e.day))), e.text))));
   if (colonies.length) {
     sec.append(h('div', { class: 'tab-note' }, 'Fasti coloniarum: the colonies you have dedicated.'),
@@ -111,7 +120,7 @@ export const panel: TabPanel = {
   signature(g: Game): string {
     const s = g.state;
     const last = s.log[s.log.length - 1];
-    return `${filter}|${s.log.length}|${last ? `${last.day}:${last.text}` : ''}|${s.guidance.tips.length}`;
+    return `${filter}|${s.log.length}|${last ? `${last.day}:${last.text}` : ''}|${s.guidance.tips.length}|${+s.victory}`;
   },
   build(g: Game, body: HTMLElement, up: Updater[]): void {
     const s = g.state;
@@ -123,7 +132,7 @@ export const panel: TabPanel = {
     const chron = section('Annales', `The chronicle of ${s.name}, newest first`, { anchor: 'log' });
     chron.append(log(g));
     body.append(chron);
-    const f = fasti(s);
+    const f = fasti(g);
     if (f) body.append(f);
     const rec = section('Res publica', 'The colony\'s record', { anchor: 'record' });
     rec.append(record(g, up));

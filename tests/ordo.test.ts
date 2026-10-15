@@ -7,18 +7,20 @@ import { getMap, idx } from '../src/game/map';
 import { isActiveBlock } from '../src/game/survey';
 import { blockOfTile, footprintOf } from '../src/game/derived';
 import { census } from '../src/game/census';
-import { invalidate } from '../src/game/memo';
-import { placeBuilding } from '../src/game/place';
+import { invalidate, touchPeople } from '../src/game/memo';
+import { canPlace, placeBuilding, validSlots } from '../src/game/place';
 import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
-import { manualPlan, planLabour } from '../src/game/ordo/labour';
-import { currentReason, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
+import { manualPlan, manualReach, planLabour } from '../src/game/ordo/labour';
+import { currentReason, gardenSlot, growthWait, keptBlocks, maxSites, newWishes, ordoAlone, ordoBuild, ordoSites, ordoSlot, processRequests, walkWishes, wishList, wouldRaise } from '../src/game/ordo/build';
+import type { Wish } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
-import { maxPotential } from '../src/game/economy';
+import { caps, maxPotential } from '../src/game/economy';
+import { startCapitolium } from '../src/game/construction';
 import { projectEssential } from '../src/game/forecast';
 import { B } from '../src/game/balance';
-import { BUILDING_DEFS } from '../src/game/data/buildings';
+import { BUILDING_DEFS, slotsOf } from '../src/game/data/buildings';
 import { play } from './autoplayer';
 import { addCost } from '../src/game/state';
 import { canSpend, fullRate, reserved, savingFor } from '../src/game/ordo/saving';
@@ -28,7 +30,13 @@ import { ordoTrade, ordoTradeWould, tradeMoves } from '../src/game/ordo/trade';
 import { reasonShort, reasonText } from '../src/game/ordo/reasons';
 import { applyOnce, askOrdo, pinBuild, setDuty, setLabourPriority, setManualTarget, setOrdo } from '../src/game/ordo/actions';
 import { Rng } from '../src/game/rng';
-import { INTEGRATED, ctx, fresh, noNaN, run, setJobs } from './util';
+import { INTEGRATED, ctx, dryHouse, fresh, noNaN, run, setJobs } from './util';
+import { reachSteps, serveSlot, serviceReach } from '../src/game/advisors/util';
+import { FABRUM_RULES } from '../src/game/advisors/rules-fabrum';
+import { houseDesir, previewDesir } from '../src/game/coverage';
+import type { Game } from '../src/ui/types';
+import { wishState } from '../src/ui/tabs/common';
+import { noPlotNote } from '../src/ui/tabs/house';
 
 // Pass-through spies: the emergency tests make the (WP-D) import and relief succeed on demand.
 vi.mock('../src/game/trade', async (orig) => {
@@ -61,6 +69,9 @@ function withForecast(s: GameState, grain: Partial<EssentialForecast>, water: Pa
   const f = v.f;
   return { get d() { return v.d; }, get c() { return v.c; }, get cov() { return v.cov; }, f: { ...f, grain: { ...f.grain, ...grain }, water: { ...f.water, ...water } } };
 }
+
+/** The game as the Agenda's words read it (wishState reads only the state). */
+const game = (s: GameState): Game => ({ state: s }) as unknown as Game;
 
 /** Offline days (the away replay): ticks with ctx.offline. */
 function away(s: GameState, days: number): void {
@@ -131,6 +142,46 @@ describe('labour', () => {
     expect(applyOnce(s, 'labour').ok).toBe(true);
     for (const l of planLabour(s, view(s)).lines) expect(s.ordo.manual[l.cat]).toBe(l.target);
   });
+
+  it('manual labour: a finished work adds posts, not hands; manualReach is what its target lacks (finding 11)', () => {
+    const s = fresh(42);
+    expect(setOrdo(s, 'labour', false).ok).toBe(true);   // the targets: today's hands (water 2)
+    s.ordo.on.build = false;
+    s.ordo.on.trade = false;
+    const old = s.buildings.find((b) => b.type === 'puteus') as Building;
+    expect(manualReach(s, view(s), old.id)).toBe(0);      // its target keeps its hands
+    const well = built(s, 'puteus');
+    const slots = slotsOf('puteus', s.rank);
+    // the least the water target must rise by so the new well is staffed in full and no staffed post loses a hand,
+    // whichever of the two the manual order (nearest the forum) fills first
+    const fills = (extra: number): boolean => {
+      const keep = s.ordo.manual.water;
+      s.ordo.manual.water = keep + extra;
+      const per = manualPlan(s, view(s)).perBuilding;
+      s.ordo.manual.water = keep;
+      return (per[well.id] ?? 0) === slots && (per[old.id] ?? 0) >= (census(s).staffed[old.id] ?? 0);
+    };
+    const n = manualReach(s, view(s), well.id);
+    expect(n).toBe(slots);
+    expect(fills(n)).toBe(true);
+    expect(fills(n - 1)).toBe(false);
+    const one = manualReach(s, view(s), well.id, 1);         // one hand only (a service's full reach): no more
+    expect(one).toBeGreaterThanOrEqual(1);
+    expect(one).toBeLessThanOrEqual(n);
+    run(s, 1);                                              // unchanged, the target leaves one well short
+    expect(census(s).catStaffed.water).toBe(2);
+    // the posts ahead of a work count: with one hand off the target, the idle well needs that one too
+    s.ordo.manual.water = 1;
+    run(s, 1);
+    const idle = [old, well].find((b) => (census(s).staffed[b.id] ?? 0) === 0) as Building;
+    const m = manualReach(s, view(s), idle.id);
+    expect(m).toBeGreaterThanOrEqual(slots);
+    s.ordo.manual.water += m;
+    run(s, 1);
+    expect(census(s).staffed[well.id]).toBe(slots);
+    expect(census(s).staffed[old.id]).toBe(slots);
+    expect(manualReach(s, view(s), well.id)).toBe(0);
+  });
 });
 
 describe('building', () => {
@@ -185,6 +236,128 @@ describe('building', () => {
     setOrdo(s, 'build', false);
     s.ordo.requests = [];
     expect(askOrdo(s, 'area')).toMatchObject({ ok: false, code: 'ordoOnly' });
+  });
+
+  it('a house card\'s request carries its home: the Ordo raises the work where it reaches that home', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);                                       // a tent beyond the founders' well and shrine
+    const plain = structuredClone(s);
+    expect(askOrdo(s, 'lararium', b.id).ok).toBe(true);
+    expect(s.ordo.requests).toEqual([{ type: 'lararium', day: s.day, house: b.id }]);
+    expect(s.log[s.log.length - 1].text).toContain('within reach of that home');
+    processRequests(s, ctx(), view(s));
+    const shrine = s.buildings.find((x) => x.type === 'lararium' && x.reason?.code === 'request') as Building;
+    expect(shrine.owner).toBe('player');
+    expect(reachSteps(s, 'lararium', shrine.x, shrine.y, b.id, 'religion')).not.toBeNull();
+    expect(shrine.reason?.params).toMatchObject({ n: 1, want: 'religion' });   // that home lacked one
+    // asked for no home, the shrine goes to the Ordo's best site, which does not reach that tent (the advice ignored)
+    expect(askOrdo(plain, 'lararium').ok).toBe(true);
+    expect(plain.ordo.requests).toEqual([{ type: 'lararium', day: plain.day }]);
+    processRequests(plain, ctx(), view(plain));
+    const other = plain.buildings.find((x) => x.type === 'lararium' && x.reason?.code === 'request') as Building;
+    expect(reachSteps(plain, 'lararium', other.x, other.y, b.id, 'religion')).toBeNull();
+  });
+
+  it('asked for a home no free plot reaches, the Ordo says so at once; one that comes to pass later is said as it builds', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);
+    const fill = (st: GameState): void => {                      // every free slot whose well would reach the tent taken
+      for (let i = 0; i < 60; i++) {
+        const at = serveSlot(st, 'puteus', 'ordo', 'water', [b.id])?.tile;
+        if (at === undefined) return;
+        expect(placeBuilding(st, 'puteus', at, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+      }
+    };
+    const later = structuredClone(s);
+    fill(s);
+    expect(askOrdo(s, 'puteus', b.id)).toEqual({ ok: false, code: 'noSlots',
+      reason: `The surveyors find no free plot within ${serviceReach(s, 'puteus', 'water')} steps of this house for a well; clearing one would help.` });
+    expect(s.ordo.requests).toEqual([]);
+    expect(askOrdo(s, 'puteus').ok).toBe(true);                  // asked for no home, it goes to the best site as before
+    // asked while a plot reached the tent, and the plots taken before the stores allowed it: the Ordo says so as it builds
+    expect(askOrdo(later, 'puteus', b.id).ok).toBe(true);
+    fill(later);
+    processRequests(later, ctx(), view(later));
+    const well = later.buildings.find((x) => x.type === 'puteus' && x.reason?.code === 'request');
+    expect(well).toBeDefined();
+    expect(later.log.some((l) => l.text === 'No free plot reaches the home that asked for a well any longer; the Ordo raises it at its best site.')).toBe(true);
+    expect(later.ordo.requests).toEqual([]);
+  });
+
+  it('asked for a home only plots the Ordo leaves alone reach, it says a hand may still raise the work there', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);
+    const sv = getMap(s.seed).survey;
+    // the player reserves the block of each plot whose well would reach the tent, until none is the Ordo's to take
+    for (let i = 0; i < 60; i++) {
+      const at = serveSlot(s, 'puteus', 'ordo', 'water', [b.id])?.tile;
+      if (at === undefined) break;
+      s.ordo.reserved = [...s.ordo.reserved, sv.blockAt[at]].sort((x, y) => x - y);
+      invalidate(s);
+    }
+    expect(s.ordo.reserved.length).toBeGreaterThan(0);
+    // a plot still reaches it by hand: the house card says nothing of "no free plot", and neither does the Ordo
+    expect(serveSlot(s, 'puteus', 'player', 'water', [b.id])).not.toBeNull();
+    expect(noPlotNote(s, b.id, 'water', 'puteus')).toBeNull();
+    expect(askOrdo(s, 'puteus', b.id)).toEqual({ ok: false, code: 'noSlots',
+      reason: `The only free plots within ${serviceReach(s, 'puteus', 'water')} steps of this house are on land the Ordo leaves alone: reserved, kept for a work to come, where you are building, or beyond the walls in the rings to come. Place a well there yourself.` });
+    expect(s.ordo.requests).toEqual([]);
+  });
+
+  it('a work raised where the Ordo buys out homes is not offered to raise by hand (Apply once, the Fabrum, the Agenda)', () => {
+    // rank 3: six stone houses wait for a temple round a block of the founders' tents, and every free block is the
+    // player's reserve: the Ordo would buy out the tents and raise the temple there (DESIGN §3.9)
+    const s = fresh(42);
+    s.rank = 3;
+    const sv = getMap(s.seed).survey, W = getMap(s.seed).W;
+    const start = view(s).d.houses.map((id) => s.buildings.find((x) => x.id === id) as Building);
+    const tents = sv.blockAt[idx(start[0].x, start[0].y)];
+    for (const b of start) if (sv.blockAt[idx(b.x, b.y)] !== tents) b.house!.tier = 'domusParva';
+    // four more stone houses, raised by the Ordo today (a growth work: the next waits on the pace) nearest the tents
+    const near = (t: number): number => Math.abs((t % W) - start[0].x) + Math.abs(Math.floor(t / W) - start[0].y);
+    for (const tile of [...validSlots(s, 'area', 'player').keys()].sort((a, c) => near(a) - near(c) || a - c).slice(0, 4)) {
+      const r = placeBuilding(s, 'area', tile, { owner: 'ordo', ignoreCost: true, noStake: true, reason: { code: 'beds', params: { free: 0, keep: 8 } } });
+      expect(r.ok).toBe(true);
+      const h = s.buildings[s.buildings.length - 1];
+      Object.assign(h, { status: 'done', progress: 1, doneDay: s.day });
+      h.house = { tier: 'domusParva', pref: 'auto', okDays: 0, badDays: 0, recoverDays: 0, declining: false, declineDays: 0, renovating: null, oil: 0, wine: 0 };
+    }
+    invalidate(s);
+    // a well, a shrine and a shop row of the player's, staffed, give them all but the temple
+    const jobs: Record<number, number> = {};
+    for (const [need, type] of [['water', 'puteus'], ['religion', 'lararium'], ['market', 'taberna']] as const) {
+      const at = serveSlot(s, type, 'player', need, view(s).d.houses);
+      if (!at) continue;
+      const r = placeBuilding(s, type, at.tile, { owner: 'player', ignoreCost: true, noStake: true });
+      expect(r.ok).toBe(true);
+      Object.assign(s.buildings[s.buildings.length - 1], { status: 'done', progress: 1 });
+      invalidate(s);
+    }
+    for (const b of s.buildings) if (b.type === 'puteus' || b.type === 'lararium' || b.type === 'taberna') jobs[b.id] = 2;
+    setJobs(s, { perBuilding: jobs });
+    const d = view(s).d;
+    s.ordo.reserved = sv.blocks.filter((k) => isActiveBlock(sv, k, s.rank) && k.reserved === null && [0, 1, 2, 3].every((p) => d.plotOwner[k.id * 4 + p] === 0))
+      .map((k) => k.id).sort((a, c) => a - c);
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 5000;
+    invalidate(s);
+    const renew = walkWishes(s, view(s), true).list.map((e) => e.wish).find((w) => w.renew);
+    expect(renew?.type).toBe('templum');
+    expect(renew?.reason.code).toBe('renewal');
+    expect(sv.blockAt[renew!.tile]).toBe(tents);
+    // the services are the player's: the temple is the one service the Ordo would raise, and no hand can place it on
+    // the tents, so Apply once has nothing to offer (it once failed with "That plot is taken.")
+    s.ordo.works.services = false;
+    const ids = s.buildings.map((b) => b.id);
+    expect(wouldRaise(s, view(s))).toBeNull();
+    expect(applyOnce(s, 'build')).toMatchObject({ ok: false, code: 'notFound' });
+    expect(s.buildings.map((b) => b.id)).toEqual(ids);
+    // the Ordo holds them again and the temple waits on the pace: the Praefectus Fabrum does not offer to place it, and
+    // its Agenda row does not ask for a hand
+    s.ordo.works.services = true;
+    const temple = newWishes(s, view(s), 3).find((w) => w.reason.code === 'renewal');
+    expect(temple?.state).toBe('paced');
+    expect(FABRUM_RULES.find((x) => x.id === 'fabrum.agenda')!.evaluate(s, view(s))).toBeNull();
+    expect(wishState(game(s), temple!)).toBe(`the Ordo raises it in ${growthWait(s)} d`);
   });
 
   it('a lumber camp whose woods are felled yields nothing; its replacement is saved for before the orders that lack timber', () => {
@@ -346,17 +519,94 @@ describe('emergency (Lex de annona)', () => {
     for (const e of lines) expect(e.tags).toContain('decided');
   });
 
-  it('pauses the water-drawing works below 8 days and resumes above 15', () => {
+  it('pauses the water-drawing works below 8 days under two-thirds of the lift level, and resumes above 15', () => {
     const s = fresh(42);
     s.rank = 2;
     const works = built(s, 'caementarium');
-    emergencyDay(s, ctx(), withForecast(s, {}, { runout: s.day + 7 }));
+    const roomy = { cap: 40 * view(s).f.water.need };                // stores that hold 40 days: the 15-day level stands
+    expect(B.emergency.WATER_START * B.emergency.WATER_RESUME).toBeCloseTo(10, 9);
+    // falling fast, but above two-thirds of the 15 days that lift it: a pause here would lift tomorrow
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: s.day + 7, doh: 10.5 }));
+    expect(s.ordo.emergency.waterPause).toBe(false);
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: s.day + 7, doh: 9.5 }));
     expect(s.ordo.emergency.waterPause).toBe(true);
     expect(planLabour(s, view(s)).perBuilding[works.id] ?? 0).toBe(0);
-    emergencyDay(s, ctx(), withForecast(s, {}, { runout: null, doh: 14 }));
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: null, doh: 14 }));
     expect(s.ordo.emergency.waterPause).toBe(true);
-    emergencyDay(s, ctx(), withForecast(s, {}, { runout: null, doh: 16 }));
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: null, doh: 16 }));
     expect(s.ordo.emergency.waterPause).toBe(false);
+  });
+
+  it('stores that hold under 15 days lift the water pause at three-quarters full, so a full store always lifts it', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    built(s, 'caementarium');
+    s.ordo.on.build = false;                                         // no cistern raised meanwhile: the stores stay as they are
+    const houses = s.buildings.filter((h) => h.house);              // one more adult in every tent: 30 souls drink more
+    houses.forEach((h, k) => s.people.push({ ...s.people[2], id: 10_000 + k, spouse: null, work: null, home: h.id, skills: {} }));
+    s.nextId = 20_000;
+    touchPeople(s);
+    const full = caps(s).water / census(s).need.water;
+    expect(full).toBeLessThan(B.emergency.WATER_RESUME);            // the playtest colony's 14 days: 15 could never be met
+    s.ordo.emergency.waterPause = true;
+    s.res.water = 2 * census(s).need.water;
+    run(s, 120);                                                     // the wells refill the stores
+    expect(s.res.water).toBeGreaterThan(B.economy.RESERVE_ROOM * caps(s).water);
+    expect(caps(s).water / census(s).need.water).toBeLessThan(B.emergency.WATER_RESUME);
+    expect(s.ordo.emergency.waterPause).toBe(false);
+    const line = s.log.filter((e) => e.kind === 'emergency').at(-1);
+    expect(line?.text).toMatch(/^Lex de annona: water is back to \d+ days; the works draw again\.$/);
+    expect(Number(/back to (\d+)/.exec(line?.text ?? '')?.[1])).toBeLessThan(B.emergency.WATER_RESUME);
+  });
+
+  /** A small store's colony: 41 souls whose stores hold about 10 days, a concrete works and two baths that draw more than
+   *  the wells' surplus, the Ordo building nothing; `aquae` the edict. A year's run: the days the forecast ran out
+   *  within 8 days (the works drawing), the pauses (start day, length) and the Lex de annona's water lines. */
+  function thirstyWorks(aquae: 'populo' | 'aequa'): { fast: number; pauses: { day: number; len: number }[]; lines: number; bath: number; thirst: number } {
+    const s = fresh(42);
+    s.rank = 2;
+    built(s, 'caementarium'); built(s, 'balneum'); built(s, 'balneum');
+    s.ordo.on.build = false;
+    s.decisions.edicts.aquae = aquae;
+    const houses = s.buildings.filter((h) => h.house);
+    let id = 10_000;
+    for (let k = 0; k < 3; k++) houses.forEach((h) => s.people.push({ ...s.people[2], id: id++, spouse: null, work: null, home: h.id, skills: {} }));
+    s.nextId = 20_000;
+    touchPeople(s);
+    expect(caps(s).water / census(s).need.water).toBeLessThan(11);
+    let fast = 0, bath = 0, thirst = 0;
+    const pauses: { day: number; len: number }[] = [];
+    run(s, 365, (st, c) => {
+      const f = view(st).f.water;
+      if (f.runout !== null && f.runout - st.day < B.emergency.WATER_PAUSE) fast++;
+      bath += c.rates.cons.water.baths ?? 0;
+      thirst = Math.max(thirst, ...st.needs.thirst);
+      const last = pauses.at(-1);
+      if (st.ordo.emergency.waterPause && (!last || last.len >= 0)) pauses.push({ day: st.day, len: -1 });
+      else if (!st.ordo.emergency.waterPause && last && last.len < 0) last.len = st.day - last.day;
+    });
+    const lines = s.log.filter((e) => e.kind === 'emergency' && /^Lex de annona: water (would run out|is back)/.test(e.text)).length;
+    return { fast, pauses, lines, bath, thirst };
+  }
+
+  it('works that draw more than the wells\' surplus: under Populo prius their floor keeps the stores at the lift level, so no pause', () => {
+    // the pause starts on a rate and lifts on a level: started at any level, it lifted the next day and started again
+    // the day after (180 lines in two years). The works' floor is the level that lifts it, and a pause starts only
+    // under two-thirds of that level
+    const r = thirstyWorks('populo');
+    expect(r.fast).toBeGreaterThan(30);                              // the rate alone would pause them on many days
+    expect(r.bath).toBeGreaterThan(0);                               // the baths draw the wells' surplus above the floor
+    expect(r.lines).toBeLessThanOrEqual(2);
+    expect(r.thirst).toBe(0);
+  });
+
+  it('works that draw more than the wells\' surplus: under Aequa each pause refills a third of the stores\' lift level first', () => {
+    const r = thirstyWorks('aequa');
+    expect(r.pauses.length).toBeGreaterThan(0);                      // no floor: the works drain the stores
+    expect(Math.min(...r.pauses.filter((p) => p.len >= 0).map((p) => p.len))).toBeGreaterThanOrEqual(4);   // never a day
+    expect(r.pauses.length).toBeLessThanOrEqual(26);                 // at most one a fortnight
+    expect(r.lines).toBeLessThanOrEqual(2 * r.pauses.length);       // a line when each starts and when it lifts
+    expect(r.thirst).toBe(0);
   });
 
   it('imports grain below 8 days once per cooldown, and asks the Legate when that cannot save us', () => {
@@ -519,6 +769,332 @@ describe('water for Aestas (DESIGN §10.5 row 2, §11.11)', () => {
     expect(low).toBeGreaterThanOrEqual(10);                                        // the realised runway never fell below 10 days
     expect(s.stats.deathsBy.thirst).toBe(0);
   }, 120_000);
+});
+
+describe('the Ordo\'s gardens (DESIGN §10.3 make room, §10.5 row 11)', () => {
+  const G = B.ordo.GARDEN;
+  /** The work on the other plot of a plot's half-block (0: none). */
+  const halfMate = (s: GameState, tile: number): number => {
+    const m = getMap(s.seed), bi = m.survey.blockAt[tile], blk = m.survey.blocks[bi];
+    const plot = (Math.floor(tile / m.W) - blk.y >= B.map.PLOT ? 2 : 0) + ((tile % m.W) - blk.x >= B.map.PLOT ? 1 : 0);
+    return view(s).d.plotOwner[bi * 4 + (plot ^ 1)];
+  };
+  /** The gardens on a tile's block. */
+  const gardensOn = (s: GameState, tile: number): number => {
+    const bi = getMap(s.seed).survey.blockAt[tile];
+    return [0, 1, 2, 3].filter((p) => s.buildings.find((b) => b.id === view(s).d.plotOwner[bi * 4 + p])?.type === 'hortus').length;
+  };
+  /** A finished garden of the Ordo's on every free plot it could take but the last `keep` (an old save flooded under Urbs). */
+  const flood = (s: GameState, keep = 0): Building[] => {
+    const tiles = [...validSlots(s, 'hortus', 'ordo').keys()].sort((a, b) => a - b);
+    const out: Building[] = [];
+    for (const tile of tiles.slice(0, tiles.length - keep)) {
+      const r = placeBuilding(s, 'hortus', tile, { owner: 'ordo', ignoreCost: true, noStake: true });
+      if (!r.ok || r.id === undefined) continue;
+      const b = s.buildings.find((x) => x.id === r.id) as Building;
+      Object.assign(b, { status: 'done', progress: 1 });
+      out.push(b);
+    }
+    invalidate(s);
+    return out;
+  };
+
+  /** The start under Urbs with every founder's home a stone house (short of a domus's street). */
+  const stoneStart = (): GameState => {
+    const s = fresh(42);
+    s.decisions.focus = 'urbs';
+    for (const id of view(s).d.houses) (s.buildings.find((b) => b.id === id) as Building).house!.tier = 'domusParva';
+    invalidate(s);
+    return s;
+  };
+
+  it('plants a garden under Urbs only beside the homes, one to a block, where it lifts a stone house', () => {
+    const s = stoneStart();
+    const g = gardenSlot(s, view(s));
+    expect(g).not.toBeNull();
+    expect(g!.n).toBeGreaterThan(0);
+    expect(g!.k > 0 || g!.lift >= G.LIFT_MIN).toBe(true);
+    expect(halfMate(s, g!.tile)).not.toBe(0);           // beside a work on its half-block: no free half or block is broken
+    expect(gardensOn(s, g!.tile)).toBeLessThan(G.PER_BLOCK);
+    // the council's garden goes there (the plan's first, then beauty), not to the plot nearest the forum
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 0;
+    expect(walkWishes(s, view(s), true).list.find((e) => e.wish.type === 'hortus')?.wish.tile).toBe(g!.tile);
+    // once its block holds a garden, the start's other block is full and no other block has a home: no garden is worth a plot
+    const r = placeBuilding(s, 'hortus', g!.tile, { owner: 'ordo', ignoreCost: true, noStake: true });
+    expect(r.ok).toBe(true);
+    expect(gardenSlot(s, view(s))).toBeNull();
+    expect(walkWishes(s, view(s), true).list.some((e) => e.wish.type === 'hortus')).toBe(false);
+  });
+
+  it('keeps the homes\' last free plots, and a garden for every two homes at most', () => {
+    const s = stoneStart();
+    const sv = getMap(s.seed).survey;
+    const block = sv.blockAt[gardenSlot(s, view(s))!.tile];
+    // a town with a garden for every two homes plants no more (the player's gardens count)
+    const away = [...validSlots(s, 'hortus', 'player').keys()].sort((a, b) => a - b).filter((tile) => sv.blockAt[tile] !== block);
+    const n = Math.ceil(view(s).d.houses.length * G.PER_HOME);
+    for (const tile of away.slice(0, n)) expect(placeBuilding(s, 'hortus', tile, { owner: 'player', ignoreCost: true, noStake: true }).ok).toBe(true);
+    expect(gardenSlot(s, view(s))).toBeNull();
+    s.buildings.pop();
+    invalidate(s);
+    expect(gardenSlot(s, view(s))).not.toBeNull();
+    // the last KEEP_PLOTS free house plots are the homes': no garden while no more are free (blocks reserved by the player)
+    const t = stoneStart();
+    for (const blk of sv.blocks) {
+      if (validSlots(t, 'area', 'ordo').size <= G.KEEP_PLOTS) break;
+      if (blk.id === block || blk.reserved !== null || ![0, 1, 2, 3].some((p) => view(t).d.plotOwner[blk.id * 4 + p] === 0)) continue;
+      const before = validSlots(t, 'area', 'ordo').size;
+      t.ordo.reserved = [...t.ordo.reserved, blk.id].sort((a, b) => a - b);
+      invalidate(t);
+      if (validSlots(t, 'area', 'ordo').size > G.KEEP_PLOTS) expect(gardenSlot(t, view(t)), `${before} free plots`).not.toBeNull();
+    }
+    expect(validSlots(t, 'area', 'ordo').size).toBeLessThanOrEqual(G.KEEP_PLOTS);
+    expect(gardenSlot(t, view(t))).toBeNull();
+  });
+
+  it('a flooded town: the Ordo clears its own garden for a home only where no free plot is left, never the player\'s', () => {
+    const s = fresh(42);
+    const mine = flood(s, 1);
+    const theirs = mine.splice(0, 2);                   // two of the gardens are the player's
+    for (const b of theirs) b.owner = 'player';
+    invalidate(s);
+    const beds = (st: GameState): Wish | undefined => walkWishes(st, view(st), true).list.map((e) => e.wish).find((w) => w.reason.code === 'beds');
+    // one free plot left: the home goes there and nothing is cleared
+    const free = [...validSlots(s, 'area', 'ordo').keys()];
+    expect(free.length).toBe(1);
+    expect(beds(s)?.tile).toBe(free[0]);
+    expect(beds(s)?.clear).toBeUndefined();
+    // none left: the home takes the place of one of the Ordo's own gardens, and says so
+    expect(placeBuilding(s, 'hortus', free[0], { owner: 'player', ignoreCost: true, noStake: true }).ok).toBe(true);
+    const w = beds(s);
+    expect(w?.clear).toHaveLength(1);
+    const g = s.buildings.find((b) => b.id === w!.clear![0]) as Building;
+    expect(g.owner).toBe('ordo');
+    expect(idx(g.x, g.y)).toBe(w!.tile);
+    expect(reasonText(w!.reason)).toContain('It takes the place of one of our gardens.');
+    expect(reasonShort(w!.reason)).toContain('(in place of a garden)');
+    // on the real economy the Ordo raises it there: the garden is cleared, the player's gardens all stand
+    const ordoGardens = mine.length;
+    run(s, 60);
+    const homes = s.buildings.filter((b) => b.type === 'area' && b.owner === 'ordo' && b.reason?.params.gardens === 1);
+    expect(homes.length).toBeGreaterThan(0);
+    expect(s.buildings.filter((b) => b.type === 'hortus' && b.owner === 'ordo').length).toBe(ordoGardens - homes.length);
+    for (const b of theirs) expect(s.buildings.some((x) => x.id === b.id)).toBe(true);
+    expect(s.log.some((l) => l.text.includes('It takes the place of one of our gardens.'))).toBe(true);
+  });
+
+  it('a block of its own gardens is cleared for the work the next petition names when no free block is left', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    invalidate(s);
+    const mine = new Set(flood(s).map((b) => b.id));
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 0;
+    const w = walkWishes(s, view(s), true).list.map((e) => e.wish).find((x) => x.type === 'templum');
+    expect(w?.reason.code).toBe('rank');
+    expect(w?.clear?.length).toBeGreaterThan(0);
+    // the block holds the Ordo's gardens and nothing else, every one of them cleared
+    const W = getMap(s.seed).W, d = view(s).d, onBlock = new Set<number>();
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const id = d.buildingAt[w!.tile + y * W + x]; if (id) onBlock.add(id); }
+    expect([...onBlock].sort((a, b) => a - b)).toEqual(w!.clear);
+    for (const id of w!.clear!) expect(mine.has(id)).toBe(true);
+  });
+
+  it('counts only the free plots a home may take: those on the blocks kept for a temple or the theatre are no home\'s', () => {
+    const s = stoneStart();
+    s.rank = 3;                                         // the theatre is ahead, and the stone houses wait for a temple
+    invalidate(s);
+    expect(keptBlocks(s).length).toBeGreaterThanOrEqual(2);
+    const onKept = (tile: number): boolean => keptBlocks(s).some((k) => {
+      const x = tile % getMap(s.seed).W, y = Math.floor(tile / getMap(s.seed).W);
+      return x < k.rect.x + k.rect.w && k.rect.x < x + B.map.PLOT && y < k.rect.y + k.rect.h && k.rect.y < y + B.map.PLOT;
+    });
+    const homes = (): number => [...validSlots(s, 'area', 'ordo').keys()].filter((tile) => !onKept(tile)).length;
+    const sv = getMap(s.seed).survey;
+    const block = sv.blockAt[gardenSlot(s, view(s))!.tile];
+    // the player reserves block after block until only KEEP_PLOTS plots a home may take are left
+    for (const blk of sv.blocks) {
+      if (homes() <= G.KEEP_PLOTS) break;
+      if (blk.id === block || blk.reserved !== null || keptBlocks(s).some((k) => k.rect.x === blk.x && k.rect.y === blk.y)) continue;
+      if (![0, 1, 2, 3].some((p) => view(s).d.plotOwner[blk.id * 4 + p] === 0)) continue;
+      s.ordo.reserved = [...s.ordo.reserved, blk.id].sort((a, b) => a - b);
+      invalidate(s);
+    }
+    expect(homes()).toBeLessThanOrEqual(G.KEEP_PLOTS);
+    expect(validSlots(s, 'area', 'ordo').size).toBeGreaterThan(G.KEEP_PLOTS);   // the kept blocks' plots are free still
+    expect(gardenSlot(s, view(s))).toBeNull();
+  });
+
+  it('make room leaves a garden that holds a home at its tier: a domus kept at 10 by it', () => {
+    const s = fresh(42);
+    s.decisions.focus = 'copia';                        // more beds kept spare: a home is still wanted beside the domus's
+    flood(s);
+    const beds = (): Wish | undefined => walkWishes(s, view(s), true).list.map((e) => e.wish).find((w) => w.reason.code === 'beds');
+    const g = s.buildings.find((b) => b.id === beds()?.clear?.[0]) as Building;
+    expect(g?.owner).toBe('ordo');
+    // the home that garden lifts the most is a domus now, at 10 with the garden and below it without
+    const lost = (garden: Building, h: Building): number => {
+      const lift = new Map(previewDesir(s, 'hortus', garden.x, garden.y).map((p) => [p.tile, p.v]));
+      const fp = footprintOf(h, s);
+      return fp.reduce((a, i) => a + (lift.get(i) ?? 0), 0) / fp.length;
+    };
+    const home = view(s).d.houses.map((id) => s.buildings.find((b) => b.id === id) as Building).sort((a, b) => lost(g, b) - lost(g, a))[0];
+    home.house!.tier = 'domus';
+    invalidate(s);
+    expect(houseDesir(s, home.id)).toBeGreaterThanOrEqual(B.housing.DESIR_DOMUS);
+    expect(houseDesir(s, home.id) - lost(g, home)).toBeLessThan(B.housing.DESIR_DOMUS);
+    // the home goes where another of the Ordo's gardens is cleared, one that does not reach the domus (within 0.5 of 10,
+    // it can spare none)
+    const w = beds();
+    expect(w?.clear).toHaveLength(1);
+    expect(w!.clear).not.toContain(g.id);
+    expect(houseDesir(s, home.id)).toBeLessThan(B.housing.DESIR_DOMUS + G.MARGIN);
+    expect(lost(s.buildings.find((b) => b.id === w!.clear![0]) as Building, home)).toBe(0);
+  });
+
+  it('a castellum in place of a garden is routed round the gardens that stay; one it cannot stake leaves them standing', () => {
+    const s = fresh(42);
+    s.rank = 3;
+    invalidate(s);
+    for (let k = 0; k < 2; k++) built(s, 'apotheca');   // room for the aqueduct's stone and concrete
+    const mine = flood(s);
+    const without = (ids: ReadonlySet<number>): GameState => ({ ...s, buildings: s.buildings.filter((b) => !ids.has(b.id)) });
+    const fits = (st: GameState, tile: number) => canPlace(st, 'castellum', tile, { owner: 'ordo', ignoreCost: true });
+    // a garden whose plot takes the castellum with every garden of the Ordo's gone, but not with only it gone: the
+    // aqueduct to it runs over another garden
+    const at = view(s).d.buildingAt, all = new Set(mine.map((b) => b.id));
+    let g: Building | undefined;
+    let over = new Set<number>();
+    for (const b of mine) {
+      const c = fits(without(all), idx(b.x, b.y));
+      if (!c.ok || fits(without(new Set([b.id])), idx(b.x, b.y)).ok) continue;
+      g = b;
+      over = new Set((c.route ?? []).map((i) => at[i]).filter((id) => id !== 0 && id !== b.id));
+      break;
+    }
+    expect(g).toBeDefined();
+    expect(over.size).toBeGreaterThan(0);
+    // the Ordo's gardens are that one and those its aqueduct would cross (the rest the player's); it holds only the plan
+    for (const b of mine) if (b !== g && !over.has(b.id)) b.owner = 'player';
+    s.ordo.works = { water: false, food: false, homes: false, services: false, materials: false, plan: true };
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 5000;
+    invalidate(s);
+    const walk = walkWishes(s, view(s));
+    const w = walk.take;
+    expect(w?.type).toBe('castellum');
+    expect(w?.clear?.length).toBeGreaterThan(0);
+    // what it clears is all it needs: the castellum fits there with only those gardens gone, at the cost the wish names
+    const gone = new Set(w!.clear);
+    const chk = fits(without(gone), w!.tile);
+    expect(chk.ok).toBe(true);
+    expect(chk.ok && chk.cost).toEqual(w!.cost);
+    // the stone is spent before the council stakes it (the day's walk stands): nothing is staked, every garden stands
+    const ids = s.buildings.map((b) => b.id);
+    s.res.stone = 0;
+    ordoBuild(s, ctx(), view(s));
+    expect(s.buildings.map((b) => b.id)).toEqual(ids);
+    // with the stone back it is staked there, those gardens cleared and no other
+    s.res.stone = 5000;
+    ordoBuild(s, ctx(), view(s));
+    const c = s.buildings.find((b) => b.type === 'castellum');
+    expect(c && idx(c.x, c.y)).toBe(w!.tile);
+    for (const b of mine) expect(s.buildings.some((x) => x.id === b.id), `garden ${b.id}`).toBe(!gone.has(b.id));
+  });
+
+  it('a work the Ordo raises where it clears its gardens is not offered to raise by hand (Apply once, the Fabrum)', () => {
+    const s = fresh(42);
+    const mine = flood(s);
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 5000;
+    // the house plots and the plan are the player's: the Ordo would raise a home where it clears a garden, then the plan's
+    s.ordo.works.homes = false;
+    s.ordo.works.plan = false;
+    const home = walkWishes(s, view(s), true).list.map((e) => e.wish).find((w) => w.reason.code === 'beds');
+    expect(home?.clear).toHaveLength(1);
+    // no placement by hand can take that plot: Apply once raises the next work the Ordo would, and clears nothing
+    const would = wouldRaise(s, view(s));
+    expect(would).not.toBeNull();
+    expect(would!.reason.params.gardens).toBeUndefined();
+    const r = applyOnce(s, 'build');
+    expect(r.ok).toBe(true);
+    const placed = s.buildings[s.buildings.length - 1];
+    expect(placed.type).toBe(would!.type);
+    expect(placed.owner).toBe('player');
+    for (const b of mine) expect(s.buildings.some((x) => x.id === b.id)).toBe(true);
+    // the Ordo holds the house plots again, and a growth work raised today paces the home: it is the only work on the
+    // pace (the plan is still the player's), and the Praefectus Fabrum does not offer to place it himself; its Agenda
+    // row says when the Ordo raises it, and does not ask for a hand
+    s.ordo.works.homes = true;
+    Object.assign(mine[mine.length - 1], { reason: { code: 'beauty', params: {} }, placed: s.day });
+    invalidate(s);
+    const fabrum = FABRUM_RULES.find((x) => x.id === 'fabrum.agenda')!;
+    const wait = growthWait(s);
+    expect(wait).toBe(B.ordo.GROWTH_EVERY);
+    const paced = newWishes(s, view(s), 3).filter((w) => w.state === 'paced');
+    expect(paced.map((w) => [w.type, w.reason.params.gardens, w.eta])).toEqual([['area', 1, wait]]);
+    expect(fabrum.evaluate(s, view(s))).toBeNull();
+    expect(wishState(game(s), paced[0])).toBe(`the Ordo raises it in ${wait} d`);
+  });
+
+  it('the Fabrum names the next work a hand can raise, a pace later for each of the Ordo\'s own ahead of it', () => {
+    const s = fresh(42);
+    const mine = flood(s);
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 5000;
+    Object.assign(mine[mine.length - 1], { reason: { code: 'beauty', params: {} }, placed: s.day });
+    invalidate(s);
+    // every duty held: the home that clears a garden comes first on the pace, then a work of the plan
+    const wait = growthWait(s);
+    const [home, work] = newWishes(s, view(s), 3).filter((w) => w.state === 'paced');
+    expect(home.reason.params.gardens).toBe(1);
+    expect(home.eta).toBe(wait);
+    // the Ordo raises the home when the pace lifts, and that work a pace after it: the card says so, not the home's day
+    expect(work.eta).toBe(wait + B.ordo.GROWTH_EVERY);
+    expect(ordoAlone(work)).toBe(false);
+    const agenda = FABRUM_RULES.find((x) => x.id === 'fabrum.agenda')!.evaluate(s, view(s));
+    expect(agenda?.params).toMatchObject({ type: work.type, tile: work.tile, wait: wait + B.ordo.GROWTH_EVERY });
+    expect(wishState(game(s), work)).toBe(`the Ordo raises it in ${wait + B.ordo.GROWTH_EVERY} d: raise it yourself for sooner`);
+  });
+
+  it('under Urbs a colony keeps its plots: few gardens, each beside the homes (follower, seed 42, 4,000 days)', () => {
+    let beauty = 0;
+    const r = play(42, 'follower', {
+      days: 4000,
+      onDay: (s) => {
+        s.decisions.focus = 'urbs';
+        const v = view(s);
+        for (const b of s.buildings) {
+          if (b.type !== 'hortus' || b.owner !== 'ordo' || b.placed !== s.day) continue;
+          if (b.reason?.code === 'beauty') beauty++;
+          const tile = idx(b.x, b.y);
+          expect(halfMate(s, tile), `garden ${b.id} beside a work`).not.toBe(0);
+          expect(gardensOn(s, tile), `garden ${b.id} alone on its block`).toBeLessThanOrEqual(G.PER_BLOCK);
+          expect(validSlots(s, 'area', 'ordo').size).toBeGreaterThanOrEqual(G.KEEP_PLOTS);
+          expect((v.d.all.hortus ?? 0) - 1).toBeLessThan(v.d.houses.length * G.PER_HOME);
+        }
+      },
+    });
+    expect(beauty).toBeGreaterThan(0);                      // the stone houses had their gardens
+    const s = r.s;
+    expect(s.buildings.filter((b) => b.type === 'hortus' && b.owner === 'ordo').length).toBeLessThanOrEqual(view(s).d.houses.length * G.PER_HOME + 1);
+    expect(validSlots(s, 'area', 'ordo').size).toBeGreaterThan(G.KEEP_PLOTS);
+  }, 120_000);
+});
+
+describe('the builders line in monument mode (playtest #7)', () => {
+  it('counts the town wall\'s crew apart and says when the Capitolium has all the builders it can take', () => {
+    const s = fresh(42);
+    startCapitolium(s);
+    s.urbs.moenia = { tiles: [], gates: [], surveyed: s.day, work: 30_000, progress: 0, matUsed: {}, done: null };
+    s.res.stone = 1e5;
+    s.res.denarii = 1e5;
+    invalidate(s);
+    const v0 = view(s);
+    const v = { d: v0.d, f: v0.f, cov: v0.cov, c: { ...v0.c, workforce: 400 } } as SimView;   // hands enough for both crews
+    const line = planLabour(s, v).lines.find((l) => l.cat === 'builders')!;
+    expect(line.target).toBe(B.construction.CAP_CREW + B.urbs.MOENIA.CREW);
+    expect(line.reason).toMatchObject({ code: 'monument', params: { n: 72, crew: 64, max: 64, full: 1, walls: 8 } });
+    expect(reasonText(line.reason)).toBe('72 builders: 64 of 64 on the Capitolium (the most that can work on it) and 8 on the town wall.');
+    expect(reasonShort(line.reason)).toBe('64 of 64 builders on the Capitolium (its full crew)');
+    expect(reasonText({ code: 'monument', params: { n: 30, crew: 22, max: 64, full: 0 } })).toBe('30 builders, 22 of them on the Capitolium.');
+  });
 });
 
 describe('reasons', () => {

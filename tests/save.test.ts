@@ -8,16 +8,20 @@ import { invalidate } from '../src/game/memo';
 import { newCtx, tick } from '../src/game/sim';
 import {
   DEFAULT_PREFS, KEYS, MIGRATIONS, SAVE_VERSION, addFasti, claimSave, clearSave, deserialize, exportText, fastiEntry, hasSave, importText,
-  lastExported, loadFasti, loadGame, loadPrefs, markExported, ownsSave, saveGame, savePrefs, serialize,
+  lastExported, loadBackup, loadFasti, loadGame, loadPrefs, markExported, ownsSave, rawSave, replaceSave, saveGame, savePrefs, serialize,
 } from '../src/game/save';
-import { decidedLines, describeAway, keepDecided, offlineDays, offlineRun, simulateOffline, wonWhileAway } from '../src/game/offline';
+import { replaceQuestion } from '../src/ui/title';
+import {
+  AWAY_CAP_MS, awayRule, awayUnusedMs, capLine, decidedLines, describeAway, keepDecided, offlineDays, offlineRun, readyLine, simulateOffline, stalledLine,
+  wonWhileAway,
+} from '../src/game/offline';
 import type { Decided } from '../src/game/offline';
 import type { LogEntry, LogKind } from '../src/game/types';
 import { petitionNeeds } from '../src/game/decisions';
 import { activeAdvisories } from '../src/game/advisors/engine';
 import { view } from '../src/game/sim';
 import { play } from './autoplayer';
-import { forceEvent, fresh, noNaN, run } from './util';
+import { forceEvent, freeSlots, fresh, noNaN, run } from './util';
 
 type Raw = ReturnType<typeof JSON.parse>;   // a parsed save, before sanitising
 
@@ -165,6 +169,14 @@ describe('sanitiser', () => {
     expect(noNaN(back)).toEqual([]);
   });
 
+  it('keeps the home a house card\'s request carries, and drops one that is no building id', () => {
+    const r = raw(fresh());
+    r.ordo.requests = [{ type: 'lararium', day: 95, house: 7 }, { type: 'taberna', day: 96, house: 'x' }, { type: 'templum', day: 97, house: 2.5 }];
+    const back = deserialize(JSON.stringify(r))!;
+    expect(back.ordo.requests).toEqual([{ type: 'lararium', day: 95, house: 7 }, { type: 'taberna', day: 96 }, { type: 'templum', day: 97 }]);
+    expect(noNaN(back)).toEqual([]);
+  });
+
   it('fills missing keys from a new game and re-sorts lists', () => {
     const s = run(fresh(3), 10);
     const r = raw(s);
@@ -254,7 +266,7 @@ describe('localStorage', () => {
   it('uses the namespaced keys; saves with the wall clock; loads; clears', () => {
     expect(KEYS).toEqual({
       save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1',
-      owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1',
+      owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1', backup: 'castravaleria.backup.v1',
     });
     expect(hasSave()).toBe(false);
     expect(loadGame()).toBeNull();
@@ -304,14 +316,23 @@ describe('localStorage', () => {
   });
 
   it('prefs merge over the defaults; invalid fields fall back', () => {
-    expect(DEFAULT_PREFS).toEqual({ sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false });
+    expect(DEFAULT_PREFS).toEqual({ sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false });
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
     savePrefs({ ...DEFAULT_PREFS, sound: false, speed: 5 });
     expect(loadPrefs()).toEqual({ ...DEFAULT_PREFS, sound: false, speed: 5 });
-    localStorage.setItem(KEYS.prefs, JSON.stringify({ volume: 7, speed: 3, tips: 'yes', pauseOnCritical: true }));
+    localStorage.setItem(KEYS.prefs, JSON.stringify({ volume: 7, speed: 3, tips: 'yes', pauseOnCritical: true, paused: 'yes' }));
     expect(loadPrefs()).toEqual({ ...DEFAULT_PREFS, volume: 1, pauseOnCritical: true });
     localStorage.setItem(KEYS.prefs, '{broken');
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  it('the player\'s pause is kept with the last speed, so a reload comes back paused (DESIGN §2.1)', () => {
+    savePrefs({ ...DEFAULT_PREFS, speed: 10, paused: true });
+    expect(loadPrefs()).toMatchObject({ speed: 10, paused: true });
+    savePrefs({ ...DEFAULT_PREFS, speed: 10, paused: false });
+    expect(loadPrefs()).toMatchObject({ speed: 10, paused: false });
+    localStorage.setItem(KEYS.prefs, JSON.stringify({ speed: 5 }));   // prefs stored before the pause was kept: running
+    expect(loadPrefs()).toMatchObject({ speed: 5, paused: false });
   });
 
   it('the Fasti keep the newest 50 well-formed entries', () => {
@@ -327,6 +348,103 @@ describe('localStorage', () => {
     expect(list[0].seed).toBe(54);
     localStorage.setItem(KEYS.fasti, JSON.stringify([e, { name: 3 }, { ...e, paths: ['dragons'] }, { ...e, dedicated: null }]));
     expect(loadFasti()).toEqual([e, { ...e, dedicated: null }]);
+  });
+});
+
+describe('the previous colony (the backup slot): a new colony never erases the save at once', () => {
+  const DAY = 86_400_000;
+  const T0 = 1_700_000_000_000;
+  let m: Map<string, string>;
+  beforeEach(() => { m = installStorage(); });
+
+  it('the first save over a stored colony keeps that one, readable, for PREVIOUS_DAYS real days', () => {
+    const old = run(fresh(7), 30);
+    old.name = 'Vicus Vetus';
+    saveGame(old, T0 - DAY);
+    const stored = rawSave();
+    const next = fresh(8);
+    expect(replaceSave(next, T0)).toBe(true);
+    expect(loadGame()).toEqual(next);                                   // the new colony is the save now
+    const back = loadBackup(T0);
+    expect(back).toEqual({ raw: stored, days: B.ui.PREVIOUS_DAYS });  // the old one, exactly as it was stored
+    expect(deserialize(back!.raw)).toEqual(old);
+    expect(loadBackup(T0 + (B.ui.PREVIOUS_DAYS - 0.5) * DAY)!.days).toBe(1);
+    expect(loadBackup(T0 + B.ui.PREVIOUS_DAYS * DAY)).toBeNull();        // kept for a while, then dropped
+    expect(m.has(KEYS.backup)).toBe(false);
+    expect(loadGame()).toEqual(next);
+  });
+
+  it('a restore is the same replacement: the two colonies change places', () => {
+    const a = fresh(7); a.name = 'Prima';
+    const b = fresh(8); b.name = 'Secunda';
+    saveGame(a, T0);
+    replaceSave(b, T0 + 1000);                                           // Secunda founded over Prima
+    replaceSave(deserialize(loadBackup(T0 + 2000)!.raw)!, T0 + 2000);    // Restore the previous colony
+    expect(loadGame()!.name).toBe('Prima');
+    expect(deserialize(loadBackup(T0 + 2000)!.raw)!.name).toBe('Secunda');
+  });
+
+  it('nothing stored: nothing to keep; an unreadable save is kept as it was', () => {
+    expect(replaceSave(fresh(), T0)).toBe(true);
+    expect(loadBackup(T0)).toBeNull();
+    localStorage.setItem(KEYS.save, '{"version": 99}');                 // a newer version's save
+    replaceSave(fresh(), T0);
+    expect(loadBackup(T0)!.raw).toBe('{"version": 99}');
+  });
+
+  it('a refused save changes nothing; a backup that does not fit leaves the new save in place', () => {
+    const a = fresh(7);
+    saveGame(a, T0);
+    const stored = rawSave();
+    const refusing = installStorage(true);
+    refusing.set(KEYS.save, stored!);
+    expect(replaceSave(fresh(8), T0)).toBe(false);
+    expect(refusing.get(KEYS.save)).toBe(stored);
+    expect(refusing.has(KEYS.backup)).toBe(false);
+    const full = installStorage();
+    full.set(KEYS.save, stored!);
+    const ls = globalThis.localStorage as unknown as { setItem: (k: string, v: string) => void };
+    const set = ls.setItem;
+    ls.setItem = (k, v) => { if (k === KEYS.backup) throw new Error('QuotaExceededError'); set(k, v); };
+    const b = fresh(8);
+    expect(replaceSave(b, T0)).toBe(true);
+    expect(loadGame()).toEqual(b);
+    expect(loadBackup(T0)).toBeNull();
+    Reflect.deleteProperty(globalThis, 'localStorage');
+    expect(rawSave()).toBeNull();
+    expect(loadBackup(T0)).toBeNull();
+    expect(replaceSave(fresh(), T0)).toBe(false);
+  });
+
+  it('a backup that does not fit leaves no previous colony, never the one before it in its place', () => {
+    const a = fresh(7); a.name = 'Prima';
+    const b = fresh(8); b.name = 'Secunda';
+    const c = fresh(9); c.name = 'Tertia';
+    saveGame(a, T0);
+    replaceSave(b, T0 + DAY);                                            // Secunda founded over Prima: Prima is kept
+    expect(deserialize(loadBackup(T0 + DAY)!.raw)!.name).toBe('Prima');
+    const ls = globalThis.localStorage as unknown as { setItem: (k: string, v: string) => void };
+    const set = ls.setItem;
+    ls.setItem = (k, v) => { if (k === KEYS.backup) throw new Error('QuotaExceededError'); set(k, v); };
+    expect(replaceSave(c, T0 + 2 * DAY)).toBe(true);                     // Tertia imported over Secunda, which does not fit
+    expect(loadGame()!.name).toBe('Tertia');
+    expect(loadBackup(T0 + 2 * DAY)).toBeNull();                         // the title offers no Prima as "the previous colony"
+    expect(m.has(KEYS.backup)).toBe(false);
+  });
+
+  it('a malformed backup slot is dropped', () => {
+    for (const v of ['no stamp', '\n{}', 'soon\n{}']) {
+      m.set(KEYS.backup, v);
+      expect(loadBackup(T0)).toBeNull();
+      expect(m.has(KEYS.backup)).toBe(false);
+    }
+  });
+
+  it('the title asks by name before a stored colony is replaced', () => {
+    const s = fresh();
+    s.rank = 1;
+    expect(replaceQuestion(s)).toBe(`Replace Castra Valeria — Vicus, ${s.people.length} souls?`);
+    expect(replaceQuestion(null)).toBe('Replace the save that cannot be read?');
   });
 });
 
@@ -437,6 +555,114 @@ describe('offline catch-up', () => {
     expect(rep.awaiting.petition).not.toBeNull();
     expect(activeAdvisories(s, { forCard: true }).some((a) => a.rule === 'augur.petition')).toBe(true);
     expect(rep.awaiting.advisories).not.toContain('augur.petition');
+    // F9: how long it has waited, from the day the Augur raised it (petitions are never made in your name)
+    const since = s.guidance.advisories['augur.petition']!.since;
+    expect(rep.awaiting.readySince).toBe(since);
+    expect(since).toBeLessThanOrEqual(rep.after.day);
+    expect(rep.awaiting.stalled).toBeNull();
+    const n = rep.after.day - since;
+    expect(readyLine(rep)).toMatch(new RegExp(`^Rome would hear our petition for \\w+: ready since .+ AUC [IVXLCDM]+, ${n} days?\\.$`));
+    expect(readyLine({ ...rep, awaiting: { ...rep.awaiting, readySince: null } })).toMatch(/^Rome would hear our petition for \w+\.$/);
+  });
+
+  it('states the cap in real time, and in the letter when an absence ran past it (F9)', () => {
+    expect(AWAY_CAP_MS).toBe((B.time.OFFLINE_MAX_DAYS / B.time.OFFLINE_RATE) * 1000);
+    expect(awayRule()).toBe('Time away passes at half speed: each minute you are gone is 30 days in the colony, up to 5 years. '
+      + 'That takes 61 minutes; time away beyond it is not counted.');
+    const rep = simulateOffline(fresh(3), 200_000)!;
+    expect(awayUnusedMs(rep)).toBe(0);
+    expect(describeAway(rep).cap).toBeNull();
+    const eight = 8 * 3600 * 1000;   // an 8-hour absence runs the same five years as one of 61 minutes
+    expect(offlineDays(eight)).toBe(offlineDays(AWAY_CAP_MS));
+    const capped = { ...rep, awayMs: eight, daysPlanned: B.time.OFFLINE_MAX_DAYS, days: B.time.OFFLINE_MAX_DAYS };
+    expect(awayUnusedMs(capped)).toBe(eight - AWAY_CAP_MS);
+    expect(describeAway(capped).cap).toBe('The colony ran 5 years, the most it runs without you; 6 h 59 min of your absence went uncounted.');
+    expect(capLine({ ...capped, days: 900 })).toBeNull();                         // a dedication stopped the clock first
+    expect(capLine({ ...capped, awayMs: AWAY_CAP_MS + 30_000 })).toBeNull();      // under a minute past the cap: nothing to say
+  });
+
+  it('the progress line: the next rank\'s checklist and the Capitolium, before → after (F9)', () => {
+    const rep = simulateOffline(fresh(42), 60_000)!;
+    expect(rep.before.petition).toEqual({ rank: 1, met: 0, of: 6, items: [0, 24 / 50, 0, 0, 0, 5 / 12] });   // the charter's line counts while it waits
+    // the horreum is raised; Stabilitas reads 2 / 10 days
+    expect(rep.after.petition).toEqual({ rank: 1, met: 1, of: 6, items: [0, 24 / 50, 0, 1, 2 / 10, 9 / 12] });
+    expect(rep.before.capitolium).toBeNull();
+    expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 1 of 6 met');
+    expect(rep.awaiting.stalled).toBeNull();                                     // a line met (the Horreum): not stalled
+    const s = fresh();
+    const id = nextId(s);
+    s.buildings.push({ id, type: 'capitolium', x: 47, y: 29, owner: 'player', status: 'building', placed: s.day, progress: 0.99, work: 10, paid: true, order: id, open: true, prio: 1, matUsed: {} });
+    s.people.find((p) => p.work === null && s.day - p.born > 20 * 365)!.work = BUILDER;
+    for (const r of ['stone', 'concrete', 'tiles', 'iron', 'denarii'] as const) s.res[r] += 5000;
+    invalidate(s);
+    const won = simulateOffline(s, 200_000)!;
+    expect(won.before.capitolium).toBe(0.99);
+    expect(won.after.capitolium).toBe(1);
+    expect(describeAway(won).progress).toContain('Capitolium 99% → 100%');
+  });
+
+  it('nothing moved: Awaiting you leads with what holds the next rank (F9)', () => {
+    const s = fresh(42);
+    s.decisions.switches.governAway = false;                                     // the Ordo holds no duty: nothing is raised
+    s.buildings = s.buildings.filter((b) => b.status === 'done');
+    s.res.timber = 0;                                                            // and no home is renovated
+    invalidate(s);
+    const rep = simulateOffline(s, 60_000)!;
+    expect(rep.after.pop).toBe(rep.before.pop);
+    expect(rep.after.built).toBe(rep.before.built);
+    expect(rep.awaiting.petition).toBeNull();
+    expect(rep.awaiting.stalled).toEqual({ rank: 1, lacking: ['Lex coloniae proclaimed', 'Souls: 24 / 50', expect.stringMatching(/^First Hiems weathered/)] });
+    expect(stalledLine(rep)).toMatch(/^Stalled: nothing moved toward Vicus\. Still lacking: Lex coloniae proclaimed · Souls 24 \/ 50 · First Hiems weathered \(.+\)\.$/);
+    expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 0 of 6 met');
+    const cap = { ...rep, after: { ...rep.after, capitolium: 0.344 }, awaiting: { ...rep.awaiting, stalled: { rank: null, lacking: [] } } };
+    expect(stalledLine(cap)).toBe('Stalled: the Capitolium did not rise past 34%.');
+  });
+
+  it('stalled reads the next rank\'s checklist, not growth: souls past the count and the Ordo\'s works stay stalled (F9)', () => {
+    // the charter is never proclaimed in your name: once the rest of the Vicus checklist is met, the colony grows on under
+    // Govern while away (souls past 50, works raised) and nothing moves toward Vicus (playtest #9: the letter hid the blocker)
+    const s = fresh(1);
+    simulateOffline(s, AWAY_CAP_MS);
+    const near = simulateOffline(s, 400_000)!;
+    expect(near.after.petition!.met).toBeGreaterThan(near.before.petition!.met);   // the souls reach the count: moved
+    expect(near.awaiting.stalled).toBeNull();
+    const rep = simulateOffline(s, 400_000)!;
+    expect(rep.after.pop).toBeGreaterThan(rep.before.pop);
+    expect(rep.after.built).toBeGreaterThan(rep.before.built);
+    expect(rep.after.petition).toEqual(rep.before.petition);
+    expect(rep.awaiting.petition).toBeNull();
+    expect(rep.awaiting.stalled).toEqual({ rank: 1, lacking: ['Lex coloniae proclaimed'] });
+    expect(stalledLine(rep)).toBe('Stalled: nothing moved toward Vicus. Still lacking: Lex coloniae proclaimed.');
+    // a counted line nearer, though not yet met, is progress: souls still short of the count, nothing raised
+    const short = run(fresh(42), 600);
+    const up = simulateOffline(short, 400_000)!;
+    expect(up.after.petition!.met).toBe(up.before.petition!.met);
+    expect(up.after.built).toBe(up.before.built);
+    expect(up.after.petition!.items[1]).toBeGreaterThan(up.before.petition!.items[1]);   // the Souls line
+    expect(up.awaiting.stalled).toBeNull();
+  });
+
+  it('a work the checklist asks for, rising while you were away, is progress as the Capitolium is (F9)', () => {
+    // as when nothing moved (above): the Ordo holds no duty and no home is renovated, so the rest of the checklist
+    // stands still; only a granary rises, a tenth up when you leave and not yet finished when you come back
+    const s = fresh(42);
+    s.decisions.switches.governAway = false;
+    s.buildings = s.buildings.filter((b) => b.status === 'done');
+    s.res.timber = 0;
+    const at = freeSlots(s, 'horreum')[0];
+    const id = nextId(s);
+    s.buildings.push({ id, type: 'horreum', x: at.x, y: at.y, owner: 'player', status: 'building', placed: s.day, progress: 0.1, work: 600, paid: true, order: id, open: true, prio: 1 });
+    invalidate(s);
+    const rep = simulateOffline(s, 60_000)!;
+    const site = s.buildings.find((b) => b.id === id)!;
+    expect(site.status).toBe('building');
+    expect(site.progress).toBeGreaterThan(0.2);
+    const b = rep.before.petition!, a = rep.after.petition!;
+    expect(a.met).toBe(b.met);
+    expect([b.items[3], a.items[3]]).toEqual([0.1, site.progress]);              // the Horreum line: its site higher
+    expect(a.items.filter((_, i) => i !== 3)).toEqual(b.items.filter((_, i) => i !== 3));
+    expect(rep.awaiting.stalled).toBeNull();
+    expect(stalledLine(rep)).toBeNull();
   });
 
   it('the lowest point ends in one full stop after a Roman date (R48)', () => {

@@ -1,26 +1,32 @@
 // src/game/advisors/remedies.ts — typed, pre-checked remedies (ARCHITECTURE §8.6, §13.6, DESIGN §11.5). Owner: WP-E.
 // checkRemedy says whether a remedy can run now and, if not, why (the button stays visible, disabled with that reason);
-// applyRemedy runs sim remedies through the frozen action API; UI remedies (place, open, overlay, contract,
-// building:center) are executed by App.applyRemedy and only checked here. Nothing here throws.
+// applyRemedy runs sim remedies through the frozen action API; UI remedies (place, open, overlay, contract, tool,
+// building:center) are executed by App.applyRemedy and only checked here. A block to clear (`clear`) is both: the sim
+// part pulls down what stands there (the demolish action), and App, once the player confirms, then places the work on
+// the cleared block. Nothing here throws.
 import { B as B$ } from '../balance';
-import type { ActionResult, BuildingId, EdictId, FailCode, GameState, LaborCat, OrdoArea, OverlayId, Remedy, TabId } from '../types';
+import type { ActionResult, BuildingId, EdictId, FailCode, GameState, LaborCat, OrdoArea, OverlayId, Owner, Remedy, TabId, ToolId } from '../types';
 import * as act from '../actions';
 import { formatRoman as formatRoman$ } from '../calendar';
-import { census } from '../census';
+import { census, peopleIndex } from '../census';
 import { derived as derived$ } from '../derived';
 import { edictOption, edictWindow, isUnlocked, settingValue, switchOn } from '../decisions';
 import { triggerRelief } from '../events';
 import { pushActionFx as pushActionFx$ } from '../memo';
-import { MILESTONES } from '../objectives';
+import { MILESTONES, milestoneUnlocking } from '../objectives';
 import { canPlace, validSlots } from '../place';
-import { overlayRevealed, tabRevealed } from '../reveal';
+import { getMap } from '../map';
+import { halfOrigin, isActiveBlock, isRazed, plotOrigin } from '../survey';
+import { RULE_REASON, ruleFail } from '../world/siterules';
+import { RANK_DEFS } from '../data/ranks';
+import { overlayRevealed, tabRevealed, toolRevealed } from '../reveal';
 import { newCtx, view } from '../sim';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { checkDispatch, hubOpen, price } from '../trade';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { EDICT_DEFS as EDICT_DEFS$, FOCUS_DEFS as FOCUS_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from '../data/decisions';
 import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
-import { aName, bestHub, days, int, rankWord, resName } from './util';
+import { aName, bestHub, blockWorks, buildingPlace, days, fractionWord, int, placeName, rankWord, resName, worksWord } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, formatRoman = formatRoman$, derived = derived$, pushActionFx = pushActionFx$,
@@ -38,10 +44,11 @@ const AREA_WORD: Record<OrdoArea, string> = { labour: 'labour', build: 'construc
 const TAB_WORD: Record<TabId, string> = { council: 'Edicta', advisors: 'Consiliarii', build: 'Aedificia', people: 'Populus', trade: 'Commercium', annals: 'Annales' };
 const ANCHOR_WORD: Record<string, string> = { petition: 'petition', watch: 'Watch', merchant: 'merchant', labour: 'labour', road: 'roads' };
 const OVERLAY_WORD: Record<OverlayId, string> = { none: 'plain', aqua: 'Aqua', domus: 'Domus', officia: 'Officia', desir: 'Dignitas loci', terra: 'Terra' };
+const TOOL_WORD: Record<Exclude<ToolId, 'pin'>, string> = { road: 'Lay a road', pave: 'Pave roads', reserve: 'Keep a block free', demolish: 'Demolish' };
 
-/** UI-executed remedies: place, open, overlay, contract, building:center. */
+/** UI-executed remedies: place, open, overlay, contract, tool, building:center. */
 export function isUiRemedy(r: Remedy): boolean {
-  return r.kind === 'place' || r.kind === 'open' || r.kind === 'overlay' || r.kind === 'contract' || (r.kind === 'building' && r.op === 'center');
+  return r.kind === 'place' || r.kind === 'open' || r.kind === 'overlay' || r.kind === 'contract' || r.kind === 'tool' || (r.kind === 'building' && r.op === 'center');
 }
 
 /** Whether a remedy can be applied now; never throws (a failure carries its reason for the disabled button). */
@@ -103,8 +110,10 @@ function check(s: GameState, r: Remedy): ActionResult {
       if (r.op === 'open') return b.open ? fail('chosen', `The ${name} is open.`) : OK;
       return b.open ? OK : fail('chosen', `The ${name} is already closed.`);
     }
+    case 'clear': return checkClear(s, r.building, r.tile, r.ids);
     case 'open': return tabRevealed(s, r.tab) ? OK : fail('locked', `${TAB_WORD[r.tab]} is not yet open to us.`);
     case 'overlay': return overlayRevealed(s, r.overlay) ? OK : fail('locked', `The ${OVERLAY_WORD[r.overlay]} overlay is not yet revealed.`);
+    case 'tool': return checkTool(s, r.tool);
   }
 }
 
@@ -135,7 +144,7 @@ function checkAsk(s: GameState, type: BuildingId): ActionResult {
   // one at a time: a second ask while the first still rises would only stack up works the advice did not need
   if (type !== 'area' && s.buildings.some((b) => b.type === type && b.status !== 'done')) return fail('chosen', `${aName(type).replace(/^./, (c) => c.toUpperCase())} is already being raised.`);
   if (s.ordo.requests.length >= B.ordo.REQUESTS_MAX) return fail('full', `The Ordo already holds ${B.ordo.REQUESTS_MAX} requests.`);
-  return validSlots(s, type, 'ordo').size > 0 ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);   // a best slot exists iff any does
+  return validSlots(s, type, 'ordo').size > 0 ? OK : fail('noSlots', noSite(s, type, 'ordo'));   // a best slot exists iff any does
 }
 
 function checkPlace(s: GameState, type: BuildingId, tile?: number): ActionResult {
@@ -145,7 +154,102 @@ function checkPlace(s: GameState, type: BuildingId, tile?: number): ActionResult
     const c = canPlace(s, type, tile, { owner: 'player' });
     if (c.ok) return OK;
   }
-  return validSlots(s, type, 'player').size > 0 ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);
+  return validSlots(s, type, 'player').size > 0 ? OK : fail('noSlots', noSite(s, type, 'player'));
+}
+
+/** Why no site can take a type now (the disabled button's reason, DESIGN §11.1 rule 7): an urban work names the slots
+ *  that are all taken (and how more come: a block is cleared, a rank surveys a ring), the site rule every free one fails,
+ *  or, for the Ordo, what keeps it off the free ones (place.ts ordoKeepsOff): the blocks the player keeps from it, and
+ *  the blocks holding a work of the player's not yet finished, named, where there is nothing to release. A work that
+ *  may also stand on rural land names its rule: its slots run out only when the land's do too. */
+function noSite(s: GameState, type: BuildingId, owner: Owner): string {
+  const def = BUILDING_DEFS[type];
+  const what = aName(type);
+  const rule = type === 'castellum' ? RULE_REASON.noFons : type === 'lacus' ? RULE_REASON.nearAqueduct
+    : def.rule !== 'none' && def.rule !== 'fixed' ? RULE_REASON[def.rule] : null;
+  const low = (x: string): string => x.charAt(0).toLowerCase() + x.slice(1);
+  const rural = def.place.includes('rural');
+  const land = `No free land in our territory can take ${what}${rule ? `: ${low(rule)}` : '.'}`;
+  const cls = def.place.includes('block') ? 'block' : def.place.includes('half') ? 'half' : def.place.includes('plot') ? 'plot' : null;
+  if (!cls) return land;
+  const word = cls === 'half' ? 'half-block' : cls;
+  // the free slots of the class, the rule aside, and whether any of them passes it; for the Ordo, of those that pass,
+  // how many lie in blocks the player keeps from it, and the first work of the player's not yet finished on another
+  const map = getMap(s.seed), sv = map.survey, d = derived(s), razed = isRazed(s);
+  const [w, h] = cls === 'block' ? [B.map.BLOCK, B.map.BLOCK] : cls === 'half' ? [B.map.BLOCK, B.map.PLOT] : [B.map.PLOT, B.map.PLOT];
+  const siteOn = new Map<number, number>();   // block → the player's first unfinished work on it (place.ts ordoKeepsOff)
+  if (owner === 'ordo') {
+    for (const b of s.buildings) {
+      const blk = b.owner === 'player' && b.status !== 'done' ? sv.blockAt[b.y * map.W + b.x] ?? -1 : -1;
+      if (blk >= 0 && !siteOn.has(blk)) siteOn.set(blk, b.id);
+    }
+  }
+  let free = 0, fits = 0, kept = 0, site: number | null = null;
+  for (const blk of sv.blocks) {
+    if (!isActiveBlock(sv, blk, s.rank, razed)) continue;
+    const origins = cls === 'block' ? [{ x: blk.x, y: blk.y }] : cls === 'half' ? [halfOrigin(blk, 0), halfOrigin(blk, 1)] : ([0, 1, 2, 3] as const).map((k) => plotOrigin(blk, k));
+    for (const o of origins) {
+      let ok = true;
+      for (let y = o.y; ok && y < o.y + h; y++) for (let x = o.x; x < o.x + w; x++) { const i = y * map.W + x; if (d.buildingAt[i] !== 0 || d.reservedTile[i]) { ok = false; break; } }
+      if (!ok) continue;
+      free++;
+      if (ruleFail(s, type, o.x, o.y, w, h)) continue;
+      fits++;
+      // a block holding a work of the player's stays closed to the Ordo even released: the work, not the keeping, binds
+      const on = siteOn.get(blk.id);
+      if (on !== undefined) site = site === null ? on : Math.min(site, on);
+      else if (s.ordo.reserved.includes(blk.id)) kept++;
+    }
+  }
+  if (!rural && free > 0 && (fits === 0 || type === 'castellum') && rule) return `No free ${word} can take ${what}: ${low(rule)}`;
+  if (fits > 0 && owner === 'ordo') {
+    if (site === null) return `${cls === 'block' ? 'Every free block is one' : `Every free ${word} lies in a block`} you keep from the Ordo: place it yourself, or release one.`;
+    const b = getBuilding(s, site);
+    const yours = `beside a work of yours not yet finished (the ${b ? BUILDING_DEFS[b.type].name.toLowerCase() : 'site'} ${buildingPlace(s, site)})`;
+    return kept > 0 ? `Every free ${word} lies in a block you keep from the Ordo or ${yours}: place it yourself, or release one.`
+      : `Every free ${word} lies in a block ${yours}: the Ordo leaves those to you, so place it yourself.`;
+  }
+  if (rural) return land;
+  const next = RANK_DEFS[s.rank + 1];
+  const more = next && next.rings.length > RANK_DEFS[s.rank].rings.length ? `, or petition for ${rankWord(s.rank + 1)} to survey more` : '';
+  if (cls === 'block') return `Every block of the town is built on: pull down what stands on one to clear it${more}.`;
+  return `Every ${word} of the town is taken${more}.`;
+}
+
+/** A block to clear for a block service (DESIGN §11.6 row 17): the work may stand there once what is named comes down,
+ *  and the block still holds exactly that — anything built on it or pulled down since the advice was given says so.
+ *  One at a time, as an ask: while a work of the kind still rises, the homes it will reach wait for it, and a second
+ *  block pulled down for the same homes would cost what stands there for nothing. */
+function checkClear(s: GameState, type: BuildingId, tile: number, ids: readonly number[]): ActionResult {
+  const b = buildable(s, type);
+  if (!b.ok) return b;
+  if (s.buildings.some((w) => w.type === type && w.status !== 'done')) return fail('chosen', `${aName(type).replace(/^./, (c) => c.toUpperCase())} is already being raised.`);
+  const map = getMap(s.seed), sv = map.survey;
+  const blk = Number.isInteger(tile) && tile >= 0 && tile < sv.blockAt.length ? sv.blocks[sv.blockAt[tile]] : undefined;
+  if (!blk || blk.y * map.W + blk.x !== tile || !BUILDING_DEFS[type].place.includes('block') || !isActiveBlock(sv, blk, s.rank, isRazed(s))) {
+    return fail('notOnSlot', `That is no block of the town to take ${aName(type)}.`);
+  }
+  if (s.ordo.reserved.includes(blk.id)) return fail('reserved', 'You keep this block free.');
+  const rf = ruleFail(s, type, blk.x, blk.y, B.map.BLOCK, B.map.BLOCK);
+  if (rf) return fail(rf.code, rf.reason);
+  const now = blockWorks(s, tile);
+  if (!now) return fail('occupied', 'A work too great to pull down stands on the block.');
+  const want = [...ids].sort((a, c) => a - c);
+  if (now.length === 0 || now.length !== want.length || now.some((id, k) => id !== want[k])) return fail('notReady', 'The block has changed since the Aedilis named it.');
+  return OK;
+}
+
+/** A map tool, once its milestone reveals it; the Pave brush wants a dirt road and the stone for a pace. The reasons
+ *  carry no live count (the Consiliarii card rebuilds on whether and why, ui/tabs/common.ts remedyKey, not on each
+ *  stone that comes in). */
+function checkTool(s: GameState, t: Exclude<ToolId, 'pin'>): ActionResult {
+  if (!TOOL_WORD[t]) return fail('invalid', 'No such tool.');
+  if (!toolRevealed(s, t)) return fail('locked', unlockReason(milestoneUnlocking({ kind: 'tool', id: t })?.id ?? ''));
+  if (t !== 'pave') return OK;
+  const road = derived(s).road;
+  if (!s.roads.some((i) => road[i] === 1)) return fail('invalid', 'Every road is already paved.');
+  const need = B.map.PAVE_STONE;
+  return s.res.stone < need ? fail('unaffordable', `Paving takes ${need} stone a pace, and the stores hold less.`) : OK;
 }
 
 function checkPriority(s: GameState, cat: LaborCat, n: number): ActionResult {
@@ -206,6 +310,13 @@ function apply(s: GameState, r: Remedy): ActionResult {
     case 'buyNow': return act.buyNow(s, r.res, r.qty);
     case 'toggleOrdo': return act.setOrdo(s, r.area, r.on);
     case 'building': return r.op === 'prioritise' ? act.prioritise(s, r.id) : act.setOpen(s, r.id, r.op === 'open');
+    case 'clear': {   // what stands on the block comes down (the demolish action: a quarter back, a site cancelled)
+      for (const id of r.ids) {
+        const d = act.demolish(s, id);
+        if (!d.ok) return d;
+      }
+      return OK;
+    }
     case 'relief': {
       const ctx = newCtx();
       triggerRelief(s, ctx, view(s));
@@ -221,6 +332,39 @@ function settingWord(id: keyof typeof SETTING_DEFS, v: number): string {
   if (u === '%') return `${Math.round(v * 100)}%`;
   if (u === 'den') return `${int(v)} denarii`;
   return `${int(v)} ${u}`;
+}
+
+/** The question App asks before a block is cleared (DESIGN §11.5): where, what comes down and who moves, and the work
+ *  then placed there. Never throws. */
+export function clearPrompt(s: GameState, r: Extract<Remedy, { kind: 'clear' }>): { title: string; text: string; yes: string } {
+  try {
+    const work = aName(r.building);
+    const byHome = peopleIndex(s).byHome;
+    let souls = 0, sites = 0;
+    for (const id of r.ids) {
+      souls += byHome.get(id)?.length ?? 0;
+      if (getBuilding(s, id)?.status !== 'done') sites++;
+    }
+    const what = worksWord(s, r.ids);
+    const back = sites === 0 ? `${fractionWord(B.construction.REFUND_DEMOLISH)} of ${r.ids.length === 1 ? 'its' : 'their'} cost is salvaged` : 'what can be is salvaged';
+    const who = souls === 0 ? '' : souls === 1 ? ' The one soul who lives there looks for a bed in the town\'s other homes.'
+      : ` The ${souls} souls who live there look for beds in the town's other homes.`;
+    return {
+      title: `Clear the block ${placeName(s, r.tile)}?`,
+      text: `${what.charAt(0).toUpperCase()}${what.slice(1)} ${r.ids.length === 1 ? 'comes' : 'come'} down, and ${back}.${who} Then you place ${work} on the cleared block.`,
+      yes: `Clear it for ${work}`,
+    };
+  } catch {
+    return { title: 'Clear the block?', text: 'What stands on it comes down.', yes: 'Clear it' };
+  }
+}
+
+/** What a remedy will set in motion, for its button's tooltip before it is applied (a focus: what the council will
+ *  raise under it, so Urbs says it plants gardens on free plots), or null. */
+export function remedyTip(r: Remedy): string | null {
+  if (r.kind !== 'focus') return null;
+  const f = FOCUS_DEFS[r.focus];
+  return f ? `${f.latin} · ${f.name}\n${f.desc}` : null;
 }
 
 /** Button label of a remedy, with live numbers; never throws. */
@@ -261,10 +405,12 @@ function label(s: GameState, r: Remedy): string {
       const n = b ? BUILDING_DEFS[b.type].name.toLowerCase() : 'building';
       return r.op === 'open' ? `Reopen the ${n}` : r.op === 'close' ? `Close the ${n}` : r.op === 'prioritise' ? `Raise the ${n} first` : `Show the ${n}`;
     }
+    case 'clear': return `Clear this block for ${aName(r.building)}`;
     case 'open':
       if (r.anchor === 'choice') return 'Read the dispatch';
       if (r.anchor?.startsWith('contract-')) return 'Open the contract';
       return `Open ${TAB_WORD[r.tab]}${r.anchor ? `: ${ANCHOR_WORD[r.anchor] ?? r.anchor}` : ''}`;
     case 'overlay': return `Show the ${OVERLAY_WORD[r.overlay]} overlay`;
+    case 'tool': return r.tool === 'pave' ? `${TOOL_WORD.pave} (${B.map.PAVE_STONE} stone a pace)` : TOOL_WORD[r.tool];
   }
 }
