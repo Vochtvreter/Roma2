@@ -1156,6 +1156,7 @@ export function seasonMult(s: GameState, type: BuildingId, season: SeasonIndex):
 export function workerMult(s: GameState, b: Building, p: Person): number;                // capped part: min(MULT_CAP, site × skill × tool × productivity × fx × legacy)
 export function workerOutput(s: GameState, b: Building, p: Person, season: SeasonIndex): number;   // full formula DESIGN §8.1
 export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mode: 'current' | 'full'): Partial<Res>;   // net per day (inputs negative); 'full' = all slots at the building's current average worker
+export function inputShares(s: GameState): Map<number, { share: number; short: ResId }>;   // per staffed processing works held back by an input: its share of a full day tomorrow (produce()'s reservations against the stock above the floors) and that input; works not listed run in full
 export function maxPotential(s: GameState, res: Essential, season: SeasonIndex): number;   // best assignment of the workforce to existing producers (food cap applied) + passive
 export function caps(s: GameState): Res;
 export function horreaCap(s: GameState): number;
@@ -1227,7 +1228,9 @@ export function startStaked(s: GameState): void;                      // staked 
 export function payPlans(s: GameState, ctx: TickContext): void;       // plans become sites when the stock covers them (ignores reservations except the petition fee)
 export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats
 export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4;
-export function capitoliumFlow(s: GameState): { stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number; supply: number; demand: number } | null;   // rate/need in work units; supply/demand the bottleneck material per day (0 when the crew binds)
+export function capitoliumFlow(s: GameState): CapitoliumFlow | null;   // { stage, eta, bottleneck: ResId | 'crew' | null, rate, need, supply, demand, crew, walls, spare, stock, inflow, starved }: rate/need in work units; crew/walls/spare builders (on it, ≤ CAP_CREW; on the town wall; with nothing to build); supply/demand/stock/inflow the bottleneck material (0 when the crew binds), its works counted at what their inputs allow (inputShares); starved: { works, input, share } of those works, or null
+export function capitoliumHold(f: CapitoliumFlow): string;           // the works row's and the card's words: 'crew at its maximum: 64 of 64 builders (the most that can work on it)', 'waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)'
+export function crewWords(f: CapitoliumFlow): string;                // the Fabri row's sentence by hand: '64 of 64 builders on the Capitolium (the most that can work on it); 36 more have nothing to build.'
 export function startCapitolium(s: GameState): void;                 // creates the Capitolium site on the Area Capitolina
 export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid)
 export function prioritise(s: GameState, id: number): ActionResult;

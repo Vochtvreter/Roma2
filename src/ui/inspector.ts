@@ -22,7 +22,7 @@ import { derived, inCamp } from '../game/derived';
 import { WALL_RING, ringsOf } from '../game/survey';
 import { footfall, wearOf } from '../game/urbs';
 import { canPlace, freePlot } from '../game/place';
-import { worksQueue } from '../game/construction';
+import { capitoliumFlow, capitoliumHold, worksQueue } from '../game/construction';
 import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
@@ -636,6 +636,7 @@ class InspectorCard {
     const g = this.g;
     const def = BUILDING_DEFS[b.type];
     const line = h('div', { class: 'ins-line' });
+    const hold = h('div', { class: 'ins-small' });   // the Capitolium: what really holds it back (DESIGN §9.5)
     const pb = bar();
     const refresh = (): void => {
       const s = g.state;
@@ -646,11 +647,15 @@ class InspectorCard {
       const builders = s.people.filter((p) => p.work === BUILDER).length;
       const stage = cur.type === 'capitolium' ? ` · ${STAGES[Math.min(3, Math.floor(cur.progress * 4))]}` : '';
       line.textContent = `${Math.round(cur.progress * 100)}% of ${fmt(cur.work)} builder-days${stage} · ${plural(builders, 'builder', 'builders')} in the colony`;
+      const flow = cur.type === 'capitolium' ? capitoliumFlow(s) : null;
+      const words = flow ? capitoliumHold(flow) : '';
+      hold.textContent = words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}${flow?.eta ? `; the next stage in ≈ ${plural(flow.eta, 'day', 'days')}` : ''}.` : '';
       pb.set(cur.progress, cur.progress < B.construction.TRENCH ? 'tab-bar trench' : 'tab-bar gold');
     };
     refresh();
     this.ups.push(refresh);
     const out = [part(line, 'progress'), part(pb.el, 'progress')];
+    if (b.type === 'capitolium') out.push(part(hold, 'progress'));
     if (b.reason) out.push(part(h('div', { class: 'ins-why' }, img('i_seal', 1), reasonText(b.reason)), 'why'));
     if (b.notes?.length) out.push(part(h('div', { class: 'ins-small muted' }, `Why here: ${b.notes.map((n) => NOTE[n.code](n.value)).join(', ')}.`), 'notes'));
     const first = worksQueue(g.state)[0]?.id === b.id;

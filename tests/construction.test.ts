@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { BUILDER } from '../src/game/types';
 import type { Building, GameState, Person } from '../src/game/types';
 import {
-  builderWork, cancelSite, capitoliumFlow, capitoliumStage, constructionDay, payPlans, prioritise, setOpen, startCapitolium,
-  startStaked, worksQueue,
+  builderWork, cancelSite, capitoliumFlow, capitoliumHold, capitoliumStage, constructionDay, crewWords, payPlans, prioritise, setOpen,
+  startCapitolium, startStaked, worksQueue,
 } from '../src/game/construction';
-import { issueTools } from '../src/game/economy';
+import { issueTools, produce } from '../src/game/economy';
+import { Rng } from '../src/game/rng';
 import { assignJobs } from '../src/game/people';
-import { census } from '../src/game/census';
+import { census, peopleIndex } from '../src/game/census';
 import { demolish } from '../src/game/place';
 import { touchPeople } from '../src/game/memo';
 import { fx } from '../src/game/fx';
@@ -274,6 +275,59 @@ describe('the Capitolium (DESIGN §9.5)', () => {
     expect(f2?.eta).toBeGreaterThan(0);
     expect(f2?.demand).toBe(0);
     expect(flow?.demand).toBeCloseTo((C.CAP_MAT.stone * fx(s, 'capMat') / cap.work) * f2!.rate, 6);   // the crew's work a day × stone per work
+  });
+
+  it('says how many builders work on it: at most 64, the town wall\'s crew apart, the rest with nothing to build (playtest #7)', () => {
+    const { s } = monument(100);
+    const f = capitoliumFlow(s)!;
+    expect(f).toMatchObject({ bottleneck: 'crew', crew: 64, walls: 0, spare: 36 });
+    expect(capitoliumHold(f)).toBe('crew at its maximum: 64 of 64 builders (the most that can work on it)');
+    expect(crewWords(f)).toBe('64 of 64 builders on the Capitolium (the most that can work on it); 36 more have nothing to build.');
+    const few = capitoliumFlow(monument(40).s)!;
+    expect(few).toMatchObject({ bottleneck: 'crew', crew: 40, spare: 0 });
+    expect(capitoliumHold(few)).toBe('bottleneck: builders (40 of the 64 who could work on it)');
+    expect(crewWords(few)).toBe('40 builders on the Capitolium, which takes up to 64.');
+    // while the town wall rises its crew of 8 is served first (constructionDay): 72 builders are 64 on the temple and 8 on the wall
+    const walled = monument(72).s;
+    walled.urbs.moenia = { tiles: [], gates: [], surveyed: walled.day, work: 30_000, progress: 0, matUsed: {}, done: null };
+    const w = capitoliumFlow(walled)!;
+    expect(w).toMatchObject({ crew: 64, walls: B.urbs.MOENIA.CREW, spare: 0 });
+    expect(crewWords(w)).toBe('64 of 64 builders on the Capitolium (the most that can work on it), 8 on the town wall.');
+  });
+
+  it('counts concrete works at what their inputs allow: without water they make none, and it waits for concrete (playtest #7)', () => {
+    const { s } = monument(40);
+    s.rank = 2;
+    const at = freeSlots(s, 'caementarium', 1)[0];
+    const r = place(s, 'caementarium', at.x, at.y, { ignoreCost: true });
+    expect(r.ok).toBe(true);
+    const works = s.buildings.find((b) => b.type === 'caementarium') as Building;
+    Object.assign(works, { status: 'done', progress: 1 });
+    hands(s, 2);
+    assignJobs(s, { perBuilding: { [works.id]: 2 }, builders: 40, lines: [] });
+    expect(peopleIndex(s).byWork.get(works.id)?.length).toBe(2);
+    s.res.concrete = 0;
+    s.res.water = 0;                                                  // the staffed works stand dry
+    const f = capitoliumFlow(s)!;
+    expect(f).toMatchObject({ bottleneck: 'concrete', eta: null, stock: 0, inflow: 0, starved: { works: 'caementarium', input: 'water', share: 0 } });
+    expect(capitoliumHold(f)).toMatch(/^waiting for concrete: 0 in store, \+0\/day of [\d.]+ \(no water for the concrete works\)$/);
+    // the day bears it out: no concrete is mixed and the temple does not rise
+    const before = s.buildings.find((b) => b.type === 'capitolium')!.progress;
+    s.day++;
+    const c = ctx();
+    produce(s, c, new Rng(1));
+    constructionDay(s, c);
+    expect(s.res.concrete).toBe(0);
+    expect(s.buildings.find((b) => b.type === 'capitolium')!.progress).toBe(before);
+    // with water the same works mix their concrete, and the crew binds again
+    s.res.water = 1e6;
+    const g = capitoliumFlow(s)!;
+    expect(g.starved).toBe(null);
+    expect(g.bottleneck).toBe('crew');
+    // unless the Lex de annona pauses them for water (DESIGN §8.12)
+    s.ordo.emergency.waterPause = true;
+    s.res.concrete = 0;
+    expect(capitoliumFlow(s)).toMatchObject({ bottleneck: 'concrete', starved: { works: 'caementarium', input: 'water', share: 0 } });
   });
 
   it('raises a stage at each quarter (fx, log, morale for 30 days) and completes in victory', () => {

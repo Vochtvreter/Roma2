@@ -216,6 +216,42 @@ export function buildingRateOf(s: GameState, b: Building, season: SeasonIndex, m
   return v;
 }
 
+/** Each staffed processing works' share of a full day's work tomorrow (0..1) and the input that holds it back, by
+ *  building id: produce() reserves inputs hand by hand against the start-of-day stock above the reserve floors (DESIGN
+ *  §5.2), so a works whose input stands at 0 makes nothing however well staffed, which buildingRate's nominal rate
+ *  does not show; a works the Lex de annona's water pause idles has share 0 for want of water. Works that are not
+ *  listed run in full. */
+export function inputShares(s: GameState): Map<number, { share: number; short: ResId }> {
+  const out = new Map<number, { share: number; short: ResId }>();
+  const ix = peopleIndex(s);
+  const season = seasonOf(s.day);
+  const procs: Building[] = [];
+  let industryWater = 0;
+  for (const b of s.buildings) {   // as produce(): the same works, the same water draw
+    if (b.status !== 'done') continue;
+    const def = BUILDING_DEFS[b.type];
+    if (def.waterDraw && serviceActive(s, b) && !waterPaused(s, b)) industryWater += def.waterDraw;
+    if (phaseOf(b) !== 'process') continue;
+    if (waterPaused(s, b)) { if (b.open) out.set(b.id, { share: 0, short: 'water' }); continue; }
+    industryWater += (def.inputs?.water ?? 0) * (ix.byWork.get(b.id)?.length ?? 0);
+    procs.push(b);
+  }
+  const pool = industryPool(s, s.res, census(s), industryWater);
+  for (const b of procs) {
+    const n = b.open ? ix.byWork.get(b.id)?.length ?? 0 : 0;
+    if (n === 0 || activeFactor(s, b) * seasonMult(s, b.type, season) <= 0) continue;
+    const inputs = BUILDING_DEFS[b.type].inputs ?? {};
+    let served = n, short: ResId | null = null;
+    for (const r of RESOURCES) {
+      const k = inputs[r] ?? 0;
+      if (k > 0 && Math.max(0, pool[r]) / k < served) { served = Math.max(0, pool[r]) / k; short = r; }
+    }
+    for (const r of RESOURCES) pool[r] -= (inputs[r] ?? 0) * served;
+    if (short) out.set(b.id, { share: served / n, short });
+  }
+  return out;
+}
+
 interface Producers { slots: { type: BuildingId; id: number; n: number; per: number }[]; passive: { type: BuildingId; per: number }[] }
 
 /** Producers of an essential with their season-free per-worker output (current average worker, else an unskilled one). */

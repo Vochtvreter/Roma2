@@ -267,8 +267,11 @@ export function planLabour(s: GameState, v: SimView): LabourPlan {
     const want = Math.min(bCap, base + (capSite ? B.construction.CAP_CREW : 0) + (walls ? B.urbs.MOENIA.CREW : 0));
     const k = Math.max(0, Math.min(want - builders, free));
     builders += k; free -= k;
+    // the builders past the works in hand go to the town wall's crew first, then to the Capitolium's (constructionDay)
+    const onWall = walls ? Math.min(B.urbs.MOENIA.CREW, Math.max(0, builders - base)) : 0;
+    const crew = Math.min(B.construction.CAP_CREW, Math.max(0, builders - base - onWall));
     note('builders', k, capSite
-      ? reason('monument', { n: builders, crew: Math.max(0, builders - base) })
+      ? reason('monument', { n: builders, crew, max: B.construction.CAP_CREW, full: crew >= B.construction.CAP_CREW ? 1 : 0, walls: onWall || undefined })
       : reason('builderShare', { n: builders, sites: sites.length }));
   }
 
