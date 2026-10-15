@@ -7,12 +7,13 @@
 // (§7.3), from the same coverage and desirability the houses read, on a copy of the state without those works.
 // Undo: the last demolishMany is kept beside the state in memory (a WeakMap, never saved: a reload ends it) for
 // B.construction.UNDO_DAYS days. undoDemolition raises those works again as they stood, takes the salvage back, and
-// puts back whoever is still without the home or the work it took; it refuses when anything now stands on that ground,
-// a work of a one-only type was raised again meanwhile, or the salvage is spent. The ticks never read the record, so
-// the colony runs the same with or without it.
+// puts back whoever is still without the home or the work it took; it refuses when anything now lies on that ground (a
+// work, a road, an aqueduct's route, the town wall's line: canPlace's occupancy), a work of a one-only type was raised
+// again meanwhile, or the salvage is spent. The ticks never read the record, so the colony runs the same with or
+// without it.
 import { B } from './balance';
 import { NEEDS, RESOURCES } from './types';
-import type { ActionResult, Building, BuildingId, Cost, GameState, NeedId } from './types';
+import type { ActionResult, Building, BuildingId, Cost, Derived, GameState, NeedId } from './types';
 import { idx } from './map';
 import { blockOfTile, derived, footprintOf } from './derived';
 import { invalidate, touchPeople } from './memo';
@@ -177,6 +178,15 @@ export function undoable(s: GameState): { works: number; until: number } | null 
   return { works: r.works.length, until: r.day + B.construction.UNDO_DAYS };
 }
 
+/** Whether a razed work's ground is still as it left it, by canPlace's occupancy rules (place.ts, ARCHITECTURE §8.2): no
+ *  work, road, aqueduct route (or the Area Capitolina) or town-wall line on its footprint, and no work or other route on
+ *  a castellum's own route (a route may cross roads and the wall). None of these can lie under a standing work, so any
+ *  of them there was laid since it came down. */
+function groundFree(s: GameState, d: Derived, b: Building): boolean {
+  const taken = (i: number): boolean => d.buildingAt[i] !== 0 || d.reservedTile[i] === 1;
+  return !footprintOf(b, s).some((i) => taken(i) || d.road[i] > 0 || d.wall[i] > 0) && !(b.route ?? []).some(taken);
+}
+
 /** Raises the works of the last demolition again as they stood (within UNDO_DAYS): the salvage goes back to the ground,
  *  and whoever is still without the home or the work it took has it again. */
 export function undoDemolition(s: GameState): ActionResult {
@@ -189,10 +199,7 @@ export function undoDemolition(s: GameState): ActionResult {
   const d = derived(s);
   const types = new Map<BuildingId, number>();
   for (const b of r.works) {
-    const route = b.route ?? [];
-    if (footprintOf(b, s).some((i) => d.buildingAt[i] !== 0 || d.road[i] > 0) || route.some((i) => d.buildingAt[i] !== 0)) {
-      return { ok: false, code: 'occupied', reason: 'Too late: something new stands where they stood.' };
-    }
+    if (!groundFree(s, d, b)) return { ok: false, code: 'occupied', reason: 'Too late: something new stands or is laid out where they stood.' };
     types.set(b.type, (types.get(b.type) ?? 0) + 1);
   }
   for (const [t, n] of types) {

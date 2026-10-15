@@ -1145,9 +1145,10 @@ skips that what-if (a sweep's count while it is dragged). `demolishMany`/`clearG
 (`homelessSince`) and workers, log one line, `invalidate` + `touchPeople`, and keep the record of the last demolition in
 a WeakMap beside the state (never saved). `undoDemolition` within `UNDO_DAYS` (game days) re-inserts those works in id
 order as they stood, takes the refund back, and gives back each home (a family that found beds elsewhere stays there)
-and work still empty; it refuses (`occupied`, `maxCount`, `unaffordable`, `window`) when anything stands on a
-footprint, a road crosses it or a work stands on a castellum's route, a one-only type was raised again, or the salvage
-is spent. The ticks never read the record.
+and work still empty; it refuses (`occupied`, `maxCount`, `unaffordable`, `window`) when a work, a road, an aqueduct
+route (`reservedTile`) or the town wall's line (`wall`) now lies on a footprint, or a work or another route on a
+castellum's route (canPlace's occupancy), a one-only type was raised again, or the salvage is spent. The ticks never
+read the record.
 `placeBuilding`: validates; with `replaceId` first cancels that Ordo stake at 100%; affordable → pays and creates the site (`status` = `staked` for owner `ordo` unless `noStake`, else `building`); unaffordable → owner `player` makes a `plan`, owner `ordo` fails `unaffordable`. Then fells forest under rural footprints (timber to stores, `s.wood[i] = 0`, work += stock × FELL_WORK), lays streets (urban) or the auto-road (rural) instantly and free, sets `reason`/`notes`, sets `order` = next id, appends the building (ids ascending), logs (Ordo placements: kind `ordo` with the reason text), and calls `invalidate(s)`. `house` state is created when an `area` completes.
 
 **`site.ts`**

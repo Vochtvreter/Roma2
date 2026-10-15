@@ -2,16 +2,18 @@
 // the second click (homes and people, workers, homes left without water, what comes back), an area at once with one
 // Annales line, the council's gardens of a block, and the short undo that raises them again as they stood.
 import { describe, expect, it } from 'vitest';
-import type { Building, GameState } from '../src/game/types';
+import type { Building, GameState, RankIndex } from '../src/game/types';
 import { B } from '../src/game/balance';
 import { clearGardens, councilGardens, costWords, demolishMany, demolitionImpact, undoDemolition, undoable } from '../src/game/demolition';
 import * as A from '../src/game/actions';
-import { placeBuilding, placementCost, validSlots } from '../src/game/place';
-import { blockOfTile, derived } from '../src/game/derived';
+import { canPlace, placeBuilding, placementCost, validSlots } from '../src/game/place';
+import { bestSlot } from '../src/game/site';
+import { blockOfTile, derived, footprintOf } from '../src/game/derived';
 import { peopleIndex } from '../src/game/census';
 import { invalidate } from '../src/game/memo';
 import { unmetNeeds } from '../src/game/housing';
-import { idx } from '../src/game/map';
+import { idx, tx, ty } from '../src/game/map';
+import { commissionWalls, surveyLine } from '../src/game/urbs';
 import { fresh, run } from './util';
 
 const C = B.construction;
@@ -45,6 +47,34 @@ function garden(s: GameState, tile: number, owner: 'player' | 'ordo'): Building 
   b.progress = 1;
   invalidate(s);
   return b;
+}
+
+/** A finished forage camp (2×2, rural) on fresh(`seed`) at `rank`, placed so its footprint covers a tile of `on(s)`:
+ *  each origin that can take it in turn, until `fits` says the ground it frees is what the test wants. */
+function campOn(seed: number, rank: RankIndex, on: (s: GameState) => readonly number[],
+  fits: (s: GameState, camp: Building) => boolean): { s: GameState; camp: Building } | null {
+  const probe = fresh(seed);
+  probe.rank = rank;
+  invalidate(probe);
+  const origins = new Set<number>();
+  for (const t of on(probe)) for (const [dx, dy] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
+    const x = tx(t) + dx, y = ty(t) + dy;
+    if (x >= 0 && y >= 0) origins.add(idx(x, y));
+  }
+  for (const o of [...origins].sort((a, c) => a - c)) {
+    const s = fresh(seed);
+    s.rank = rank;
+    invalidate(s);
+    if (!canPlace(s, 'pabulatio', o, { ignoreCost: true }).ok) continue;
+    const r = placeBuilding(s, 'pabulatio', o, { noStake: true, ignoreCost: true });
+    if (!r.ok) continue;
+    const camp = s.buildings.find((b) => b.id === r.id)!;
+    camp.status = 'done';
+    camp.progress = 1;
+    invalidate(s);
+    if (fits(s, camp)) return { s, camp };
+  }
+  return null;
 }
 
 describe('demolitionImpact: what the second click would do', () => {
@@ -196,6 +226,44 @@ describe('undoDemolition: a short undo', () => {
     expect(u.ok).toBe(false);
     if (!u.ok) expect(u.code).toBe('unaffordable');
     expect(t.buildings.some((b) => b.id === well.id)).toBe(false);
+  });
+
+  it("refuses once an aqueduct's route runs over the freed ground", () => {
+    const route = (s: GameState): number[] => {
+      const c = bestSlot(s, 'castellum', { owner: 'player' });
+      const k = c ? canPlace(s, 'castellum', c.tile, { ignoreCost: true }) : null;
+      return k?.ok && k.route ? k.route : [];
+    };
+    // a forage camp on the aqueduct's line, pulled down; the castellum then laid with its route over that ground (Undo
+    // would put the camp back on the aqueduct, which canPlace refuses as 'reserved')
+    const hit = campOn(42, 3, route, (s, camp) => {
+      const fp = footprintOf(camp, s);
+      if (!demolishMany(s, [camp.id]).ok) return false;
+      const c = bestSlot(s, 'castellum', { owner: 'player' });
+      if (!c || !placeBuilding(s, 'castellum', c.tile, { noStake: true, ignoreCost: true }).ok) return false;
+      return fp.some((i) => derived(s).reservedTile[i] === 1);
+    });
+    expect(hit).not.toBeNull();
+    const { s, camp } = hit!;
+    const r = undoDemolition(s);
+    expect(r).toEqual({ ok: false, code: 'occupied', reason: 'Too late: something new stands or is laid out where they stood.' });
+    expect(s.buildings.some((b) => b.id === camp.id)).toBe(false);
+  });
+
+  it('refuses once the town wall is laid over the freed ground', () => {
+    // a forage camp on the wall's line, pulled down; the town wall then laid out across that ground (canPlace: 'castrum')
+    const line = (s: GameState): number[] => surveyLine(s)?.tiles ?? [];
+    const hit = campOn(42, 3, line, (s, camp) => {
+      const fp = footprintOf(camp, s);
+      if (!demolishMany(s, [camp.id]).ok || !commissionWalls(s).ok) return false;
+      return fp.some((i) => derived(s).wall[i] > 0);
+    });
+    expect(hit).not.toBeNull();
+    const { s, camp } = hit!;
+    const r = undoDemolition(s);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('occupied');
+    expect(s.buildings.some((b) => b.id === camp.id)).toBe(false);
   });
 
   it('a family that found beds elsewhere meanwhile stays there', () => {
