@@ -19,7 +19,7 @@ import { settingValue } from '../decisions';
 import { sectionRevealed } from '../reveal';
 import { bestSlot, siteScore } from '../site';
 import { canPlace, pave, placeBuilding, placementCost, validSlots } from '../place';
-import { desirability, houseDesir, houseHas, previewCovered } from '../coverage';
+import { desirability, houseDesir, houseHas, previewCovered, previewDesir } from '../coverage';
 import { buildingRateOf, seasonMult } from '../economy';
 import { fxAdd as fxAdd$ } from '../fx';
 import { idx as idx$, tx as tx$, ty as ty$ } from '../map';
@@ -353,14 +353,16 @@ export function homeReach(s: GameState, type: BuildingId): string {
 /** The Ordo's garden plot (memo on day and structure): a valid Ordo slot on a plot whose neighbour on its half-block
  *  already holds a work — so a garden never breaks a free half or block that a horreum, a temple, a bathhouse, a market
  *  hall or a theatre could take — on a block with fewer than GARDEN.PER_BLOCK gardens and off the kept blocks; none while
- *  the town has a garden for every 1/PER_HOME homes or the free house plots are down to KEEP_PLOTS. The plot lifting the
- *  stone houses that may yet become a domus the most toward its street: the most brought clear (`k`), then the most lift
- *  (each house counted up to what it lacks), then the Ordo's site score, then the lowest tile; `n` the houses it lifts. */
+ *  the town has a garden for every 1/PER_HOME homes or the free house plots are down to KEEP_PLOTS (the plots a home may
+ *  take: off the blocks kept for other works, as anyOpenSlot). The plot lifting the stone houses that may yet become a
+ *  domus the most toward its street: the most brought clear (`k`), then the most lift (each house counted up to what it
+ *  lacks), then the Ordo's site score, then the lowest tile; `n` the houses it lifts. */
 export function gardenSlot(s: GameState, v: SimView): { tile: number; n: number; k: number; lift: number } | null {
   return memo(s, 'ordo.garden', `${dayStruct(s)}|${s.ordo.reserved.join(',')}`, () => {
     const G = B.ordo.GARDEN, d = v.d;
     if ((d.all.hortus ?? 0) >= d.houses.length * G.PER_HOME) return null;
-    if (validSlots(s, 'area', 'ordo').size <= G.KEEP_PLOTS) return null;   // the last free plots are the homes'
+    // the last free plots are the homes': a plot on a block kept for the temple or the theatre is no home's
+    if (validSlots(s, 'area', 'ordo').size - (keptSlots(s, 'area')?.size ?? 0) <= G.KEEP_PLOTS) return null;
     // the stone houses a garden is for: short of a domus's street, not set on an insula, not already rising
     const low: { rect: Rect; short: number }[] = [];
     for (const id of d.houses) {
@@ -409,59 +411,108 @@ const EPS = 1e-6;
 
 /** Land the Ordo's own finished gardens hold where a work of `type` could stand once they are cleared (DESIGN §10.3,
  *  make room): a garden's own plot for a plot work; for a half- or block-sized work the half or block it lies on, if
- *  nothing else stands there; off the blocks kept for other works, and valid for the work with the gardens gone. A
- *  service (`need`) goes where it serves the most of the houses `ids` (at least `min`); then the fewest gardens cleared,
- *  the best site score, the lowest tile. Null when no garden of the Ordo's gives such land (memo on the layout). */
+ *  nothing else stands there; off the blocks kept for other works, and valid for the work with those gardens gone; and
+ *  only where clearing them keeps every home beside them at its tier (keepsHomes). A service (`need`) goes where it
+ *  serves the most of the houses `ids` (at least `min`); then the fewest gardens cleared, the best site score, the lowest
+ *  tile. Null when no garden of the Ordo's gives such land (the sites memo on the layout, the pick on day and structure:
+ *  a house that rises or falls a tier moves no work). */
 function gardenRoom(s: GameState, type: BuildingId, code: ReasonCode, need: NeedId | undefined, ids: readonly number[] | undefined, min: number):
   { tile: number; clear: number[]; k: number; cost: Cost } | null {
   const mine = s.buildings.filter((b) => b.type === 'hortus' && b.owner === 'ordo' && b.status === 'done');
-  const cls = BUILDING_DEFS[type].place.find((p) => p === 'plot' || p === 'half' || p === 'block');
+  const cls = BUILDING_DEFS[type].place.find((p): p is Urban => p === 'plot' || p === 'half' || p === 'block');
   if (mine.length === 0 || !cls || type === 'hortus') return null;
-  const key = `${layoutEpoch(s)}|${s.rank}|${s.ordo.reserved.join(',')}|${code}|${need ?? ''}|${ids?.join(',') ?? ''}|${min}`;
-  return memo(s, `ordo.room.${type}`, key, () => {
-    const sv = getMap(s.seed).survey, d = derived(s);
-    const ours = new Set(mine.map((b) => b.id));
-    // the land as it would lie with the Ordo's gardens cleared (a view for canPlace; the state itself is not touched)
-    const bare: GameState = { ...s, buildings: s.buildings.filter((b) => !ours.has(b.id)) };
-    const want = ids ? new Set(ids) : null;
-    const layers = need ? ANSWER[need] ?? [] : [];
-    const [w, h] = sizeOf(type, cls);
-    const tried = new Set<number>();
-    let best: { tile: number; clear: number[]; k: number; cost: Cost; score: number } | null = null;
-    for (const g of mine) {
-      const bi = sv.blockAt[idx(g.x, g.y)];
-      if (bi < 0) continue;
-      const blk = sv.blocks[bi];
-      const x = cls === 'plot' ? g.x : blk.x;
-      const y = cls === 'plot' ? g.y : cls === 'half' && g.y >= blk.y + h ? blk.y + h : blk.y;
-      const tile = idx(x, y);
-      if (tried.has(tile)) continue;
-      tried.add(tile);
-      const clear = new Set<number>();
-      let only = true;
-      for (let yy = y; only && yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
-        const id = d.buildingAt[idx(xx, yy)];
-        if (id === 0) continue;
-        if (!ours.has(id)) { only = false; break; }
-        clear.add(id);
-      }
-      if (!only || clear.size === 0 || overlapsKept(s, type, tile)) continue;
-      const chk = canPlace(bare, type, tile, { owner: 'ordo', ignoreCost: true });
-      if (!chk.ok) continue;
-      let k = 0;
-      if (want) {
-        const served = new Set<number>();
-        for (const p of previewCovered(s, type, x, y)) if (layers.includes(p.layer)) for (const hid of p.houses) if (want.has(hid)) served.add(hid);
-        k = served.size;
-        if (k < min) continue;
-      }
-      const score = siteScore(s, type, x, y, code).score;
-      const better = !best || k > best.k || (k === best.k && (clear.size < best.clear.length || (clear.size === best.clear.length
-        && (score > best.score + EPS || (Math.abs(score - best.score) <= EPS && tile < best.tile)))));
-      if (better) best = { tile, clear: [...clear].sort((a, b) => a - b), k, cost: chk.cost, score };
+  const key = `${s.rank}|${s.ordo.reserved.join(',')}|${code}|${need ?? ''}|${ids?.join(',') ?? ''}|${min}`;
+  const sites = memo(s, `ordo.room.${type}`, `${layoutEpoch(s)}|${key}`, () => roomSites(s, mine, type, cls, code, need, ids, min));
+  return memo(s, `ordo.roomPick.${type}`, `${dayStruct(s)}|${key}`, () => {
+    let best: RoomSite | null = null;
+    for (const r of sites) {
+      const better = !best || r.k > best.k || (r.k === best.k && (r.clear.length < best.clear.length || (r.clear.length === best.clear.length
+        && (r.score > best.score + EPS || (Math.abs(r.score - best.score) <= EPS && r.tile < best.tile)))));
+      if (better && keepsHomes(s, r.clear)) best = r;
     }
     return best && { tile: best.tile, clear: best.clear, k: best.k, cost: best.cost };
   });
+}
+
+type Urban = 'plot' | 'half' | 'block';
+type RoomSite = { tile: number; clear: number[]; k: number; cost: Cost; score: number };
+
+/** Every site the Ordo's gardens `mine` give a work of `type` (gardenRoom), unranked. */
+function roomSites(s: GameState, mine: readonly Building[], type: BuildingId, cls: Urban, code: ReasonCode,
+  need: NeedId | undefined, ids: readonly number[] | undefined, min: number): RoomSite[] {
+  const sv = getMap(s.seed).survey, d = derived(s);
+  const ours = new Set(mine.map((b) => b.id));
+  // the land as it would lie with every garden of the Ordo's cleared (a view for canPlace; the state itself is not
+  // touched): exact for a site's footprint, which holds only the gardens it clears; a castellum's aqueduct is
+  // measured again below where it would cross a garden that stays
+  const bare: GameState = { ...s, buildings: s.buildings.filter((b) => !ours.has(b.id)) };
+  const want = ids ? new Set(ids) : null;
+  const layers = need ? ANSWER[need] ?? [] : [];
+  const [w, h] = sizeOf(type, cls);
+  const tried = new Set<number>();
+  const out: RoomSite[] = [];
+  for (const g of mine) {
+    const bi = sv.blockAt[idx(g.x, g.y)];
+    if (bi < 0) continue;
+    const blk = sv.blocks[bi];
+    const x = cls === 'plot' ? g.x : blk.x;
+    const y = cls === 'plot' ? g.y : cls === 'half' && g.y >= blk.y + h ? blk.y + h : blk.y;
+    const tile = idx(x, y);
+    if (tried.has(tile)) continue;
+    tried.add(tile);
+    const clear = new Set<number>();
+    let only = true;
+    for (let yy = y; only && yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+      const id = d.buildingAt[idx(xx, yy)];
+      if (id === 0) continue;
+      if (!ours.has(id)) { only = false; break; }
+      clear.add(id);
+    }
+    if (!only || clear.size === 0 || overlapsKept(s, type, tile)) continue;
+    let chk = canPlace(bare, type, tile, { owner: 'ordo', ignoreCost: true });
+    if (!chk.ok) continue;
+    // the aqueduct runs over another of our gardens, which stays: routed (and costed) with only this site's cleared
+    if (chk.route?.some((i) => d.buildingAt[i] !== 0 && !clear.has(d.buildingAt[i]))) {
+      chk = canPlace({ ...s, buildings: s.buildings.filter((b) => !clear.has(b.id)) }, type, tile, { owner: 'ordo', ignoreCost: true });
+      if (!chk.ok) continue;
+    }
+    let k = 0;
+    if (want) {
+      const served = new Set<number>();
+      for (const p of previewCovered(s, type, x, y)) if (layers.includes(p.layer)) for (const hid of p.houses) if (want.has(hid)) served.add(hid);
+      k = served.size;
+      if (k < min) continue;
+    }
+    out.push({ tile, clear: [...clear].sort((a, b) => a - b), k, cost: chk.cost, score: siteScore(s, type, x, y, code).score });
+  }
+  return out;
+}
+
+/** Clearing the Ordo's gardens `ids` keeps every home beside them at its tier (DESIGN §3.9, as a needless well): no home
+ *  would fall within GARDEN.MARGIN of its tier's desirability for want of them. A garden goes where it lifts the stone
+ *  houses, so once one is a domus (desirability 10) its garden is often what keeps it one. */
+function keepsHomes(s: GameState, ids: readonly number[]): boolean {
+  const lose = new Map<number, number>();   // what the gardens add to their street, per tile
+  for (const id of ids) {
+    const g = getBuilding(s, id);
+    if (g) for (const p of previewDesir(s, 'hortus', g.x, g.y)) lose.set(p.tile, (lose.get(p.tile) ?? 0) + p.v);
+  }
+  const at = derived(s).buildingAt;
+  const seen = new Set<number>(ids);
+  for (const tile of lose.keys()) {
+    const id = at[tile];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const b = getBuilding(s, id), h = b?.house;
+    if (!b || !h) continue;
+    const min = TIER_DEFS[h.renovating?.to ?? h.tier].desirMin;
+    if (min === null) continue;
+    const fp = footprintOf(b, s);
+    let sum = 0;
+    for (const i of fp) sum += lose.get(i) ?? 0;
+    if (houseDesir(s, id) - sum / Math.max(1, fp.length) < min + B.ordo.GARDEN.MARGIN) return false;
+  }
+  return true;
 }
 
 /** Clears the Ordo's own gardens for the work it raises in their place (make room): their tiles, or null (nothing
@@ -902,7 +953,8 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
 }
 
 /** The next `n` wishes not yet placed, with states (concurrency full → ready wishes wait), lacking goods and ETA; with
- *  `held`, only the wishes of the full walk the Ordo does not hold the duty for (what it would raise). */
+ *  `held`, only the wishes of the full walk the Ordo does not hold the duty for (what it would raise, for the player to
+ *  raise once by hand): none it raises where it clears its own gardens (make room), which no placement by hand does. */
 export function newWishes(s: GameState, v: SimView, n: number, held?: string): WishView[] {
   const full = ordoSites(s) >= maxSites(v);
   const wait = growthWait(s);
@@ -910,7 +962,7 @@ export function newWishes(s: GameState, v: SimView, n: number, held?: string): W
   for (const e of walkWishes(s, v, held !== undefined).list) {
     if (out.length >= n) break;
     const wish = e.wish;
-    if (held !== undefined && maskAllows(held, wish.reason, wish.survival)) continue;
+    if (held !== undefined && (maskAllows(held, wish.reason, wish.survival) || wish.clear)) continue;
     const state: WishView['state'] = e.state !== 'proposed' ? e.state : full && !wish.survival ? 'waiting' : wait > 0 && isGrowth(wish) ? 'paced' : 'proposed';
     const w: WishView = lazyTile({ type: wish.type, state, reason: wish.reason }, () => wish.tile);
     if (state === 'paced') w.eta = wait;
@@ -925,7 +977,8 @@ export function newWishes(s: GameState, v: SimView, n: number, held?: string): W
 }
 
 /** The first wish the Ordo would raise if it held every duty, among those it does not hold (null: it holds them all, or
- *  none of their wishes stands). What the Agenda, Edicta and Apply once offer the player to raise by hand. */
+ *  none of their wishes stands), and not where it clears its own gardens. What the Agenda, Edicta and Apply once offer
+ *  the player to raise by hand. */
 export function wouldRaise(s: GameState, v: SimView): WishView | null {
   const mask = walkMask(s);
   if (mask === 'all') return null;

@@ -1325,7 +1325,7 @@ export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionR
 export function pinBuild(s: GameState, type: BuildingId | null): ActionResult;
 export function setOrdo(s: GameState, area: OrdoArea, on: boolean): ActionResult;
 export function setManualTarget(s: GameState, cat: LaborCat, n: number): ActionResult;   // manual labour only
-export function applyOnce(s: GameState, area: OrdoArea): ActionResult;    // labour: copy the Ordo plan into manual targets; build: place wish #1 as a player site; trade: create the would-be contract
+export function applyOnce(s: GameState, area: OrdoArea): ActionResult;    // labour: copy the Ordo plan into manual targets; build: place wish #1 as a player site (wouldRaise: never one raised where the Ordo clears its own gardens, DESIGN §3.9); trade: create the would-be contract
 export function setLabourPriority(s: GameState, cat: LaborCat, days: number): ActionResult;
 // ordo/reasons.ts
 export function reasonText(r: Reason): string;                        // full sentence for tooltips/Annales

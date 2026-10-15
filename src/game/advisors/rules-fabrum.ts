@@ -314,7 +314,8 @@ const agenda: AdvisorRule = {
   id: 'fabrum.agenda', advisor: 'fabrum',
   evaluate(s, v) {
     if (!s.ordo.on.build) return null;
-    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined);
+    // (not a work the Ordo raises where it clears its own gardens: no placement by hand can take that slot)
+    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined && x.reason.params.gardens === undefined);
     if (!w) return null;
     return {
       rule: 'fabrum.agenda', severity: 1, metric: { label: 'In', value: w.eta ?? 1, unit: 'days' },
