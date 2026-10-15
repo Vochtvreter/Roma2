@@ -21,7 +21,7 @@ import { petitionNeeds } from '../src/game/decisions';
 import { activeAdvisories } from '../src/game/advisors/engine';
 import { view } from '../src/game/sim';
 import { play } from './autoplayer';
-import { forceEvent, fresh, noNaN, run } from './util';
+import { forceEvent, freeSlots, fresh, noNaN, run } from './util';
 
 type Raw = ReturnType<typeof JSON.parse>;   // a parsed save, before sanitising
 
@@ -584,10 +584,11 @@ describe('offline catch-up', () => {
   it('the progress line: the next rank\'s checklist and the Capitolium, before → after (F9)', () => {
     const rep = simulateOffline(fresh(42), 60_000)!;
     expect(rep.before.petition).toEqual({ rank: 1, met: 0, of: 6, items: [0, 24 / 50, 0, 0, 0, 5 / 12] });   // the charter's line counts while it waits
-    expect(rep.after.petition).toEqual({ rank: 1, met: 1, of: 6, items: [0, 24 / 50, 0, 1, 0, 9 / 12] });    // the horreum is raised
+    // the horreum is raised; Stabilitas reads 2 / 10 days
+    expect(rep.after.petition).toEqual({ rank: 1, met: 1, of: 6, items: [0, 24 / 50, 0, 1, 2 / 10, 9 / 12] });
     expect(rep.before.capitolium).toBeNull();
     expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 1 of 6 met');
-    expect(rep.awaiting.stalled).toBeNull();                                     // works raised: not stalled
+    expect(rep.awaiting.stalled).toBeNull();                                     // a line met (the Horreum): not stalled
     const s = fresh();
     const id = nextId(s);
     s.buildings.push({ id, type: 'capitolium', x: 47, y: 29, owner: 'player', status: 'building', placed: s.day, progress: 0.99, work: 10, paid: true, order: id, open: true, prio: 1, matUsed: {} });
@@ -639,6 +640,29 @@ describe('offline catch-up', () => {
     expect(up.after.built).toBe(up.before.built);
     expect(up.after.petition!.items[1]).toBeGreaterThan(up.before.petition!.items[1]);   // the Souls line
     expect(up.awaiting.stalled).toBeNull();
+  });
+
+  it('a work the checklist asks for, rising while you were away, is progress as the Capitolium is (F9)', () => {
+    // as when nothing moved (above): the Ordo holds no duty and no home is renovated, so the rest of the checklist
+    // stands still; only a granary rises, a tenth up when you leave and not yet finished when you come back
+    const s = fresh(42);
+    s.decisions.switches.governAway = false;
+    s.buildings = s.buildings.filter((b) => b.status === 'done');
+    s.res.timber = 0;
+    const at = freeSlots(s, 'horreum')[0];
+    const id = nextId(s);
+    s.buildings.push({ id, type: 'horreum', x: at.x, y: at.y, owner: 'player', status: 'building', placed: s.day, progress: 0.1, work: 600, paid: true, order: id, open: true, prio: 1 });
+    invalidate(s);
+    const rep = simulateOffline(s, 60_000)!;
+    const site = s.buildings.find((b) => b.id === id)!;
+    expect(site.status).toBe('building');
+    expect(site.progress).toBeGreaterThan(0.2);
+    const b = rep.before.petition!, a = rep.after.petition!;
+    expect(a.met).toBe(b.met);
+    expect([b.items[3], a.items[3]]).toEqual([0.1, site.progress]);              // the Horreum line: its site higher
+    expect(a.items.filter((_, i) => i !== 3)).toEqual(b.items.filter((_, i) => i !== 3));
+    expect(rep.awaiting.stalled).toBeNull();
+    expect(stalledLine(rep)).toBeNull();
   });
 
   it('the lowest point ends in one full stop after a Roman date (R48)', () => {

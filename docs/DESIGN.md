@@ -55,7 +55,7 @@ You lay out blocks, wells, granaries, shrines and fields yourself — or leave i
 - **1 tick = 1 day = 1 real second at 1×.** Speeds ❚❚ / 1× / 2× / 5× / 10× (keys Space, 1–4). `?dev` adds 20× (key 5) and `skip(days)`.
 - Fixed-step `requestAnimationFrame` accumulator: `dt` clamped to 0.1 s, at most 8 ticks per frame, the backlog is dropped when the cap is hit.
 - The game **starts paused** under the parchment *Founding Dispatch*; its button **"Raise the standard"** starts 1×. After that nothing waits: event cards, tips, banners and the advisor card never pause. Open **modals** pause (menu, export/import, how-to-play, away report, victory).
-- **A colony comes back as you left it**: paused if you paused it (❚❚, Space or *Pause on Periculum*), else at your last speed, after Continue, a reload, a return to the tab and the away letter (§14). An imported colony waits, paused, for a speed.
+- **A colony comes back as you left it**: paused if you paused it (❚❚, Space, *Pause on Periculum*, or a button of the away letter that opens a panel, §14), else at your last speed, after Continue, a reload, a return to the tab and the away letter (§14). An imported colony waits, paused, for a speed.
 - UI pref **"Slow for news"** (default on): when a choice card appears while speed > 2×, speed drops to 2×. UI-only, never touches the sim.
 - Every countdown shows days; its tooltip adds the real-time equivalent at the current speed (*"23 days ≈ 12 s at 2×"*).
 
@@ -1174,13 +1174,15 @@ AWAITING YOU  ▲ Rome would hear our petition for Oppidum: ready since a.d. III
 Awaiting You lists the ready petition first, with how long it has waited (from the day the Augur raised his
 *Opportunitas*; the path is still never chosen for you), then the top 3 advisories with their buttons. **Progress** gives
 the next rank's checklist (*Lex coloniae* included while the charter waits) and, once its works begin, the Capitolium
-(*"Capitolium 12% → 31%"*), before → after. **When nothing moved** toward the next rank (no line of its checklist met
-or nearer as it reads, or once its works begin the Capitolium no higher; souls past the count and works the checklist
-does not ask for, such as the Ordo's cisterns, are growth, not progress) and no petition waits, Awaiting You leads with
-what holds the next rank:
+(*"Capitolium 12% → 31%"*), before → after. **When nothing moved** toward the next rank and no petition waits, Awaiting
+You leads with what holds the next rank:
 *"○ Stalled: nothing moved toward Oppidum. Still lacking: Homes of Casa tegulata or better 6 / 10 · Dignitas 31 / 40."*
 (its unmet items in checklist order, at most 3, with **See the petition**), or *"Stalled: the Capitolium did not rise
-past 34%."*
+past 34%."* Nothing moved when no line of its checklist is met or nearer as it reads (the *Stabilitas* streak where it
+stands, broken and begun again or not), no work it asks for (the *Horreum*, the aqueduct, the works it wants staffed)
+stands higher on its site (a work to be staffed counts half once raised and whole once staffed), and once its works
+begin the Capitolium is no higher. Souls past the count and works the checklist does not ask for, such as the Ordo's
+cisterns, are growth, not progress.
 
 **Away from the map is not away** (P7): while a ledger covers the whole map (a phone's full sheet or drawer, a tablet's
 wide pane under 960 px, a phone's letter or menu) the map is not drawn, but the colony runs on at the chosen speed:
@@ -1268,7 +1270,7 @@ Panels rebuild only when their signature string changes; volatile text updates t
 - **Minimap** (bottom right, 224 × 168 = 2 px/tile): whole map, active overlay mirrored, viewport rectangle, click/drag to pan; hidden on the phones and on a tablet under 960 px wide (the tool column's Mappae holds the overlay bar there), and while placing. **Overlay bar** beside it (5 toggles + Officia selector + legend). **Zoom** +, −, ⌂ (centre on forum).
 
 ### 15.5 Modals and dispatches (modals pause the sim)
-- **Parchment dispatches** (light, *letters*): **Founding Dispatch** (new game), **Litterae Ordinis** (away report), **Victory**. Parchment `#eadfc4`, ink `#2b1e15`, code-drawn meander border, red wax seal sprite. *Letters are light, instruments are dark.* A letter opens with the focus on itself, not on a button: a key pressed by reflex as it arrives (Space, the pause key; Enter) presses nothing (nor scrolls it) and never closes it unread; Tab reaches its buttons, and the arrows scroll a long one.
+- **Parchment dispatches** (light, *letters*): **Founding Dispatch** (new game), **Litterae Ordinis** (away report), **Victory**. Parchment `#eadfc4`, ink `#2b1e15`, code-drawn meander border, red wax seal sprite. *Letters are light, instruments are dark.* A letter opens with the focus on itself, not on a button: a key pressed by reflex as it arrives (Space, the pause key; Enter) presses nothing (nor scrolls it) and never closes it unread; Tab reaches its buttons, and the arrows scroll a long one. A press on the dim backdrop around a letter does not close it either (a click meant for the map as it arrives): its ✕, Esc and its buttons do. Any other modal that may be closed closes on a press there, but not within 0.4 s of opening (the second half of the double-click that opened it).
 - **Utility modals** (dark): Menu (Resume · *Annales · the chronicle* (the phone hosts, whose bar or short spine has none) · Save · How to play · Export/Import · *Copy save for the Home Screen app* (an iPhone's or iPad's browser tab, §15.11) · *Full screen* (Android-like touch devices) · Rename the colony · Save & quit to title · Abandon (asked by name: *Abandon Castra Valeria?*); beside them Sound + volume · Mentor tips · Slow for news · Pause on Periculum · **Text size** *Normal · Large* (§16.1) · *Storage* (persistent or not)) · Export/Import (base64 textarea, Copy, Load) · Rename · How to play (6 sections: *By your hand, then the Ordo's* · *Grain and water in days* · *Build where you like* · *Seasons and the two crunches* · *Time away* · *Controls*, worded for the window's hands, §15.8).
 - **Confirms are never a timing puzzle.** A choice that is for good is asked by name in a dialog with **no timeout**: the charter (*"Proclaim Colonia veteranorum?"*), each path (*"Petition Rome for Oppidum: Pietas?"*), *Abandon this colony* and *Quit without saving*. It says what the choice does, what the town will show and the fee Rome takes, ends *"This is for good"*, and offers **Not yet** / **Keep governing** (focused) beside the choice (*Proclaim it*, *Petition Rome*, *Abandon it*). The other costly steps on a button (cancel or demolish a work from its card or the works queue, cancel a contract, decline an offer, load a save, found anew, skip the lessons: *Skip every lesson?*) arm the button on the first press (*Click/Tap again…*) and runs on the second: a mouse keeps it armed while it rests there (leaving, a press elsewhere or Esc disarms it); armed by a finger or a key it drains along its foot for 8 s (under reduced motion the foot stands full and still until it disarms). A second press within 0.4 s of arming (or of a dialog opening) does nothing, so a double-click never confirms. While a confirm is armed the panel or card holding it is not rebuilt, and the counsel card and the Res Gestae above it wait: no tip unfolds and no goal grows above it between the two presses. One armed out of sight (its panel folded away, its card hidden) takes no Esc and holds nothing still; it disarms unseen (its drain, or the next press).
 - There is no defeat modal.

@@ -885,7 +885,7 @@ export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolea
 export interface Snapshot {
   day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
   petition: { rank: RankIndex; met: number; of: number; items: number[] } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
-                                                                   // items: each line's progress 0..1 in checklist order (a yes/no line 0 or 1)
+                                                                   // items: each line's progress 0..1 in checklist order (a work's line its site's while it rises; a yes/no line 0 or 1)
   capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
 }
 export interface AwayReport {
@@ -1352,7 +1352,7 @@ export function setSwitch(s: GameState, id: SwitchId, on: boolean): ActionResult
 export function renameColony(s: GameState, name: string): ActionResult;
 export function nextPath(s: GameState): PathDecisionId | null;
 export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean; souls?: number }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
-export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: { label: string; met: boolean; progress?: number }[] } | null;   // the next rank's checklist, the charter's line included while it waits; null at Colonia; progress: a measured line's 0..1 as it reads (1 once met)
+export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: { label: string; met: boolean; progress?: number }[] } | null;   // the next rank's checklist, the charter's line included while it waits; null at Colonia; progress: a line's 0..1 (1 once met): a measured line as it reads (Stabilitas its streak), a work's line as its site rises (each work to staff half once raised, whole once staffed)
 export function choosePath(s: GameState, decision: PathDecisionId, option: PathOptionId): ActionResult;   // pays fee × fx(petitionFee), records, rankUp, Colonia → startCapitolium; pushActionFx
 export function rankUp(s: GameState, rank: RankIndex): void;          // rings/territory (invalidate), ceremony paving, log, fx rank
 export function isUnlocked(s: GameState, ref: UnlockRef): boolean;
@@ -1643,9 +1643,10 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
                      awaiting: { petition: readyPetitionRank(s),   // a ready petition is not listed again as augur.petition
                                  readySince,                       // the augur.petition memo's `since` (its rank the petition's), else null
                                  stalled,                          // nothing moved toward the next rank (no checklist line met or nearer: before/after
-                                                                   // petition.items; at Colonia the Capitolium no higher; souls past the count and works
-                                                                   // the checklist does not ask for are not progress) and no petition ready: the next
-                                                                   // rank's unmet items (≤ 3, checklist order), or { rank: null } for a Capitolium that did not rise
+                                                                   // petition.items, a work it asks for nearer while its site rises; at Colonia the Capitolium
+                                                                   // no higher; souls past the count and works the checklist does not ask for are not
+                                                                   // progress) and no petition ready: the next rank's unmet items (≤ 3, checklist order),
+                                                                   // or { rank: null } for a Capitolium that did not rise
                                  advisories: activeAdvisories(s, { forCard: true }).filter(a => petition === null || a.rule !== 'augur.petition').slice(0, 3).map(a => a.rule) } }),
   };
 }
@@ -2054,7 +2055,7 @@ Never use `title=` attributes or `innerHTML` with game text (names are data); bu
 ```ts
 // modals.ts
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
-  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped (restingFocus: a parchment letter on the dialog itself, else data-autofocus or the first control but ✕)
+  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped (restingFocus: a parchment letter on the dialog itself, else data-autofocus or the first control but ✕); a press on the backdrop closes the top closable one from B.ui.CONFIRM_MIN_MS after it opened, never a parchment letter (backdropCloses, pure)
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-step confirm: armed while a mouse rests on it (leave, a press elsewhere, Esc disarm), else drains for B.ui.CONFIRM_MS; a press within B.ui.CONFIRM_MIN_MS of arming is ignored
 export interface ChoiceAsk { kicker: string; title: string; lines: readonly string[]; ok: string; cancel: string; danger?: boolean }   // tabs/edicta.ts pathAsk builds the paths' (pure)
 export function confirmChoice(q: ChoiceAsk, fn: () => void): () => void;   // a permanent choice asked by name (charter, paths, abandon, quit unsaved): Cancel (focused) + ok, no timeout, ok ignored for B.ui.CONFIRM_MIN_MS

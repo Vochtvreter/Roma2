@@ -1,7 +1,8 @@
 // src/ui/modals.ts — the modal stack, menu, export/import, how-to-play and rename (ARCHITECTURE §13.4, DESIGN §15.5). Owner: WP-H.
 // The sim pauses while any modal is open (App.modalOpen reads modalCount()). Esc (keys.ts) closes the top closable modal.
 // Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close; a parchment
-// letter holds it on itself (restingFocus), so a key pressed by reflex never closes it unread. On the phone
+// letter holds it on itself (restingFocus), so a key pressed by reflex never closes it unread, nor does a press on the
+// backdrop around it (backdropCloses). On the phone
 // hosts (the SHEET and the DRAWER) every modal is a full-screen sheet within the safe areas (sheet.css): its head (✕,
 // kicker, title) sticks to the top and its actions to the foot while the body scrolls between them; a letter keeps its
 // parchment and pinned foot. The Menu carries the platform's entries (platform.ts menuEntries): in an iPhone's or an
@@ -81,6 +82,14 @@ function rest(e: Entry): HTMLElement {
   return restingFocus(e.letter, e.box, e.box.querySelector<HTMLElement>('[data-autofocus]'), focusables(e.box), (c) => c.classList.contains('modal-x'));
 }
 
+/** Whether a press on the backdrop closes a modal (pure; tests/letters.test.ts). A parchment letter never: a click
+ *  meant for the map as it arrives (the Victory dispatch while the player builds, the away letter as the catch-up ends)
+ *  would close it unread, and the away letter cannot be read again; its ✕, Esc and its buttons close it. Any other
+ *  closable modal does, but not the second half of the double-click (or double tap) that opened it. */
+export function backdropCloses(letter: boolean, closable: boolean, sinceOpenMs: number): boolean {
+  return closable && !letter && sinceOpenMs >= B.ui.CONFIRM_MIN_MS;
+}
+
 let trapping = false;
 /** Focus that leaves the top modal (click on the backdrop of a lower one, programmatic focus) is pulled back. Installed
  *  on the first modal, so importing this module does no DOM work (headless tests import the panels that import it). */
@@ -129,9 +138,9 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   };
   entry.close = close;
   box.querySelector('.modal-x')?.addEventListener('click', close);
-  // a press on the backdrop closes it, but not the second half of the double-click (or double tap) that opened it
+  // a press on the backdrop closes it, but never a letter, nor on the second half of the double-click that opened it
   const openedAt = performance.now();
-  back.addEventListener('pointerdown', (e) => { if (e.target === back && closable && performance.now() - openedAt >= B.ui.CONFIRM_MIN_MS) close(); });
+  back.addEventListener('pointerdown', (e) => { if (e.target === back && backdropCloses(entry.letter, closable, performance.now() - openedAt)) close(); });
   box.addEventListener('keydown', (e) => {
     // on the letter itself Space does nothing: not even scroll a long one past what waits at its head (the arrows do)
     if (e.key === ' ' && e.target === box && entry.letter) { e.preventDefault(); return; }

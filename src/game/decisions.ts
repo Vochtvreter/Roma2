@@ -128,12 +128,21 @@ export function nextPath(s: GameState): PathDecisionId | null {
 }
 
 type Need = { label: string; met: boolean; souls?: number; progress?: number };   // souls: the count a Souls line asks for (the petition's ETA, settlers.ts)
-// progress: how far a measured line is, 0..1 as it reads (1 once met; the away letter's stall, offline.ts); a yes/no line has none
+// progress: how far a line is, 0..1 (1 once met; the away letter's stall, offline.ts): a measured line as it reads, a
+// work's line as its site rises (rising); a yes/no line has none
 
 /** A finished building of `type` with at least one worker. */
 function staffed(s: GameState, v: SimView, type: BuildingId): boolean {
   const c = v.c;
   return s.buildings.some((b) => b.type === type && b.status === 'done' && (c.staffed[b.id] ?? 0) > 0);
+}
+
+/** How far the furthest unfinished site of `type` has risen, 0..1 (0 with none): a work the checklist asks for comes
+ *  nearer while it is raised, as the Capitolium does (the away letter's stall). */
+function rising(s: GameState, type: BuildingId): number {
+  let p = 0;
+  for (const b of s.buildings) if (b.type === type && b.status !== 'done' && b.progress > p) p = b.progress;
+  return p;
 }
 
 /** Share of houses covered by religion (shrine or temple) and a market (taberna or macellum). */
@@ -160,23 +169,29 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
   const pop = c.pop;
   const dig = dignitas(s).value;
   const needs: Need[] = [];
+  // a work's line: met once one stands finished, else as far as its site has risen
+  const work = (label: string, type: BuildingId, met: boolean): Need => ({ label, met, progress: met ? 1 : rising(s, type) });
   const staffList = (types: BuildingId[]): Need => {
-    const missing = types.filter((t) => !staffed(s, v, t)).map((t) => BUILDING_DEFS[t].name);
+    const lacking = types.filter((t) => !staffed(s, v, t));
+    const missing = lacking.map((t) => BUILDING_DEFS[t].name);
     const all = types.map((t) => BUILDING_DEFS[t].name).join(', ');
+    // each work counts half once raised (its site's progress toward that half while it rises), whole once staffed
+    const part = (t: BuildingId): number => (lacking.includes(t) ? ((v.d.counts[t] ?? 0) > 0 ? 1 : rising(s, t)) / 2 : 1);
     return { label: missing.length ? `${all} staffed (missing: ${missing.join(', ')})` : `${all} staffed`, met: missing.length === 0,
-      progress: (types.length - missing.length) / types.length };
+      progress: types.reduce((n, t) => n + part(t), 0) / types.length };
   };
   switch (def.id) {
     case 'vicus': {
       needs.push({ label: 'Lex coloniae proclaimed', met: s.decisions.paths.charter !== undefined });
       needs.push(soulsNeed(pop, P.PETITION.vicus.POP));
       needs.push({ label: `First Hiems weathered (${formatRoman(FIRST_HIEMS_OVER, { year: true })})`, met: s.day >= FIRST_HIEMS_OVER });
-      needs.push({ label: 'A Horreum', met: (v.d.counts.horreum ?? 0) > 0 });
+      needs.push(work('A Horreum', 'horreum', (v.d.counts.horreum ?? 0) > 0));
       const stab = milestoneDone(s, 'stabilitas') || s.counters.stabStreak >= P.STAB.DAYS;
+      const streak = Math.min(s.counters.stabStreak, P.STAB.DAYS);
       needs.push({
         label: `Stabilitas: grain ≥ ${P.STAB.GRAIN} d, water ≥ ${P.STAB.WATER} d, spirits ≥ ${P.STAB.MORALE} for ${P.STAB.DAYS} days`
-          + (stab ? '' : ` (${Math.min(s.counters.stabStreak, P.STAB.DAYS)} / ${P.STAB.DAYS})`),
-        met: stab,
+          + (stab ? '' : ` (${streak} / ${P.STAB.DAYS})`),
+        met: stab, progress: stab ? 1 : streak / P.STAB.DAYS,   // as it reads: a streak broken and begun again counts where it stands
       });
       break;
     }
@@ -202,7 +217,7 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
     case 'colonia': {
       const q = P.PETITION.colonia;
       needs.push(soulsNeed(pop, q.POP));
-      needs.push({ label: 'The aqueduct flows', met: v.d.castellumActive });
+      needs.push(work('The aqueduct flows', 'castellum', v.d.castellumActive));
       needs.push(staffList(['thermae', 'theatrum']));
       needs.push(count('Insulae and domus', housesAtLeast(c, 4), q.T4_HOUSES));
       needs.push(count('Markets traded with by contract', s.trade.hubsTraded.length, q.HUBS));
