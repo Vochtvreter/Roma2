@@ -13,7 +13,7 @@ import { houseDesir } from '../../game/coverage';
 import { classAt, derived, sizeOf } from '../../game/derived';
 import { hubOpen, price } from '../../game/trade';
 import { bestSlot, resolvePlaceAt } from '../../game/site';
-import { liftSlot, serveSlot } from '../../game/advisors/util';
+import { liftSlot, serveSlot, serviceReach } from '../../game/advisors/util';
 import { personName } from '../../game/people';
 import { overlayRevealed } from '../../game/reveal';
 import { B } from '../../game/balance';
@@ -63,31 +63,74 @@ function crowdHint(g: Game, b: Building, next: HouseTierId): string | null {
   return `Its own street suffices, but ${aTier(next)} here would push ${who} below the desirability ${c.length > 1 ? 'they need' : 'it needs'}: it waits until a garden or a fountain lifts ${c.length > 1 ? 'their' : 'that'} street.`;
 }
 
+/** The free slot that brings house `id` its want (a well or shrine reaching it along the streets, a garden lifting its
+ *  street), or null when none does; undefined for oil, which the market hall brings from a grove anywhere. */
+function servingSlot(s: GameState, id: number, need: NeedId, type: BuildingId): number | null | undefined {
+  if (need === 'oil') return undefined;
+  return (need === 'desirability' ? liftSlot(s, 'player', [id]) : serveSlot(s, type, 'player', need, [id]))?.tile ?? null;
+}
+
 /** Where a want's Place button sets the ghost down, as the advisors' remedies do: the free slot that serves house `id`
- *  (a well or shrine reaching it along the streets, a garden lifting its street), else the valid slot nearest the house
- *  (resolvePlaceAt), so the ghost starts by it with any hand (DESIGN §15.8). Oil comes by the market hall from anywhere,
- *  so a grove goes to the best slot. Undefined only when the type has no valid slot at all. */
+ *  (servingSlot), else the valid slot nearest the house (resolvePlaceAt), so the ghost starts by it with any hand (DESIGN
+ *  §15.8) — the card then says no free plot reaches it (noPlotNote) and the ghost that it does not reach the home. Oil
+ *  comes by the market hall from anywhere, so a grove goes to the best slot. Undefined only when the type has no valid
+ *  slot at all. */
 export function fixSlot(s: GameState, id: number, need: NeedId, type: BuildingId): number | undefined {
   if (need === 'oil') return bestSlot(s, type, { owner: 'player' })?.tile;
-  const serves = need === 'desirability' ? liftSlot(s, 'player', [id]) : serveSlot(s, type, 'player', need, [id]);
-  if (serves) return serves.tile;
+  const serves = servingSlot(s, id, need, type);
+  if (serves !== null && serves !== undefined) return serves;
   const b = getBuilding(s, id);
   if (!b) return undefined;
   const [w, ht] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
   return resolvePlaceAt(s, type, undefined, 'player', { near: { x: b.x, y: b.y, w, h: ht } });
 }
 
+/** What a want's card says when no free plot brings house `id` that want (its Place then starts by the house, where the
+ *  work would not reach it): "No free plot within 20 steps of this house; clearing one would help." Null when one does,
+ *  and for oil. */
+export function noPlotNote(s: GameState, id: number, need: NeedId, type: BuildingId): string | null {
+  if (servingSlot(s, id, need, type) !== null) return null;
+  return need === 'desirability' ? 'No free plot lies near enough to lift its street; clearing one would help.'
+    : `No free plot within ${serviceReach(s, type, need)} steps of this house; clearing one would help.`;
+}
+
+/** The work a want's buttons raise (water: a fountain once a castellum flows), if any. */
+function serviceOf(s: GameState, need: NeedId): BuildingId | undefined {
+  return need === 'water' && derived(s).castellumActive && !rankReason(s, 'lacus') ? 'lacus' : SERVICE[need];
+}
+
+/** The live line under a want whose work no free plot would bring to house `b` (noPlotNote), hidden while one does or
+ *  while Rome has not granted the work. */
+function noPlotLine(g: Game, b: Building, need: NeedId, up: Updater[]): HTMLElement | null {
+  if (!SERVICE[need] || need === 'oil') return null;
+  const el = h('div', { class: 'ins-bad' });
+  const tick = (): void => {
+    const s = g.state, type = serviceOf(s, need);
+    const note = type && !rankReason(s, type) ? noPlotNote(s, b.id, need, type) : null;
+    el.hidden = note === null;
+    el.textContent = note ?? '';
+  };
+  tick();
+  up.push(tick);
+  return el;
+}
+
 /** How to fix one of house `b`'s unmet needs: a hint and the buttons that do it. */
 function fix(g: Game, b: Building, need: NeedId): Kid[] {
   const s = g.state;
-  let type = SERVICE[need];
-  if (need === 'water' && derived(s).castellumActive && !rankReason(s, 'lacus')) type = 'lacus';
+  const type = serviceOf(s, need);
   const out: Kid[] = [];
   if (type) {
     const reason = rankReason(s, type);
-    if (s.ordo.on.build) out.push(btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type), { reason, tip: `The Ordo raises ${BUILDING_DEFS[type].name.toLowerCase()} at its best site.` }));
-    out.push(btn(g, `Place ${article(BUILDING_DEFS[type].name.toLowerCase())}`,
-      () => { g.startPlacing({ kind: 'building', type, at: fixSlot(g.state, b.id, need, type) }); }, { cls: 'primary', reason }));
+    const name = BUILDING_DEFS[type].name.toLowerCase();
+    // the work is for this home (oil excepted: a grove anywhere serves it): the Ordo raises it within its reach, and the
+    // ghost says whether a plot reaches it
+    const mine = need !== 'oil';
+    if (s.ordo.on.build) out.push(btn(g, 'Ask the Ordo', () => A.askOrdo(g.state, type, mine ? b.id : undefined),
+      { reason, tip: mine ? `The Ordo raises ${name} where it reaches this house.` : `The Ordo raises ${name} at its best site.` }));
+    const home = serviceReach(s, type, need) > 0 ? { id: b.id, need } : undefined;
+    out.push(btn(g, `Place ${article(name)}`,
+      () => { g.startPlacing({ kind: 'building', type, at: fixSlot(g.state, b.id, need, type), home }); }, { cls: 'primary', reason }));
   }
   if (need === 'desirability' && overlayRevealed(s, 'desir')) out.push(btn(g, 'Show on map', () => { g.view.setOverlay('desir'); }, { cls: 'ghost' }));
   if (need === 'fed') out.push(btn(g, 'Rations', () => { g.openTab('council', 'edict-rationes'); }, { cls: 'ghost' }));
@@ -164,6 +207,7 @@ export function houseView(g: Game, b: Building, up: Updater[]): HTMLElement[] {
       return h('li', { class: met ? 'met' : 'unmet' }, h('span', { class: 'ins-mark' }, met ? '✔' : '○'), img(NEED_META[n].icon, 1, 'ins-want'),
         h('span', { class: 'ins-need' }, n === 'rank' ? `A ${RANK_DEFS[nt.rank].name} charter` : NEED_META[n].label,
           met ? null : h('div', { class: 'ins-hint' }, (n === 'desirability' ? crowdHint(g, b, next) : null) ?? HINT[n]),
+          met ? null : noPlotLine(g, b, n, up),
           met ? null : h('div', { class: 'ins-fix' }, fix(g, b, n))));
     }));
     if (want === 'materials') list.append(h('li', { class: 'unmet' }, h('span', { class: 'ins-mark' }, '○'), img(NEED_META.materials.icon, 1, 'ins-want'),

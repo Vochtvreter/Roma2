@@ -308,7 +308,7 @@ export interface DecisionState {
 export interface OrdoState {
   on: Record<OrdoArea, boolean>;
   manual: Record<LaborCat, number>;                  // manual labour targets per category
-  requests: { type: BuildingId; day: number }[];    // "Ask the Ordo", max 3
+  requests: { type: BuildingId; day: number; house?: number }[];   // "Ask the Ordo", max 3; house: the home a house card asked for
   pin: BuildingId | null;
   reserved: number[];                                // reserved block ids (sorted)
   priorities: { cat: LaborCat; until: number }[];    // temporary "X first for N days"

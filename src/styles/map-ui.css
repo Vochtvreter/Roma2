@@ -125,6 +125,7 @@
 .place-verdict.ok { color: var(--good); }
 .place-verdict.bad { color: #ff8b80; }
 .place-warn { color: var(--gold); }
+.place-far { color: #ff8b80; }   /* a house card's work that would not reach the home that asked */
 .place-help { font-size: var(--fs-xs); color: var(--muted); }   /* a sentence: Pixelify (12 px Silkscreen ran it onto two lines) */
 /* the banner's buttons: one box on the phone's 76 px banner (sheet.css); elsewhere they stand in the banner's row as they
    always did. Cancel says so in words (✕ on the phone). The touch verbs: ⟳ keep placing, ↕ vertical first (pressed: lit) */

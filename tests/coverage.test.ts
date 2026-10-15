@@ -4,10 +4,10 @@ import { F, LAYERS, T } from '../src/game/types';
 import type { Building, BuildingId, GameState } from '../src/game/types';
 import { H, W, getMap, idx } from '../src/game/map';
 import { invalidate, touchPeople } from '../src/game/memo';
-import { coverage, desirability, effectiveRadius, houseDesir, houseHas, previewCoverage, previewDesir } from '../src/game/coverage';
+import { coverage, desirability, effectiveRadius, houseDesir, houseHas, previewCoverage, previewCovered, previewDesir, previewSteps } from '../src/game/coverage';
 import { canWork } from '../src/game/census';
 import { bestSlot } from '../src/game/site';
-import { placeBuilding } from '../src/game/place';
+import { placeBuilding, validSlots } from '../src/game/place';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { TIER_DEFS } from '../src/game/data/housing';
@@ -145,6 +145,28 @@ describe('coverage: BFS over built roads in whole steps (DESIGN §7.4)', () => {
     for (let i = 0; i < N; i++) if (prev[0].tiles[i]) expect(real[i]).toBe(1);
     for (const id of prev[0].houses) expect(houseHas(s, id, 'shrine')).toBe(true);
     expect(previewCoverage(s, 'horreum', slot.x, slot.y)).toEqual([]);
+  });
+
+  it('counts the road steps from a would-be service to one house, as its preview reaches it (the ghost\'s reach hint)', () => {
+    const s = fresh(42);
+    const r = BUILDING_DEFS.puteus.service![0].radius;
+    const homes = s.buildings.filter((b) => b.house), houses = homes.map((b) => b.id);
+    const near = (t: number): number => Math.min(...homes.map((b) => Math.max(Math.abs(t % W - b.x), Math.abs(Math.floor(t / W) - b.y))));
+    const slots = [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => near(a) - near(b) || a - b).slice(0, 60);   // the founders' quarter
+    let reached = 0;
+    for (const t of slots) {
+      const x = t % W, y = Math.floor(t / W);
+      const served = previewCovered(s, 'puteus', x, y)[0].houses;
+      for (const id of houses) {
+        const steps = previewSteps(s, 'puteus', x, y, id, r);
+        expect(steps !== null, `well at ${x},${y} → house ${id}`).toBe(served.includes(id));   // within reach exactly when the preview serves it
+        if (steps === null) continue;
+        reached++;
+        expect(steps).toBeLessThanOrEqual(r);
+        if (steps > 0) expect(previewSteps(s, 'puteus', x, y, id, steps - 1)).toBeNull();     // and no fewer
+      }
+    }
+    expect(reached).toBeGreaterThan(0);
   });
 });
 

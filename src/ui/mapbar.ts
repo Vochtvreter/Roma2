@@ -9,7 +9,7 @@ import type { BuildingId, CoverageLayerId, GameState, OverlayId, PlaceCheck, Too
 import type { Game, PlacingState } from './types';
 import type { Host, Layout, WClass } from './layout';
 import { currentHost, registerBringer, safeArea, slimBanner, toolColumn } from './layout';
-import { clear, costEl, fmt, h, img, tip } from './dom';
+import { clear, costEl, fmt, h, img, plural, tip } from './dom';
 import { idx } from '../game/map';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { BACK_RANK, registerBack } from './history';
@@ -18,6 +18,7 @@ import { Home } from './sheet';
 import { notePractice } from '../game/actions';
 import { currentLesson } from '../game/intro';
 import { activeAdvisories, renderAdvisory } from '../game/advisors/engine';
+import { reachSteps } from '../game/advisors/util';
 import { view } from '../game/sim';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { LAYER_META } from '../game/data/housing';
@@ -409,8 +410,11 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
     return;
   }
   const def = BUILDING_DEFS[p.type];
+  // a house card's Place: whether the work on this plot would reach the home that asked (DESIGN §15.4)
+  const reach = check?.ok && p.home ? reachSteps(g.state, p.type, check.x, check.y, p.home.id, p.home.need) : undefined;
   const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
     : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
+      reach === undefined ? null : reach === null ? h('span', { class: 'place-far' }, ' · ✕ does not reach this home') : ` · ✔ reaches this home (${plural(reach, 'step', 'steps')})`,
       check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
       check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
       : h('span', { class: 'place-verdict bad' }, check.reason);

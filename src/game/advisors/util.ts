@@ -16,7 +16,7 @@ import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup'
 import { crowds, nextTier, shownWant, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { validSlots } from '../place';
-import { houseDesir, previewCovered, previewDesir } from '../coverage';
+import { houseDesir, previewCovered, previewDesir, previewSteps } from '../coverage';
 import { siteScore } from '../site';
 import { classAt, sizeOf } from '../derived';
 import { rectGap } from '../world/grid';
@@ -224,6 +224,30 @@ const ANSWERS: Partial<Record<NeedId, readonly CoverageLayerId[]>> = {
 const BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadius' | 'bathsRadius'>> = {
   shrine: 'shrineRadius', temple: 'shrineRadius', market: 'marketRadius', macellum: 'marketRadius', baths: 'bathsRadius',
 };
+
+/** The coverage layers that answer a house need (empty for a need no service's coverage meets). */
+export function answering(need: NeedId): readonly CoverageLayerId[] {
+  return ANSWERS[need] ?? [];
+}
+
+/** A service's reach in road steps for a house need: the farthest of its layers that answer the need, path bonuses
+ *  included; 0 when none does (DESIGN §7.4). */
+export function serviceReach(s: GameState, type: BuildingId, need: NeedId): number {
+  const layers = answering(need);
+  let r = 0;
+  for (const x of BUILDING_DEFS[type].service ?? []) {
+    const bonus = BONUS[x.layer];
+    if (layers.includes(x.layer)) r = Math.max(r, x.radius + (bonus ? fxAdd(s, bonus) : 0));
+  }
+  return r;
+}
+
+/** Road steps from a `type` at (x, y) to house `id` when it would bring the house the coverage its `need` waits for,
+ *  else null: the placement ghost's word on whether the work reaches the home that asked (DESIGN §15.4). */
+export function reachSteps(s: GameState, type: BuildingId, x: number, y: number, id: number, need: NeedId): number | null {
+  const r = serviceReach(s, type, need);
+  return r > 0 ? previewSteps(s, type, x, y, id, r) : null;
+}
 
 /** A set of tiles as a memo key part (kept per set: the Ordo hands the same set all day). */
 function skipKey(skip: ReadonlySet<number> | undefined): string {

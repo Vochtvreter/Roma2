@@ -241,6 +241,7 @@ function sanitise(s: GameState): void {
   const o = s.ordo;
   if (o.pin !== null && !BUILDINGS.includes(o.pin)) o.pin = null;
   o.requests = Array.isArray(o.requests) ? o.requests.filter((r) => isObj(r) && BUILDINGS.includes(r.type) && Number.isFinite(r.day)) : [];
+  for (const r of o.requests) if ('house' in r && !Number.isInteger(r.house)) delete r.house;   // the home a house card asked for
   o.reserved = sortedTiles(o.reserved);
   o.priorities = Array.isArray(o.priorities) ? o.priorities.filter((p) => isObj(p) && LABOR_CATS.includes(p.cat) && Number.isFinite(p.until)) : [];
   for (const k of LABOR_CATS) o.manual[k] = Math.max(0, Math.round(finite(o.manual[k])));

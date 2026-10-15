@@ -8,12 +8,12 @@ import type { BuildingId, GameState, PlaceCheck } from '../src/game/types';
 import type { PlacingState } from '../src/render/view';
 import { Placement } from '../src/render/placement';
 import { openPlacing } from '../src/ui/mapbar';
-import { fixSlot } from '../src/ui/tabs/house';
+import { fixSlot, noPlotNote } from '../src/ui/tabs/house';
 import { canPlace, freePlot, placeBuilding, validSlots } from '../src/game/place';
 import { bestSlot, resolvePlaceAt } from '../src/game/site';
-import { serveSlot } from '../src/game/advisors/util';
+import { reachSteps, serveSlot, serviceReach } from '../src/game/advisors/util';
 import { classAt, sizeOf } from '../src/game/derived';
-import { previewCovered } from '../src/game/coverage';
+import { previewCovered, previewSteps } from '../src/game/coverage';
 import { nextTier, unmetNeeds } from '../src/game/housing';
 import { getMap, tx, ty } from '../src/game/map';
 import { dryHouse, fresh } from './util';
@@ -95,6 +95,33 @@ describe('the inspector pre-positions its Place buttons', () => {
     expect(validSlots(s, 'puteus', 'player').has(at!)).toBe(true);
     const [w, h] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
     expect(at).toBe(resolvePlaceAt(s, 'puteus', undefined, 'player', { near: { x: b.x, y: b.y, w, h } }));
+  });
+
+  it('says when no free plot reaches the house, and its ghost whether the work would reach the home that asked', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);
+    const home = { id: b.id, need: 'water' as const };
+    const ghost = new Placement();
+    // a free slot reaches it: no note, and the ghost on that slot reaches it in the steps the flood takes
+    expect(noPlotNote(s, b.id, 'water', 'puteus')).toBeNull();
+    const at = fixSlot(s, b.id, 'water', 'puteus')!;
+    ghost.start({ kind: 'building', type: 'puteus', at, home }, s);
+    const steps = ghost.homeReach;
+    expect(typeof steps).toBe('number');
+    expect(steps).toBe(reachSteps(s, 'puteus', tx(at), ty(at), b.id, 'water'));
+    expect(steps).toBeLessThanOrEqual(serviceReach(s, 'puteus', 'water'));
+    expect(previewSteps(s, 'puteus', tx(at), ty(at), b.id, steps! - 1)).toBeNull();   // the fewest steps, not merely within reach
+    // every free slot that reaches it taken: the card says so, and the ghost by the house says it does not reach it
+    for (let i = 0; i < 60 && serveSlot(s, 'puteus', 'player', 'water', [b.id]); i++) {
+      expect(placeBuilding(s, 'puteus', serveSlot(s, 'puteus', 'player', 'water', [b.id])!.tile, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    }
+    expect(noPlotNote(s, b.id, 'water', 'puteus')).toBe(`No free plot within ${serviceReach(s, 'puteus', 'water')} steps of this house; clearing one would help.`);
+    ghost.start({ kind: 'building', type: 'puteus', at: fixSlot(s, b.id, 'water', 'puteus'), home }, s);
+    expect(ghost.check?.ok).toBe(true);
+    expect(ghost.homeReach).toBeNull();
+    ghost.start({ kind: 'building', type: 'puteus', at: fixSlot(s, b.id, 'water', 'puteus') }, s);
+    expect(ghost.homeReach).toBeUndefined();                    // no home asked: the ghost speaks of none
+    expect(noPlotNote(s, b.id, 'oil', 'olivetum')).toBeNull();  // oil comes by the market hall from a grove anywhere
   });
 
   it('"Place a house plot" takes a free plot in the tapped block, then the next one', () => {

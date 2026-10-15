@@ -604,7 +604,7 @@ export interface DecisionState {
 export interface OrdoState {
   on: Record<OrdoArea, boolean>;
   manual: Record<LaborCat, number>;                  // manual labour targets per category
-  requests: { type: BuildingId; day: number }[];    // "Ask the Ordo", max 3
+  requests: { type: BuildingId; day: number; house?: number }[];   // "Ask the Ordo", max 3; house: the home a house card asked for
   pin: BuildingId | null;
   reserved: number[];                                // reserved block ids (sorted)
   priorities: { cat: LaborCat; until: number }[];    // temporary "X first for N days"
@@ -1090,6 +1090,7 @@ export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerI
 export function coverage(s: GameState): Coverage;                     // BFS per layer over built roads; memo on structEpoch + effective-radius key
 export function houseHas(s: GameState, houseId: number, layer: CoverageLayerId): boolean;
 export function previewCoverage(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: Uint8Array; houses: number[] }[];   // as if built and fully staffed
+export function previewSteps(s: GameState, type: BuildingId, x: number, y: number, houseId: number, r: number): number | null;   // road steps from it to that house, searched up to r
 export function desirability(s: GameState): Float32Array;             // per tile, memo on structEpoch
 export function houseDesir(s: GameState, houseId: number): number;    // average over its 4 tiles
 export function previewDesir(s: GameState, type: BuildingId, x: number, y: number): { tile: number; v: number }[];
@@ -1243,6 +1244,7 @@ export function manualPlan(s: GameState, v: SimView): LabourPlan;    // category
 // ordo/build.ts
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.5 (cadence, concurrency, stakes, savingFor, take/ready/pending)
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
+export function homeSlot(s: GameState, v: SimView, type: BuildingId, home: number | undefined): { tile: number; k: number } | null | undefined;   // a request's home: the slot reaching it (null: none; undefined: no home to serve)
 export function wishList(s: GameState, v: SimView, n: number): WishView[];      // pure; the Agenda and the "would" ghost
 export function keptBlocks(s: GameState): readonly { rect: Rect; for: BuildingId }[];   // blocks kept free for a temple/bathhouse/market hall to come, the theatrum, the thermae (DESIGN §10.5)
 // ordo/goods.ts
@@ -1258,7 +1260,7 @@ export function savingFor(s: GameState, v: SimView): { cost: Cost; for: 'petitio
 export function reserved(s: GameState, v: SimView): Cost;           // saving target + next 30 days of Capitolium materials
 export function canSpend(s: GameState, cost: Cost, v: SimView, opts?: { survival?: boolean }): boolean;   // stock − reserved ≥ cost and denarii stay ≥ treasury floor (survival ignores both)
 // ordo/actions.ts
-export function askOrdo(s: GameState, type: BuildingId): ActionResult;     // max 3; needs Ordo construction on
+export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionResult;   // max 3; needs Ordo construction on; a house card's carries the home (noSlots when no free plot reaches it)
 export function pinBuild(s: GameState, type: BuildingId | null): ActionResult;
 export function setOrdo(s: GameState, area: OrdoArea, on: boolean): ActionResult;
 export function setManualTarget(s: GameState, cat: LaborCat, n: number): ActionResult;   // manual labour only
@@ -1364,6 +1366,8 @@ export function remedyLabel(s: GameState, r: Remedy): string;
 // advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
 export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
 export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null;   // the garden lifting the most of them
+export function serviceReach(s: GameState, type: BuildingId, need: NeedId): number;   // road steps its layers answering the need reach (path bonuses included)
+export function reachSteps(s: GameState, type: BuildingId, x: number, y: number, id: number, need: NeedId): number | null;   // steps to house `id` if it would serve that want (the ghost's reach hint)
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
@@ -1657,7 +1661,8 @@ Anchoring: a building sprite is centred horizontally on its footprint and bottom
 ### 12.4 `MapView` (view.ts, F) — the only render object the UI touches
 ```ts
 export type PlacingState =
-  | { kind: 'building'; type: BuildingId; replaceId?: number; at?: number }   // at: pre-positioned origin tile (remedies)
+  // at: pre-positioned origin tile (remedies); home: the house whose want it answers (a house card's Place)
+  | { kind: 'building'; type: BuildingId; replaceId?: number; at?: number; home?: { id: number; need: NeedId } }
   | { kind: 'road' } | { kind: 'pave' } | { kind: 'reserve' } | { kind: 'demolish' };
 export interface ViewCallbacks {
   onHover(tile: number | null, buildingId: number | null): void;
@@ -1709,7 +1714,7 @@ building whose crackle was heard burns when the map shows); uncovered, the next 
 going on from where they stood.
 Camera and the UI: every coordinate in and out is canvas CSS px; `mapRect()` places them in `#app`. `setInsets` never recentres, but clamps at once to the new free rect (at a map edge a wider free rect moves the limit: the step comes with the panel's slide, not with the next drag); with `host: true` (the layout changed shape) the default level is chosen again from the free map unless the player zoomed by hand since `attach`. `attach` picks the default level from min(free width, free height) (phones, landscape phones, docked tablets: 2), except on the COLUMNS host, where `setInsets({ canvasZoom: true })` keeps the canvas-width rule (desktops and 1366×768 laptops: 3) and centres the forum in the free rect. `startPlacing` with `at` glides the ghost into the free map (which ends above the placing banner) by the least it needs (`ensureVisible`, 64 px clear), never when it is there already; every `setInsets` does the same for a ghost the player set (pre-positioned or tapped, not the mouse's: `keepGhost`), so a rotation or a resized window never leaves Place staking a site out of sight. The inspector's popup (inspector.ts) glides a pinned target clear only when the UI covers it, when picked and again on a layout change (`Layout.onChange`): `ensureVisible` into the free rect, then `dodge()` (pure, tests/layout.test.ts) clear of what floats over it (the map's tools, the ticker, a phone's band of cards; what the layout floats, the DOCK's head beside the spine, by its own box: `currentFloating`); a target already in view never moves. The card stands where the room around its target holds it (`clearAround`: a house left of the DOCK's head keeps its card there), and of the sides where it fits whole it takes the one covering least of the map's tools (`#map-tools` whole, the zoom, the tool column, the overlay bar, the minimap, the ticker); when that one still covers some, a side where a shorter card (down to 180 px, scrolling inside) or one slid along its edge (its tail still on the target's middle) covers none, the tallest of those (`popupSlot`, pure, tests/layout.test.ts: a card left of a target at the top right of a tablet's map ends above the minimap).
 
-Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`. The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
+Placement flow (`placement.ts`, F): `startPlacing({kind: 'building'})` computes `validSlots(s, type, 'player')` and `bestSlot(s, type, { owner: 'player' })` once (and again when `structEpoch` changes). On hover: `snapSlot` → `canPlace(s, type, tile, { owner: 'player', replaceId })` → ghost, verdict, bonus, felling yield; for water/service buildings `previewCoverage` (covered road tiles tinted, ↑ on `housesUnlockedBy`); with the *desir* overlay `previewDesir`; placed from a house card (`home`: that house and its want), `advisors/util.reachSteps` (the home outlined, *"Reaches this home: 9 steps"* / *"Does not reach this home"*, and the same on the place banner's verdict). The view never mutates state: clicks go to `cb.onClick`, and `main.ts` runs `actions.place` (§13.2 `placeAt`). Road tool: press-drag builds an L-shaped path (horizontal first, Shift = vertical first) shown with cost; release → `cb.onDrag('road', tiles, true)` → `actions.buildRoad`. Pave: the same over built roads. Reserve: click a block → `actions.toggleReserveBlock`. Demolish: the first click marks the building red (*"Click again to demolish"*, 3 s), the second calls `actions.demolish`.
 
 ### 12.5 Overlays (`overlays.ts`, F)
 Each overlay is a 112 × 84 canvas (1 px per tile) rebuilt when its key changes (`structEpoch` + overlay id + layer + `day / 5` for *domus*), drawn by `view.ts` at 45% alpha and mirrored on the minimap. Sources and colours:

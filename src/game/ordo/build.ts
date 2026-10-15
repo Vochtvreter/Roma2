@@ -27,8 +27,9 @@ import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { FOCUS_DEFS as FOCUS_DEFS$ } from '../data/decisions';
 import { canSpend, capitoliumAhead, etaDays, floorOk, fullRate, ordersOf, outputRates, partsCost, savingParts, treasuryFloor, type SavingPart } from './saving';
 import { chronicle } from './chronicle';
+import { aWork } from './reasons';
 import { aestasWork } from './water';
-import { houseWants as eachHouseWant, liftSlot, serveSlot } from '../advisors/util';
+import { answering, houseWants as eachHouseWant, liftSlot, serveSlot, serviceReach } from '../advisors/util';
 import { goodsPlan } from './goods';
 import { maskAllows, walkMask } from './duties';
 import { busiestDirt, buyOut, cottageBlock, renewalReason } from '../urbs';
@@ -315,6 +316,29 @@ function waitingFor(s: GameState, v: SimView, need: NeedId): number[] {
  *  the blocks kept for other works (advisors/util serveSlot); null when no valid slot reaches one. */
 function ordoServeSlot(s: GameState, v: SimView, type: BuildingId, need: NeedId): { tile: number; k: number } | null {
   return serveSlot(s, type, 'ordo', need, waitingFor(s, v, need), keptSlots(s, type));
+}
+
+/** The Ordo's slot for a work asked for one home (a house card's Ask the Ordo, DESIGN §10.5): a service where it reaches
+ *  that home (of those slots, the one the site score likes best, which counts the homes waiting for it), a garden where it
+ *  lifts that home's street; `k` counts the homes still lacking it (that one too) it serves. Null when no free slot
+ *  does; undefined when there is no home to serve (none named, gone, or a work that answers no want). */
+export function homeSlot(s: GameState, v: SimView, type: BuildingId, home: number | undefined): { tile: number; k: number } | null | undefined {
+  const need = type === 'hortus' ? 'desirability' : NEED_OF[type];
+  if (home === undefined || !need || !getBuilding(s, home)?.house) return undefined;
+  if (type === 'hortus') return liftSlot(s, 'ordo', [home], keptSlots(s, 'hortus'));
+  const at = serveSlot(s, type, 'ordo', need, [home], keptSlots(s, type));
+  if (!at) return null;
+  const layers = answering(need), want = new Set(waitingFor(s, v, need)), served = new Set<number>();
+  if (!layers.some((l) => houseHas(s, home, l))) want.add(home);   // the home still lacks it
+  for (const p of previewCovered(s, type, tx(at.tile), ty(at.tile))) if (layers.includes(p.layer)) for (const id of p.houses) if (want.has(id)) served.add(id);
+  return { tile: at.tile, k: served.size };
+}
+
+/** Where a work asked for a home must stand to answer it, in words: "within 20 steps of this house" (a service's reach
+ *  for that want), "near enough to lift this house's street" (a garden). */
+export function homeReach(s: GameState, type: BuildingId): string {
+  const need = NEED_OF[type];
+  return type === 'hortus' || !need ? 'near enough to lift this house\'s street' : `within ${serviceReach(s, type, need)} steps of this house`;
 }
 
 /** Defines `tile` on an object as a getter resolved (and kept) on first read. */
@@ -693,10 +717,12 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
   const any = def.rank > s.rank ? null : type === 'castellum' ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
   const pre = any === null ? null : canPlace(s, type, any, { owner: 'ordo', ignoreCost: true });
   if (any === null || !pre?.ok || !canAfford(s, pre.cost, above) || !floorOk(s, pre.cost)) return false;
-  // a service asked for goes where it serves the most of the houses waiting for it (the Aedilis's advice was for them),
-  // anything else (or a service no slot brings to a waiting house) to the Ordo's best slot
+  // a work a house card asked for goes where it reaches that home; any other service asked for where it serves the most
+  // of the houses waiting for it (the Aedilis's advice was for them), anything else (or a service no slot brings to a
+  // waiting house, or a home no free slot reaches any longer: said below) to the Ordo's best slot
   const need = type === 'hortus' ? 'desirability' : NEED_OF[type];
-  const at = type === 'hortus' ? liftSlot(s, 'ordo', waitingFor(s, v, 'desirability'), keptSlots(s, 'hortus')) : need ? ordoServeSlot(s, v, type, need) : null;
+  const mine = part.kind === 'request' ? homeSlot(s, v, type, part.req?.house) : undefined;
+  const at = mine ?? (type === 'hortus' ? liftSlot(s, 'ordo', waitingFor(s, v, 'desirability'), keptSlots(s, 'hortus')) : need ? ordoServeSlot(s, v, type, need) : null);
   const tile = type === 'castellum' ? any : at ? at.tile : ordoSlot(s, type, code);
   const chk = tile === null ? null : canPlace(s, type, tile, { owner: 'ordo', ignoreCost: true });
   if (tile === null || !chk?.ok) return false;
@@ -706,6 +732,8 @@ function raise(s: GameState, ctx: TickContext, v: SimView, part: SavingPart, abo
   if (!r.ok) return false;
   if (r.id !== undefined) ctx.fx.push({ kind: 'ordoPlaced', id: r.id });
   chronicle(s, 'ordo', reason, { ref: r.id });
+  // after the chronicle, which takes over today's line of the same work
+  if (mine === null) log(s, 'ordo', `No free plot reaches the home that asked for ${aWork(type)} any longer; the Ordo raises it at its best site.`, undefined, r.id);
   return true;
 }
 
