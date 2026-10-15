@@ -339,8 +339,8 @@ function manualOrder(s: GameState, v: SimView): Post[] {
 /** Manual labour: how many hands its category's target lacks for a work to get `hands` (default: every post) while each
  *  post of the category staffed today keeps its hands: the posts ahead of it in the manual order fill first, and a new
  *  work nearer the forum would else take an older one's hands. 0 when the target already reaches it, or it has no post
- *  today (closed, damaged, builders). The completion toast's target (taken as the work is finished: construction.ts
- *  complete) and the advisors' staffing remedies (DESIGN §10.2). */
+ *  today (closed, damaged, builders). The completion toast's target (taken as the work is finished, construction.ts
+ *  complete, and as the toast is made: the larger) and the advisors' staffing remedies (DESIGN §10.2). */
 export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number {
   const all = manualOrder(s, v);
   const me = all.find((p) => p.b.id === id);

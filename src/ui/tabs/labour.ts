@@ -39,18 +39,19 @@ export function holdSteps(ms: number): number {
 }
 
 /** A work finished under manual labour adds posts, not hands (DESIGN §10.2): its completion toast ("Well finished:
- *  0/2 hands"), the hands its category's target lacks for it (`n`: ordo/labour.manualReach, or `short`, as its `built`
- *  fx carries it from the moment it was finished: a frame can run more ticks, and by then the next day's staffing may
- *  have given it another work's hands) and the target that makes (`to`: its one button, "Water hands to 4", sets it or
- *  keeps a higher one, so two works finished together or a target raised by hand since are not counted twice, and its
- *  words stay true after either); null while the Ordo staffs, for a work without posts, or when the target already
- *  reaches it (pure; tests/panels.test.ts). */
+ *  0/2 hands"), the hands its category's target lacks for it (`n`: the larger of `short`, what its `built` fx carries
+ *  from the moment it was finished, and ordo/labour.manualReach as the toast is made; by then a later tick of the frame
+ *  may have staffed it with another work's hands, so the live count reads 0, or a work finished after it in the frame,
+ *  nearer the forum, fills first, so the count it was finished with is too small) and the target that makes
+ *  (`to`: its one button, "Water hands to 4", sets it or keeps a higher one, so two works finished together or a target
+ *  raised by hand since are not counted twice, and its words stay true after either); null while the Ordo staffs, for a
+ *  work without posts, or when the target reaches it both ways (pure; tests/panels.test.ts). */
 export function finishedStaffing(s: GameState, id: number, short?: number): { text: string; sub: string; label: string; tip: string; cat: LaborCat; n: number; to: number } | null {
   const b = getBuilding(s, id);
   const def = b ? BUILDING_DEFS[b.type] : null;
   if (!b || !def || s.ordo.on.labour || b.status !== 'done' || !def.labor || def.labor === 'builders') return null;
   const v = view(s);
-  const n = short ?? manualReach(s, v, id);
+  const n = Math.max(short ?? 0, manualReach(s, v, id));
   if (n <= 0) return null;
   const cat = def.labor, word = CAT_LABEL[cat][1].toLowerCase(), target = s.ordo.manual[cat], to = target + n;
   return {

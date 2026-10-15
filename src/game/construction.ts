@@ -118,7 +118,9 @@ function complete(s: GameState, ctx: TickContext, b: Building): void {
   invalidate(s);
   // staffing by hand, its posts wait on the category's target (DESIGN §10.2): what that target lacks for it rides the
   // fx as it stands now (the completion toast's button), since a frame can run more ticks before the toast is made, and
-  // the next day's staffing may give the work another's hands (a nearer post fills first) and leave that one empty
+  // the next day's staffing may give the work another's hands (a nearer post fills first) and leave that one empty; the
+  // toast takes the larger of this and the count when it is made (ui/tabs/labour.ts finishedStaffing), as a work
+  // finished after it in the frame, nearer the forum, would else take the posts it was counted against
   if (!s.ordo.on.labour) {
     const short = manualReach(s, view(s), b.id);
     if (short > 0) built.short = short;

@@ -1263,7 +1263,7 @@ export function setHousePref(s: GameState, id: number, pref: HousePref): ActionR
 export function worksQueue(s: GameState): Building[];                 // unfinished: player-owned first, then order, then id
 export function startStaked(s: GameState): void;                      // staked → building after STAKE_DAYS
 export function payPlans(s: GameState, ctx: TickContext): void;       // plans become sites when the stock covers them (ignores reservations except the petition fee)
-export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats; under manual labour the built fx carries `short`, what the work's category target lacks for it then (manualReach), for its toast
+export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats; under manual labour the built fx carries `short`, what the work's category target lacks for it then (manualReach), for its toast (with the count when it is made: the larger)
 export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4;
 export function capitoliumFlow(s: GameState): CapitoliumFlow | null;   // { stage, eta, bottleneck: ResId | 'crew' | null, rate, need, supply, demand, crew, walls, spare, stock, inflow, starved }: rate/need in work units; crew/walls/spare builders (on it, ≤ CAP_CREW; on the town wall; with nothing to build); supply/demand/stock/inflow the bottleneck material (0 when the crew binds), its works counted at what their inputs allow (inputShares); starved: { works, input, share } of those works, or null
 export function capitoliumHold(f: CapitoliumFlow): string;           // the works row's and the card's words: 'crew at its maximum: 64 of 64 builders (the most that can work on it)', 'waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)'
@@ -1306,7 +1306,7 @@ export function ordoActive(s: GameState, area: OrdoArea, offline: boolean): bool
 // ordo/labour.ts
 export function planLabour(s: GameState, v: SimView): LabourPlan;    // DESIGN §10.4, a Reason per line
 export function manualPlan(s: GameState, v: SimView): LabourPlan;    // category targets → buildings (High first, then nearest the forum)
-export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number;   // the hands a work's category target lacks for it (every post, or `hands`) while each post staffed today keeps its own; the completion toast's target (on the built fx as the work is finished) and the advisors' staffing remedies
+export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number;   // the hands a work's category target lacks for it (every post, or `hands`) while each post staffed today keeps its own; the completion toast's target (the larger of it on the built fx as the work is finished and it as the toast is made) and the advisors' staffing remedies
 // ordo/build.ts
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.5 (cadence, concurrency, stakes, savingFor, take/ready/pending)
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
@@ -2093,7 +2093,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 ### 13.7 FxEvent → UI (`UI.onFx`, H)
 | FxEvent | UI |
 |---|---|
-| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with one button worded as the target, **Water hands to 4** (`setManualTarget` to the target it named, `to`, or a higher one set since): the hands it lacks are the fx's `short`, as the work was finished, not what the frame's later ticks left (the next day's staffing may have given it an older work's hands) |
+| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with one button worded as the target, **Water hands to 4** (`setManualTarget` to the target it named, `to`, or a higher one set since): the hands it lacks are the larger of the fx's `short`, as the work was finished (the frame's later ticks may have staffed it with an older work's hands, the live count then 0), and `manualReach` now (a work finished after it in the frame, nearer the forum, fills first) |
 | `evolved` | `toastBatch('evolved', …)`, sfx `tink` (batched) |
 | `milestone` | gold toast *"Res Gestae: {text}"* + unlock line, sfx `lyre` |
 | `rank` | rank banner 8 s, sfx `cornu` |
