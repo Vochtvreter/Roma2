@@ -215,7 +215,7 @@ export function counselSig(g: Game, item: CounselItem): string {
   if (item.kind === 'advisory') {
     const r = renderAdvisory(s, view(s), item.a);
     const at = (x: Remedy): string => (x.kind === 'place' ? `@${x.tile ?? ''}` : x.kind === 'clear' ? `@${x.tile}:${x.ids.join('.')}` : '');
-    key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : 0}${at(x.remedy)}`).join(',')}`;
+    key = `a:${item.a.rule}:${item.a.memo.sev}:${s.ordo.on.build ? 1 : 0}:${r.remedies.map((x) => `${x.label}${x.check.ok ? 1 : `0${x.check.code}`}${at(x.remedy)}`).join(',')}`;
   }
   // the voice line also counts what else waits ('+n'), and is built afresh for another host (the SHEET, the DRAWER and
   // the DOCK draw the same line, but only the SHEET's lesson card carries a labour line)

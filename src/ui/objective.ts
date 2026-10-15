@@ -2,7 +2,7 @@
 // pulsing CTA (charter / petition), danger chips from Periculum advisories only, and active timed modifiers. Owner: WP-H.
 // Signature-diffed: rebuilt when the milestone, the CTA or the chip set changes; numbers are patched in place. A rebuild
 // changes the panel's height and so moves the counsel card below it: it waits while the mouse rests on either, but never
-// past a new goal, and while a press is under way in either or a two-step confirm in sight is armed (ui/index.ts
+// past a new goal, and while a press is under way in either or a two-step confirm in sight is armed (ui/modals.ts
 // armedOr), a new goal too (goalsWait). The chips only grow between rebuilds, so a countdown ("…, 9 d") never re-wraps
 // the row and nudges the card either.
 // On a tablet (the DOCK host) the panel heads the docked pane in a one-line form (dock.css: the kicker over the goal, the
@@ -62,7 +62,7 @@ export function effectsText(fx: Effects): string {
 }
 
 /** Whether a changed Res Gestae waits to rebuild (tests/steady.test.ts): while a press or click is under way in it or in
- *  the counsel card below it, or a two-step confirm in sight is armed (`below` is busy then: ui/index.ts armedOr), even
+ *  the counsel card below it, or a two-step confirm in sight is armed (`below` is busy then: ui/modals.ts armedOr), even
  *  through a new goal (the rebuild would move the button being pressed, or the armed one, from under its second press;
  *  an armed confirm disarms within B.ui.CONFIRM_MS unless a mouse rests on it); and while the mouse rests on either, but
  *  never then through a new goal: a finished goal left up would hide the next one, and the CTA it brings. */

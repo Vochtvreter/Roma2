@@ -149,7 +149,7 @@ export function savingLine(g: Game, sv: Saving): string {
  *  "Ask the Ordo" beside it) can be used — all structural, so the card rebuilds when the best plot moves or is taken —
  *  any other remedy by its kind, whether it can be used and, if not, the code of why (the Pave brush once the stone for
  *  a pace comes in, or once every road is paved: its button is no longer disabled with the reason it had); never live
- *  numbers, so a disabled button's reason carries none either (remedies.ts). */
+ *  numbers, so a reason that quotes one (buyNow's cost against the aerarium) refreshes only when the card rebuilds. */
 export function remedyKey(s: GameState, x: { remedy: Remedy; check: ActionResult }): string {
   const r = x.remedy;
   if (r.kind === 'clear') return `clear:${r.building}@${r.tile}:${r.ids.join('.')}:${x.check.ok ? 1 : 0}`;   // another block, or the same one changed

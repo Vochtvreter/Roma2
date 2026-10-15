@@ -47,7 +47,7 @@ export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionR
   if (home === null) {
     const reach = homeReach(s, type);
     return fail('noSlots', homeByHand(s, type, house as number)
-      ? `The only free plots ${reach} are on blocks the Ordo leaves alone: reserved, kept for a work to come, or where you are building. Place ${aWork(type)} there yourself.`
+      ? `The only free plots ${reach} are on land the Ordo leaves alone: reserved, kept for a work to come, where you are building, or beyond the walls in the rings to come. Place ${aWork(type)} there yourself.`
       : `The surveyors find no free plot ${reach} for ${aWork(type)}; clearing one would help.`);
   }
   s.ordo.requests.push(home === undefined ? { type, day: s.day } : { type, day: s.day, house: house as number });

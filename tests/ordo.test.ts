@@ -300,7 +300,7 @@ describe('building', () => {
     expect(serveSlot(s, 'puteus', 'player', 'water', [b.id])).not.toBeNull();
     expect(noPlotNote(s, b.id, 'water', 'puteus')).toBeNull();
     expect(askOrdo(s, 'puteus', b.id)).toEqual({ ok: false, code: 'noSlots',
-      reason: `The only free plots within ${serviceReach(s, 'puteus', 'water')} steps of this house are on blocks the Ordo leaves alone: reserved, kept for a work to come, or where you are building. Place a well there yourself.` });
+      reason: `The only free plots within ${serviceReach(s, 'puteus', 'water')} steps of this house are on land the Ordo leaves alone: reserved, kept for a work to come, where you are building, or beyond the walls in the rings to come. Place a well there yourself.` });
     expect(s.ordo.requests).toEqual([]);
   });
 

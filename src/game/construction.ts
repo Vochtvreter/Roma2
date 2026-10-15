@@ -121,7 +121,8 @@ function complete(s: GameState, ctx: TickContext, b: Building): void {
   // the next day's staffing may give the work another's hands (a nearer post fills first) and leave that one empty; the
   // toast takes the larger of this and the count when it is made (ui/tabs/labour.ts finishedStaffing), as a work
   // finished after it in the frame, nearer the forum, would else take the posts it was counted against
-  if (!s.ordo.on.labour) {
+  const posts = BUILDING_DEFS$[b.type].labor;
+  if (!s.ordo.on.labour && posts && posts !== 'builders') {   // a work with posts of its own (as finishedStaffing)
     const short = manualReach(s, view(s), b.id);
     if (short > 0) built.short = short;
   }

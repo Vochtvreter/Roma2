@@ -302,7 +302,8 @@ const beds: AdvisorRule = {
     const p = a.params;
     if (p.mode === 'roll') return `Rome's roll is full (${int(P(p.pop))}/${int(P(p.roll))} souls).`;
     if (P(p.homeless) > 0) return `No free beds: ${P(p.homeless)} ${P(p.homeless) === 1 ? 'soul sleeps' : 'souls sleep'} under the stars.`;
-    return 'No free beds: newcomers turn back at the gate.';
+    const free = P(p.free);
+    return free > 0 ? `Only ${int(free)} free ${free === 1 ? 'bed' : 'beds'}: most newcomers turn back at the gate.` : 'No free beds: newcomers turn back at the gate.';
   },
   text(s, _v, a) {
     const p = a.params;

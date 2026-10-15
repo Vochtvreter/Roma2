@@ -1208,3 +1208,13 @@ describe('remedies', () => {
     }
   });
 });
+
+describe('aedilis.beds title', () => {
+  it('says one free bed is not none: most households need more', () => {
+    const s = fresh(42);
+    const rule = RULE_DEFS.find((r) => r.id === 'aedilis.beds')!;
+    const title = (free: number): string => rule.title(s, { params: { mode: 'beds', homeless: 0, free } } as unknown as Parameters<typeof rule.title>[1]);
+    expect(title(0)).toBe('No free beds: newcomers turn back at the gate.');
+    expect(title(1)).toBe('Only 1 free bed: most newcomers turn back at the gate.');
+  });
+});
