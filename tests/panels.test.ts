@@ -14,6 +14,7 @@ import { newGame } from '../src/game/state';
 import { keepDuties, skipIntro } from '../src/game/actions';
 import { view } from '../src/game/sim';
 import { placeBuilding } from '../src/game/place';
+import { invalidate } from '../src/game/memo';
 import { B } from '../src/game/balance';
 import { counselSig } from '../src/ui/counsel';
 import { remedyKey, savingLine } from '../src/ui/tabs/common';
@@ -256,5 +257,30 @@ describe('panelTokens (#app[data-panel], what the stylesheets key on instead of 
       expect(toks.includes('empty')).toBe(e);
       expect(toks.includes('notabs')).toBe(n);
     }
+  });
+});
+
+describe('a work finished while the labour is the player\'s (finding 11)', () => {
+  it('its toast counts its hands and its +N is what the category target lacks; none while the Ordo staffs', async () => {
+    const { finishedStaffing } = await import('../src/ui/tabs/labour');
+    const { setManualTarget, setOrdo } = await import('../src/game/actions');
+    const { validSlots } = await import('../src/game/place');
+    const s = fresh(42);
+    const at = [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => a - b)[0];
+    const r = placeBuilding(s, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    const well = s.buildings.find((b) => b.id === r.id)!;
+    expect(finishedStaffing(s, well.id)).toBeNull();          // a site has no posts yet
+    Object.assign(well, { status: 'done', progress: 1 });
+    invalidate(s);
+    expect(finishedStaffing(s, well.id)).toBeNull();          // the Ordo staffs it
+    expect(setOrdo(s, 'labour', false).ok).toBe(true);        // the targets: today's hands, water 2
+    const t = finishedStaffing(s, well.id)!;
+    expect(t.text).toBe('Well finished: 0/2 hands');
+    expect(t.sub).toBe('You staff by hand: 2 water hands set for 4 posts.');
+    expect([t.label, t.cat, t.n]).toEqual(['+2 water', 'water', 2]);
+    expect(t.tip).toBe('Raise the water target from 2 to 4.');
+    expect(setManualTarget(s, 'water', s.ordo.manual.water + t.n).ok).toBe(true);
+    expect(finishedStaffing(s, well.id)).toBeNull();          // the target reaches it now
   });
 });

@@ -19,10 +19,10 @@ import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { houseBeds, peopleIndex } from '../census';
 import {
-  CLEAR, R, STEP, aName, bestFood, clearSite, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, liftSlot,
-  risingReach, serveSlot, serviceFor, three, tierWord, worksWord,
+  CLEAR, R, STEP, aName, bestFood, clearSite, fractionWord, held, houseWants, idleFor, idleHead, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, liftSlot,
+  risingReach, serveSlot, serviceFor, staffRemedy, three, tierWord, worksWord,
 } from './util';
-import type { CadencedRule, ClearSite, ClearWhy, HouseWant } from './util';
+import type { CadencedRule, ClearSite, ClearWhy, HouseWant, IdleWork } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, HOUSE_TIERS = HOUSE_TIERS$, NEEDS = NEEDS$, RANK_DEFS = RANK_DEFS$, SETTING_DEFS = SETTING_DEFS$,
@@ -92,17 +92,21 @@ function serviceChoices(s: GameState, v: SimView, need: NeedId): BuildingId[] {
 }
 
 /** What serveRemedy found: the remedy (null when nothing can serve the houses), its slot, the houses it lets rise, the
- *  work; for a block service no free block can bring them, the block to clear, or why none is offered (`rising`: a block
- *  would be, but a work of that kind still rises elsewhere — `up`, its id). */
-interface Served { remedy: Remedy | null; slot: number | null; k: number; type: BuildingId | null; clear?: ClearSite; why?: ClearWhy | 'rising'; up?: number }
+ *  work; under manual labour a work that answers the need but stands short of hands (`idle`); for a block service no
+ *  free block can bring them, the block to clear, or why none is offered (`rising`: a block would be, but a work of
+ *  that kind still rises elsewhere — `up`, its id). */
+interface Served { remedy: Remedy | null; slot: number | null; k: number; type: BuildingId | null; idle?: IdleWork; clear?: ClearSite; why?: ClearWhy | 'rising'; up?: number }
 
-/** Remedy for a need: the answering building at the slot that serves most of `ids` (coverage needs: util.serveSlot, the
- *  same reckoning the Ordo raises a request by), or needRemedy. When no free slot of any answering work reaches one of
- *  the houses, a block service offers the block to clear for it (util.clearSite: the most of them served for the least
- *  pulled down) — one at a time: not while a work of that kind still rises (checkClear refuses it too); else `remedy`
- *  is null (another one would stand idle: the Domus overlay shows them) and `why` says what kept the blocks near them.
- *  Oil points to a caravan while a grove is still being raised or growing. */
-function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>): Served {
+/** Remedy for a need: under manual labour first the hands of a work that answers it but stands short of them (`idle`,
+ *  util.idleFor; `staff` false skips it), else the answering building at the slot that serves most of `ids` (coverage
+ *  needs: util.serveSlot, the same reckoning the Ordo raises a request by), or needRemedy. When no free slot of any
+ *  answering work reaches one of the houses, a block service offers the block to clear for it (util.clearSite: the most
+ *  of them served for the least pulled down) — one at a time: not while a work of that kind still rises (checkClear
+ *  refuses it too); else `remedy` is null (another one would stand idle: the Domus overlay shows them) and `why` says
+ *  what kept the blocks near them. Oil points to a caravan while a grove is still being raised or growing. */
+function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>, staff = true): Served {
+  const idle = staff ? idleFor(s, v, need, [...ids].sort((a, b) => a - b)) : null;
+  if (idle) return { remedy: staffRemedy(idle), slot: null, k: idle.k, type: idle.type, idle };
   if (need === 'oil' && s.buildings.some((b) => b.type === 'olivetum' && (b.status !== 'done' || (b.youngUntil ?? 0) > s.day))) {
     return { remedy: importRemedy(s, 'oil', B.ordo.CARGO), slot: null, k: 0, type: null };
   }
@@ -221,6 +225,7 @@ const evolve: CadencedRule = {
       if (r.why === 'works') return `${head}: the blocks near them hold what must stand (a granary, a warehouse, a civic work, or the shrine, shop or well they need), or are blocks you keep free.`;
       return `${head}, and no block of the town that could take one lies within reach of them.`;
     }
+    if (r.idle) return `${idleHead(s, r.idle)}: ${r.k > 0 ? `staffed, it would let ${r.k} of them grow` : 'put hands on it before raising another'}.`;
     if (r.remedy?.kind !== 'place') return 'The Domus overlay shows what each house still wants.';
     const what = cap1(aName(r.remedy.building));
     if (r.slot !== null && r.k > 0) return `${what} ${placeName(s, r.slot)} would let ${r.k} of them grow.`;
@@ -231,11 +236,17 @@ const evolve: CadencedRule = {
     const ids = new Set((oneShort(s, v).get(need) ?? []).map((w) => w.id));
     const up = ids.size === 0 ? risingWork(s, v, need) : null;
     if (up) return three({ kind: 'building', op: 'center', id: up.id }, { kind: 'overlay', overlay: 'domus' });
-    return three(serveRemedy(s, v, need, ids).remedy, { kind: 'overlay', overlay: 'domus' });
+    const r = serveRemedy(s, v, need, ids);
+    return three(r.remedy, r.idle ? serveRemedy(s, v, need, ids, false).remedy : null, { kind: 'overlay', overlay: 'domus' });
   },
 };
 
 // ───────────────────────────── 18 · aedilis.declining ─────────────────────────────
+
+/** Under manual labour, a work short of hands that answers the need the declining houses lost (util.idleFor). */
+function lapsedIdle(s: GameState, v: SimView, need: NeedId): IdleWork | null {
+  return idleFor(s, v, need, houseWants(s, v).filter((w) => w.declining && w.lapsed.includes(need)).map((w) => w.id));
+}
 
 const declining: CadencedRule = {
   every: B.housing.CHECK_EVERY,   // B, not util: rule objects are built at load time, inside an import cycle
@@ -256,14 +267,17 @@ const declining: CadencedRule = {
     const what = P(p.n) === 1 ? 'A home is declining' : `${P(p.n)} homes are declining`;
     return p.need ? `${what}: ${needWord(p.need as NeedId)} lapsed.` : `${what}.`;
   },
-  text(_s, _v, a) {
+  text(s, v, a) {
     const p = a.params;
     const back = p.need ? ` Restore ${needWord(p.need as NeedId)} for ${B.housing.RECOVER_DAYS} days and they recover.` : '';
-    return `The first falls back a tier ${inDays(P(p.d))}; a declining house pays half its taxes.${back}`;
+    const idle = p.need ? lapsedIdle(s, v, p.need as NeedId) : null;
+    const hands = idle ? ` ${idleHead(s, idle)}: ${idle.k > 0 ? `staffed, it would serve ${idle.k} of them` : 'put hands on it before raising another'}.` : '';
+    return `The first falls back a tier ${inDays(P(p.d))}; a declining house pays half its taxes.${back}${hands}`;
   },
   remedies(s, v, a) {
     const need = a.params.need as NeedId | '';
-    return three(need ? needRemedy(s, v, need) : null, { kind: 'overlay', overlay: 'domus' });
+    const idle = need ? lapsedIdle(s, v, need) : null;
+    return three(idle ? staffRemedy(idle) : null, need ? needRemedy(s, v, need) : null, { kind: 'overlay', overlay: 'domus' });
   },
 };
 

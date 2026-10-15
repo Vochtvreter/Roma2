@@ -189,7 +189,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   forecast.ts                      B   Forecast and the 12-month prospectus                        (200)
   sim.ts                           S→B tick order, view(), emptyRates                              (140)
   ordo/index.ts                    C   runOrdo, councilReport                                      (90)
-  ordo/labour.ts                   C   planLabour, manualPlan                                      (330)
+  ordo/labour.ts                   C   planLabour, manualPlan, manualReach                         (330)
   ordo/build.ts                    C   wish list, agenda, requests                                 (360)
   ordo/trade.ts                    C   trade automation                                            (150)
   ordo/goods.ts                    C   oil/wine plan: lean-season reserve, projection, shortfall    (130)
@@ -1269,6 +1269,7 @@ export function ordoActive(s: GameState, area: OrdoArea, offline: boolean): bool
 // ordo/labour.ts
 export function planLabour(s: GameState, v: SimView): LabourPlan;    // DESIGN §10.4, a Reason per line
 export function manualPlan(s: GameState, v: SimView): LabourPlan;    // category targets → buildings (High first, then nearest the forum)
+export function manualReach(s: GameState, v: SimView, id: number, hands?: number): number;   // the hands a work's category target lacks for it (every post, or `hands`) while each post staffed today keeps its own; the completion toast's +N and the advisors' staffing remedies
 // ordo/build.ts
 export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   // DESIGN §10.5 (cadence, concurrency, stakes, savingFor, take/ready/pending)
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
@@ -1407,6 +1408,7 @@ export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: rea
 export function blockWorks(s: GameState, tile: number): number[] | null;   // what the advice may pull down on a block (homes, plot works); null if anything else stands there
 export function worksWord(s: GameState, ids: readonly number[]): string;   // what stands there in words: "2 gardens and a well"
 export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number>;   // house → the work answering `need`, still rising, that will reach it (they wait for it: no second one advised)
+export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null;   // manual labour: a finished work answering the need that stands short of hands (a service serving one of `ids`, a grove, a grain work), with the hands its target lacks; its remedy (staffRemedy: assign) comes before a work to place (DESIGN §11.5)
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
@@ -2008,7 +2010,7 @@ export function openExportImport(g: Game): void;
 export function openHowTo(g: Game): void;
 export function openRename(g: Game): void;
 // toasts.ts
-export function toast(text: string, kind?: 'info' | 'good' | 'bad' | 'gold', icon?: string, ms?: number): void;   // max 4 visible, oldest dropped
+export function toast(text: string, kind?: 'info' | 'good' | 'bad' | 'gold', icon?: string, ms?: number, sub?: string, action?: ToastAction): void;   // max 4 visible, oldest dropped; one optional button
 export function toastBatch(key: string, text: (n: number) => string, kind?: 'info' | 'good' | 'gold', icon?: string): void;   // coalesces within 1.5 s
 ```
 
@@ -2033,7 +2035,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 ### 13.7 FxEvent → UI (`UI.onFx`, H)
 | FxEvent | UI |
 |---|---|
-| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build` |
+| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with **+N** (`setManualTarget`) |
 | `evolved` | `toastBatch('evolved', …)`, sfx `tink` (batched) |
 | `milestone` | gold toast *"Res Gestae: {text}"* + unlock line, sfx `lyre` |
 | `rank` | rank banner 8 s, sfx `cornu` |

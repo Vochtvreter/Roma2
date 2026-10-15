@@ -39,7 +39,7 @@ import { Rng } from '../src/game/rng';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
-import { bestFood, blockWorks, clearSite, int } from '../src/game/advisors/util';
+import { bestFood, blockWorks, clearSite, int, serveSlot } from '../src/game/advisors/util';
 import { favourPaces, immigrationChance, renownFactor } from '../src/game/people';
 import { canPlace, placeBuilding, validSlots } from '../src/game/place';
 import { getMap, tx, ty } from '../src/game/map';
@@ -482,6 +482,114 @@ describe('a block to clear for the work the homes wait for (playtest #2, DESIGN 
     t.rank = 3;
     invalidate(t);
     expect(checkRemedy(t, { kind: 'place', building: 'thermae' })).toMatchObject({ ok: false, reason: 'No free block can take great baths: no castellum within 18 paces.' });
+  });
+});
+
+describe('staffing by hand: hands before another work (finding 11)', () => {
+  /** Manual labour with no targets: every work's hands go home (a work finished under manual labour stands so). */
+  const byHand = (s: GameState): void => {
+    s.ordo.on.labour = false;
+    for (const p of s.people) p.work = null;
+    touchPeople(s);
+    invalidate(s);
+  };
+  const render = (s: GameState, id: RuleId, p: Patch = {}) =>
+    renderAdvisory(s, fake(s, p), { rule: id, advisor: ruleDef(id).advisor, memo: s.guidance.advisories[id]! });
+
+  it('aedilis.declining: the empty well that would serve the houses comes before another well, and is named', () => {
+    const s = base();
+    byHand(s);
+    for (const b of houses(s)) Object.assign(b.house!, { tier: 'casa', declining: true, declineDays: 5 });
+    invalidate(s);
+    for (let i = 0; i < every('aedilis.declining'); i++) day(s);
+    expect(s.guidance.advisories['aedilis.declining']?.params.need).toBe('water');
+    const r = render(s, 'aedilis.declining');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'water', n: 1 });   // a well reaches its full radius at one hand of two
+    expect(r.remedies[0].check.ok).toBe(true);
+    expect(r.remedies[0].label).toBe('Put 1 more hand on the wells');
+    expect(r.remedies[1].remedy).toMatchObject({ kind: 'place', building: 'puteus' });
+    expect(r.text).toMatch(/ The well .+ has 0 of 2 hands: staffed, it would serve \d+ of them\.$/);
+    expect(applyRemedy(s, r.remedies[0].remedy).ok).toBe(true);
+    expect(s.ordo.manual.water).toBe(1);
+    s.ordo.on.labour = true;   // the Ordo staffs: its remedy is the work, as before
+    expect(render(s, 'aedilis.declining').remedies[0].remedy).toMatchObject({ kind: 'place', building: 'puteus' });
+  });
+
+  it('aquarum.access: the dry homes wait on the well\'s hands, not on a new well (and it is no quiet Nota)', () => {
+    const s = base();
+    byHand(s);
+    setTier(s, 'tentoria');
+    invalidate(s);
+    for (let i = 0; i < every('aquarum.access'); i++) day(s);
+    const m = s.guidance.advisories['aquarum.access']!;
+    expect(m.active).toBe(true);
+    expect(m.sev).toBe(1);
+    const r = render(s, 'aquarum.access');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'water', n: 1 });
+    expect(r.text).toMatch(/^The well .+ has 0 of 2 hands: staffed, it would reach \d+ of them\.$/);
+    s.ordo.manual.water = 2;   // the target reaches it: the hands come with the next day's staffing
+    expect(render(s, 'aquarum.access').remedies[0].remedy.kind).not.toBe('assign');
+  });
+
+  it('annonae.hiems.forecast: a field short of hands is staffed before a lodge is raised', () => {
+    const s = base();
+    s.ordo.on.labour = false;
+    s.ordo.manual.food = census(s).catStaffed.food;
+    const p: Patch = { grain: { crunch: crunch(3, 60, 0)(s) } };
+    day(s, p);
+    const field = s.buildings.find((b) => b.type === 'ager')!;
+    const have = census(s).staffed[field.id] ?? 0;
+    const r = render(s, 'annonae.hiems.forecast', p);
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'food', n: 6 - have });
+    expect(r.text).toMatch(new RegExp(` The field .+ has ${have} of 6 hands\\.$`));
+    s.ordo.on.labour = true;   // the Ordo staffs: the works and the reserve as before, which the hands now lead
+    expect(r.remedies.slice(1).map((x) => x.remedy)).toEqual(render(s, 'annonae.hiems.forecast', p).remedies.slice(0, 2).map((x) => x.remedy));
+  });
+
+  it('annonae.goods: an olive grove standing empty is staffed before another is planted', () => {
+    const s = base();
+    s.rank = 1;
+    const at = [...validSlots(s, 'olivetum', 'player').keys()].sort((a, b) => a - b)[0];
+    const res = { ...s.res };
+    const placed = placeBuilding(s, 'olivetum', at, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!placed.ok) throw new Error(placed.reason);
+    s.res = res;
+    const grove = s.buildings.find((b) => b.id === placed.id)!;
+    Object.assign(grove, { status: 'done', progress: 1 });
+    s.ordo.on.labour = false;
+    s.ordo.manual.food = 6;   // the fields' posts all asked for: the grove's 4 hands are what the target lacks
+    invalidate(s);
+    setTier(s, 'tentoria');
+    houses(s)[0].house!.tier = 'insula';
+    houses(s)[0].house!.oil = 1;
+    s.res.oil = 3;
+    day(s);
+    expect(s.guidance.advisories['annonae.goods']?.active).toBe(true);
+    const r = render(s, 'annonae.goods');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'food', n: 4 });
+    expect(r.remedies[0].label).toBe('Put 4 more hands on the food');
+    expect(r.text).toMatch(/ The olive grove .+ has 0 of 4 hands\.$/);
+  });
+
+  it('aedilis.evolve: the empty shrine near the waiting houses is staffed first, and the work to place follows', () => {
+    const s = base();
+    s.rank = 1;
+    s.fed = 1;
+    setTier(s, 'casa');
+    ctl.covered = ALL_LAYERS.filter((l) => l !== 'shrine' && l !== 'temple');
+    invalidate(s);
+    const ids = houses(s).map((b) => b.id);
+    const slot = serveSlot(s, 'lararium', 'player', 'religion', ids)!;
+    const placed = placeBuilding(s, 'lararium', slot.tile, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!placed.ok) throw new Error(placed.reason);
+    Object.assign(s.buildings.find((b) => b.id === placed.id)!, { status: 'done', progress: 1 });
+    s.ordo.on.labour = false;
+    invalidate(s);
+    for (let i = 0; i < every('aedilis.evolve'); i++) day(s);
+    const r = render(s, 'aedilis.evolve');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'services', n: 1 });
+    expect(r.text).toMatch(/^The wayside shrine .+ has 0 of 1 hand: staffed, it would let \d+ of them grow\.$/);
+    expect(r.remedies[1].remedy.kind).toBe('place');
   });
 });
 

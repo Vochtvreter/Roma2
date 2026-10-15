@@ -58,6 +58,9 @@
 .tab-lab-ctl { display: flex; align-items: center; gap: 4px; }
 .tab-lab-count { min-width: 64px; text-align: center; font-size: var(--fs-caps); white-space: nowrap; }
 .tab-lab-count.short { color: var(--ember); }
+.tab-lab-count.open { color: var(--gold); }   /* manual: the target leaves posts empty, */
+.tab-lab-open { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: var(--fs-xs); color: var(--gold); line-height: 1.3; }   /* …and this line says how many, with Fill */
 .tab-lab-pm { min-width: 26px; font-size: var(--fs-body); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }   /* held to repeat */
 
 /* ───────── Edicta ───────── */

@@ -25,7 +25,8 @@ import { ruleFail } from '../world/siterules';
 import { rectGap } from '../world/grid';
 import { fxAdd } from '../fx';
 import { homesEpoch, layoutEpoch } from '../memo';
-import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
+import { manualReach } from '../ordo/labour';
+import { BUILDING_DEFS as BUILDING_DEFS$, slotsOf } from '../data/buildings';
 import { NEED_META as NEED_META$, TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { RESOURCE_DEFS as RESOURCE_DEFS$ } from '../data/resources';
@@ -513,6 +514,56 @@ export function worksWord(s: GameState, ids: readonly number[]): string {
     if (c) c.n++; else counts.set(one, { many, n: 1 });
   }
   return listJoin([...counts].map(([one, c]) => (c.n === 1 ? one : `${c.n} ${c.many}`)));
+}
+
+// ───────────────────────────── works short of hands (manual labour) ─────────────────────────────
+
+/** A finished work of the player's that stands short of hands while the labour is theirs: finishing a work adds posts,
+ *  not hands (DESIGN §10.2), so a new well or grove waits on its category's target. `n`: the hands the target lacks for
+ *  it (ordo/labour.manualReach); `k`: how many of the houses asked about it would serve, staffed. */
+export interface IdleWork { id: number; type: BuildingId; cat: LaborCat; have: number; slots: number; n: number; k: number }
+
+/** Under manual labour, the work that answers a house need but stands short of hands, so that hands, not another work,
+ *  answer it first: for a covered need a service below the hands of its full reach (DESIGN §5.2) that, staffed, would
+ *  serve one of the houses `ids` (the most of them first); for oil an olive grove, for full bellies a grain work (the
+ *  fewest hands first, then the lowest id). Null while the Ordo staffs, or when the targets already reach every such work. */
+export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null {
+  if (s.ordo.on.labour) return null;
+  const layers = ANSWERS[need];
+  const want = new Set(ids);
+  let best: IdleWork | null = null;
+  for (const b of s.buildings) {
+    const def = BUILDING_DEFS[b.type];
+    if (b.status !== 'done' || !b.open || def.slots <= 0 || !def.labor || def.labor === 'builders') continue;
+    const slots = slotsOf(b.type, s.rank);
+    const have = v.c.staffed[b.id] ?? 0;
+    let k = 0, hands = slots;
+    if (layers) {
+      if (!def.service?.some((x) => layers.includes(x.layer))) continue;
+      hands = Math.ceil(slots * B.economy.SERVICE_FULL);   // a service reaches its full radius at half its posts
+      if (have >= hands) continue;
+      const served = new Set<number>();
+      for (const p of previewCovered(s, b.type, b.x, b.y)) if (layers.includes(p.layer)) for (const h of p.houses) if (want.has(h)) served.add(h);
+      k = served.size;
+      if (k === 0) continue;
+    } else {
+      const answers = need === 'oil' ? b.type === 'olivetum' : need === 'fed' && def.output?.res === 'grain';
+      if (!answers || have >= slots) continue;
+    }
+    const n = manualReach(s, v, b.id, hands);
+    if (n > 0 && (!best || k > best.k || (k === best.k && n < best.n))) best = { id: b.id, type: b.type, cat: def.labor, have, slots, n, k };
+  }
+  return best;
+}
+
+/** The remedy for a work short of hands: its category's target raised by what the work lacks. */
+export function staffRemedy(w: IdleWork): Remedy {
+  return { kind: 'assign', cat: w.cat, n: w.n };
+}
+
+/** "The olive grove 12 paces east of the walls has 0 of 4 hands" (no full stop: the rules go on). */
+export function idleHead(s: GameState, w: IdleWork): string {
+  return `The ${bName(w.type)} ${buildingPlace(s, w.id)} has ${w.have} of ${w.slots} ${w.slots === 1 ? 'hand' : 'hands'}`;
 }
 
 /** A house need as a noun phrase ("a shrine", "water"). */
