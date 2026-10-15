@@ -44,7 +44,7 @@ export const MIGRATIONS: Record<number, (raw: any) => any> = {
   },
 };
 /** Preferences of a first visit. */
-export const DEFAULT_PREFS: Prefs = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false };
+export const DEFAULT_PREFS: Prefs = { sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false };
 
 const EXPORT_PREFIX = 'CV1:';
 const B64_CHUNK = 0x8000;                      // bytes per String.fromCharCode call
@@ -422,6 +422,7 @@ export function loadPrefs(): Prefs {
       if (typeof o.sound === 'boolean') p.sound = o.sound;
       if (typeof o.volume === 'number' && Number.isFinite(o.volume)) p.volume = clamp(o.volume, 0, 1);
       if (typeof o.speed === 'number' && SPEED_SET.includes(o.speed)) p.speed = o.speed as Speed;
+      if (typeof o.paused === 'boolean') p.paused = o.paused;
       if (typeof o.tips === 'boolean') p.tips = o.tips;
       if (typeof o.slowForNews === 'boolean') p.slowForNews = o.slowForNews;
       if (typeof o.pauseOnCritical === 'boolean') p.pauseOnCritical = o.pauseOnCritical;

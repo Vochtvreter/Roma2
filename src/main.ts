@@ -46,6 +46,7 @@ import { setTitleNotice } from './ui/title';
 import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
 import { closeAllModals, exportDue, modalCount } from './ui/modals';
+import { resume } from './ui/dispatch';
 import { prefill } from './ui/tabs/commercium';
 import { afterPlace, keepPlacing, keepable, openPlacing, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
@@ -143,17 +144,21 @@ class App implements Game {
     this.speed = sp;
     this.paused = false;
     this.prefs.speed = sp;
+    this.prefs.paused = false;
     savePrefs(this.prefs);
     this.changed();
   }
 
   togglePause(): void {
-    this.paused = !this.paused;
-    this.changed();
+    this.setPaused(!this.paused);
   }
 
+  /** The player's pause (❚❚, Space, Pause on Periculum): kept in prefs, so a reload and the away letter keep the colony
+   *  paused (dispatch.ts resume). The app's own holds (the title, a letter, the catch-up) set `paused` alone. */
   setPaused(p: boolean): void {
     this.paused = p;
+    this.prefs.paused = p;
+    savePrefs(this.prefs);
     this.changed();
   }
 
@@ -304,7 +309,7 @@ class App implements Game {
     const awayMs = Math.max(0, Date.now() - s.lastSave);
     const run = offlineRun(s, awayMs);
     if (run) this.startCatchup(run);
-    else { this.setSpeed(this.prefs.speed); this.remindExport(); }
+    else { resume(this); this.remindExport(); }   // paused if the player had paused it, else at their speed
   }
 
   toTitle(): void {
@@ -332,7 +337,7 @@ class App implements Game {
     if (!s) { toast('That text is not a Castra Valeria save.', 'bad'); this.sfx('error'); return false; }
     closeAllModals();
     this.enter(s);
-    this.paused = true;
+    this.setPaused(true);   // it waits for a speed, after a reload too
     this.write(false);
     toast(`${s.name} restored.`, 'good');
     return true;
@@ -399,7 +404,7 @@ class App implements Game {
     this.view.setInputEnabled(true);
     this.write(false);
     if (report.days >= 1) this.ui.showDispatch('away', report);   // the letter carries its own keep-a-copy line
-    else { this.setSpeed(this.prefs.speed); this.remindExport(); }
+    else { resume(this); this.remindExport(); }
     this.changed();
   }
 

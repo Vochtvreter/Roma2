@@ -24,9 +24,9 @@ export interface Game {
   readonly prefs: Prefs;
   readonly rates: Rates;              // last tick's ledger (previewRates after a load)
   readonly speed: Speed; readonly paused: boolean; readonly mode: Mode; readonly modalOpen: boolean;
-  setSpeed(sp: Speed): void;          // also unpauses; stores prefs.speed
+  setSpeed(sp: Speed): void;          // also unpauses; stores prefs.speed, clears prefs.paused
   togglePause(): void;
-  setPaused(p: boolean): void;
+  setPaused(p: boolean): void;        // the player's pause: stores prefs.paused (a reload and the away letter keep it)
   changed(): void;                    // something changed outside a tick: panels re-check signatures now
   act(r: ActionResult, opts?: { okSfx?: SfxName; okToast?: string }): ActionResult;   // standard result handling: error toast with r.reason + 'error' sfx, or ok sfx; then changed()
   startPlacing(p: PlacingState): void; cancelPlacing(): void;
