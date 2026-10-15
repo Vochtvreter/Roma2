@@ -17,6 +17,7 @@ import { settingValue } from './decisions';
 import { seasonOf as seasonOf$ } from './calendar';
 import { view } from './sim';
 import { placementCost } from './place';
+import { forgetDemolition } from './demolition';
 import { wallsDay, wallsRising } from './urbs';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
@@ -320,7 +321,8 @@ export function startCapitolium(s: GameState): void {
   invalidate(s);
 }
 
-/** Cancels an unfinished site: 100% within FULL_REFUND_DAYS and before any work, else 75%; plans refund nothing. */
+/** Cancels an unfinished site: 100% within FULL_REFUND_DAYS and before any work, else 75%; plans refund nothing. It ends
+ *  the demolish tool's Undo (demolition.ts forgetDemolition): it is no longer the last demolition. */
 export function cancelSite(s: GameState, id: number): ActionResult {
   const b = getBuilding(s, id);
   if (!b) return notFound();
@@ -332,6 +334,7 @@ export function cancelSite(s: GameState, id: number): ActionResult {
     refund(s, siteCost(s, b), frac);
   }
   s.buildings = s.buildings.filter((x) => x.id !== id);
+  forgetDemolition(s);
   const pct = Math.round(frac * 100);
   log(s, 'build', `Works on the ${BUILDING_DEFS[b.type].name.toLowerCase()} are abandoned${b.paid ? ` (${pct}% returned to the stores)` : ''}.`);
   invalidate(s);
