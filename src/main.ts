@@ -107,6 +107,7 @@ class App implements Game {
       onHover: (tile, id) => this.onHover(tile, id),
       onClick: (tile, id, e) => this.onClick(tile, id, e.shift),
       onDrag: (kind, tiles, done) => this.onDrag(kind, tiles, done),
+      onDemolish: (ids) => this.onDemolish(ids),
       onCancel: () => (this.view.placing ? this.cancelPlacing() : this.select(null)),
       onPlacementPreview: (check) => this.ui.showPlaceBanner(this.view.placing, check),
     });
@@ -563,9 +564,6 @@ class App implements Game {
           this.act(actions.toggleReserveBlock(s, blk.id), { okSfx: 'click' });
           return;
         }
-        case 'demolish':
-          if (id !== null) this.act(actions.demolish(s, id), { okSfx: 'place' });
-          return;
         default: return;
       }
     }
@@ -573,6 +571,12 @@ class App implements Game {
     this.select(null);
     const blk = blockOfTile(s, tile);
     this.inspect(blk ? { kind: 'block', block: blk.id } : { kind: 'tile', tile }, true);
+  }
+
+  /** The demolish tool's second click on armed works (one, or a sweep's): they come down; the banner offers Undo. */
+  private onDemolish(ids: number[]): void {
+    if (this.mode !== 'game' || this.modalOpen) return;
+    this.act(actions.demolishMany(this.state, ids), { okSfx: 'place' });
   }
 
   private onDrag(kind: 'road' | 'pave', tiles: number[], done: boolean): void {

@@ -35,7 +35,7 @@ const TOOLS: { id: Exclude<ToolId, 'pin'>; label: string; tip: string }[] = [
   { id: 'road', label: 'Road', tip: 'Drag dirt roads across the land (R). Inside the pomerium streets follow the survey.' },
   { id: 'pave', label: 'Pave', tip: 'Pave built roads in basalt: 2 stone a tile, desirability +1. Streets you pave win Rome\'s favour: settlers come faster.' },
   { id: 'reserve', label: 'Reserve block', tip: 'Mark a block the Ordo must leave alone.' },
-  { id: 'demolish', label: 'Demolish', tip: 'Click a building twice to pull it down (25% refund).' },
+  { id: 'demolish', label: 'Demolish', tip: `Click a building, or drag over several, then click again to pull them down (${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back; Undo for ${B.construction.UNDO_DAYS} days).` },
 ];
 const CATS: readonly BuildCat[] = ['domus', 'annona', 'aqua', 'materia', 'officinae', 'mercatus', 'religio', 'salus', 'ornamenta'];
 const STAGES = ['Podium', 'Cella', 'Columnae', 'Fastigium'] as const;

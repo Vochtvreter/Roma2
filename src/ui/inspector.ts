@@ -18,10 +18,11 @@ import { clear, fmt, fmtRunway, h, img, plural } from './dom';
 import * as A from '../game/actions';
 import { getBuilding } from '../game/state';
 import { fertility, getMap, idx, isFertile, tx, ty, woodAt } from '../game/map';
-import { derived, inCamp } from '../game/derived';
+import { blockOfTile, derived, inCamp } from '../game/derived';
 import { WALL_RING, ringsOf } from '../game/survey';
 import { footfall, wearOf } from '../game/urbs';
 import { canPlace, freePlot } from '../game/place';
+import { councilGardens } from '../game/demolition';
 import { capitoliumFlow, capitoliumHold, worksQueue } from '../game/construction';
 import { siteMult } from '../game/site';
 import { effectiveRadius } from '../game/coverage';
@@ -766,9 +767,19 @@ class InspectorCard {
 
   private demolish(b: Building): HTMLElement {
     const g = this.g;
+    const back = `${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back`;
     const d = h('button', { class: 'btn small ghost ins-demolish', type: 'button' }, 'Demolish');
-    confirm2(d, `Demolish? ${Math.round(B.construction.REFUND_DEMOLISH * 100)}% back`, () => { g.act(A.demolish(g.state, b.id), { okSfx: 'place' }); });
-    return part(h('div', { class: 'ins-btns end' }, d), 'demolish');
+    confirm2(d, `Demolish? ${back}`, () => { g.act(A.demolish(g.state, b.id), { okSfx: 'place' }); });
+    // a garden: the council's gardens of its block come down in one go (DESIGN §5.3), not two clicks each
+    const blk = b.type === 'hortus' ? blockOfTile(g.state, idx(b.x, b.y)) : null;
+    const n = blk ? councilGardens(g.state, blk.id).filter((id) => id !== b.id).length : 0;
+    const row = h('div', { class: 'ins-btns end' }, d);
+    if (!blk || n === 0) return part(row, 'demolish');
+    const k = n + (b.owner === 'ordo' ? 1 : 0), what = k === 1 ? "the council's garden" : `the council's ${k} gardens`;
+    const all = h('button', { class: 'btn small ghost ins-demolish', type: 'button' }, `Clear ${what} here`);
+    // a row of its own: armed, its shorter words move neither it from under the pointer nor Demolish
+    confirm2(all, `Clear ${what}? ${back}`, () => { g.act(A.clearGardens(g.state, blk.id), { okSfx: 'place' }); });
+    return part(h('div', null, h('div', { class: 'ins-btns end' }, all), row), 'demolish');
   }
 
   private block(card: HTMLElement, id: number, sticky: boolean): void {
