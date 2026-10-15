@@ -55,6 +55,7 @@ You lay out blocks, wells, granaries, shrines and fields yourself — or leave i
 - **1 tick = 1 day = 1 real second at 1×.** Speeds ❚❚ / 1× / 2× / 5× / 10× (keys Space, 1–4). `?dev` adds 20× (key 5) and `skip(days)`.
 - Fixed-step `requestAnimationFrame` accumulator: `dt` clamped to 0.1 s, at most 8 ticks per frame, the backlog is dropped when the cap is hit.
 - The game **starts paused** under the parchment *Founding Dispatch*; its button **"Raise the standard"** starts 1×. After that nothing waits: event cards, tips, banners and the advisor card never pause. Open **modals** pause (menu, export/import, how-to-play, away report, victory).
+- **A colony comes back as you left it**: paused if you paused it (❚❚, Space or *Pause on Periculum*), else at your last speed, after Continue, a reload, a return to the tab and the away letter (§14). An imported colony waits, paused, for a speed.
 - UI pref **"Slow for news"** (default on): when a choice card appears while speed > 2×, speed drops to 2×. UI-only, never touches the sim.
 - Every countdown shows days; its tooltip adds the real-time equivalent at the current speed (*"23 days ≈ 12 s at 2×"*).
 
@@ -1149,6 +1150,7 @@ Names from rome: *Caravan from Lutetia, Syrian spice traders, Gallic cattle merc
 | Differences (and nothing else) | benign events only, on half the days; no new choice cards except the auto-accepted relief; pending cards resolve to their default at expiry; starvation/thirst deaths ×0.4; **no house loses a tier** (decline counters stop at 55); fires and harmful events off; merchants only through the Ordo; **Govern while away** runs manual subsystems with the Ordo; emergency measures apply if on; fx discarded; rates not accumulated |
 | Stops early | on victory; `report.days` = days actually simulated |
 | Presentation | a semi-transparent veil *"Anni transeunt… — the years pass"* with a progress bar; the Roman date, HUD and map visibly race underneath; **[Skip]** runs the rest synchronously (identical result) |
+| Return | closing the letter (*Return to the city*, ✕, Esc) goes on as you left the colony (§2.1): at your last speed, or paused if you had paused it; a button in it that opens a panel (*Petition Rome*, a remedy that opens a tab or the contract form) leaves it paused while you read |
 
 **The away report — *Litterae Ordinis*** (parchment modal; built from a highlight recorder: log entries tagged *highlight* / *decided*, stat deltas, and the runner's lowest-point tracker):
 ```

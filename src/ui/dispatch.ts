@@ -2,7 +2,7 @@
 // report and the Victory dispatch (read again from the Annales' Fasti). Light parchment, ink, a code-drawn meander frame
 // and a red wax seal. A letter opens with the focus on itself, not on a button (modals.ts restingFocus). Owner: WP-H.
 import { BUILDINGS, HOUSE_TIERS, PATH_DECISIONS } from '../game/types';
-import type { AwayReport, GameState, Snapshot, VictoryStats } from '../game/types';
+import type { AwayReport, GameState, Prefs, Remedy, Snapshot, Speed, VictoryStats } from '../game/types';
 import type { Game } from './types';
 import { fmt, fmtDays, h, img } from './dom';
 import type { Kid } from './dom';
@@ -96,7 +96,8 @@ function progress(b: Snapshot, a: Snapshot): HTMLElement | null {
   return parts.length ? h('span', null, ...parts) : null;
 }
 
-function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null {
+function awaiting(g: Game, r: AwayReport, done: (held: boolean) => void): HTMLElement | null {
+  const close = (held = true): void => done(held);   // a button here leads on to a panel: the colony waits there (DESIGN §14)
   const s = g.state;
   const items: HTMLElement[] = [];
   // nothing moved: what holds the next rank leads (DESIGN §14), its checklist a click away
@@ -117,12 +118,12 @@ function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null
     const ra = renderAdvisory(s, view(s), a);
     const first = ra.remedies.find((x) => x.check.ok);
     items.push(h('div', { class: `disp-await s${a.memo.sev}` }, h('span', { class: 'disp-mark' }, '●'), h('span', { class: 'disp-await-text' }, ra.title),
-      first ? h('button', { class: 'btn small', onclick: () => { close(); g.applyRemedy(first.remedy); } }, first.label) : null));
+      first ? h('button', { class: 'btn small', onclick: () => { close(opensPanel(first.remedy)); g.applyRemedy(first.remedy); } }, first.label) : null));
   }
   return items.length ? line('AWAITING YOU', ...items) : null;
 }
 
-function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
+function awayBody(g: Game, r: AwayReport, close: (held?: boolean) => void): HTMLElement {
   const b = r.before, a = r.after;
   const coin = a.res.denarii - b.res.denarii;
   const moves = [[a.births - b.births, '+', 'births'], [a.immigrants - b.immigrants, '+', 'arrivals'], [a.deaths - b.deaths, '−', 'deaths'],
@@ -221,6 +222,24 @@ function victoryBody(g: Game, close: () => void): HTMLElement {
         h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`))));
 }
 
+/** How a colony goes on after Continue or the away letter (DESIGN §2.1): as the player left it, held if they had paused
+ *  it (❚❚, Space, Pause on Periculum: prefs.paused), else at their last speed. `held`: the letter closed on a button
+ *  that opens a panel (the petition, a remedy that opens a tab or the contract form), so the days wait while they read
+ *  it. null: the colony stays paused. */
+export function resumeAs(p: Pick<Prefs, 'speed' | 'paused'>, held = false): Speed | null {
+  return held || p.paused ? null : p.speed;
+}
+
+/** A remedy that opens a panel (a tab, the contract form): from the away letter it leaves the colony paused. */
+export const opensPanel = (r: Remedy): boolean => r.kind === 'open' || r.kind === 'contract';
+
+/** Sets the colony going by resumeAs: at that speed, or paused (setPaused keeps it in prefs, so a reload keeps it too). */
+export function resume(g: Game, held = false): void {
+  const sp = resumeAs(g.prefs, held);
+  if (sp === null) g.setPaused(true);
+  else g.setSpeed(sp);
+}
+
 /** Opens one of the three parchment letters; closing it resumes the game as the letter says. */
 export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', report?: AwayReport): void {
   let close: () => void = () => undefined;
@@ -231,8 +250,9 @@ export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', rep
     return;
   }
   if (kind === 'away' && report) {
-    close = openModal(sealed(awayBody(g, report, () => close())), {
-      kicker: 'LITTERAE ORDINIS', title: `${g.state.name}: the Ordo reports`, parchment: true, wide: true, onClose: () => g.setSpeed(g.prefs.speed),
+    let held = false;   // closed by a button that opens a panel: the colony waits while the player reads it
+    close = openModal(sealed(awayBody(g, report, (hold = false) => { held = hold; close(); })), {
+      kicker: 'LITTERAE ORDINIS', title: `${g.state.name}: the Ordo reports`, parchment: true, wide: true, onClose: () => resume(g, held),
     });
     return;
   }

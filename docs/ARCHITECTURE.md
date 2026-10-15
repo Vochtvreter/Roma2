@@ -901,7 +901,7 @@ export interface AwayReport {
 }
 export interface OfflineRun { days: number; progress(): number; step(n: number): boolean; report(): AwayReport }
 export type Speed = 1 | 2 | 5 | 10 | 20;
-export interface Prefs { sound: boolean; volume: number; speed: Speed; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
+export interface Prefs { sound: boolean; volume: number; speed: Speed; paused: boolean; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
 export interface FastiEntry { name: string; seed: number; legacy: number; founded: number; dedicated: number | null; peakPop: number; paths: PathOptionId[]; playMs: number }
 ```
 
@@ -1564,7 +1564,7 @@ Rules around the tick:
 3. **Iteration order** comes from sorted arrays (`people`, `buildings`, `families`, contracts, caravans by id; `roads` by tile) and from the frozen id arrays (`RESOURCES`, `BUILDINGS`, `LABOR_CATS`, …). Never drive logic by `Object.keys` of a record, `for…in`, or a `Set`/`Map` whose insertion order depends on history. Tie-breaks are explicit: lowest id, then lowest tile.
 4. **GameState is plain JSON**: no typed arrays, `Map`, `Set`, class instances, functions, `undefined` values, `NaN` or `±Infinity`. Optional fields are omitted, not set to `undefined`. Typed arrays live only in memoised derived data. A `noNaN` walker runs in every bot test.
 5. **Memo purity**: every memoised value is a pure function of `s` and is keyed on the epochs that cover its inputs. Module-level caches (`getMap` seed cache, `councilReport`'s last report, `validSlots`) never change sim outcomes. Anything the Ordo must remember between days lives in `s.ordo`.
-6. **Offline = online minus the listed differences**: the only branch on `ctx.offline` are the DESIGN §14 differences, each implemented in exactly one place (events, people death factors, housing decline stop, merchants, governAway in `ordoActive`, relief auto-accept, fx discard). UI prefs (`slowForNews`, `pauseOnCritical`, speed) never reach the sim.
+6. **Offline = online minus the listed differences**: the only branch on `ctx.offline` are the DESIGN §14 differences, each implemented in exactly one place (events, people death factors, housing decline stop, merchants, governAway in `ordoActive`, relief auto-accept, fx discard). UI prefs (`slowForNews`, `pauseOnCritical`, speed, pause) never reach the sim.
 7. **No rounding of state for storage**: the save is the exact state, so *save → load → continue* equals *never saving*. Rounding is display-only (`fmt*`).
 8. Floating-point determinism is guaranteed per JS engine (tests run in node/V8). Use `Math.exp`, `Math.pow`, `Math.sqrt` freely; never compare floats for equality in game logic (use thresholds).
 9. Tests: two 2,000-day runs of one seed serialise identically; *save → load → continue* equals the uninterrupted run; `simulateOffline(s, 200_000)` equals 100 ticks with `ctx.offline = true`; 24 h away = 1,825 days.
@@ -1591,7 +1591,7 @@ Unreadable save on Continue: the title shows the reason and an **Export raw save
 **Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4. An optional key added later, which older saves simply lack and the code reads as absent (`stats.atVictory`), needs no migration: there is nothing to convert.
 
 ### 11.3 Prefs, Fasti, export/import
-- `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed (a continued game resumes paused, then at this speed after the away report).
+- `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed; `paused` is the player's pause (❚❚, Space, *Pause on Periculum* and an import set it through `setPaused`; any speed clears it), never the app's own holds (the title, a letter, the catch-up). A continued game loads paused and then goes on as the player left it (`dispatch.ts resume`: still paused if `paused`, else at `speed`), after the away report when there is one.
 - `castravaleria.fasti.v1`: `FastiEntry[]`, newest first, max 50. `addFasti` is called once at dedication (victory). A new colony after a victory gets `legacy = previous legacy + 1` and `legacyBonus += 0.05` if *Imperium* was chosen; abandoning a colony adds nothing.
 - Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves (keeping the colony it replaces as the previous colony, §11.4), and attaches the view. On failure: *"That text is not a Castra Valeria save."*
 
@@ -1642,7 +1642,7 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
 `main.ts` flow:
 1. **Continue**: `awayMs = max(0, now − s.lastSave)`; **tab return**: `awayMs = now − hiddenAt`. Absences < 60 s simulate nothing (the rAF accumulator clamp drops the gap).
 2. `run = offlineRun(s, awayMs)`; if non-null → mode `catchup`: the veil *"Anni transeunt… — the years pass"* with a progress bar and **[Skip]**; each frame runs `run.step(B.time.SLICE_DAYS)` repeatedly until `SLICE_MS` (30 ms) of the frame is used; the map, HUD and date redraw from the live state; input is blocked by the veil; fx are discarded; **Skip** calls `run.step(run.days)`.
-3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes at `prefs.speed`. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
+3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes as the player left it (`resume`: paused if `prefs.paused`, else at `prefs.speed`), but a button of *Awaiting you* that opens a panel (*Petition Rome*, a remedy of kind `open` or `contract`: `opensPanel`) leaves it paused; no letter (`report.days` 0): `resume` at once. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
    A colony still on `START_DAY` (the founding letter not yet answered) is never caught up: Continue shows the founding letter again.
 4. `previewRates(s)` refreshes the HUD ledger after a load (the last tick's rates are not saved).
 
@@ -1933,9 +1933,9 @@ export interface Game {
   readonly prefs: Prefs;
   readonly rates: Rates;              // last tick's ledger (previewRates after a load)
   readonly speed: Speed; readonly paused: boolean; readonly mode: Mode; readonly modalOpen: boolean;
-  setSpeed(sp: Speed): void;          // also unpauses; stores prefs.speed
+  setSpeed(sp: Speed): void;          // also unpauses; stores prefs.speed, clears prefs.paused
   togglePause(): void;
-  setPaused(p: boolean): void;
+  setPaused(p: boolean): void;        // the player's pause: stores prefs.paused (a reload and the away letter keep it)
   changed(): void;                    // something changed outside a tick: panels re-check signatures now
   act(r: ActionResult, opts?: { okSfx?: SfxName; okToast?: string }): ActionResult;   // standard result handling: error toast with r.reason + 'error' sfx, or ok sfx; then changed()
   startPlacing(p: PlacingState): void; cancelPlacing(): void;
@@ -2381,6 +2381,7 @@ export class Layout {
 | `history.test.ts` | H | always | `backStep` (the open layer of the highest rank closes; none open: warn, then leave within `LEAVE_MS`), `rearm` |
 | `css-floor.test.ts` | H | always | no font size under 12 px in `src/styles` at Normal and Large (every `--fs-*` token wherever set again), canvas font literals and map labels ≥ 12 CSS px (`labelPx`, `labelLines`, `canvasDpr`), no sheet or pane height in `vh`, the Text size storage |
 | `loop.test.ts` | H | always | the loop's clock (`game/loop.ts`): 30 s at 5× is 150 ticks and one state hash at 12 and 60 Hz; with speed changes and a pause, 124 ticks and one hash at 12, 15 (covered clamp), 60 and 120 Hz; uneven rates add up exactly; DT_CLAMP drops the time of 250 ms turns, the covered clamp does not; a paused colony keeps its part tick; MAX_STEPS drops a backlog; time never runs backwards |
+| `resume.test.ts` | H | always | a colony comes back as the player left it (DESIGN §2.1): `resumeAs` (the last speed, or paused when `prefs.paused` or the letter closed on a panel button), `opensPanel` per remedy kind, `resume` over a stub Game (the pause stays stored for the next reload) |
 | `pwa.test.ts` | H | always | `platform.ts` probes (standalone, iOS, Safari over real user agents), the Safari reminder only in a Safari tab, the Menu's and the title's entries by platform; `scripts/precache.ts` (`precacheFiles`, `buildId`, `swSource` on `public/sw.js`); the written worker run over stand-in caches and network (install past the HTTP cache into `castra-<folder>-<BUILD>`, activate drops only the folder's older caches, the page network first and kept only when it is the app's HTML, another file opened in a tab left alone, offline the kept page); the manifest, `index.html`'s relative links, the icons' sizes, opaque ground and whole-number art (the maskable one inside its safe circle) |
 | `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |

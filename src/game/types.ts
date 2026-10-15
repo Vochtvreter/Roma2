@@ -607,5 +607,5 @@ export interface AwayReport {
 }
 export interface OfflineRun { days: number; progress(): number; step(n: number): boolean; report(): AwayReport }
 export type Speed = 1 | 2 | 5 | 10 | 20;
-export interface Prefs { sound: boolean; volume: number; speed: Speed; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
+export interface Prefs { sound: boolean; volume: number; speed: Speed; paused: boolean; tips: boolean; slowForNews: boolean; pauseOnCritical: boolean }
 export interface FastiEntry { name: string; seed: number; legacy: number; founded: number; dedicated: number | null; peakPop: number; paths: PathOptionId[]; playMs: number }

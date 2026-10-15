@@ -316,14 +316,23 @@ describe('localStorage', () => {
   });
 
   it('prefs merge over the defaults; invalid fields fall back', () => {
-    expect(DEFAULT_PREFS).toEqual({ sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false });
+    expect(DEFAULT_PREFS).toEqual({ sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false });
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
     savePrefs({ ...DEFAULT_PREFS, sound: false, speed: 5 });
     expect(loadPrefs()).toEqual({ ...DEFAULT_PREFS, sound: false, speed: 5 });
-    localStorage.setItem(KEYS.prefs, JSON.stringify({ volume: 7, speed: 3, tips: 'yes', pauseOnCritical: true }));
+    localStorage.setItem(KEYS.prefs, JSON.stringify({ volume: 7, speed: 3, tips: 'yes', pauseOnCritical: true, paused: 'yes' }));
     expect(loadPrefs()).toEqual({ ...DEFAULT_PREFS, volume: 1, pauseOnCritical: true });
     localStorage.setItem(KEYS.prefs, '{broken');
     expect(loadPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  it('the player\'s pause is kept with the last speed, so a reload comes back paused (DESIGN §2.1)', () => {
+    savePrefs({ ...DEFAULT_PREFS, speed: 10, paused: true });
+    expect(loadPrefs()).toMatchObject({ speed: 10, paused: true });
+    savePrefs({ ...DEFAULT_PREFS, speed: 10, paused: false });
+    expect(loadPrefs()).toMatchObject({ speed: 10, paused: false });
+    localStorage.setItem(KEYS.prefs, JSON.stringify({ speed: 5 }));   // prefs stored before the pause was kept: running
+    expect(loadPrefs()).toMatchObject({ speed: 5, paused: false });
   });
 
   it('the Fasti keep the newest 50 well-formed entries', () => {
