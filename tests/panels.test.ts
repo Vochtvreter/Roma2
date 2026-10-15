@@ -2,12 +2,13 @@
 // Headless: imports the tab modules' signature/badge functions only (no DOM is touched at import or in a signature).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
-import type { GameState } from '../src/game/types';
+import type { GameState, Remedy } from '../src/game/types';
 import type { Game } from '../src/ui/types';
 import { PANELS, panelTokens } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
 import { DEFAULT_PREFS } from '../src/game/save';
 import { activeAdvisories, renderAdvisory } from '../src/game/advisors/engine';
+import { checkRemedy } from '../src/game/advisors/remedies';
 import { councilReport } from '../src/game/ordo/index';
 import { pendingOffers } from '../src/game/ordo/duties';
 import { newGame } from '../src/game/state';
@@ -188,8 +189,24 @@ describe('remedy buttons follow the best plot (R15)', () => {
 
   it('a remedy key holds no live numbers', () => {
     const s = fresh(42);
-    expect(remedyKey(s, { remedy: { kind: 'buyNow', res: 'grain', qty: 37 }, check: { ok: true } })).toBe('buyNow');
-    expect(remedyKey(s, { remedy: { kind: 'contract', spec: { hub: 'metellianus', mode: 'import', res: 'grain', qty: 33, repeat: false } }, check: { ok: true } })).toBe('contract');
+    expect(remedyKey(s, { remedy: { kind: 'buyNow', res: 'grain', qty: 37 }, check: { ok: true } })).toBe('buyNow:1');
+    expect(remedyKey(s, { remedy: { kind: 'contract', spec: { hub: 'metellianus', mode: 'import', res: 'grain', qty: 33, repeat: false } }, check: { ok: true } })).toBe('contract:1');
+  });
+
+  it('a remedy key follows whether its button can be used: the Pave brush once the stone for a pace comes in', () => {
+    const s = fresh(42);
+    s.guidance.milestoneDays.templum = s.day;                           // the brush is ours (the Templum's Res Gestae)
+    const pave: Remedy = { kind: 'tool', tool: 'pave' };
+    const key = (): string => remedyKey(s, { remedy: pave, check: checkRemedy(s, pave) });
+    s.res.stone = 0;
+    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'unaffordable' });   // disabled: "…the stores hold 0."
+    const short = key();
+    s.res.stone = B.map.PAVE_STONE;
+    expect(checkRemedy(s, pave).ok).toBe(true);
+    const ready = key();
+    expect(ready).not.toBe(short);                                      // the Consiliarii card rebuilds: no stale reason
+    s.res.stone = 500;
+    expect(key()).toBe(ready);                                          // more stone is no new key
   });
 });
 
