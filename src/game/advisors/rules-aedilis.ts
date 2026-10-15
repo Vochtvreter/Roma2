@@ -4,20 +4,21 @@
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B as B$ } from '../balance';
 import { HOUSE_TIERS as HOUSE_TIERS$, NEEDS as NEEDS$ } from '../types';
-import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
+import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
 import { moraleTarget } from '../civic';
 import { renownFactor } from '../people';
 import { sectionRevealed } from '../reveal';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { getBuilding as getBuilding$ } from '../lookup';
+import { idx } from '../map';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
 import { BUILDING_DEFS } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import { TIER_DEFS as TIER_DEFS$ } from '../data/housing';
 import { houseBeds, peopleIndex } from '../census';
 import {
-  CLEAR, R, STEP, aName, bestFood, clearSite, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, liftSlot, serveSlot,
-  serviceFor, three, tierWord, worksWord,
+  CLEAR, R, STEP, aName, bestFood, clearSite, fractionWord, held, houseWants, importRemedy, inDays, int, lowLadder, needRemedy, needWord, placeName, rankWord, liftSlot,
+  risingReach, serveSlot, serviceFor, three, tierWord, worksWord,
 } from './util';
 import type { CadencedRule, ClearSite, ClearWhy, HouseWant } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
@@ -47,11 +48,35 @@ function mode<T>(xs: readonly T[], order: readonly T[]): T {
   return best;
 }
 
-/** The houses that wait on exactly one next-tier need, grouped by that need; water is the Curator's (aquarum.access). */
+/** The houses that wait on exactly one next-tier need, grouped by that need; water is the Curator's (aquarum.access). A
+ *  house a work of its need still rising will reach waits for that work (util.risingReach): it is left out, so the
+ *  advice never asks for a second temple, nor a block cleared for one, for the homes the first will serve. */
 function oneShort(s: GameState, v: SimView): Map<NeedId, HouseWant[]> {
   const by = new Map<NeedId, HouseWant[]>();
-  for (const w of houseWants(s, v)) if (w.next && w.unmet.length === 1 && w.unmet[0] !== 'water') by.set(w.unmet[0], [...(by.get(w.unmet[0]) ?? []), w]);
+  const rising = new Map<NeedId, ReadonlyMap<number, number>>();   // per need, asked once
+  for (const w of houseWants(s, v)) {
+    if (!w.next || w.unmet.length !== 1 || w.unmet[0] === 'water') continue;
+    const need = w.unmet[0];
+    let reach = rising.get(need);
+    if (!reach) { reach = risingReach(s, need); rising.set(need, reach); }
+    if (!reach.has(w.id)) by.set(need, [...(by.get(need) ?? []), w]);
+  }
   return by;
+}
+
+/** The work still rising that will reach the most of the houses waiting on `need` alone (ties: the first placed), or
+ *  null: what the advice shows once the player has placed the work it asked for, until the homes it reaches rise. */
+function risingWork(s: GameState, v: SimView, need: NeedId): Building | null {
+  const reach = risingReach(s, need);
+  if (reach.size === 0) return null;
+  const n = new Map<number, number>();
+  for (const w of houseWants(s, v)) {
+    const id = w.next && w.unmet.length === 1 && w.unmet[0] === need ? reach.get(w.id) : undefined;
+    if (id !== undefined) n.set(id, (n.get(id) ?? 0) + 1);
+  }
+  let best: number | null = null, top = 0;
+  for (const [id, k] of n) if (k > top || (k === top && best !== null && id < best)) { best = id; top = k; }
+  return best === null ? null : getBuilding(s, best) ?? null;
 }
 
 /** The works that answer a coverage need, the first choice first: a fountain or else a well (a lacus must stand near
@@ -65,14 +90,16 @@ function serviceChoices(s: GameState, v: SimView, need: NeedId): BuildingId[] {
 }
 
 /** What serveRemedy found: the remedy (null when nothing can serve the houses), its slot, the houses it lets rise, the
- *  work; for a block service no free block can bring them, the block to clear, or why none is offered. */
-interface Served { remedy: Remedy | null; slot: number | null; k: number; type: BuildingId | null; clear?: ClearSite; why?: ClearWhy }
+ *  work; for a block service no free block can bring them, the block to clear, or why none is offered (`rising`: a block
+ *  would be, but a work of that kind still rises elsewhere — `up`, its id). */
+interface Served { remedy: Remedy | null; slot: number | null; k: number; type: BuildingId | null; clear?: ClearSite; why?: ClearWhy | 'rising'; up?: number }
 
 /** Remedy for a need: the answering building at the slot that serves most of `ids` (coverage needs: util.serveSlot, the
  *  same reckoning the Ordo raises a request by), or needRemedy. When no free slot of any answering work reaches one of
  *  the houses, a block service offers the block to clear for it (util.clearSite: the most of them served for the least
- *  pulled down); else `remedy` is null (another one would stand idle: the Domus overlay shows them) and `why` says what
- *  kept the blocks near them. Oil points to a caravan while a grove is still being raised or growing. */
+ *  pulled down) — one at a time: not while a work of that kind still rises (checkClear refuses it too); else `remedy`
+ *  is null (another one would stand idle: the Domus overlay shows them) and `why` says what kept the blocks near them.
+ *  Oil points to a caravan while a grove is still being raised or growing. */
 function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<number>): Served {
   if (need === 'oil' && s.buildings.some((b) => b.type === 'olivetum' && (b.status !== 'done' || (b.youngUntil ?? 0) > s.day))) {
     return { remedy: importRemedy(s, 'oil', B.ordo.CARGO), slot: null, k: 0, type: null };
@@ -90,13 +117,18 @@ function serveRemedy(s: GameState, v: SimView, need: NeedId, ids: ReadonlySet<nu
     const at = serveSlot(s, type, 'player', need, list);
     if (at) return { remedy: { kind: 'place', building: type, tile: at.tile }, slot: at.tile, k: at.k, type };
   }
-  // no free site reaches them: a block to clear for the first work that has one (the great baths before a balneum)
-  let why: ClearWhy = 'far';
+  // no free site reaches them: a block to clear for the first work that has one (the great baths before a balneum), but
+  // never while one of that kind still rises: the homes it will reach are not counted here (oneShort), and a block
+  // pulled down for the others waits until it stands
+  let why: ClearWhy = 'far', up: Building | undefined;
   for (const type of types) {
     const c = clearSite(s, type, need, list);
-    if (c.site) return { remedy: { kind: 'clear', building: type, tile: c.site.tile, ids: c.site.ids }, slot: c.site.tile, k: c.site.k, type, clear: c.site };
+    const rising = c.site ? s.buildings.find((b) => b.type === type && b.status !== 'done') : undefined;
+    if (c.site && !rising) return { remedy: { kind: 'clear', building: type, tile: c.site.tile, ids: c.site.ids }, slot: c.site.tile, k: c.site.k, type, clear: c.site };
+    if (rising) { up ??= rising; continue; }
     if (c.why === 'gain' || (c.why === 'works' && why === 'far')) why = c.why;
   }
+  if (up) return { remedy: null, slot: null, k: 0, type: up.type, why: 'rising', up: up.id };
   return { remedy: null, slot: null, k: 0, type: types[0], why };
 }
 
@@ -158,6 +190,9 @@ const evolve: CadencedRule = {
   text(s, v, a) {
     const need = a.params.need as NeedId;
     const ids = new Set((oneShort(s, v).get(need) ?? []).map((w) => w.id));
+    // the work it asked for is placed: until the next check lets the advice go, it says what they wait for
+    const up = ids.size === 0 ? risingWork(s, v, need) : null;
+    if (up) return `${cap1(aName(up.type))} rises ${placeName(s, idx(up.x, up.y))}: they grow once it stands.`;
     const r = serveRemedy(s, v, need, ids);
     if (need === 'rank') return `Only a charter from Rome lets them rise: petition for ${rankWord(Math.min(RANK_DEFS.length - 1, s.rank + 1))}.`;
     if (need === 'wine') return 'Wine comes only by caravan, from the markets that sell it.';
@@ -178,6 +213,8 @@ const evolve: CadencedRule = {
       const head = `No free ${where} within reach of their doors can take ${aName(r.type)}, nor will the Ordo raise one where it would not serve them`;
       if (where === 'plot') return `${head}: they keep their roofs until a ${where} near them is cleared.`;
       // why no block is offered for clearing (DESIGN §11.1 rule 7)
+      const b = r.why === 'rising' && r.up !== undefined ? getBuilding(s, r.up) : undefined;
+      if (b) return `${head}. ${cap1(aName(b.type))} already rises ${placeName(s, idx(b.x, b.y))}: once it stands, a block near them can be cleared for another.`;
       if (r.why === 'gain') return `${head}, and no block near them is worth clearing: each would let too few of them rise for the homes and works it pulls down.`;
       if (r.why === 'works') return `${head}: the blocks near them hold what must stand (a granary, a warehouse, a civic work, or the shrine, shop or well they need), or are blocks you keep free.`;
       return `${head}, and no block of the town that could take one lies within reach of them.`;
@@ -190,6 +227,8 @@ const evolve: CadencedRule = {
   remedies(s, v, a) {
     const need = a.params.need as NeedId;
     const ids = new Set((oneShort(s, v).get(need) ?? []).map((w) => w.id));
+    const up = ids.size === 0 ? risingWork(s, v, need) : null;
+    if (up) return three({ kind: 'building', op: 'center', id: up.id }, { kind: 'overlay', overlay: 'domus' });
     return three(serveRemedy(s, v, need, ids).remedy, { kind: 'overlay', overlay: 'domus' });
   },
 };

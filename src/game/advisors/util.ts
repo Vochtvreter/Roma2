@@ -228,6 +228,27 @@ const BONUS: Partial<Record<CoverageLayerId, 'shrineRadius' | 'marketRadius' | '
   shrine: 'shrineRadius', temple: 'shrineRadius', market: 'marketRadius', macellum: 'marketRadius', baths: 'bathsRadius',
 };
 
+const NO_RISE: ReadonlyMap<number, number> = new Map();
+
+/** The houses a work answering `need` that is still rising will reach once it stands (previewCovered from its site),
+ *  each with that work (the first placed): they wait for it, not for another — a second temple, or a block cleared for
+ *  one, would serve the same homes (DESIGN §11.6 row 17). The Capitolium, the colony's long last work, is not counted.
+ *  Memo on the layout (a placement, a completion, a demolition), the rank and the radius bonuses. */
+export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number> {
+  const layers = ANSWERS[need];
+  if (!layers) return NO_RISE;
+  const key = `${layoutEpoch(s)}|${s.rank}|${fxAdd(s, 'shrineRadius')},${fxAdd(s, 'marketRadius')},${fxAdd(s, 'bathsRadius')}`;
+  return memo(s, `adv.rising.${need}`, key, () => {
+    const out = new Map<number, number>();
+    for (const b of s.buildings) {
+      const def = BUILDING_DEFS[b.type];
+      if (b.status === 'done' || def.place.includes('fixed') || !def.service?.some((x) => layers.includes(x.layer))) continue;
+      for (const p of previewCovered(s, b.type, b.x, b.y)) if (layers.includes(p.layer)) for (const h of p.houses) if (!out.has(h)) out.set(h, b.id);
+    }
+    return out;
+  });
+}
+
 /** A set of tiles as a memo key part (kept per set: the Ordo hands the same set all day). */
 function skipKey(skip: ReadonlySet<number> | undefined): string {
   if (!skip) return '';

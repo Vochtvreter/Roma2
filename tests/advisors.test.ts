@@ -31,6 +31,7 @@ vi.mock('../src/game/coverage', async (orig) => {
 import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
 import { applyRemedy, checkRemedy, clearPrompt, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
 import { fresh, run } from './util';
+import { follow } from './autoplayer';
 import { EDICT_DEFS, SETTING_DEFS } from '../src/game/data/decisions';
 import { B } from '../src/game/balance';
 import { Rng } from '../src/game/rng';
@@ -38,10 +39,10 @@ import { invalidate, touchPeople } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
 import { bestFood, blockWorks, clearSite } from '../src/game/advisors/util';
-import { canPlace, validSlots } from '../src/game/place';
+import { canPlace, placeBuilding, validSlots } from '../src/game/place';
 import { getMap, tx, ty } from '../src/game/map';
 import { residents } from '../src/game/census';
-import { houseHas } from '../src/game/coverage';
+import { houseHas, previewCovered } from '../src/game/coverage';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -310,6 +311,82 @@ describe('a block to clear for the work the homes wait for (playtest #2, DESIGN 
     put(s, 'puteus', tx(rem.tile) + 2, ty(rem.tile) + 2);
     expect(checkRemedy(s, rem)).toMatchObject({ ok: false, code: 'notReady' });
     expect(checkRemedy(t, rem)).toMatchObject({ ok: false, code: 'notReady' });   // cleared already: a place remedy now
+  });
+
+  it('once the temple rises on the cleared block, the homes it will reach wait for it: no second block to clear', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'hortus');
+    const { r } = raise(s);
+    const rem = r.remedies[0].remedy;
+    if (rem.kind !== 'clear') throw new Error('no clear remedy');
+    const ids = waiting(s);
+    expect(applyRemedy(s, rem).ok).toBe(true);
+    expect(placeBuilding(s, 'templum', rem.tile, { owner: 'player' }).ok).toBe(true);
+    const temple = s.buildings.find((b) => b.type === 'templum')!;
+    expect(temple.status).not.toBe('done');
+    // at once, before the next check lets the advice go: it says what they wait for, and shows the site
+    const now = renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: s.guidance.advisories[E]! });
+    expect(now.text).toMatch(/^A temple rises .+: they grow once it stands\.$/);
+    expect(now.remedies[0].remedy).toEqual({ kind: 'building', op: 'center', id: temple.id });
+    // the checks that follow while the temple is still a site (coverage is mocked: it never reaches them) offer no
+    // second block, and the advice lets go
+    for (let i = 0; i < 4 * every(E); i++) {
+      wait(s);
+      day(s);
+      const m = s.guidance.advisories[E]!;
+      if (!m.active) continue;
+      const q = renderAdvisory(s, fake(s, {}), { rule: E, advisor: 'aedilis', memo: m });
+      expect(q.remedies.some((x) => x.remedy.kind === 'clear')).toBe(false);
+      expect(q.text).not.toMatch(/Clear the block/);
+    }
+    expect(s.guidance.advisories[E]!.active).toBe(false);
+    // a second block for the same homes, however it was found, is refused while a temple rises
+    const again = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(checkRemedy(s, { kind: 'clear', building: 'templum', tile: again.tile, ids: again.ids }))
+      .toMatchObject({ ok: false, code: 'chosen', reason: 'A temple is already being raised.' });
+  });
+
+  it('one block at a time: while a temple rises out of their reach, the Nota says the block waits until it stands', () => {
+    const s = base();
+    wait(s);
+    // a temple already rising on a block that reaches none of them; a garden on every other block
+    const ids = waiting(s);
+    const far = [...validSlots(s, 'templum', 'player').keys()].sort((a, b) => a - b)
+      .find((t) => !previewCovered(s, 'templum', tx(t), ty(t)).some((p) => p.layer === 'temple' && p.houses.some((h) => ids.includes(h))))!;
+    expect(placeBuilding(s, 'templum', far, { owner: 'player' }).ok).toBe(true);
+    fill(s, 'hortus');
+    const { m, r } = raise(s);
+    expect(m.sev).toBe(0);
+    expect(r.remedies.some((x) => x.remedy.kind === 'clear')).toBe(false);
+    expect(r.text).toMatch(/^No free block within reach of their doors can take a temple, nor will the Ordo raise one where it would not serve them\. A temple already rises .+: once it stands, a block near them can be cleared for another\.$/);
+    // once it stands, the block is offered
+    const t = s.buildings.find((b) => b.type === 'templum')!;
+    t.status = 'done';
+    t.progress = 1;
+    invalidate(s);
+    const after = raise(s);
+    expect(after.m.sev).toBe(1);
+    expect(after.r.remedies[0].remedy).toMatchObject({ kind: 'clear', building: 'templum' });
+  });
+
+  it('the advisor-follower clears one block and places the temple there, then waits for it to stand', () => {
+    const s = base();
+    wait(s);
+    fill(s, 'hortus');
+    raise(s);
+    const count = (type: BuildingId): number => s.buildings.filter((b) => b.type === type).length;
+    const gardens = count('hortus');
+    follow(s);
+    expect(count('templum')).toBe(1);
+    expect(count('hortus')).toBe(gardens - 1);
+    for (let i = 1; i <= 40; i++) {
+      wait(s);
+      day(s);
+      if (i % 10 === 0) follow(s);
+    }
+    expect(count('templum')).toBe(1);
+    expect(count('hortus')).toBe(gardens - 1);
   });
 
   it('names who must move when the block holds homes, and whether the town has the beds', () => {

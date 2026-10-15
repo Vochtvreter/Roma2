@@ -1369,6 +1369,7 @@ export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly n
 export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[]): { site: ClearSite | null; why: ClearWhy };   // the block to clear for a block service no free block brings them (DESIGN §11.6 row 17), or why none
 export function blockWorks(s: GameState, tile: number): number[] | null;   // what the advice may pull down on a block (homes, plot works); null if anything else stands there
 export function worksWord(s: GameState, ids: readonly number[]): string;   // what stands there in words: "2 gardens and a well"
+export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number>;   // house → the work answering `need`, still rising, that will reach it (they wait for it: no second one advised)
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;

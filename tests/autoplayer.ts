@@ -138,7 +138,7 @@ function decide(s: GameState, picks: Record<PathDecisionId, PathOptionId>, tip: 
 
 /** Remedy 0 of the top advisory (a `place` remedy executes as `ask`; a contract is sent as the form would send it; a
  *  block to clear is cleared and the work placed on it, as the player's confirm and the ghost waiting there do). */
-function follow(s: GameState): void {
+export function follow(s: GameState): void {
   const top = activeAdvisories(s, { forCard: true })[0];
   const r = top ? renderAdvisory(s, view(s), top).remedies[0]?.remedy : undefined;
   if (!r) return;

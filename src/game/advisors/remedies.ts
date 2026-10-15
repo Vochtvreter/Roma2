@@ -193,10 +193,13 @@ function noSite(s: GameState, type: BuildingId, owner: Owner): string {
 }
 
 /** A block to clear for a block service (DESIGN §11.6 row 17): the work may stand there once what is named comes down,
- *  and the block still holds exactly that — anything built on it or pulled down since the advice was given says so. */
+ *  and the block still holds exactly that — anything built on it or pulled down since the advice was given says so.
+ *  One at a time, as an ask: while a work of the kind still rises, the homes it will reach wait for it, and a second
+ *  block pulled down for the same homes would cost what stands there for nothing. */
 function checkClear(s: GameState, type: BuildingId, tile: number, ids: readonly number[]): ActionResult {
   const b = buildable(s, type);
   if (!b.ok) return b;
+  if (s.buildings.some((w) => w.type === type && w.status !== 'done')) return fail('chosen', `${aName(type).replace(/^./, (c) => c.toUpperCase())} is already being raised.`);
   const map = getMap(s.seed), sv = map.survey;
   const blk = Number.isInteger(tile) && tile >= 0 && tile < sv.blockAt.length ? sv.blocks[sv.blockAt[tile]] : undefined;
   if (!blk || blk.y * map.W + blk.x !== tile || !BUILDING_DEFS[type].place.includes('block') || !isActiveBlock(sv, blk, s.rank, isRazed(s))) {
