@@ -281,6 +281,7 @@ export const B = {
       STALLED: [20, 40], CAP_ETA: 365,
       COIN_RUNOUT: [15, 45, 120], COIN_WINDOW: 30,
       EVOLVE_HOUSES: 3, DECLINING_P: 0.1,
+      CLEAR_GAIN: 3,                                    // a block is worth clearing when ≥ 3 more waiting homes rise than it pulls down
       BEDS_FREE: 2, BEDS_WINDOW: 30, FAVOUR_LOW: 1.5,
       MORALE: [50, 35, 25], MORALE_FALL: 0.3, MORALE_FALL_DAYS: 10,
       CHOICE_SOON: 7, REMEDY_DAYS: 30, BUY_DAYS: 20,

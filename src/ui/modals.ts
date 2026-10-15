@@ -148,6 +148,13 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   return close;
 }
 
+/** A question with two answers in a modal (the cleared-block remedy, main.ts): the safe answer has the focus, so Enter
+ *  keeps things as they are, and `yes` closes it and runs onYes. Asked as a permanent choice is (confirmChoice): no
+ *  timeout, and a press within B.ui.CONFIRM_MIN_MS of its opening does nothing. */
+export function openConfirm(o: { kicker: string; title: string; text: string; yes: string; no: string; onYes: () => void }): void {
+  confirmChoice({ kicker: o.kicker, title: o.title, lines: [o.text], ok: o.yes, cancel: o.no, danger: true }, o.onYes);
+}
+
 /** What a press on a two-step confirm does (pure; tests/confirm.test.ts): the first arms it; one within
  *  B.ui.CONFIRM_MIN_MS of the arming (the second click of a double-click, a double tap) changes nothing; a later one
  *  runs it. A confirm dialog counts from its opening the same way (confirmChoice). */

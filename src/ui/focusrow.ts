@@ -47,10 +47,12 @@ export function focusOfWish(type: BuildingId, tile: number): string { return `w:
 export function focusOfLabour(cat: LaborCat): string { return `c:${cat}`; }
 
 /** data-focus for an advisory, or null when it names nothing on the map (pure): a remedy that centres a building names
- *  that building; the Aedilis' declining homes name all of them. */
+ *  that building; a block to clear, the block (the work's footprint on it); the Aedilis' declining homes name all of them. */
 export function focusOfAdvisory(rule: string, remedies: readonly { remedy: Remedy }[]): string | null {
   const c = remedies.find((x) => x.remedy.kind === 'building' && x.remedy.op === 'center')?.remedy;
   if (c && c.kind === 'building') return focusOfBuilding(c.id);
+  const k = remedies.find((x) => x.remedy.kind === 'clear')?.remedy;
+  if (k && k.kind === 'clear') return focusOfWish(k.building, k.tile);
   return rule === 'aedilis.declining' ? 'decl' : null;
 }
 

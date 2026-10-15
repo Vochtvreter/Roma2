@@ -33,7 +33,7 @@ import { BUILDING_DEFS } from './game/data/buildings';
 import { blockOfTile, derived } from './game/derived';
 import { resolvePlaceAt } from './game/site';
 import * as actions from './game/actions';
-import { applyRemedy as applySimRemedy, checkRemedy } from './game/advisors/remedies';
+import { applyRemedy as applySimRemedy, checkRemedy, clearPrompt } from './game/advisors/remedies';
 import { MapView } from './render/view';
 import type { PlacingState } from './render/view';
 import { registerAllArt } from './render/art/index';
@@ -45,7 +45,7 @@ import { initBack } from './ui/history';
 import { setTitleNotice } from './ui/title';
 import { setAudio, sfx as playSfx } from './ui/audio';
 import { toast } from './ui/toasts';
-import { closeAllModals, exportDue, modalCount } from './ui/modals';
+import { closeAllModals, exportDue, modalCount, openConfirm } from './ui/modals';
 import { prefill } from './ui/tabs/commercium';
 import { afterPlace, keepPlacing, keepable, openPlacing, startAt } from './ui/mapbar';
 import { lastTouch, touchInput } from './ui/pointer';
@@ -57,6 +57,8 @@ import { askPersist, keepCopyWhy, platform, registerWorker } from './ui/platform
 const DEV = /[?&]dev\b/.test(location.search);
 const TITLE_SEED = 42;
 const SAVE_FAIL = 'Could not save: storage is full or blocked. Use Menu → Export.';
+const CLEAR_LIFT = 140;        // CSS px a block to clear rises above the middle of the map, clear of the question
+const CLEAR_FLASH_MS = 3000;   // how long it flashes while the question is asked
 const BROKEN = 'Something went wrong and the clock stopped. Use Menu → Export to keep a copy of the colony, then reload.';
 
 /** The running application: owns the state, the loop and the mode; the UI talks to it through Game. */
@@ -284,8 +286,31 @@ class App implements Game {
         }
         this.act(applySimRemedy(s, r));
         return;
+      case 'clear': this.clearBlock(r); return;
       default: this.act(applySimRemedy(s, r));
     }
+  }
+
+  /** A block to clear for a work (DESIGN §11.5): the block is shown on the map and the player is asked, naming what
+   *  comes down; on yes the sim remedy pulls it down (the demolish action) and the work's ghost waits on the cleared
+   *  block, as a place remedy's does. */
+  private clearBlock(r: Extract<Remedy, { kind: 'clear' }>): void {
+    const n = B.map.BLOCK, x = tx(r.tile), y = ty(r.tile);
+    this.showOnMap();
+    this.view.centerOn({ x, y, w: n, h: n });
+    // the question opens in the middle of the screen: the block glides up above it, in sight while the player decides
+    const box = this.view.screenRect(x, y, n, n);
+    this.view.panBy(0, -((box.bottom - box.top) / 2 + CLEAR_LIFT));
+    this.view.flash(r.tile, n, n, CLEAR_FLASH_MS);
+    const q = clearPrompt(this.state, r);
+    openConfirm({
+      kicker: 'AEDILIS', title: q.title, text: q.text, yes: q.yes, no: 'Keep the block',
+      onYes: () => {
+        if (!this.act(applySimRemedy(this.state, r), { okSfx: 'place' }).ok) return;
+        this.startPlacing({ kind: 'building', type: r.building, at: r.tile });
+        this.view.flash(r.tile, n, n);
+      },
+    });
   }
 
   newGame(opts?: { afterVictory?: boolean }): void {
