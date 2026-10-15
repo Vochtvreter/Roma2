@@ -6,7 +6,8 @@ import { B as B$ } from '../balance';
 import { LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, TRADE_RES as TRADE_RES$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
 import { toRoman as toRoman$ } from '../calendar';
-import { capitoliumFlow } from '../construction';
+import { capitoliumFlow, storeWords } from '../construction';
+import type { CapitoliumFlow } from '../construction';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { missing } from '../state';
@@ -271,7 +272,7 @@ const capitolium: AdvisorRule = {
     if (f.eta !== null && f.eta <= limit) return null;
     const params = {
       stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand,
-      crew: f.crew, full: f.crew >= B.construction.CAP_CREW ? 1 : 0, stock: f.stock, inflow: f.inflow,
+      crew: f.crew, full: f.crew >= B.construction.CAP_CREW ? 1 : 0, stock: f.stock, held: f.held, heldFor: f.heldFor ?? '', inflow: f.inflow,
       short: f.starved?.input ?? '', works: f.starved?.works ?? '', share: f.starved?.share ?? 1,
     };
     if (capitoliumLevers(s, v, params).length === 0) return null;   // nothing left to pull: it rises as fast as it can
@@ -287,7 +288,9 @@ const capitolium: AdvisorRule = {
         : `At this flow ${when}; the crew is the bottleneck (${int(P(p.crew))} of the ${cap} fabri who could work on it).`;
     }
     const flow = `${P(p.inflow) < 0 ? '−' : '+'}${num(Math.abs(P(p.inflow)))}/day of ${num(P(p.demand))}`;
-    return `At this flow ${when}; it waits for ${resName(p.res as ResId)}: ${num(P(p.stock))} in store, ${flow}.`;
+    const hf = typeof p.heldFor === 'string' ? p.heldFor : '';   // what the Ordo keeps the stock back for (storeWords)
+    const heldFor = hf === 'petition' || hf === 'floor' || hf in BUILDING_DEFS ? hf as CapitoliumFlow['heldFor'] : null;
+    return `At this flow ${when}; it waits for ${resName(p.res as ResId)}: ${storeWords({ stock: P(p.stock), held: P(p.held), heldFor })}, ${flow}.`;
   },
   text(_s, _v, a) {
     const p = a.params;

@@ -514,12 +514,31 @@ describe('people (DESIGN §6)', () => {
     s.decisions.edicts.hospites = 'clausi';                         // closed gates: ×0.2
     a = arrivalOutlook(s);
     expect(a.limiter?.id).toBe('edicts');
-    expect(limiterLine(s, a)).toBe('The edicts hold them back most: Newcomers: Clausi ×0.2.');
+    // the edicts named as their buttons name them, and only those that hold the newcomers back (not the Coloni's ×1.3)
+    expect(limiterLine(s, a)).toBe('The edicts hold them back most (Hospites Clausi ×0.2).');
+    s.decisions.edicts.tributum = 'grave';
+    s.decisions.paths.path1 = 'coloni';
+    a = arrivalOutlook(s);
+    expect(a.limiter?.id).toBe('edicts');
+    expect(limiterLine(s, a)).toBe('The edicts hold them back most (Tributum Grave ×0.8, Hospites Clausi ×0.2).');
+    s.decisions.edicts.tributum = 'iustum';
+    delete s.decisions.paths.path1;
     s.decisions.edicts.hospites = 'cauti';
     fillBeds(s);                                                    // no free bed: the gate is shut whatever the draw
     a = arrivalOutlook(s);
     expect(a.shut).toBe('beds');
     expect(limiterLine(s, a)).toMatch(/^No house has a free bed/);
+    // one bed free: a lone craftsman may take it, but most households are two souls or more and turn back at the gate
+    s.people.pop();
+    touchPeople(s);
+    expect(census(s).freeBeds).toBe(1);
+    a = arrivalOutlook(s);
+    expect(a.shut).toBe('beds');
+    expect(limiterLine(s, a)).toBe('Only 1 free bed: most families need more and turn back at the gate. Raise house plots.');
+    s.people.pop();
+    touchPeople(s);
+    expect(census(s).freeBeds).toBe(B.advisors.RULES.BEDS_FREE);   // two free: the gate is open again
+    expect(arrivalOutlook(s).shut).toBeNull();
   });
 
   it('Rome\'s call brings the souls the outlook foretells (playtest #6)', () => {
@@ -570,6 +589,14 @@ describe('people (DESIGN §6)', () => {
     expect(census(s).freeBeds).toBe(0);
     expect(soulsEta(s, census(s).pop + 10)).toBeNull();
     expect(etaWords(s, census(s).pop + 10)).toBe('no free beds: newcomers turn back');
+    // one bed free: the ETA counts on no settler (most households would not fit), only births less deaths
+    s.people.pop();
+    touchPeople(s);
+    expect(census(s).freeBeds).toBe(1);
+    const natural = (birthOutlook(s).perYear - deathsPerYear(s)) / B.time.YEAR_DAYS;
+    expect(arrivalOutlook(s).perDay).toBeGreaterThan(0);
+    expect(soulsEta(s, census(s).pop + 10)).toBe(natural > 0 ? Math.ceil(10 / natural) : null);
+    expect(etaWords(s, census(s).pop + 10)).toBe('only 1 free bed: most newcomers turn back');
   });
 
   it('marries, bears children and buries over the years without NaN', () => {

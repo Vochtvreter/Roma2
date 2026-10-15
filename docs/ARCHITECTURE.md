@@ -1235,10 +1235,10 @@ export function gainSkill(p: Person, skill: SkillId, amount: number): void;   //
 ```
 **`settlers.ts`** — the pace of souls at today's rates (DESIGN §6.6 *The pace, shown*); render-time only, never read by the tick
 ```ts
-export function arrivalOutlook(s: GameState): ArrivalOutlook;          // { perDay (= immigrationChance), every, shut: 'roll'|'beds'|null, factors, limiter }
+export function arrivalOutlook(s: GameState): ArrivalOutlook;          // { perDay (= immigrationChance), every, shut: 'roll'|'beds'|null (beds: under BEDS_FREE free), factors, limiter }
 export function birthOutlook(s: GameState): BirthOutlook;              // { perYear, mothers, factors } (beds at today's free beds)
 export function deathsPerYear(s: GameState): number;                   // ordinary deaths (ageHazard × care) at today's ages
-export function soulsEta(s: GameState, goal: number): number | null;   // days to `goal` souls: settlers to the roll, then births − deaths; 0 reached, null never
+export function soulsEta(s: GameState, goal: number): number | null;   // days to `goal` souls: settlers to the roll (none while the gate is shut), then births − deaths; 0 reached, null never
 export function limiterLine(s: GameState, a: ArrivalOutlook): string;  // what holds the settlers back most, in words (a shut gate first)
 export function paceWords(a: ArrivalOutlook): string; export function naturalWords(s: GameState): string; export function etaWords(s: GameState, goal: number): string;
 ```
@@ -1265,8 +1265,9 @@ export function startStaked(s: GameState): void;                      // staked 
 export function payPlans(s: GameState, ctx: TickContext): void;       // plans become sites when the stock covers them (ignores reservations except the petition fee)
 export function constructionDay(s: GameState, ctx: TickContext): void;   // builder work along the queue; Capitolium crew cap and gradual materials; stages; completions → status done, house state, fx built/stage, invalidate, log, stats
 export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4;
-export function capitoliumFlow(s: GameState): CapitoliumFlow | null;   // { stage, eta, bottleneck: ResId | 'crew' | null, rate, need, supply, demand, crew, walls, spare, stock, inflow, starved }: rate/need in work units; crew/walls/spare builders (on it, ≤ CAP_CREW; on the town wall; with nothing to build); supply/demand/stock/inflow the bottleneck material (0 when the crew binds), its works counted at what their inputs allow (inputShares); starved: { works, input, share } of those works, or null
+export function capitoliumFlow(s: GameState): CapitoliumFlow | null;   // { stage, eta, bottleneck: ResId | 'crew' | null, rate, need, supply, demand, crew, walls, spare, stock, held, heldFor, inflow, starved }: rate/need in work units; crew/walls/spare builders (on it, ≤ CAP_CREW; on the town wall; with nothing to build); supply/demand/stock/inflow the bottleneck material (0 when the crew binds), its works counted at what their inputs allow (inputShares); stock is the stores' own count, held the part of it the temple may not draw (the saving target; coin also the treasury floor) and heldFor what holds it (a work, 'petition', 'floor' or null: ordo/saving savingHolds); starved: { works, input, share } of those works, or null
 export function capitoliumHold(f: CapitoliumFlow): string;           // the works row's and the card's words: 'crew at its maximum: 64 of 64 builders (the most that can work on it)', 'waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)'
+export function storeWords(f: Pick<CapitoliumFlow, 'stock' | 'held' | 'heldFor'>): string;   // the stock in those words and fabrum.capitolium's: '12 in store', '12 in store, all held for the great baths', '900 in store, all kept as the treasury floor'
 export function crewWords(f: CapitoliumFlow): string;                // the Fabri row's sentence by hand: '64 of 64 builders on the Capitolium (the most that can work on it); 36 more have nothing to build.'
 export function startCapitolium(s: GameState): void;                 // creates the Capitolium site on the Area Capitolina
 export function cancelSite(s: GameState, id: number): ActionResult;   // 100% within FULL_REFUND_DAYS and no work, else 75%; plans refund nothing (unpaid)
@@ -1324,6 +1325,7 @@ export function luxuryCaravans(s: GameState, v: SimView, res: 'oil' | 'wine'): {
 export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void; // DESIGN §8.12 steps 1–3 and 5 (step 5 calls events.triggerRelief); the water pause starts on the run-out (< WATER_PAUSE) under WATER_START × waterResume and lifts above waterResume
 // ordo/saving.ts
 export function savingFor(s: GameState, v: SimView): { cost: Cost; for: 'petition' | 'plan' | 'pin' | 'request' | 'wish' } | null;
+export function savingHolds(s: GameState, v: SimView, r: ResId): BuildingId | 'petition' | null;   // what the target keeps a good back for: the first part costing some (its work, or the fee), else the wish saved for
 export function reserved(s: GameState, v: SimView): Cost;           // saving target + next 30 days of Capitolium materials
 export function canSpend(s: GameState, cost: Cost, v: SimView, opts?: { survival?: boolean }): boolean;   // stock − reserved ≥ cost and denarii stay ≥ treasury floor (survival ignores both)
 // ordo/actions.ts

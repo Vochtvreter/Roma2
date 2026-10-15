@@ -39,7 +39,7 @@ import { Rng } from '../src/game/rng';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
-import { bestFood, blockWorks, clearSite, idleFor, int, serveSlot } from '../src/game/advisors/util';
+import { bestFood, blockWorks, buildingPlace, clearSite, idleFor, int, serveSlot } from '../src/game/advisors/util';
 import { favourPaces, immigrationChance, renownFactor } from '../src/game/people';
 import { canPlace, placeBuilding, validSlots } from '../src/game/place';
 import { getMap, tx, ty } from '../src/game/map';
@@ -126,7 +126,8 @@ const pet = (ready: boolean, label = '50 souls') => ({ decision: 'path1', rank: 
 
 /** A Capitolium flow for the mocked capitoliumFlow: the Cella 400 days off, its full crew of 64 at work. */
 const FLOW: CapitoliumFlow = {
-  stage: 1, eta: 400, bottleneck: 'crew', rate: 3, need: 1200, supply: 0, demand: 0, crew: 64, walls: 0, spare: 0, stock: 0, inflow: 0, starved: null,
+  stage: 1, eta: 400, bottleneck: 'crew', rate: 3, need: 1200, supply: 0, demand: 0, crew: 64, walls: 0, spare: 0, stock: 0, held: 0, heldFor: null,
+  inflow: 0, starved: null,
 };
 
 const FIX: Record<RuleId, Fix> = {
@@ -504,6 +505,51 @@ describe('a block to clear for the work the homes wait for (playtest #2, DESIGN 
     t.rank = 3;
     invalidate(t);
     expect(checkRemedy(t, { kind: 'place', building: 'thermae' })).toMatchObject({ ok: false, reason: 'No free block can take great baths: no castellum within 18 paces.' });
+  });
+
+  it('asked of the Ordo with no site, it names what keeps the Ordo off the free plots: a work of yours still rising there, a block kept free', () => {
+    const s = fresh(42);
+    s.ordo.on.build = true;
+    const sv = getMap(42).survey;
+    const plots = [...validSlots(s, 'area', 'player').keys()].sort((a, b) => a - b);
+    const mineBlk = sv.blockAt[plots[0]];
+    const keptBlk = sv.blockAt[plots.find((t) => sv.blockAt[t] !== mineBlk)!];
+    expect(place(s, 'area', tx(plots[0]), ty(plots[0]), { ignoreCost: true }).ok).toBe(true);   // a house plot of yours, still rising
+    const mine = s.buildings.find((b) => b.owner === 'player' && b.status !== 'done')!;
+    for (const t of plots) if (sv.blockAt[t] !== mineBlk && sv.blockAt[t] !== keptBlk) expect(placeBuilding(s, 'area', t, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    s.ordo.reserved = [keptBlk];
+    invalidate(s);
+    expect(validSlots(s, 'area', 'ordo').size).toBe(0);
+    const where = `the house plot ${buildingPlace(s, mine.id)}`;
+    expect(checkRemedy(s, { kind: 'ask', building: 'area' })).toMatchObject({ ok: false, code: 'noSlots',
+      reason: `Every free plot lies in a block you keep from the Ordo or beside a work of yours not yet finished (${where}): place it yourself, or release one.` });
+    // the block kept free is released and built on: only your own work keeps the Ordo off, and there is nothing to release
+    s.ordo.reserved = [];
+    invalidate(s);
+    for (const t of plots) if (sv.blockAt[t] === keptBlk) expect(placeBuilding(s, 'area', t, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+    expect(validSlots(s, 'area', 'ordo').size).toBe(0);
+    expect(validSlots(s, 'area', 'player').size).toBeGreaterThan(0);
+    expect(checkRemedy(s, { kind: 'ask', building: 'area' })).toMatchObject({ ok: false, code: 'noSlots',
+      reason: `Every free plot lies in a block beside a work of yours not yet finished (${where}): the Ordo leaves those to you, so place it yourself.` });
+    // a work that may also stand on rural land: once that land is gone too, the blocks kept from the Ordo are named
+    const m = fresh(42);
+    m.rank = 1;
+    m.ordo.on.build = true;
+    m.ordo.reserved = sv.blocks.map((b) => b.id);
+    /** Road stations, finished, on every site by the via left to the Ordo. */
+    const stations = (owner: 'player' | 'ordo'): void => {
+      invalidate(m);
+      for (let at = [...validSlots(m, 'mansio', 'ordo').keys()]; at.length > 0; at = [...validSlots(m, 'mansio', 'ordo').keys()]) {
+        expect(placeBuilding(m, 'mansio', at[0], { owner, ignoreCost: true }).ok).toBe(true);
+        for (const b of m.buildings) if (b.type === 'mansio') Object.assign(b, { status: 'done', progress: 1 });
+        invalidate(m);
+      }
+    };
+    stations('player');
+    expect(checkRemedy(m, { kind: 'ask', building: 'mansio' })).toMatchObject({ ok: false, reason: 'Every free half-block lies in a block you keep from the Ordo: place it yourself, or release one.' });
+    m.ordo.reserved = [];
+    stations('ordo');
+    expect(checkRemedy(m, { kind: 'ask', building: 'mansio' })).toMatchObject({ ok: false, reason: 'No free land in our territory can take a road station: must touch the via.' });
   });
 });
 
@@ -994,6 +1040,16 @@ describe('fabrum.capitolium names what really holds it back (R23, playtest #7)',
     expect(say(s).title).toBe('At this flow the Cella rises in 400 days; it waits for stone: 12 in store, +1.3/day of 3.8.');
     expect(levers(s)).toContainEqual({ kind: 'place', building: 'lapicidina' });
     expect(levers(s)).not.toContainEqual({ kind: 'edict', edict: 'opera', option: 'magna' });   // harder work lays no more stone
+  });
+
+  it('the stock as the stores panel counts it, and what the Ordo keeps back of it for another work (fix3)', () => {
+    const s = base();
+    ctl.flow = { ...FLOW, eta: null, rate: 0, bottleneck: 'concrete', demand: 3.9, stock: 12, held: 12, heldFor: 'thermae' };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella will not rise; it waits for concrete: 12 in store, all held for the great baths, +0/day of 3.9.');
+    ctl.flow = { ...FLOW, bottleneck: 'stone', supply: 0.5, demand: 3.8, stock: 40, held: 25, heldFor: 'petition', inflow: 0 };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; it waits for stone: 40 in store, 25 held for the petition, +0/day of 3.8.');
   });
 
   it('concrete works without water: it names the water, and the remedies bring water to the works', () => {

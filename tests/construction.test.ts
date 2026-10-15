@@ -330,6 +330,30 @@ describe('the Capitolium (DESIGN §9.5)', () => {
     expect(capitoliumFlow(s)).toMatchObject({ bottleneck: 'concrete', starved: { works: 'caementarium', input: 'water', share: 0 } });
   });
 
+  it('says what the stores hold of the bottleneck, and what the Ordo keeps back of it for another work (fix3)', () => {
+    const { s } = monument(40);
+    s.res.concrete = 12;
+    s.ordo.pin = 'balneum';                                           // the bathhouse pinned: its 20 concrete are saved for it
+    let f = capitoliumFlow(s)!;
+    expect(f).toMatchObject({ bottleneck: 'concrete', eta: null, stock: 12, held: 12, heldFor: 'balneum' });
+    expect(capitoliumHold(f)).toMatch(/^waiting for concrete: 12 in store, all held for the bathhouse, \+0\/day of [\d.]+$/);
+    s.res.concrete = 30;                                              // 10 above what the bathhouse needs: the temple may draw those
+    f = capitoliumFlow(s)!;
+    expect(f).toMatchObject({ bottleneck: 'concrete', stock: 30, held: 20, heldFor: 'balneum' });
+    expect(capitoliumHold(f)).toMatch(/^waiting for concrete: 30 in store, 20 held for the bathhouse, \+0\/day of [\d.]+$/);
+    s.ordo.pin = null;                                                // nothing kept back: the stock is the temple's
+    s.res.concrete = 1;
+    f = capitoliumFlow(s)!;
+    expect(f).toMatchObject({ bottleneck: 'concrete', stock: 1, held: 0, heldFor: null });
+    expect(capitoliumHold(f)).toMatch(/^waiting for concrete: 1 in store, \+0\/day of [\d.]+$/);
+    // coin under the treasury floor is the floor's, not the temple's
+    s.res.concrete = 1e6;
+    s.res.denarii = 50;
+    f = capitoliumFlow(s)!;
+    expect(f).toMatchObject({ bottleneck: 'denarii', stock: 50, held: 50, heldFor: 'floor' });
+    expect(capitoliumHold(f)).toMatch(/^waiting for coin: 50 in store, all kept as the treasury floor, \+0\/day of [\d.]+$/);
+  });
+
   it('raises a stage at each quarter (fx, log, morale for 30 days) and completes in victory', () => {
     const { s, cap } = monument(64);
     cap.progress = C.CAP_STAGES[0] - 1e-4;

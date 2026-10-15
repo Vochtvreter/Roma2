@@ -12,7 +12,7 @@ import { fx as fx$ } from './fx';
 import { census, peopleIndex, stageOf } from './census';
 import { buildingRate, inputShares, legacyMult, productivity } from './economy';
 import { gainSkill } from './people';
-import { savingFor } from './ordo/saving';
+import { savingFor, savingHolds } from './ordo/saving';
 import { settingValue } from './decisions';
 import { seasonOf as seasonOf$ } from './calendar';
 import { view } from './sim';
@@ -209,11 +209,14 @@ export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4 {
 /** The Capitolium's flow (capitoliumFlow). The crew: `crew` builders work on it today, of the CAP_CREW that may (the
  *  town wall's `walls` first; `spare` more have nothing to build while no other site is in hand). For a material
  *  bottleneck, that material a day: what comes in (`supply`: the works' net output and the stock it may draw spread
- *  over CAP_RESERVE_DAYS) against what the crew would use (`demand`), the stock itself (`stock`), the works' net output
- *  (`inflow`), and `starved`, its works held back by a missing input (the scarcest); all 0 or null when the crew binds. */
+ *  over CAP_RESERVE_DAYS) against what the crew would use (`demand`), the stock in the stores (`stock`, as the stores
+ *  panel shows it), the part of it the temple may not draw (`held`: the Ordo's saving target keeps it back, coin also
+ *  the treasury floor) and what holds it (`heldFor`: the first work saved for that costs some, the petition, or the
+ *  floor), the works' net output (`inflow`), and `starved`, its works held back by a missing input (the scarcest); all
+ *  0 or null when the crew binds. */
 export interface CapitoliumFlow {
   stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number; supply: number; demand: number;
-  crew: number; walls: number; spare: number; stock: number; inflow: number;
+  crew: number; walls: number; spare: number; stock: number; held: number; heldFor: BuildingId | 'petition' | 'floor' | null; inflow: number;
   starved: { works: BuildingId; input: ResId; share: number } | null;
 }
 
@@ -269,10 +272,13 @@ export function capitoliumFlow(s: GameState): CapitoliumFlow | null {
     }
   }
   const mat = bottleneck === 'crew' ? null : bottleneck;
+  // the stores hold `stock`; what the Ordo's saving (and the treasury floor) keeps back of it the temple may not draw
+  const stock = mat ? Math.max(0, s.res[mat]) : 0, held = mat ? Math.max(0, stock - (avail[mat] ?? 0)) : 0;
+  const heldFor = mat && held > EPS ? savingHolds(s, view(s), mat) ?? (mat === 'denarii' ? 'floor' : null) : null;
   return {
     stage, eta: rate > EPS ? Math.ceil(need / rate) : null, bottleneck, rate, need, supply, demand: mat ? per[mat] * crew : 0,
     crew: onIt, walls, spare: queue ? 0 : Math.max(0, builders.length - onIt - walls),
-    stock: mat ? avail[mat] ?? 0 : 0, inflow: mat ? made[mat] ?? 0 : 0, starved,
+    stock, held, heldFor, inflow: mat ? made[mat] ?? 0 : 0, starved,
   };
 }
 
@@ -296,16 +302,28 @@ export function starvedWords(st: NonNullable<CapitoliumFlow['starved']>): string
   return `${st.share < 0.05 ? 'no' : 'too little'} ${RESOURCE_DEFS[st.input].name.toLowerCase()} for the ${BUILDING_DEFS[st.works].name.toLowerCase()}`;
 }
 
+/** The bottleneck material's stock in words, as the stores panel counts it, with what the temple may not draw of it:
+ *  "12 in store", "12 in store, all held for the great baths", "40 in store, 25 held for the petition", "900 in
+ *  store, all kept as the treasury floor". The works row, its card and the Praefectus Fabrum say it alike. */
+export function storeWords(f: Pick<CapitoliumFlow, 'stock' | 'held' | 'heldFor'>): string {
+  const store = `${amount(f.stock)} in store`;
+  if (amount(f.held) === '0') return store;
+  const what = f.heldFor === 'floor' ? 'kept as the treasury floor' : f.heldFor === 'petition' ? 'held for the petition'
+    : f.heldFor ? `held for the ${BUILDING_DEFS[f.heldFor].name.toLowerCase()}` : 'held back for other works';
+  return `${store}, ${amount(f.stock - f.held) === '0' ? 'all' : amount(f.held)} ${what}`;
+}
+
 /** What holds the Capitolium back, in words for the works row and its card (DESIGN §9.5): "crew at its maximum: 64 of
  *  64 builders (the most that can work on it)", "bottleneck: builders (40 of the 64 who could work on it)", or
- *  "waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)". */
+ *  "waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)" (the stock with what the Ordo
+ *  keeps back of it: storeWords). */
 export function capitoliumHold(f: CapitoliumFlow): string {
   if (f.bottleneck === 'crew' || f.bottleneck === null) {
     return f.crew >= C.CAP_CREW ? `crew at its maximum: ${f.crew} of ${C.CAP_CREW} builders (the most that can work on it)`
       : `bottleneck: builders (${f.crew} of the ${C.CAP_CREW} who could work on it)`;
   }
   const flow = `${f.inflow < 0 ? '−' : '+'}${amount(Math.abs(f.inflow))}/day of ${amount(f.demand)}`;
-  return `waiting for ${RESOURCE_DEFS[f.bottleneck].name.toLowerCase()}: ${amount(f.stock)} in store, ${flow}${f.starved ? ` (${starvedWords(f.starved)})` : ''}`;
+  return `waiting for ${RESOURCE_DEFS[f.bottleneck].name.toLowerCase()}: ${storeWords(f)}, ${flow}${f.starved ? ` (${starvedWords(f.starved)})` : ''}`;
 }
 
 /** Creates the Capitolium site on the Area Capitolina (once); its materials are drawn as the work proceeds. */

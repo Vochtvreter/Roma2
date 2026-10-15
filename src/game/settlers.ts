@@ -3,16 +3,20 @@
 // petition's Souls line). Pure, read at render time by the souls tooltip, the Populus census, the petition and the
 // Aedilis; the numbers are the tick's own (people.ts arrivalFactors, birthFactors, ageHazard), never a second formula.
 import { B } from './balance';
+import { EDICTS } from './types';
 import type { GameState, RankIndex } from './types';
 import { census } from './census';
 import { careShare } from './civic';
 import { fxBreakdown } from './fx';
 import { ageHazard, arrivalFactors, bedsFactor, birthFactors, mothersOf } from './people';
 import { RANK_DEFS } from './data/ranks';
+import { EDICT_DEFS } from './data/decisions';
 import { int, num } from './advisors/util';
 
 const P = B.people;
 const YEAR = B.time.YEAR_DAYS;
+/** Fewer free beds than this shut the gate (the Aedilis's tight beds): most households are two souls or more. */
+const BEDS = B.advisors.RULES.BEDS_FREE;
 
 export type ArrivalFactorId = 'rank' | 'spirits' | 'food' | 'water' | 'favour' | 'edicts';
 export type BirthFactorId = 'food' | 'spirits' | 'favour' | 'edicts' | 'beds';
@@ -24,7 +28,8 @@ export interface RateFactor<K extends string = string> { id: K; label: string; v
 export interface ArrivalOutlook {
   perDay: number;                              // households a day (people.immigrationChance)
   every: number | null;                        // ≈ days between families while the gates are open; null when none are drawn
-  shut: 'roll' | 'beds' | null;                // what turns every family back today: Rome's roll is full, or no free bed
+  shut: 'roll' | 'beds' | null;                // what turns the families back today: Rome's roll is full, or fewer free beds
+                                               // than BEDS_FREE (only a lone craftsman fits one: most households are larger)
   factors: RateFactor<ArrivalFactorId>[];      // the rank's own rate (`value` in households a day), then the multipliers
   limiter: RateFactor<ArrivalFactorId> | null; // the multiplier furthest below its best; null when each stands at it
 }
@@ -43,9 +48,20 @@ function inStore(n: number): string {
   return `${Number.isFinite(n) ? int(n) : '∞'} days in store`;
 }
 
-/** "Newcomers: Patentes ×1.6, Coloni ×1.3", or "none in force" when no edict, path or event moves the key. */
-function sources(s: GameState, key: 'immigration' | 'births'): string {
-  const xs = fxBreakdown(s, key).filter((t) => Math.abs(t.value - 1) > 1e-9).map((t) => `${t.label} ×${num(t.value)}`);
+/** An effect source as the advice names it: an edict as its remedy button does ("Hospites Clausi", not the effect
+ *  bus's "Newcomers: Clausi"), a path or an event by its own name. */
+function sourceName(s: GameState, label: string): string {
+  for (const e of EDICTS) {
+    const def = EDICT_DEFS[e], opt = def.options.find((o) => o.id === s.decisions.edicts[e]);
+    if (opt && label === `${def.name}: ${opt.name}`) return `${def.latin.split(' ')[0]} ${opt.name}`;
+  }
+  return label;
+}
+
+/** "Hospites Patentes ×1.6, Coloni ×1.3" (with `under`, only those below ×1: what holds the key back), or "none in
+ *  force" when no edict, path or event moves the key. */
+function sources(s: GameState, key: 'immigration' | 'births', under = false): string {
+  const xs = fxBreakdown(s, key).filter((t) => (under ? t.value < 1 - 1e-9 : Math.abs(t.value - 1) > 1e-9)).map((t) => `${sourceName(s, t.label)} ×${num(t.value)}`);
   return xs.length > 0 ? xs.join(', ') : 'none in force';
 }
 
@@ -80,7 +96,7 @@ export function arrivalOutlook(s: GameState): ArrivalOutlook {
     if (x.id === 'rank' || x.value >= x.best - 1e-9) continue;
     if (!limiter || x.value / x.best < limiter.value / limiter.best) limiter = x;
   }
-  const shut = c.pop >= c.roll ? 'roll' : c.freeBeds <= 0 ? 'beds' : null;
+  const shut = c.pop >= c.roll ? 'roll' : c.freeBeds < BEDS ? 'beds' : null;
   return { perDay, every: perDay > 0 ? 1 / perDay : null, shut, factors, limiter };
 }
 
@@ -111,7 +127,8 @@ export function deathsPerYear(s: GameState): number {
 }
 
 /** Days until the colony counts `goal` souls at today's pace: Rome's settlers up to the roll (as the gates stand open
- *  today: a family needs free beds), then births less deaths. 0 when reached, null when the count would not grow. */
+ *  today: a family needs free beds, and under BEDS_FREE of them most turn back), then births less deaths. 0 when
+ *  reached, null when the count would not grow. */
 export function soulsEta(s: GameState, goal: number): number | null {
   const c = census(s);
   if (c.pop >= goal) return 0;
@@ -136,12 +153,22 @@ export function paceWords(a: ArrivalOutlook): string {
   return a.every === null ? 'no family at all' : `about one family every ${int(a.every)} days`;
 }
 
-/** What holds Rome's settlers back most today, as the Aedilis and the census say it: a shut gate first, else the
- *  factor furthest below its best; '' when each stands at its best. */
+/** "only 1 free bed" / "no free beds": the beds that shut the gate, in words. */
+function bedsWords(free: number): string {
+  return free <= 0 ? 'no free beds' : `only ${int(free)} free ${free === 1 ? 'bed' : 'beds'}`;
+}
+
+/** What holds Rome's settlers back most today, as the Aedilis and the census say it: a shut gate first (the beds also
+ *  when one is free: most families need more), else the factor furthest below its best; '' when each stands at its
+ *  best. */
 export function limiterLine(s: GameState, a: ArrivalOutlook): string {
   const next = Math.min(RANK_DEFS.length - 1, s.rank + 1) as RankIndex;
   if (a.shut === 'roll') return s.rank < next ? `Rome's roll is full: petition for ${RANK_DEFS[next].name} to open the gates.` : 'Rome will enrol no more.';
-  if (a.shut === 'beds') return 'No house has a free bed: families turn back at the gate. Raise house plots.';
+  if (a.shut === 'beds') {
+    const free = census(s).freeBeds;
+    return free <= 0 ? 'No house has a free bed: families turn back at the gate. Raise house plots.'
+      : `${bedsWords(free).replace(/^./, (x) => x.toUpperCase())}: most families need more and turn back at the gate. Raise house plots.`;
+  }
   const x = a.limiter;
   if (!x) return 'Every gate stands wide: only a higher rank brings more.';
   const A = P.ATTRACT;
@@ -154,7 +181,7 @@ export function limiterLine(s: GameState, a: ArrivalOutlook): string {
     case 'food': return `Thin granaries hold them back most: Rome sends families at full pace while we keep ${P.FOOD_F[0][0]} days of grain.`;
     case 'water': return `Low water holds them back most: under ${P.WATER_F[0][0]} days in store halves them.`;
     case 'favour': return `Rome's favour holds them back most (${favourTimes(x.value)} of ×${P.RENOWN.MAX}): gardens and paved streets among the homes draw them faster.`;
-    case 'edicts': return `The edicts hold them back most: ${x.why}.`;
+    case 'edicts': return `The edicts hold them back most (${sources(s, 'immigration', true)}).`;
     default: return '';
   }
 }
@@ -171,7 +198,10 @@ export function etaWords(s: GameState, goal: number): string {
   const t = soulsEta(s, goal);
   if (t === 0) return '';
   const a = arrivalOutlook(s);
-  if (a.shut === 'beds') return 'no free beds: newcomers turn back';
+  if (a.shut === 'beds') {
+    const free = census(s).freeBeds;
+    return `${bedsWords(free)}: ${free <= 0 ? 'newcomers' : 'most newcomers'} turn back`;
+  }
   if (t === null) return 'not growing at today\'s pace';
   return `≈ ${int(t)} days${t >= 2 * YEAR ? ` (${Math.round(t / YEAR)} years)` : ''} at today's pace`;
 }
