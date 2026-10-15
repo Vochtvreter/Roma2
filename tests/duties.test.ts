@@ -15,6 +15,7 @@ import { councilReport } from '../src/game/ordo/index';
 import { deserialize, serialize } from '../src/game/save';
 import { LESSONS, skipIntro } from '../src/game/intro';
 import { B } from '../src/game/balance';
+import { BUILDING_DEFS } from '../src/game/data/buildings';
 
 /** A colony run by hand, past the lessons (every duty learned, none handed over). */
 const byHand = (seed = 42): GameState => {
@@ -75,6 +76,20 @@ describe('learning a duty', () => {
     for (const d of WORK_DUTIES) expect(granted(s, d), d).toBe(true);
     expect(setOrdo(s, 'build', false).ok).toBe(true);
     for (const d of WORK_DUTIES) expect(granted(s, d), d).toBe(false);
+  });
+});
+
+describe('the founding lumber camp', () => {
+  it('lets a colony run by hand that has spent its timber build again in time, on one woodcutter', () => {
+    for (const seed of [1, 42, 777]) {
+      const s = newGame({ seed, now: 0, intro: true });
+      const camps = s.buildings.filter((b) => b.type === 'lignarius');
+      expect(camps.map((b) => [b.owner, b.status])).toEqual([['start', 'done']]);
+      expect(s.people.filter((p) => p.work === camps[0].id)).toHaveLength(1);
+      s.res.timber = 0;                                              // spent on the lessons' works and the huts
+      run(s, 30);
+      expect(s.res.timber, `seed ${seed}`).toBeGreaterThanOrEqual((BUILDING_DEFS.lignarius.cost.timber ?? 0) + (BUILDING_DEFS.cisterna.cost.timber ?? 0));
+    }
   });
 });
 
