@@ -11,7 +11,7 @@ import type { Host, Layout, WClass } from './layout';
 import { currentHost, registerBringer, safeArea, slimBanner, toolColumn } from './layout';
 import { clear, costEl, fmt, h, img, plural, tip } from './dom';
 import { idx } from '../game/map';
-import { fellingSpill } from '../game/place';
+import { fellSpend, fellingSpill } from '../game/place';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { BACK_RANK, registerBack } from './history';
 import { present, shows } from './intro';
@@ -426,8 +426,8 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
   const def = BUILDING_DEFS[p.type];
   // a house card's Place: whether the work on this plot would reach the home that asked (DESIGN §15.4)
   const reach = check?.ok && p.home ? reachSteps(g.state, p.type, check.x, check.y, p.home.id, p.home.need) : undefined;
-  // a felling most of which would spill over the stores' cap says so (DESIGN §3.7)
-  const spill = check?.ok && check.fell > 0 ? fellingSpill(g.state, check.fell) : null;
+  // a felling most of which would spill over the stores' cap, once the work's own timber is paid, says so (DESIGN §3.7)
+  const spill = check?.ok && check.fell > 0 ? fellingSpill(g.state, check.fell, fellSpend(g.state, check, p.replaceId)) : null;
   const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
     : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
       reach === undefined ? null : reach === null ? h('span', { class: 'place-far' }, ' · ✕ does not reach this home') : ` · ✔ reaches this home (${plural(reach, 'step', 'steps')})`,

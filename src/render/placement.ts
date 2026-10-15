@@ -6,7 +6,7 @@
 import type { BuildingId, CoverageLayerId, GameState, PlaceCheck, Rect, SeasonIndex } from '../game/types';
 import { H, W, getMap, idx, inBounds } from '../game/map';
 import { T } from '../game/types';
-import { canPlace, fellingSpill, roadPreview, snapSlot, validSlots } from '../game/place';
+import { canPlace, fellSpend, fellingSpill, roadPreview, snapSlot, validSlots } from '../game/place';
 import { bestSlot } from '../game/site';
 import { blockOfTile, classAt, derived, sizeOf } from '../game/derived';
 import { previewCoverage, previewDesir } from '../game/coverage';
@@ -308,7 +308,8 @@ export class Placement {
     }
     if (c.mult >= GOLD_MULT) y -= label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold, ins);
     if (c.fell > 0) {
-      const f = fellingSpill(s, c.fell);   // most of the felling over the stores' cap: the warning under its yield
+      // most of the felling over the stores' cap, once the work's own timber is paid: the warning under its yield
+      const f = fellingSpill(s, c.fell, fellSpend(s, c, this.state?.kind === 'building' ? this.state.replaceId : undefined));
       if (f.most) y -= label(g, f.words, cx, y, C.ember, ins);
       y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
     }

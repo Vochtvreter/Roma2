@@ -288,6 +288,7 @@ export const B = {
       EVOLVE_HOUSES: 3, DECLINING_P: 0.1,
       CLEAR_GAIN: 3,                                    // a block is worth clearing when ≥ 3 more waiting homes rise than it pulls down
       BEDS_FREE: 2, BEDS_WINDOW: 30, FAVOUR_LOW: 1.5,
+      PAVE_GAIN: 0.05,                                  // the Pave remedy (and its sentence) only where paving lifts the favour more
       MORALE: [50, 35, 25], MORALE_FALL: 0.3, MORALE_FALL_DAYS: 10,
       CHOICE_SOON: 7, REMEDY_DAYS: 30, BUY_DAYS: 20,
       // remedy steps: Spare beds +4 · Builder share +5 points · Trade reserve −10 · Ask/Place house plots ×2

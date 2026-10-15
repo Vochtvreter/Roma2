@@ -37,6 +37,12 @@ export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerI
   return radiusWith(b, layer, peopleIndex(s).byWork, bonus ? fxAdd(s, bonus) : 0);
 }
 
+/** The hands at which a staffed service reaches its full radius (DESIGN §5.2): half its base posts, whatever posts a rank
+ *  adds (a well stone-lined from the Oppidum has 4 and its full reach at 1); fewer reach SERVICE_PARTIAL of it. */
+export function fullReachHands(type: BuildingId): number {
+  return Math.ceil(BUILDING_DEFS[type].slots * B.economy.SERVICE_FULL);
+}
+
 /** effectiveRadius with the workers by building and the layer's path bonus already looked up. */
 function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<number, readonly unknown[]>, bonus: number): number {
   const def = BUILDING_DEFS[b.type];
@@ -47,7 +53,7 @@ function radiusWith(b: Building, layer: CoverageLayerId, byWork: ReadonlyMap<num
     if (!b.open) return 0;
     const n = byWork.get(b.id)?.length ?? 0;   // = census(s).staffed[b.id], without a census inside the coverage
     if (n <= 0) return 0;
-    if (n < Math.ceil(def.slots * B.economy.SERVICE_FULL)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);   // a windlass's hands add water, not reach
+    if (n < fullReachHands(b.type)) r = Math.floor(B.economy.SERVICE_PARTIAL * r);   // a windlass's hands add water, not reach
   }
   if (b.unpaid) r = Math.floor(r * B.economy.UNPAID);
   if (RADIUS_BONUS[layer] && r > 0) r += bonus;

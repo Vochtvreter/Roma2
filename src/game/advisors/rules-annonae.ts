@@ -129,7 +129,8 @@ const hiems: AdvisorRule = {
     const x = Math.min(def.max, settingValue(s, 'grainReserve') + STEP.GRAIN_RESERVE);
     const reserve: Remedy | null = s.ordo.on.build && x > settingValue(s, 'grainReserve') ? { kind: 'setting', setting: 'grainReserve', value: x } : null;
     const idle = idleFor(s, v, 'fed', []);
-    return three(idle ? staffRemedy(idle) : null, P(p.cap) < P(p.need) ? { kind: 'place', building: 'horreum' } : null, reserve,
+    // stores too small even full: a granary first (hands fill them, but never past their room), then the hands
+    return three(P(p.cap) < P(p.need) ? { kind: 'place', building: 'horreum' } : null, idle ? staffRemedy(idle) : null, reserve,
       { kind: 'place', building: 'venatio' }, importRemedy(s, 'grain', B.ordo.CARGO));
   },
 };
@@ -315,7 +316,8 @@ const goodsRule: AdvisorRule = {
     const store: Remedy | null = a.params.room === 0 ? { kind: 'place', building: 'apotheca' } : null;
     const grove: Remedy | null = res === 'oil' && a.params.presses === 0 ? { kind: 'place', building: 'olivetum' } : null;
     const more: Remedy | null = res === 'oil' && !store && !grove ? { kind: 'place', building: 'olivetum' } : null;
-    return three(idle ? staffRemedy(idle) : null, store, grove, importRemedy(s, res, B.ordo.CARGO), more, { kind: 'overlay', overlay: 'domus' });
+    // stores that cannot hold the lean season: the store first, as the text says (more hands press more, not keep it)
+    return three(store, idle ? staffRemedy(idle) : null, grove, importRemedy(s, res, B.ordo.CARGO), more, { kind: 'overlay', overlay: 'domus' });
   },
 };
 
