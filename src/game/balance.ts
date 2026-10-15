@@ -196,8 +196,9 @@ export const B = {
     FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
     // the Ordo's gardens under Urbs (DESIGN §10.5 row 11): a beauty garden lifts the stone houses it reaches by LIFT_MIN
     // desirability in all (each up to what it lacks of a domus's street) or brings one clear; at most PER_BLOCK gardens on
-    // a block and one for every 1/PER_HOME homes; none while the free house plots are down to KEEP_PLOTS
-    GARDEN: { LIFT_MIN: 1, PER_BLOCK: 1, PER_HOME: 0.5, KEEP_PLOTS: 6 },
+    // a block and one for every 1/PER_HOME homes; none while the free house plots (off the kept blocks) are down to
+    // KEEP_PLOTS. Make room (§3.9) clears one only if no home beside it falls within MARGIN of its tier's need
+    GARDEN: { LIFT_MIN: 1, PER_BLOCK: 1, PER_HOME: 0.5, KEEP_PLOTS: 6, MARGIN: 0.5 },
   },
 
   // ───────── Ordo site scoring (DESIGN §10.5) ─────────
