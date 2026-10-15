@@ -193,6 +193,10 @@ export const B = {
     STORES_PER_RANK: 1,                               // horrea/apothecae for full stores ≤ 1 + rank × this
     STORE_RESERVE: 2,                                 // …more horrea while grain capacity < 2 × the grain reserve × need
     FOCUS: { COPIA_BEDS: 4, COPIA_WINTER: 1.25, MATERIA_BUILDERS: 0.05, MERCATURA_FLOOR: 0.5, URBS_PAVE: 2 },
+    // the Ordo's gardens under Urbs (DESIGN §10.5 row 11): a beauty garden lifts the stone houses it reaches by LIFT_MIN
+    // desirability in all (each up to what it lacks of a domus's street) or brings one clear; at most PER_BLOCK gardens on
+    // a block and one for every 1/PER_HOME homes; none while the free house plots are down to KEEP_PLOTS
+    GARDEN: { LIFT_MIN: 1, PER_BLOCK: 1, PER_HOME: 0.5, KEEP_PLOTS: 6 },
   },
 
   // ───────── Ordo site scoring (DESIGN §10.5) ─────────

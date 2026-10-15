@@ -1270,6 +1270,7 @@ export function processRequests(s: GameState, ctx: TickContext, v: SimView): voi
 export function homeSlot(s: GameState, v: SimView, type: BuildingId, home: number | undefined): { tile: number; k: number } | null | undefined;   // a request's home: the slot reaching it (null: none; undefined: no home to serve)
 export function wishList(s: GameState, v: SimView, n: number): WishView[];      // pure; the Agenda and the "would" ghost
 export function keptBlocks(s: GameState): readonly { rect: Rect; for: BuildingId }[];   // blocks kept free for a temple/bathhouse/market hall to come, the theatrum, the thermae (DESIGN §10.5)
+export function gardenSlot(s: GameState, v: SimView): { tile: number; n: number; k: number; lift: number } | null;   // the Ordo's garden plot under Urbs: land the homes can spare, the most lift to the stone houses (DESIGN §10.5 row 11)
 // ordo/goods.ts
 export function goodsPlan(s: GameState, v: SimView, res: 'oil' | 'wine', own?: boolean): GoodsPlan;   // demand, presses by season, lean-season reserve, export keep, projection low/empty day, shortfall (memo per day)
 // ordo/trade.ts
@@ -1391,6 +1392,7 @@ export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim rem
 export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, tool, building:center
 export function remedyLabel(s: GameState, r: Remedy): string;
 export function clearPrompt(s: GameState, r: Remedy & { kind: 'clear' }): { title: string; text: string; yes: string };   // App's question before a block is cleared
+export function remedyTip(r: Remedy): string | null;                  // what a remedy sets in motion, for its button's tooltip (a focus: what the council raises under it)
 // advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
 export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
 export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null;   // the garden lifting the most of them

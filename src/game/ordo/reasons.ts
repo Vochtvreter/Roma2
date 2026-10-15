@@ -193,13 +193,21 @@ function template(r: Reason, short: boolean): string {
 /** "1 homes" → "1 home" (the templates count homes in the plural). */
 const one = (t: string): string => t.replace(/(^|[^\d.,])1 homes\b/g, '$11 home');
 
+/** A work raised where the Ordo clears its own gardens (`gardens`: how many; ordo/build.ts, make room) says so. */
+function inPlace(r: Reason, short: boolean): string {
+  const n = r.params.gardens;
+  if (typeof n !== 'number' || n <= 0) return '';
+  if (short) return ` (in place of ${n === 1 ? 'a garden' : `${n} gardens`})`;
+  return ` It takes the place of ${n === 1 ? 'one of our gardens' : `${n} of our gardens`}.`;
+}
+
 /** Full sentence for tooltips and the Annales. */
 export function reasonText(r: Reason): string {
-  return one(fill(template(r, false), r.params));
+  return one(fill(template(r, false), r.params)) + inPlace(r, false);
 }
 
 /** Ticker fragment (no trailing period); a `state` param prefixes Raising / Staked / Next / The Ordo would raise. */
 export function reasonShort(r: Reason): string {
   const st = typeof r.params.state === 'string' ? STATE[r.params.state] ?? '' : '';
-  return st + one(fill(template(r, true), r.params));
+  return st + one(fill(template(r, true), r.params)) + inPlace(r, true);
 }

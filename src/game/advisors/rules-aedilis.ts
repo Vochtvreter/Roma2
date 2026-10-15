@@ -402,7 +402,7 @@ const favour: AdvisorRule = {
     const stands = first ? `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX} as well` : `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX}`;
     const p = paved(s, f);
     const pave = p.k > 0 && p.to > f + 0.05 ? ` Paving ${int(p.k)} ${p.k === 1 ? 'pace' : 'paces'} of our dirt roads (${int(p.k * B.map.PAVE_STONE)} stone) would raise it to ${favourTimes(p.to)}.` : '';
-    return `${first}${stands}: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither unless you set the Urbs focus.${pave}`;
+    return `${first}${stands}: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither unless you set the Urbs focus, and then it plants gardens on free plots among the homes.${pave}`;
   },
   remedies(s) {
     const f = renownFactor(s);

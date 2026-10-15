@@ -29,7 +29,7 @@ vi.mock('../src/game/coverage', async (orig) => {
 // The rule modules are imported first on purpose: the real modules import each other in cycles, and a module first
 // loaded from inside one of the mocks' importOriginal() would bind the original export instead of the mock.
 import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
-import { applyRemedy, checkRemedy, clearPrompt, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
+import { applyRemedy, checkRemedy, clearPrompt, isUiRemedy, remedyLabel, remedyTip } from '../src/game/advisors/remedies';
 import { freeSlots, fresh, place, run, setJobs } from './util';
 import { follow } from './autoplayer';
 import { EDICT_DEFS, SETTING_DEFS } from '../src/game/data/decisions';
@@ -853,6 +853,13 @@ describe('remedies', () => {
     expect(remedyLabel(s, { kind: 'priority', cat: 'food', days: 30 })).toBe('Food first for 30 days');
     expect(remedyLabel(s, { kind: 'edict', edict: 'tributum', option: 'grave' })).toBe('Edict: Tributum Grave');
     expect(checkRemedy(s, { kind: 'place', building: 'thermae' })).toMatchObject({ ok: false, code: 'rankLocked' });
+  });
+  it('a focus remedy says before it is applied what the council will raise (Urbs: gardens on free plots)', () => {
+    expect(remedyTip({ kind: 'focus', focus: 'urbs' })).toMatch(/^Urbs · The city beautiful\n.*gardens on free plots/);
+    expect(remedyTip({ kind: 'place', building: 'hortus' })).toBeNull();
+    const s = base();
+    const memo = { rule: 'aedilis.favour' as const, active: true, sev: 1 as const, since: s.day, lowerSince: null, params: { f: 1.2 }, flips: [] };
+    expect(renderAdvisory(s, view(s), { rule: 'aedilis.favour', advisor: 'aedilis', memo }).text).toContain('then it plants gardens on free plots');
   });
   it('never throws over random states and random remedies', () => {
     const rng = new Rng(7);
