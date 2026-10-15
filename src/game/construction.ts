@@ -104,6 +104,10 @@ function complete(s: GameState, ctx: TickContext, b: Building): void {
   if (b.type === 'capitolium' && !s.victory) {
     s.victory = true;
     s.stats.victoryDay = s.day;
+    // the day's figures, kept: the Victory dispatch reads them, also when the Annales open it again later
+    const st = s.stats;
+    st.atVictory = { pop: s.people.length, peakPop: Math.max(st.peakPop, s.people.length), births: st.births, immigrants: st.immigrants,
+      built: st.built, evolved: st.evolved, playMs: st.playMs };
     ctx.fx.push({ kind: 'victory' });
     log(s, 'milestone', 'The Capitolium is dedicated: Iuppiter, Iuno and Minerva look down on the colonia.', ['highlight'], b.id);
   }

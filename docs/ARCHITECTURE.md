@@ -690,7 +690,10 @@ export interface Stats {
   built: number; builtBy: Partial<Record<BuildingId, number>>;
   evolved: number; evolvedBy: Partial<Record<HouseTierId, number>>; devolved: number;
   denariiTaxed: number; playMs: number; startedAt: number; victoryDay: number | null;
+  atVictory?: VictoryStats;                          // the figures of the dedication day (set with victoryDay; older saves lack it)
 }
+/** The colony on the day its Capitolium was dedicated: the Victory dispatch reads these, also when read again later. */
+export interface VictoryStats { pop: number; peakPop: number; births: number; immigrants: number; built: number; evolved: number; playMs: number }
 
 // ───────────────────────────── the growing town (urbs.ts) ─────────────────────────────
 /** The town wall: surveyed around the whole town (Colonia; the player from Municipium), raised by the builders, then the castrum is razed. */
@@ -1437,7 +1440,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   goodsDay(s, ctx);              // oil and wine to T4 houses
   // 5 · works and homes
   constructionDay(s, ctx);       // builders along worksQueue(); Capitolium crew cap and materials; completions;
-                                 // Capitolium completion sets s.victory, stats.victoryDay, fx victory
+                                 // Capitolium completion sets s.victory, stats.victoryDay and atVictory, fx victory
   housingDay(s, ctx);            // houses with id % CHECK_EVERY == day % CHECK_EVERY: needs, evolution, renovation, decline
   urbsDay(s, ctx, v, kalends);   // the growing town (DESIGN §3.9): footfall census and a needless well on the Kalends;
                                  // the town wall surveyed on a build day once due (its work is in constructionDay)
@@ -1498,12 +1501,12 @@ Rules around the tick:
 2. `version > SAVE_VERSION` → `null` (title explains: *"This save was made by a newer version."*).
 3. While `version < SAVE_VERSION`: `raw = MIGRATIONS[version](raw)` (each migration sets the next version).
 4. **Fill defaults**: deep-merge missing object keys from `newGame({ seed: raw.seed, now: 0 })` (objects only; arrays are kept as saved). New ids added to `EDICTS`/`SETTINGS`/`SWITCHES`/`RULES` therefore appear with their initial values.
-5. **Sanitise**: non-finite numbers in `res`, `needs`, `morale`, `fed`, counters → 0 (and clamp to ranges); unknown building types, ids, edict options, path options, hubs → dropped or reset to initial; arrays re-sorted by id and de-duplicated; `home`/`work`/`spouse` pointing at missing entities → `null`; people over `POP_CAP` are not trimmed.
+5. **Sanitise**: non-finite numbers in `res`, `needs`, `morale`, `fed`, counters → 0 (and clamp to ranges); `stats.atVictory` kept only whole and with a victory; unknown building types, ids, edict options, path options, hubs → dropped or reset to initial; arrays re-sorted by id and de-duplicated; `home`/`work`/`spouse` pointing at missing entities → `null`; people over `POP_CAP` are not trimmed.
 6. Fatal (no principia, map seed not a number, people not an array) → `null`.
 
 Unreadable save on Continue: the title shows the reason and an **Export raw save** button (the raw string in the export textarea); **Found a new colony** asks for the two-click confirm before overwriting.
 
-**Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4.
+**Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4. An optional key added later, which older saves simply lack and the code reads as absent (`stats.atVictory`), needs no migration: there is nothing to convert.
 
 ### 11.3 Prefs, Fasti, export/import
 - `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed (a continued game resumes paused, then at this speed after the away report).
@@ -1948,7 +1951,7 @@ Never use `title=` attributes or `innerHTML` with game text (names are data); bu
 ```ts
 // modals.ts
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
-  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped
+  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped (restingFocus: a parchment letter on the dialog itself, else data-autofocus or the first control but ✕)
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-click confirm, disarms after 3 s
 export function openMenu(g: Game): void;
 export function openExportImport(g: Game): void;
@@ -1987,7 +1990,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 | `fire` | sfx `crackle` |
 | `event` | sfx `event`; the ChoiceCard shows `s.choice`; **slow for news**: if `prefs.slowForNews` and speed > 2 → `setSpeed(2)` |
 | `advisory` with sev 3 (new or raised) | sfx `tintinnabulum` (≤ once per `BELL_S` s); if `prefs.pauseOnCritical` → pause |
-| `victory` | Victory dispatch, sfx `victory` |
+| `victory` | Victory dispatch (read again from the Annales' Fasti, from `stats.atVictory`), sfx `victory` |
 | `birth`, `death`, `declined`, `leave`, `caravanOut`, `season`, `ordoPlaced` | no toast (map only); `birth`/`death` sfx at most every 10 s |
 Toasts are only for completions, evolutions, milestones, rank-ups and errors (DESIGN §15.1). New Annales lines appear in the ticker, never as toasts.
 
@@ -2007,7 +2010,7 @@ frame(t): schedule()                        // the next turn first: an animation
   view.frame(dt × 1000, s, speed, paused); ui.frame(t)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
-keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs
+keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs and under a modal (keysToGame, pure)
 back (history.ts): initBack(g) registers the modal 100, placing 50 and selection 40; the phone's speed popover (hud.ts)
       and the tool column's Via and Mappae popovers (mapbar.ts) add 70, the Breviarium (tray.ts) 60, the event card in a
       phone's slot (ui/index.ts) 45, and the layout the panel's detent at 30 (isLayer, backDetent: full → half → closed on

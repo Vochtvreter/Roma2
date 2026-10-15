@@ -1,6 +1,7 @@
 // src/ui/modals.ts — the modal stack, menu, export/import, how-to-play and rename (ARCHITECTURE §13.4, DESIGN §15.5). Owner: WP-H.
 // The sim pauses while any modal is open (App.modalOpen reads modalCount()). Esc (keys.ts) closes the top closable modal.
-// Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close. On the phone
+// Focus is trapped in the top modal (Tab cycles; focus that escapes is pulled back) and restored on close; a parchment
+// letter holds it on itself (restingFocus), so a key pressed by reflex never closes it unread. On the phone
 // hosts (the SHEET and the DRAWER) every modal is a full-screen sheet within the safe areas (sheet.css): its head (✕,
 // kicker, title) sticks to the top and its actions to the foot while the body scrolls between them; a letter keeps its
 // parchment and pinned foot. The Menu carries the platform's entries (platform.ts menuEntries): in an iPhone's or an
@@ -28,7 +29,7 @@ function sheetHost(): boolean {
   return host === 'sheet' || host === 'drawer';
 }
 
-interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; close: () => void; prevFocus: Element | null }
+interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; letter: boolean; close: () => void; prevFocus: Element | null }
 const stack: Entry[] = [];
 const ARM_MS = 3000;
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -66,6 +67,20 @@ function focusables(el: HTMLElement): HTMLElement[] {
   return Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((e) => !e.hasAttribute('disabled') && !e.hidden && e.offsetParent !== null);
 }
 
+/** Where focus rests in a modal as it opens, or comes back to it (pure; tests/letters.test.ts). A parchment letter (the
+ *  Founding, Litterae Ordinis and Victory dispatches) holds it on the dialog itself: Space (the pause key) or Enter
+ *  pressed by reflex as it opens presses none of its buttons (nor scrolls it: openModal), so it is never closed unread;
+ *  Tab reaches them, the arrows scroll a long letter. Any other modal: its data-autofocus control, else its first
+ *  control but ✕. */
+export function restingFocus<T>(letter: boolean, box: T, autofocus: T | null, controls: readonly T[], isX: (c: T) => boolean): T {
+  if (letter) return box;
+  return autofocus ?? controls.find((c) => !isX(c)) ?? controls[0] ?? box;
+}
+
+function rest(e: Entry): HTMLElement {
+  return restingFocus(e.letter, e.box, e.box.querySelector<HTMLElement>('[data-autofocus]'), focusables(e.box), (c) => c.classList.contains('modal-x'));
+}
+
 let trapping = false;
 /** Focus that leaves the top modal (click on the backdrop of a lower one, programmatic focus) is pulled back. Installed
  *  on the first modal, so importing this module does no DOM work (headless tests import the panels that import it). */
@@ -74,11 +89,12 @@ function trapFocus(): void {
   trapping = true;
   document.addEventListener('focusin', (e) => {
     const top = stack[stack.length - 1];
-    if (top && e.target instanceof Node && !top.box.contains(e.target)) (focusables(top.box)[0] ?? top.box).focus();
+    if (top && e.target instanceof Node && !top.box.contains(e.target)) rest(top).focus();
   });
 }
 
-/** Opens a modal over the stack; returns close(). Focus is trapped inside; Esc closes it when closable (default). */
+/** Opens a modal over the stack; returns close(). Focus is trapped inside (a letter's on itself: restingFocus); Esc
+ *  closes it when closable (default). */
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
   parchment?: boolean; onClose?: () => void }): () => void {
   trapFocus();
@@ -95,7 +111,7 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
       opts?.title ? h('h2', { class: 'modal-title' }, opts.title) : null),
     h('div', { class: 'modal-body' }, content));
   const back = h('div', { class: 'modal-back' }, box);
-  const entry: Entry = { el: back, box, closable, close: () => undefined, prevFocus: document.activeElement };
+  const entry: Entry = { el: back, box, closable, letter: !!opts?.parchment, close: () => undefined, prevFocus: document.activeElement };
   const close = (): void => {
     if (closed) return;
     closed = true;
@@ -103,11 +119,11 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
     if (i >= 0) stack.splice(i, 1);
     back.classList.add('modal-out');
     window.setTimeout(() => back.remove(), 160);
-    // focus goes back where it was: the button that opened this modal (also inside the modal underneath), else that
-    // modal's first control
+    // focus goes back where it was: the button that opened this modal (also inside the modal underneath), else where
+    // that modal rests it
     const next = stack[stack.length - 1];
     const prev = entry.prevFocus instanceof HTMLElement && entry.prevFocus.isConnected ? entry.prevFocus : null;
-    if (next) (prev && next.box.contains(prev) ? prev : focusables(next.box).find((x) => !x.classList.contains('modal-x')) ?? focusables(next.box)[0] ?? next.box).focus();
+    if (next) (prev && next.box.contains(prev) ? prev : rest(next)).focus();
     else prev?.focus();
     opts?.onClose?.();
   };
@@ -115,6 +131,8 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   box.querySelector('.modal-x')?.addEventListener('click', close);
   back.addEventListener('pointerdown', (e) => { if (e.target === back && closable) close(); });
   box.addEventListener('keydown', (e) => {
+    // on the letter itself Space does nothing: not even scroll a long one past what waits at its head (the arrows do)
+    if (e.key === ' ' && e.target === box && entry.letter) { e.preventDefault(); return; }
     if (e.key !== 'Tab') return;
     const f = focusables(box);
     if (!f.length) { e.preventDefault(); return; }
@@ -124,8 +142,7 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   });
   stack.push(entry);
   root.appendChild(back);
-  const f = focusables(box);
-  (box.querySelector<HTMLElement>('[data-autofocus]') ?? f.find((x) => !x.classList.contains('modal-x')) ?? f[0] ?? box).focus({ preventScroll: true });
+  rest(entry).focus({ preventScroll: true });
   box.scrollTop = 0;
   return close;
 }
