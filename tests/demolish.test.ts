@@ -2,12 +2,13 @@
 // a second one pulls it down, never a double-click (CONFIRM_GUARD_MS) and never on a timer; a sweep's rectangle arms
 // every work it touches and a click inside it confirms; the words over armed works say what the click would do; Esc and
 // Back drop armed works before they end the tool. A press that never moved stays a click under a tool that owns drags.
+// Armed works read what they would do again when the structure changes, while the colony runs at most every REARM_MS.
 import { describe, expect, it } from 'vitest';
 import type { DemolitionImpact } from '../src/game/demolition';
 import { demolitionImpact } from '../src/game/demolition';
 import { W, idx } from '../src/game/map';
 import { derived } from '../src/game/derived';
-import { CONFIRM_GUARD_MS, covers, demolishTap, impactLines, sweepIds, sweepRect } from '../src/render/demolish';
+import { CONFIRM_GUARD_MS, REARM_MS, covers, demolishTap, impactLines, rearmDue, sweepIds, sweepRect } from '../src/render/demolish';
 import type { Doom } from '../src/render/demolish';
 import { footprintOf } from '../src/game/derived';
 import { BACK_RANK } from '../src/ui/history';
@@ -45,6 +46,15 @@ describe('demolishTap: two clicks, no timer, no double-click', () => {
     expect(covers(d, null, idx(13, 12))).toBe(true);
     expect(covers(d, null, idx(13, 13))).toBe(false);
     expect(covers({ ids: [7], rect: null }, null, idx(12, 11))).toBe(false);
+  });
+});
+
+describe('rearmDue: armed works read again when the structure changes, not every frame', () => {
+  it('while the colony runs, at most every REARM_MS; paused, or a work of theirs gone, at once', () => {
+    expect(rearmDue(1000, 1000 + REARM_MS - 1, false, false)).toBe(false);   // the last impact stands
+    expect(rearmDue(1000, 1000 + REARM_MS, false, false)).toBe(true);
+    expect(rearmDue(1000, 1001, true, false)).toBe(true);                    // paused: only the player changed it
+    expect(rearmDue(1000, 1001, false, true)).toBe(true);                    // the armed set lost a work
   });
 });
 

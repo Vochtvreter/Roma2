@@ -4,8 +4,9 @@
 // people, the workers, the homes left without water or a shrine, what comes back), and a second click on them pulls
 // them down (ViewCallbacks.onDemolish). The armed state never runs out on a timer: it holds until the mouse leaves the
 // armed works (a finger has no hover: until a tap elsewhere), Esc or Back (ui/history.ts), or a right-click; a second
-// click that comes under CONFIRM_GUARD_MS after the first is ignored (a double-click is not a decision). The words and
-// the tap's verdict are pure (tests/demolish.test.ts); the view keeps one Doom and draws it here.
+// click that comes under CONFIRM_GUARD_MS after the first is ignored (a double-click is not a decision). When the
+// structure changes under them their impact is read again, while the colony runs at most every REARM_MS (rearmDue). The
+// words, the tap's verdict and that pace are pure (tests/demolish.test.ts); the view keeps one Doom and draws it here.
 import type { GameState, Rect } from '../game/types';
 import { W } from '../game/map';
 import { derived } from '../game/derived';
@@ -23,6 +24,10 @@ import { footprintRect } from './buildings';
 export const CONFIRM_GUARD_MS = 400;
 /** The armed works pulse this long (ms), then hold steady: a paused map left armed draws nothing more (P7). */
 export const PULSE_MS = 3000;
+/** While the colony runs, armed works read their impact again at most this often (ms of real time): the homes that
+ *  would lose a need are a what-if over the whole town's coverage (milliseconds in a large town), and works finishing,
+ *  the Ordo building and houses renovating can change the structure several times a second at 5× and 10×. */
+export const REARM_MS = 250;
 
 /** Works picked for pulling down: one work clicked (rect null), or every work a sweep's rectangle touches. `ids` are all
  *  the works picked (the principia too: a click on it still holds the selection); the impact says which come down. */
@@ -33,6 +38,13 @@ export interface Doom { ids: number[]; rect: Rect | null; at: number; touch: boo
 export function demolishTap(d: Doom | null, id: number | null, tile: number, now: number): 'confirm' | 'early' | 'arm' | 'disarm' {
   if (d && covers(d, id, tile)) return now - d.at < CONFIRM_GUARD_MS ? 'early' : 'confirm';
   return id === null ? 'disarm' : 'arm';
+}
+
+/** Whether armed works read their impact again now that the structure changed under them (the view's rearm): at once
+ *  when the map is paused (only the player changes it then) or a work of theirs is gone (the armed set changed), else
+ *  once REARM_MS has passed since the last reading (`readAt`), the last impact standing until then. */
+export function rearmDue(readAt: number, now: number, paused: boolean, lost: boolean): boolean {
+  return paused || lost || now - readAt >= REARM_MS;
 }
 
 /** Whether the pointer at this work and tile is on the armed works (or inside an armed sweep's rectangle). */

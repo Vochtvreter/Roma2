@@ -36,7 +36,7 @@ import { BuildingPainter, footprintRect } from './buildings';
 import { linearItems } from './linear';
 import { demolitionImpact } from '../game/demolition';
 import type { Doom } from './demolish';
-import { covers, demolishTap, drawDoom, sweepIds, sweepRect } from './demolish';
+import { covers, demolishTap, drawDoom, rearmDue, sweepIds, sweepRect } from './demolish';
 import { hasSprite, sprite, spriteNames, spriteSize } from './sprites';
 import { REQUIRED_SPRITES } from './art/index';
 
@@ -97,6 +97,7 @@ export class MapView {
   private time = 0;
   private doomed: Doom | null = null;                // the demolish tool's armed works (render/demolish.ts)
   private doomEpoch = 0;                             // … their impact as of this structure epoch
+  private doomRead = 0;                              // … read at this time (ms, this.time: rearm waits REARM_MS)
   private sweep: { from: number; touch: boolean; doom: Doom | null } | null = null;   // a demolish sweep dragged from a tile
   private dragFrom: number | null = null;
   private titleT = 0;
@@ -261,7 +262,7 @@ export class MapView {
     this.time += dtMs;   // (the flashes and the demolish warning's pulse run out in real time, drawn or not)
     if (this.covered) return;
     if (this.canvas.clientWidth !== Math.round(this.cssW) || this.canvas.clientHeight !== Math.round(this.cssH)) this.resize();
-    if (this.doomed && structEpoch(s) !== this.doomEpoch) this.rearm(s);
+    if (this.doomed && structEpoch(s) !== this.doomEpoch) this.rearm(s, paused);
     const sig = `${s.day}|${structEpoch(s)}|${censusEpoch(s)}`;
     if (sig !== this.sig || s !== this.sigState) { this.sig = sig; this.sigState = s; this.dirty = true; }
     if (paused && !this.dirty && !this.animating()) { this.idle(s); return; }
@@ -681,17 +682,21 @@ export class MapView {
     if (!s || ids.length === 0) { this.doomed = null; return; }
     this.doomed = { ids, rect, at: this.time, touch, impact: demolitionImpact(s, ids) };
     this.doomEpoch = structEpoch(s);
+    this.doomRead = this.time;
   }
 
-  /** The structure changed under armed works (a work finished, the Ordo built, a fire): their impact is read again, and
-   *  works gone meanwhile drop out (all gone: nothing stays armed). */
-  private rearm(s: GameState): void {
+  /** The structure changed under armed works (a work finished, the Ordo built, a fire): works gone meanwhile drop out
+   *  (all gone: nothing stays armed) and their impact is read again, while the colony runs at most every REARM_MS
+   *  (rearmDue: the last impact stands until then, and a later frame reads it). */
+  private rearm(s: GameState, paused: boolean): void {
     const d = this.doomed;
     if (!d) return;
     const ids = d.ids.filter((id) => getBuilding(s, id));
     if (ids.length === 0) { this.doomed = null; this.dirty = true; return; }
+    if (!rearmDue(this.doomRead, this.time, paused, ids.length < d.ids.length)) return;
     this.doomed = { ...d, ids, impact: demolitionImpact(s, ids) };
     this.doomEpoch = structEpoch(s);
+    this.doomRead = this.time;
     this.dirty = true;
   }
 
