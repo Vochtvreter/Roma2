@@ -6,8 +6,10 @@ import { B as B$ } from '../balance';
 import { HOUSE_TIERS as HOUSE_TIERS$, NEEDS as NEEDS$ } from '../types';
 import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, HouseTierId, NeedId, Remedy, SimView } from '../types';
 import { moraleTarget } from '../civic';
-import { renownFactor } from '../people';
-import { sectionRevealed } from '../reveal';
+import { favourPaces, renownFactor, splendour } from '../people';
+import { sectionRevealed, toolRevealed } from '../reveal';
+import { derived } from '../derived';
+import { arrivalOutlook, favourTimes, limiterLine, paceWords } from '../settlers';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { RANK_DEFS as RANK_DEFS$ } from '../data/ranks';
@@ -279,10 +281,21 @@ const morale: AdvisorRule = {
   },
 };
 
-/** The Aedilis's rules, in RULES order. */
 // ───────────────────────────── 20b · aedilis.favour ─────────────────────────────
 // Rome sends colonists faster to a splendid town (DESIGN §6.6): gardens and paved streets, the works the Ordo leaves to
-// the player. While the gates are open and the favour is low, the Aedilis says what would draw them, and how much.
+// the player. While the gates are open and the favour is low, the Aedilis gives the pace, names what holds the settlers
+// back most (settlers.ts: a shut gate, spirits, grain, water, the favour or the edicts) and what would draw them faster:
+// a garden, the Pave brush where paving would raise the favour, the Urbs focus.
+
+/** The dirt road paces whose paving Rome marks that would lift the favour furthest (all of them, or as many as reach
+ *  ×MAX), and the favour then; k 0 when the brush is not yet ours or nothing is left to pave. */
+function paved(s: GameState, f: number): { k: number; to: number } {
+  const R = B.people.RENOWN;
+  if (!toolRevealed(s, 'pave') || f >= R.MAX) return { k: 0, to: f };
+  const homes = Math.max(1, derived(s).houses.length), per = (R.K * B.dignitas.ROADS) / homes;   // the favour a pace adds
+  const k = Math.min(favourPaces(s), Math.ceil((R.MAX - (1 + (R.K * splendour(s)) / homes)) / per - 1e-9));
+  return { k: Math.max(0, k), to: Math.min(R.MAX, 1 + (R.K * splendour(s)) / homes + per * Math.max(0, k)) };
+}
 
 const favour: AdvisorRule = {
   id: 'aedilis.favour', advisor: 'aedilis',
@@ -292,15 +305,25 @@ const favour: AdvisorRule = {
     if (f >= R.FAVOUR_LOW * (held(s, 'aedilis.favour') ? CLEAR : 1)) return null;
     return { rule: 'aedilis.favour', severity: 1, metric: { label: 'Favour', value: Math.round(f * 100), unit: 'pct' }, params: { f } };
   },
-  title(_s, a) {
-    return `Colonists come slowly: Rome's favour stands at ×${(Math.floor(P(a.params.f) * 10) / 10).toFixed(1)}.`;
+  title(s) {
+    const a = arrivalOutlook(s);
+    return a.every === null ? 'No colonists come: Rome draws none to us at this pace.' : `Colonists come slowly: ${paceWords(a)}.`;
   },
-  text() {
-    return `Rome sends settlers faster to a splendid town, up to ×${B.people.RENOWN.MAX}. Gardens and paved streets among the homes draw them; the Ordo raises neither unless you set the Urbs focus.`;
+  text(s) {
+    const a = arrivalOutlook(s);
+    const f = renownFactor(s);
+    const first = a.shut === null && a.limiter?.id === 'favour' ? '' : `${limiterLine(s, a)} `;
+    const stands = first ? `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX} as well` : `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX}`;
+    const p = paved(s, f);
+    const pave = p.k > 0 && p.to > f + 0.05 ? ` Paving ${int(p.k)} ${p.k === 1 ? 'pace' : 'paces'} of our dirt roads (${int(p.k * B.map.PAVE_STONE)} stone) would raise it to ${favourTimes(p.to)}.` : '';
+    return `${first}${stands}: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither unless you set the Urbs focus.${pave}`;
   },
   remedies(s) {
-    return three({ kind: 'place', building: 'hortus' }, sectionRevealed(s, 'focus') && s.decisions.focus !== 'urbs' ? { kind: 'focus', focus: 'urbs' } : null);
+    const f = renownFactor(s);
+    const pave = paved(s, f).k > 0 ? { kind: 'tool' as const, tool: 'pave' as const } : null;
+    return three({ kind: 'place', building: 'hortus' }, pave, sectionRevealed(s, 'focus') && s.decisions.focus !== 'urbs' ? { kind: 'focus', focus: 'urbs' } : null);
   },
 };
 
+/** The Aedilis's rules, in RULES order. */
 export const AEDILIS_RULES: AdvisorRule[] = [evolve, declining, beds, morale, favour];

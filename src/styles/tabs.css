@@ -173,6 +173,8 @@
 .pop-stages i { display: block; min-width: 0; }
 .pop-st0 { background: #9ccc5a; } .pop-st1 { background: #d9c27a; } .pop-st2 { background: #c0623f; } .pop-st3 { background: #8fa3b5; }
 .pop-legend { font-size: var(--fs-xs); color: var(--muted); }
+.pop-pace { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; cursor: help; }   /* the newcomers' and the births' pace; their factors on hover */
+.pop-pace b { color: var(--text); font-weight: normal; }
 .pop-homes { display: flex; flex-direction: column; gap: 4px; }
 .pop-tier { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px; align-items: start; }
 .pop-tier-img { max-width: 32px; max-height: 32px; }

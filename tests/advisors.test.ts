@@ -37,7 +37,8 @@ import { Rng } from '../src/game/rng';
 import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
-import { bestFood } from '../src/game/advisors/util';
+import { bestFood, int } from '../src/game/advisors/util';
+import { favourPaces, immigrationChance, renownFactor } from '../src/game/people';
 import { residents } from '../src/game/census';
 import { houseHas } from '../src/game/coverage';
 
@@ -455,6 +456,62 @@ describe('annonae.storage: full sheds (R12)', () => {
   });
 });
 
+describe('aedilis.favour: the pace, what holds the settlers back, the Pave brush (playtest #6)', () => {
+  const F = 'aedilis.favour';
+  const PAVE: Remedy = { kind: 'tool', tool: 'pave' };
+  const render = (s: GameState) => renderAdvisory(s, view(s), { rule: F, advisor: 'aedilis', memo: s.guidance.advisories[F]! });
+  const remedies = (s: GameState): Remedy[] => render(s).remedies.map((x) => x.remedy);
+  const plenty = (s: GameState): void => { s.res.grain = 1e5; s.res.water = 1e5; };
+
+  it('gives the pace in days and names what holds the settlers back most', () => {
+    const s = base();
+    plenty(s);
+    s.morale = 80;
+    day(s);
+    expect(s.guidance.advisories[F]?.active).toBe(true);
+    let r = render(s);
+    expect(r.title).toBe(`Colonists come slowly: about one family every ${int(1 / immigrationChance(s))} days.`);
+    expect(r.text).toMatch(/^Rome's favour stands at ×1\.0 of ×3: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither/);
+    s.morale = 40;                                                   // spirits now hold them back more than the favour
+    r = render(s);
+    expect(r.text).toMatch(/^Spirits hold them back most \(40\): .* Rome's favour stands at ×1\.0 of ×3 as well: /);
+    s.morale = 25;                                                   // below 30 Rome draws none at all
+    expect(render(s).title).toBe('No colonists come: Rome draws none to us at this pace.');
+  });
+
+  it('offers the Pave brush once it is ours, where paving would raise the favour; the garden stays first', () => {
+    const s = base();
+    plenty(s);
+    s.res.stone = 50;
+    day(s);
+    expect(remedies(s)[0]).toEqual({ kind: 'place', building: 'hortus' });   // the advisor-follower bot's pick is unchanged
+    expect(remedies(s)).not.toContainEqual(PAVE);                            // the brush comes with the Templum (Res Gestae)
+    expect(checkRemedy(s, PAVE)).toMatchObject({ ok: false, code: 'locked', reason: 'Unlocked by the Res Gestae: Raise a Templum' });
+    s.guidance.milestoneDays.templum = s.day;
+    expect(favourPaces(s)).toBeGreaterThan(0);                               // the camp's dirt streets, the via
+    expect(remedies(s)[1]).toEqual(PAVE);
+    // as many paces as lift the favour to its height (×3 for the camp's few homes), not every dirt road there is
+    const homes = houses(s).length, R = B.people.RENOWN;
+    const k = Math.min(favourPaces(s), Math.ceil(((R.MAX - renownFactor(s)) * homes) / (R.K * B.dignitas.ROADS)));
+    expect(k).toBeLessThan(favourPaces(s));
+    expect(render(s).text).toMatch(new RegExp(` Paving ${k} paces of our dirt roads \\(${k * B.map.PAVE_STONE} stone\\) would raise it to ×3\\.0\\.$`));
+    expect(checkRemedy(s, PAVE).ok).toBe(true);
+    expect(isUiRemedy(PAVE)).toBe(true);                                     // App starts the brush (ARCHITECTURE §13.6)
+    expect(remedyLabel(s, PAVE)).toBe(`Pave roads (${B.map.PAVE_STONE} stone a pace)`);
+    const before = JSON.stringify(s);
+    expect(applyRemedy(s, PAVE)).toEqual({ ok: true });
+    expect(JSON.stringify(s)).toBe(before);
+    s.res.stone = 1;
+    expect(checkRemedy(s, PAVE)).toMatchObject({ ok: false, code: 'unaffordable' });
+    // every road paved: nothing left to raise the favour with the brush
+    s.paved = [...s.roads];
+    invalidate(s);
+    expect(favourPaces(s)).toBe(0);
+    expect(remedies(s)).not.toContainEqual(PAVE);
+    expect(checkRemedy(s, PAVE).ok).toBe(false);
+  });
+});
+
 describe('aedilis.morale under emergency rations (R19)', () => {
   it('offers no rations edict while the Lex de annona\'s cut sets the portion, but food for the granary', () => {
     const s = base();
@@ -561,6 +618,7 @@ describe('remedies', () => {
         { kind: 'buyNow', res: pick(TRADE_RES), qty: rng.int(0, 500) }, { kind: 'relief' }, { kind: 'toggleOrdo', area: pick(ORDO_AREAS), on: rng.chance(0.5) },
         { kind: 'building', op: pick(['open', 'close', 'prioritise', 'center'] as const), id: rng.int(0, 200) },
         { kind: 'open', tab: pick(TABS), anchor: 'petition' }, { kind: 'overlay', overlay: pick(OVERLAYS) },
+        { kind: 'tool', tool: pick(['road', 'pave', 'reserve', 'demolish'] as const) },
       ];
       for (const r of remedies) {
         expect(() => { checkRemedy(s, r); remedyLabel(s, r); applyRemedy(structuredClone(s), r); }).not.toThrow();

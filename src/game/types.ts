@@ -565,7 +565,8 @@ export type Remedy =
   | { kind: 'toggleOrdo'; area: OrdoArea; on: boolean }
   | { kind: 'building'; op: 'open' | 'close' | 'prioritise' | 'center'; id: number }
   | { kind: 'open'; tab: TabId; anchor?: string }
-  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId };
+  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId }
+  | { kind: 'tool'; tool: Exclude<ToolId, 'pin'> };      // a map tool to start (the Pave brush, DESIGN §6.6)
 
 // ───────────────────────────── results ─────────────────────────────
 export type PlaceFail =

@@ -391,6 +391,12 @@ export function killPerson(s: GameState, ctx: TickContext, p: Person, cause: Dea
   afterRemoval(s, new Set([p.id]), true);
 }
 
+/** The annual hazard of an ordinary death at an age in years, before care (DESIGN §6.5). */
+export function ageHazard(a: number): number {
+  const hz = P.HAZARD;
+  return (a < 1 ? hz.infant : a < P.YOUTH ? hz.child : hz.adult) + hz.a * Math.exp((a - hz.mid) / hz.scale);
+}
+
 function deaths(s: GameState, ctx: TickContext, rng: Rng): void {
   const day = s.day;
   const hz = P.HAZARD;
@@ -407,8 +413,7 @@ function deaths(s: GameState, ctx: TickContext, rng: Rng): void {
     const pH = hunger[g] > P.DEATH_AT ? P.STARVE_P * off : 0;
     const pT = thirst[g] > P.DEATH_AT ? P.THIRST_P * off : 0;
     const pF = p.sickUntil !== undefined && p.sickUntil > day ? fever : 0;
-    const h = (a < 1 ? hz.infant : a < P.YOUTH ? hz.child : hz.adult) + hz.a * Math.exp((a - hz.mid) / hz.scale);
-    const pA = (h * careF) / YEAR;
+    const pA = (ageHazard(a) * careF) / YEAR;
     const u = rng.next();
     let cause: DeathCause | null = null;
     if (u < pH) cause = 'hunger';
@@ -498,9 +503,26 @@ export function foodFactor(s: GameState): number {
   return dohFactor(s, 'grain', P.FOOD_F);
 }
 
-function bedsFactor(free: number): number {
+/** Births' free-beds factor (DESIGN §6.5): ≥ 2 free beds → 1, 1 → 0.5, none → 0. */
+export function bedsFactor(free: number): number {
   for (const [at, f] of P.BIRTH_BEDS) if (free >= at) return f;
   return 0;
+}
+
+/** The factors of each mother's yearly chance of a child (DESIGN §6.5), in the order births() multiplies them with
+ *  BIRTH_RATE; the free beds (bedsFactor) apply last, mother by mother. */
+export function birthFactors(s: GameState): { food: number; spirits: number; favour: number; edicts: number } {
+  const M = P.BIRTH_MORALE;
+  return {
+    food: foodFactor(s), spirits: Math.min(M[2], Math.max(M[1], s.morale / M[0])),
+    favour: P.RENOWN.BIRTHS > 0 ? 1 + P.RENOWN.BIRTHS * (renownFactor(s) - 1) : 1,   // a splendid town's families thrive (§6.6)
+    edicts: fx(s, 'births'),
+  };
+}
+
+/** The mothers births() draws for: married women of FERTILE age (DESIGN §6.5). */
+export function mothersOf(s: GameState): Person[] {
+  return s.people.filter((w) => w.female && w.spouse !== null && between(ageOf(w, s.day), P.FERTILE));
 }
 
 function nameChild(s: GameState, father: Person | null, mother: Person, female: boolean, rng: Rng): Pick<Person, 'prae' | 'ord' | 'cog'> {
@@ -519,12 +541,10 @@ function nameChild(s: GameState, father: Person | null, mother: Person, female: 
 function births(s: GameState, ctx: TickContext, rng: Rng): void {
   if (s.people.length >= P.POP_CAP) return;   // the hard cap (DESIGN §18.3); not a blocked birth for the Aedilis
   const c = census(s);
-  const moraleF = Math.min(P.BIRTH_MORALE[2], Math.max(P.BIRTH_MORALE[1], s.morale / P.BIRTH_MORALE[0]));
-  const favour = P.RENOWN.BIRTHS > 0 ? 1 + P.RENOWN.BIRTHS * (renownFactor(s) - 1) : 1;   // a splendid town's families thrive (§6.6)
-  const base = (P.BIRTH_RATE * foodFactor(s) * moraleF * favour * fx(s, 'births')) / YEAR;
+  const f = birthFactors(s);
+  const base = (P.BIRTH_RATE * f.food * f.spirits * f.favour * f.edicts) / YEAR;
   let free = c.freeBeds;
-  const mothers = s.people.filter((w) => w.female && w.spouse !== null && between(ageOf(w, s.day), P.FERTILE));
-  for (const w of mothers) {
+  for (const w of mothersOf(s)) {
     const u = rng.next();
     if (u >= base) continue;
     if (u >= base * bedsFactor(free)) { s.counters.lastBirthBlocked = s.day; continue; }
@@ -609,11 +629,27 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 export function splendour(s: GameState): number {
   let gardens = 0;
   for (const b of s.buildings) if (b.type === 'hortus' && b.status === 'done') gardens++;
+  const counts = favourStreet(s);
+  let paved = 0;
+  for (const i of s.paved) if (counts(i)) paved++;
+  return gardens * BUILDING_DEFS.hortus.dignitas + B.dignitas.ROADS * paved;
+}
+
+/** Whether a road tile, paved, wins Rome's favour (splendour): any but the charter streets of the rank, save the camp's
+ *  cardo and decumanus. */
+function favourStreet(s: GameState): (i: number) => boolean {
   const sv = getMap(s.seed).survey;
   const charter = charterStreets(sv, s.rank), axes = charterStreets(sv, B.map.CHARTER.axes);
-  let paved = 0;
-  for (const i of s.paved) if (charter[i] === 0 || axes[i] === 1) paved++;
-  return gardens * BUILDING_DEFS.hortus.dignitas + B.dignitas.ROADS * paved;
+  return (i) => charter[i] === 0 || axes[i] === 1;
+}
+
+/** The dirt road paces whose paving would win Rome's favour (the Aedilis's Pave remedy, DESIGN §6.6). */
+export function favourPaces(s: GameState): number {
+  const counts = favourStreet(s);
+  const road = derived(s).road;
+  let n = 0;
+  for (const i of s.roads) if (road[i] === 1 && counts(i)) n++;
+  return n;
 }
 
 /** Rome's favour (DESIGN §6.6): Rome sends colonists faster to a splendid town, ×(1 + RENOWN.K × splendour per home),
@@ -624,11 +660,20 @@ export function renownFactor(s: GameState): number {
   return Math.min(R.MAX, 1 + (R.K * splendour(s)) / Math.max(1, derived(s).houses.length));
 }
 
+/** The factors of today's chance of a new household (DESIGN §6.6), in the order immigrationChance multiplies them: the
+ *  rank's own rate (households a day), spirits, food, water, Rome's favour and the edicts and paths (fx immigration). */
+export function arrivalFactors(s: GameState): { rank: number; spirits: number; food: number; water: number; favour: number; edicts: number } {
+  const A = P.ATTRACT;
+  return {
+    rank: RANK_DEFS[s.rank].immRate, spirits: Math.min(A.MAX, Math.max(0, (s.morale - A.MORALE) / A.SPAN)),
+    food: foodFactor(s), water: dohFactor(s, 'water', P.WATER_F), favour: renownFactor(s), edicts: fx(s, 'immigration'),
+  };
+}
+
 /** Today's chance of a new household: IMM_RATE[rank] × attract (morale, food, water, renown, fx immigration). */
 export function immigrationChance(s: GameState): number {
-  const A = P.ATTRACT;
-  const moraleF = Math.min(A.MAX, Math.max(0, (s.morale - A.MORALE) / A.SPAN));
-  return RANK_DEFS[s.rank].immRate * moraleF * foodFactor(s) * dohFactor(s, 'water', P.WATER_F) * renownFactor(s) * fx(s, 'immigration');
+  const f = arrivalFactors(s);
+  return f.rank * f.spirits * f.food * f.water * f.favour * f.edicts;
 }
 
 /** Gentes of a pool not yet present in the colony (the whole pool when every one is). */
