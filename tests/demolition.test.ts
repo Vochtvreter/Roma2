@@ -266,6 +266,32 @@ describe('undoDemolition: a short undo', () => {
     expect(s.buildings.some((b) => b.id === camp.id)).toBe(false);
   });
 
+  it('ends once a work is pulled down from its card or a site cancelled: Undo never raises an older demolition', () => {
+    // the tool pulls down one home, the inspector's Demolish another: the last demolition is the second, which the
+    // tool's Undo does not hold, so there is none to undo (the first stays down)
+    const s = fresh(42);
+    const [a, b] = s.buildings.filter((x) => x.type === 'area' && x.house);
+    expect(demolishMany(s, [a.id]).ok).toBe(true);
+    const pr = s.buildings.find((x) => x.type === 'principia')!;
+    expect(A.demolish(s, pr.id).ok).toBe(false);                       // refused: nothing came down, the undo stands
+    expect(undoable(s)).not.toBeNull();
+    expect(A.demolish(s, b.id)).toEqual({ ok: true });
+    expect(undoable(s)).toBeNull();
+    expect(undoDemolition(s)).toEqual({ ok: false, code: 'notFound', reason: 'There is no demolition to undo.' });
+    expect(s.buildings.some((x) => x.id === a.id || x.id === b.id)).toBe(false);
+
+    // the works queue's ✕ on a site of the player's
+    const t = fresh(42);
+    const well = t.buildings.find((x) => x.type === 'puteus')!;
+    expect(demolishMany(t, [well.id]).ok).toBe(true);
+    const site = placeBuilding(t, 'hortus', freeBlock(t, 1).tiles[0], { owner: 'player' });
+    if (!site.ok) throw new Error(site.reason);
+    expect(undoable(t)).not.toBeNull();                                // a placement leaves it
+    expect(A.cancelSite(t, site.id!)).toEqual({ ok: true });
+    expect(undoable(t)).toBeNull();
+    expect(t.buildings.some((x) => x.id === well.id)).toBe(false);
+  });
+
   it('a family that found beds elsewhere meanwhile stays there', () => {
     const s = fresh(42);
     const [home, other] = s.buildings.filter((b) => b.type === 'area' && b.house);

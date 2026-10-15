@@ -12,6 +12,7 @@ import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layo
 import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
 import { cancelSite } from './construction';
+import { forgetDemolition } from './demolition';
 import { buildingRate, caps } from './economy';
 import { seasonOf as seasonOf$ } from './calendar';
 import { fx as fx$ } from './fx';
@@ -398,7 +399,8 @@ export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts
   return { ok: true, id };
 }
 
-/** Demolishes a finished building (25% refund) or cancels a site; never the principia or the Capitolium. */
+/** Demolishes a finished building (25% refund) or cancels a site; never the principia or the Capitolium. Either ends
+ *  the demolish tool's Undo (demolition.ts forgetDemolition): it is no longer the last demolition. */
 export function demolish(s: GameState, id: number): ActionResult {
   const b = getBuilding(s, id);
   if (!b) return { ok: false, code: 'notFound', reason: 'Nothing stands there.' };
@@ -411,6 +413,7 @@ export function demolish(s: GameState, id: number): ActionResult {
   }
   for (const f of s.families) if (f.home === id) f.home = null;
   s.buildings = s.buildings.filter((x) => x.id !== id);
+  forgetDemolition(s);
   log(s, 'build', `${BUILDING_DEFS[b.type].name} pulled down; a quarter of its cost is salvaged.`);
   invalidate(s);
   touchPeople(s);

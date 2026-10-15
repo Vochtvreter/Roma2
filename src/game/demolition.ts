@@ -6,11 +6,12 @@
 // standing that would no longer meet a need of their own tier (a well's water, a garden's desirability) and so decline
 // (§7.3), from the same coverage and desirability the houses read, on a copy of the state without those works.
 // Undo: the last demolishMany is kept beside the state in memory (a WeakMap, never saved: a reload ends it) for
-// B.construction.UNDO_DAYS days. undoDemolition raises those works again as they stood, takes the salvage back, and
-// puts back whoever is still without the home or the work it took; it refuses when anything now lies on that ground (a
-// work, a road, an aqueduct's route, the town wall's line: canPlace's occupancy), a work of a one-only type was raised
-// again meanwhile, or the salvage is spent. The ticks never read the record, so the colony runs the same with or
-// without it.
+// B.construction.UNDO_DAYS days; a work the player pulls down or a site they abandon another way (place.ts demolish,
+// construction.ts cancelSite: forgetDemolition) ends it, so Undo never reaches past that to an older demolition.
+// undoDemolition raises those works again as they stood, takes the salvage back, and puts back whoever is still without
+// the home or the work it took; it refuses when anything now lies on that ground (a work, a road, an aqueduct's route,
+// the town wall's line: canPlace's occupancy), a work of a one-only type was raised again meanwhile, or the salvage is
+// spent. The ticks never read the record, so the colony runs the same with or without it.
 import { B } from './balance';
 import { NEEDS, RESOURCES } from './types';
 import type { ActionResult, Building, BuildingId, Cost, Derived, GameState, NeedId } from './types';
@@ -170,8 +171,14 @@ function pullDown(s: GameState, ids: readonly number[], what: 'gardens' | null):
   return { ok: true };
 }
 
+/** Ends the undo: the player pulled a work down or abandoned a site another way (the inspector's Demolish, the works
+ *  queue's ✕), so the last demolition is no longer the one the record holds. */
+export function forgetDemolition(s: GameState): void {
+  razed.delete(s);
+}
+
 /** The last demolition (demolishMany, clearGardens) while it can still be undone: its works and the last day; null when
- *  there is none or its UNDO_DAYS have passed. */
+ *  there is none, its UNDO_DAYS have passed, or a work was pulled down another way since (forgetDemolition). */
 export function undoable(s: GameState): { works: number; until: number } | null {
   const r = razed.get(s);
   if (!r || s.day - r.day > B.construction.UNDO_DAYS) return null;
