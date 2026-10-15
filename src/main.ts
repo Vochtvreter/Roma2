@@ -20,7 +20,7 @@ import { newCtx, previewRates, tick, emptyRates } from './game/sim';
 import { nextColonyLegacy } from './game/decisions';
 import { introStep, introduced } from './game/intro';
 import {
-  KEYS, addFasti, claimSave, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, ownsSave, saveGame, savePrefs,
+  KEYS, addFasti, claimSave, exportText, fastiEntry, hasSave, importText, loadGame, loadPrefs, ownsSave, replaceSave, saveGame, savePrefs,
 } from './game/save';
 import { offlineRun, simulateOffline, wonWhileAway } from './game/offline';
 import { drainActionFx } from './game/memo';
@@ -84,6 +84,11 @@ class App implements Game {
   private broken = false;
   private titleFailed = false;
   private nudged = false;
+  /** A new colony's founding letter is open: nothing is saved until its standard is raised (begin), so the stored colony
+   *  stays whole until then, and Back on the letter cancels the new one (toTitle). */
+  private founding = false;
+  /** The next save goes over another colony (a new colony begun, an import): that one is kept as the previous colony. */
+  private replacing = false;
 
   constructor() {
     registerAllArt();
@@ -138,6 +143,7 @@ class App implements Game {
   }
 
   setSpeed(sp: Speed): void {
+    if (this.founding) this.begin();   // Raise the standard: the founding letter's answer
     if (!introduced(this.state, 'speed')) sp = 1;   // the faster speeds come with their lesson (§11.13)
     else if (sp > 1) actions.notePractice(this.state, 'speed');
     this.speed = sp;
@@ -283,14 +289,26 @@ class App implements Game {
 
   newGame(opts?: { afterVictory?: boolean }): void {
     void opts;   // legacy follows the previous colony itself (WP-D): +1 after a dedication, unchanged when abandoned
-    const prev = hasSave() ? loadGame() : null;
+    // a colony left from the game (Abandon, a dedication's Found a new colony) is saved first: it is the one kept as
+    // the previous colony once the new one begins
+    if (this.mode === 'game') this.write(false);
+    const prev = this.mode === 'game' ? this.state : hasSave() ? loadGame() : null;
     const { legacy, legacyBonus } = prev ? nextColonyLegacy(prev) : { legacy: 0, legacyBonus: 0 };
     const now = Date.now();
     const s = newGame({ seed: hashStr(String(now)), legacy, legacyBonus, now, intro: true });   // the opening lessons (§11.13)
     this.enter(s);
     this.paused = true;
-    this.write(false);
+    // not saved yet: the stored colony is replaced only when the standard is raised (begin), never by the letter alone
+    this.founding = true;
+    this.replacing = true;
     this.ui.showDispatch('founding');
+  }
+
+  /** The founding letter is answered (Raise the standard): the new colony is begun and saved for the first time, over
+   *  the stored colony, which is kept as the previous colony (save.ts replaceSave) for the title's Restore. */
+  private begin(): void {
+    this.founding = false;
+    this.write(false);
   }
 
   continueGame(): void {
@@ -308,6 +326,7 @@ class App implements Game {
   }
 
   toTitle(): void {
+    const cancel = this.founding;   // Back on a new colony's founding letter: it was never begun
     if (this.mode === 'game') this.write(false);
     closeAllModals();
     this.cancelPlacing();
@@ -315,7 +334,17 @@ class App implements Game {
     this.mode = 'title';
     this.paused = true;
     this.view.setInputEnabled(true);
+    if (cancel) this.unfound();
     this.ui.showTitle();
+  }
+
+  /** A new colony cancelled on its founding letter: nothing of it was saved, and the stored colony it would have replaced
+   *  drifts behind the title again, whole (Continue plays it). */
+  private unfound(): void {
+    this.founding = false;
+    this.replacing = false;
+    this.state = loadGame() ?? this.titleState();
+    try { this.view.attach(this.state); } catch { this.state = this.titleState(); this.view.attach(this.state); }
   }
 
   /** A save the player asked for (Menu → Save, Save & quit): a failure is reported every time. */
@@ -333,6 +362,7 @@ class App implements Game {
     closeAllModals();
     this.enter(s);
     this.paused = true;
+    this.replacing = true;   // the colony it replaces is kept as the previous colony (a restore swaps the two)
     this.write(false);
     toast(`${s.name} restored.`, 'good');
     return true;
@@ -358,6 +388,8 @@ class App implements Game {
     this.state = s;
     this.mode = 'game';
     this.broken = false;
+    this.founding = false;
+    this.replacing = false;
     claimSave(this.sid);
     setTitleNotice(null);
     this.clock = zeroOwed(this.clock);
@@ -422,13 +454,15 @@ class App implements Game {
     }
   }
 
-  /** Writes the save. Not on the title, after a crash, or once another tab owns the save (this tab then yields).
+  /** Writes the save. Not on the title, before a new colony's standard is raised, after a crash, or once another tab
+   *  owns the save (this tab then yields). The first save over another colony keeps that one as the previous colony.
    *  `loud`: report every failure (the player asked); otherwise the failure toast shows once until a save succeeds. */
   private write(loud: boolean): boolean {
-    if (this.mode !== 'game') return false;
+    if (this.mode !== 'game' || this.founding) return false;
     if (this.broken) { if (loud) toast(BROKEN, 'bad', undefined, 8000); return false; }
     if (!ownsSave(this.sid)) { this.yieldToOtherTab(); return false; }
-    const ok = saveGame(this.state, Date.now());
+    const ok = this.replacing ? replaceSave(this.state, Date.now()) : saveGame(this.state, Date.now());
+    if (ok) this.replacing = false;
     savePrefs(this.prefs);
     if (!ok && (loud || !this.saveWarned)) toast(SAVE_FAIL, 'bad', undefined, 8000);
     this.saveWarned = !ok;

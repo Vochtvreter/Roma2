@@ -139,7 +139,7 @@ Only pushes to `main` (and manual runs) start the deploy, so a branch push never
 ### 2.5 Other files
 - `.gitignore`: `node_modules dist *.log .DS_Store coverage test-results`.
 - `public/favicon.svg`: a 16×16 pixel aquila in SVG `<rect>`s.
-- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): the game's (save.ts `KEYS`) `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4) and `castravaleria.exported.v1` (when a copy was last exported); the UI's own, per browser and never in the save or Prefs, `castravaleria.ui.textSize.v1` (Text size, `ui/textsize.ts`) and `castravaleria.ui.keepPlacing.v1` (⟳ keep placing, `ui/mapbar.ts`). The offline worker keeps its files in Cache Storage as `castra-<folder>-<BUILD>` (§13.11). Every access is wrapped in `try/catch`.
+- **localStorage keys** (namespaced — every repo of one GitHub user shares the `username.github.io` origin): the game's (save.ts `KEYS`) `castravaleria.save.v1`, `castravaleria.prefs.v1`, `castravaleria.fasti.v1`, `castravaleria.owner.v1` (the tab playing the save, §11.4), `castravaleria.exported.v1` (when a copy was last exported) and `castravaleria.backup.v1` (the previous colony: the save a new colony or an import replaced, kept `B.ui.PREVIOUS_DAYS` real days for the title's Restore, §11.4); the UI's own, per browser and never in the save or Prefs, `castravaleria.ui.textSize.v1` (Text size, `ui/textsize.ts`) and `castravaleria.ui.keepPlacing.v1` (⟳ keep placing, `ui/mapbar.ts`). The offline worker keeps its files in Cache Storage as `castra-<folder>-<BUILD>` (§13.11). Every access is wrapped in `try/catch`.
 - `?dev` query: exposes `window.cv = app`, `window.skip(days)`, key 5 = 20×, "DEV" in the title footer. Nothing else differs.
 
 ---
@@ -1323,7 +1323,8 @@ export function buyNow(s: GameState, res: TradeRes, qty: number): ActionResult; 
 export function emergencyImport(s: GameState, ctx: TickContext, qty: number): boolean;
 // save.ts
 export const SAVE_VERSION = 2;
-export const KEYS: { save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1' };
+export const KEYS: { save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1';
+  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1'; backup: 'castravaleria.backup.v1' };
 export const MIGRATIONS: Record<number, (raw: any) => any>;          // version n → n+1
 export const DEFAULT_PREFS: Prefs;
 export function serialize(s: GameState): string;
@@ -1331,6 +1332,9 @@ export function deserialize(json: string): GameState | null;          // migrate
 export function saveGame(s: GameState, now: number): boolean;
 export function loadGame(): GameState | null;
 export function hasSave(): boolean;
+export function rawSave(): string | null;                              // the stored text, readable or not
+export function replaceSave(s: GameState, now: number): boolean;      // saveGame over the stored colony, which goes to the backup slot (§11.4)
+export function loadBackup(now: number): { raw: string; days: number } | null;   // the previous colony while kept; an older one is removed
 export function clearSave(): void;
 export function exportText(s: GameState): string;                     // 'CV1:' + base64(UTF-8 JSON)
 export function importText(text: string): GameState | null;
@@ -1501,17 +1505,19 @@ Rules around the tick:
 5. **Sanitise**: non-finite numbers in `res`, `needs`, `morale`, `fed`, counters → 0 (and clamp to ranges); unknown building types, ids, edict options, path options, hubs → dropped or reset to initial; arrays re-sorted by id and de-duplicated; `home`/`work`/`spouse` pointing at missing entities → `null`; people over `POP_CAP` are not trimmed.
 6. Fatal (no principia, map seed not a number, people not an array) → `null`.
 
-Unreadable save on Continue: the title shows the reason and an **Export raw save** button (the raw string in the export textarea); **Found a new colony** asks for the two-click confirm before overwriting.
+Unreadable save on Continue: the title shows the reason and an **Export raw save** button (the raw string in the export textarea); **Found a new colony** asks in its dialog first, which offers that raw text too (§11.4).
 
 **Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4.
 
 ### 11.3 Prefs, Fasti, export/import
 - `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed (a continued game resumes paused, then at this speed after the away report).
 - `castravaleria.fasti.v1`: `FastiEntry[]`, newest first, max 50. `addFasti` is called once at dedication (victory). A new colony after a victory gets `legacy = previous legacy + 1` and `legacyBonus += 0.05` if *Imperium* was chosen; abandoning a colony adds nothing.
-- Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves, and attaches the view. On failure: *"That text is not a Castra Valeria save."*
+- Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves (keeping the colony it replaces as the previous colony, §11.4), and attaches the view. On failure: *"That text is not a Castra Valeria save."*
 
 ### 11.4 Autosave (main.ts)
-Every `AUTOSAVE_S` (20 s) of real time in game mode (not during catch-up, not on the title); on `visibilitychange → hidden` (also records `hiddenAt`); on `pagehide`; immediately after a path choice, victory, import and new game; on **Save** and **Save & quit** in the menu. Automatic saves warn once when storage refuses; **Save** and **Save & quit** report every failure, and a Save & quit that cannot save offers the export text instead of dropping the colony.
+Every `AUTOSAVE_S` (20 s) of real time in game mode (not during catch-up, not on the title); on `visibilitychange → hidden` (also records `hiddenAt`); on `pagehide`; immediately after a path choice, victory and import, and when a new colony's standard is raised; on **Save** and **Save & quit** in the menu. Automatic saves warn once when storage refuses; **Save** and **Save & quit** report every failure, and a Save & quit that cannot save offers the export text instead of dropping the colony.
+
+**A new colony never erases the save at once.** Over a stored colony the title's *Found a new colony* opens a dialog that names it (*"Replace Castra Valeria — Vicus, 56 souls?"*) with *Export a copy first* (the raw save when it cannot be read), *Cancel* and *Found the new colony*. `App.newGame` saves a colony left from the game first (Abandon, a dedication's new colony), then writes nothing while the founding letter is open (`founding`: autosaves, `pagehide` and hiding the tab save nothing); *Raise the standard* (the first `setSpeed`) begins it and saves it. Back on that letter is its cancel: `toTitle` saves nothing and the stored colony drifts behind the title again. The first save over another colony (a new colony begun, an import) is `replaceSave`: the new save first, then the replaced text, readable or not, into `castravaleria.backup.v1` stamped with the wall clock (as storage allows). The title offers **Restore the previous colony** while it is kept (`B.ui.PREVIOUS_DAYS` = 7 real days, `loadBackup`), behind the same dialog; the restore is an import of it, so the two colonies change places.
 
 **One tab owns the save.** Each page draws a random id and writes it to `castravaleria.owner.v1` (`claimSave`) when it enters a game. Every save checks `ownsSave` first; a tab that lost the claim (a `storage` event, a return to the tab, a page restored from the back-forward cache, or its next autosave) switches to the title at once and never saves or catches up its stale copy; its Continue plays the stored colony there instead. After a throw in the loop the clock stops and nothing more is saved over the last good save.
 
@@ -2012,6 +2018,7 @@ frame(t): schedule()                        // the next turn first: an animation
   view.frame(dt × 1000, s, speed, paused); ui.frame(t)
   autosave timer; s.stats.playMs += dt × 1000 while in game mode and the tab is visible
 new game: s = newGame({ seed: hashStr(String(now)) , legacy, legacyBonus, now }); view.attach(s); paused; Founding dispatch → "Raise the standard" → setSpeed(1)
+      (its first save, over the stored colony: replaceSave, §11.4; Back on the letter cancels it, nothing saved)
 keys (keys.ts): Space, 1–4 (5 in ?dev), E V B P T L (with Shift on the DOCK and the COLUMNS: that tab wide), C M I (the views Urbs, Mensa, Tabularium on the DOCK and the COLUMNS: layout.ts keyAction → moveDetent), O / Shift+O, R, H, WASD/arrows → view.panBy, + / − → view.zoomBy, Esc chain (modal → the open layer of the highest rank → menu); ignored inside inputs
 back (history.ts): initBack(g) registers the modal 100, placing 50 and selection 40; the phone's speed popover (hud.ts)
       and the tool column's Via and Mappae popovers (mapbar.ts) add 70, the Breviarium (tray.ts) 60, the event card in a

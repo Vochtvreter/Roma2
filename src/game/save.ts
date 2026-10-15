@@ -17,16 +17,19 @@ import { buildingShape, personShape, stateShape } from './shapes';
 
 /** Current save format version (written by newGame). 2: the growing town (`urbs`: footfall, the town wall, the razed castrum). */
 export const SAVE_VERSION = 2;
-/** Namespaced localStorage keys: the save, prefs, Fasti, the tab that owns the save, and when a copy was last exported. */
+/** Namespaced localStorage keys: the save, prefs, Fasti, the tab that owns the save, when a copy was last exported, and
+ *  the backup slot (the previous colony: the one a new colony or an import replaced). */
 export const KEYS: {
   save: 'castravaleria.save.v1'; prefs: 'castravaleria.prefs.v1'; fasti: 'castravaleria.fasti.v1';
-  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1';
+  owner: 'castravaleria.owner.v1'; exported: 'castravaleria.exported.v1'; backup: 'castravaleria.backup.v1';
 } = {
   save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1',
-  owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1',
+  owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1', backup: 'castravaleria.backup.v1',
 };
 /** Days past START_DAY a save may claim (a corrupt day of 1e12 would otherwise break the calendar for good). */
 const DAY_SPAN = 1_000_000;
+/** A real day in wall-clock ms (the previous colony is kept B.ui.PREVIOUS_DAYS of them). */
+const REAL_DAY_MS = 86_400_000;
 /** Migrations: MIGRATIONS[n] turns a version-n save into version n + 1 (and sets the new version); `any` is allowed here only. */
 export const MIGRATIONS: Record<number, (raw: any) => any> = {
   // 1 → 2: the growing town arrives with no footfall counted yet, no town wall and the castrum standing; `urbs` sits after
@@ -345,6 +348,41 @@ export function loadGame(): GameState | null {
   try {
     const raw = localStorage.getItem(KEYS.save);
     return raw ? deserialize(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The stored save as it stands (readable or not), or null when there is none or storage is blocked. */
+export function rawSave(): string | null {
+  try {
+    return localStorage.getItem(KEYS.save);
+  } catch {
+    return null;
+  }
+}
+
+/** Writes `s` over the stored colony (a new colony whose standard is raised, an import, a restore) and keeps that one,
+ *  readable or not, in the backup slot from `now`: the previous colony. False when the save is refused (nothing changes
+ *  then). The save goes first: a new colony is smaller than most it replaces, so both fit where one did; a backup that
+ *  still does not fit is not kept (the title's confirm offers an export first). */
+export function replaceSave(s: GameState, now: number): boolean {
+  const prev = rawSave();
+  if (!saveGame(s, now)) return false;
+  if (prev !== null) { try { localStorage.setItem(KEYS.backup, `${now}\n${prev}`); } catch { /* storage full or blocked */ } }
+  return true;
+}
+
+/** The previous colony's save text and the real days it is still kept (B.ui.PREVIOUS_DAYS from its replacement), or
+ *  null; one kept longer is removed. */
+export function loadBackup(now: number): { raw: string; days: number } | null {
+  try {
+    const v = localStorage.getItem(KEYS.backup);
+    if (v === null) return null;
+    const i = v.indexOf('\n');
+    const left = Number(v.slice(0, Math.max(0, i))) + B.ui.PREVIOUS_DAYS * REAL_DAY_MS - now;
+    if (i <= 0 || !Number.isFinite(left) || left <= 0) { localStorage.removeItem(KEYS.backup); return null; }
+    return { raw: v.slice(i + 1), days: Math.min(B.ui.PREVIOUS_DAYS, Math.ceil(left / REAL_DAY_MS)) };
   } catch {
     return null;
   }

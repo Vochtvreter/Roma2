@@ -72,8 +72,9 @@ function push(): void {
 
 /** Installs the default layers (the Esc chain) and the popstate handling. Once, from main.ts. */
 export function initBack(g: Game): void {
-  // a letter that must be answered (the founding letter) is not closed by Back: Back takes it to the title, saved, where
-  // Continue opens it again and a further Back leaves
+  // a letter that must be answered (the founding letter) is not closed by Back: Back takes it to the title (App.toTitle:
+  // a new colony's letter is its cancel, the stored colony untouched; a stored colony's is saved, and Continue opens it
+  // again), where a further Back leaves
   registerBack({ rank: BACK_RANK.modal, open: () => modalCount() > 0, close: () => { if (!topModalClosable() || !closeTopModal()) g.toTitle(); } });
   registerBack({ rank: BACK_RANK.placing, open: () => g.mode === 'game' && g.view.placing !== null, close: () => g.cancelPlacing() });
   registerBack({ rank: BACK_RANK.selection, open: () => g.mode === 'game' && (g.view.selected !== null || g.inspecting()),
