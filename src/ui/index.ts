@@ -246,7 +246,7 @@ export class UI {
     present(g, el('overlay-bar'), shows(g, 'overlays'));
     this.hud.update();
     this.tray.update(now);
-    this.objective.update(this.counsel.held);
+    this.objective.update(this.counsel.pointer);
     this.counsel.update();
     this.ticker.update(now);
     this.tools.update();

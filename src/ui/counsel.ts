@@ -293,9 +293,9 @@ export class Counsel {
     return true;
   }
 
-  /** True while the mouse rests on the card or the strip: the Res Gestae above holds still too (objective.ts). */
-  get held(): boolean {
-    return this.hold.holds();
+  /** The pointer on the card or the strip: the Res Gestae above holds still with it (objective.ts goalsWait). */
+  get pointer(): Pick<PointerHold, 'holds' | 'busy'> {
+    return this.hold;
   }
 
   /** Rebuilds when the shown item, the strip or the remedies' availability change; refreshes the text daily. */
