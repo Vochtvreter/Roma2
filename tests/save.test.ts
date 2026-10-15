@@ -8,8 +8,9 @@ import { invalidate } from '../src/game/memo';
 import { newCtx, tick } from '../src/game/sim';
 import {
   DEFAULT_PREFS, KEYS, MIGRATIONS, SAVE_VERSION, addFasti, claimSave, clearSave, deserialize, exportText, fastiEntry, hasSave, importText,
-  lastExported, loadFasti, loadGame, loadPrefs, markExported, ownsSave, saveGame, savePrefs, serialize,
+  lastExported, loadBackup, loadFasti, loadGame, loadPrefs, markExported, ownsSave, rawSave, replaceSave, saveGame, savePrefs, serialize,
 } from '../src/game/save';
+import { replaceQuestion } from '../src/ui/title';
 import { decidedLines, describeAway, keepDecided, offlineDays, offlineRun, simulateOffline, wonWhileAway } from '../src/game/offline';
 import type { Decided } from '../src/game/offline';
 import type { LogEntry, LogKind } from '../src/game/types';
@@ -254,7 +255,7 @@ describe('localStorage', () => {
   it('uses the namespaced keys; saves with the wall clock; loads; clears', () => {
     expect(KEYS).toEqual({
       save: 'castravaleria.save.v1', prefs: 'castravaleria.prefs.v1', fasti: 'castravaleria.fasti.v1',
-      owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1',
+      owner: 'castravaleria.owner.v1', exported: 'castravaleria.exported.v1', backup: 'castravaleria.backup.v1',
     });
     expect(hasSave()).toBe(false);
     expect(loadGame()).toBeNull();
@@ -327,6 +328,87 @@ describe('localStorage', () => {
     expect(list[0].seed).toBe(54);
     localStorage.setItem(KEYS.fasti, JSON.stringify([e, { name: 3 }, { ...e, paths: ['dragons'] }, { ...e, dedicated: null }]));
     expect(loadFasti()).toEqual([e, { ...e, dedicated: null }]);
+  });
+});
+
+describe('the previous colony (the backup slot): a new colony never erases the save at once', () => {
+  const DAY = 86_400_000;
+  const T0 = 1_700_000_000_000;
+  let m: Map<string, string>;
+  beforeEach(() => { m = installStorage(); });
+
+  it('the first save over a stored colony keeps that one, readable, for PREVIOUS_DAYS real days', () => {
+    const old = run(fresh(7), 30);
+    old.name = 'Vicus Vetus';
+    saveGame(old, T0 - DAY);
+    const stored = rawSave();
+    const next = fresh(8);
+    expect(replaceSave(next, T0)).toBe(true);
+    expect(loadGame()).toEqual(next);                                   // the new colony is the save now
+    const back = loadBackup(T0);
+    expect(back).toEqual({ raw: stored, days: B.ui.PREVIOUS_DAYS });  // the old one, exactly as it was stored
+    expect(deserialize(back!.raw)).toEqual(old);
+    expect(loadBackup(T0 + (B.ui.PREVIOUS_DAYS - 0.5) * DAY)!.days).toBe(1);
+    expect(loadBackup(T0 + B.ui.PREVIOUS_DAYS * DAY)).toBeNull();        // kept for a while, then dropped
+    expect(m.has(KEYS.backup)).toBe(false);
+    expect(loadGame()).toEqual(next);
+  });
+
+  it('a restore is the same replacement: the two colonies change places', () => {
+    const a = fresh(7); a.name = 'Prima';
+    const b = fresh(8); b.name = 'Secunda';
+    saveGame(a, T0);
+    replaceSave(b, T0 + 1000);                                           // Secunda founded over Prima
+    replaceSave(deserialize(loadBackup(T0 + 2000)!.raw)!, T0 + 2000);    // Restore the previous colony
+    expect(loadGame()!.name).toBe('Prima');
+    expect(deserialize(loadBackup(T0 + 2000)!.raw)!.name).toBe('Secunda');
+  });
+
+  it('nothing stored: nothing to keep; an unreadable save is kept as it was', () => {
+    expect(replaceSave(fresh(), T0)).toBe(true);
+    expect(loadBackup(T0)).toBeNull();
+    localStorage.setItem(KEYS.save, '{"version": 99}');                 // a newer version's save
+    replaceSave(fresh(), T0);
+    expect(loadBackup(T0)!.raw).toBe('{"version": 99}');
+  });
+
+  it('a refused save changes nothing; a backup that does not fit leaves the new save in place', () => {
+    const a = fresh(7);
+    saveGame(a, T0);
+    const stored = rawSave();
+    const refusing = installStorage(true);
+    refusing.set(KEYS.save, stored!);
+    expect(replaceSave(fresh(8), T0)).toBe(false);
+    expect(refusing.get(KEYS.save)).toBe(stored);
+    expect(refusing.has(KEYS.backup)).toBe(false);
+    const full = installStorage();
+    full.set(KEYS.save, stored!);
+    const ls = globalThis.localStorage as unknown as { setItem: (k: string, v: string) => void };
+    const set = ls.setItem;
+    ls.setItem = (k, v) => { if (k === KEYS.backup) throw new Error('QuotaExceededError'); set(k, v); };
+    const b = fresh(8);
+    expect(replaceSave(b, T0)).toBe(true);
+    expect(loadGame()).toEqual(b);
+    expect(loadBackup(T0)).toBeNull();
+    Reflect.deleteProperty(globalThis, 'localStorage');
+    expect(rawSave()).toBeNull();
+    expect(loadBackup(T0)).toBeNull();
+    expect(replaceSave(fresh(), T0)).toBe(false);
+  });
+
+  it('a malformed backup slot is dropped', () => {
+    for (const v of ['no stamp', '\n{}', 'soon\n{}']) {
+      m.set(KEYS.backup, v);
+      expect(loadBackup(T0)).toBeNull();
+      expect(m.has(KEYS.backup)).toBe(false);
+    }
+  });
+
+  it('the title asks by name before a stored colony is replaced', () => {
+    const s = fresh();
+    s.rank = 1;
+    expect(replaceQuestion(s)).toBe(`Replace Castra Valeria — Vicus, ${s.people.length} souls?`);
+    expect(replaceQuestion(null)).toBe('Replace the save that cannot be read?');
   });
 });
 

@@ -369,5 +369,6 @@ export const B = {
     FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 3000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
     ROSTER: 60, BEDS_LOW: 2,                          // Populus roster of the 60 oldest; souls chip amber below 2 free beds
     NEW_DAYS: 30,                                     // a NEW sticker stays this many days after a reveal
+    PREVIOUS_DAYS: 7,                                 // real days the title can restore the colony a new one (or an import) replaced
   },
 } as const;
