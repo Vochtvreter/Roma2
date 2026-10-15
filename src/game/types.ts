@@ -588,13 +588,22 @@ export type PlaceCheck =
 export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolean; reason?: Reason; ignoreCost?: boolean }
 
 // ───────────────────────────── offline, prefs ─────────────────────────────
-export interface Snapshot { day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>> }
+export interface Snapshot {
+  day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
+  petition: { rank: RankIndex; met: number; of: number } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+  capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
+}
 export interface AwayReport {
   awayMs: number; daysPlanned: number; days: number;
   before: Snapshot; after: Snapshot;
   decided: string[]; highlights: LogEntry[];
   lowest: { grain: { doh: number; day: number }; water: { doh: number; day: number } };
-  awaiting: { petition: RankIndex | null; advisories: RuleId[] };
+  awaiting: {
+    petition: RankIndex | null;
+    readySince: number | null;                                      // the day the ready petition became ready (the Augur's Opportunitas raised)
+    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved: the next rank's unmet items, or (rank null) the Capitolium
+    advisories: RuleId[];
+  };
 }
 export interface OfflineRun { days: number; progress(): number; step(n: number): boolean; report(): AwayReport }
 export type Speed = 1 | 2 | 5 | 10 | 20;

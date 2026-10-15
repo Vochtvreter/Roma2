@@ -18,7 +18,7 @@ import { TIER_DEFS } from '../game/data/housing';
 import { PATH_DEFS } from '../game/data/decisions';
 import { RANK_DEFS } from '../game/data/ranks';
 import { B } from '../game/balance';
-import { sentence, wonWhileAway } from '../game/offline';
+import { AWAY_CAP_MS, AWAY_CAP_YEARS, capLine, pct, readyLine, sentence, stalledLine, wonWhileAway } from '../game/offline';
 import { skipIntro } from '../game/actions';
 import { typeSprite } from './tabs/common';
 
@@ -85,11 +85,30 @@ function lowest(r: AwayReport): string {
   return parts.length ? sentence(parts.join('; ')) : 'The stores never ran thin.';
 }
 
+/** The next rank's checklist and the Capitolium, before → after (null when neither is left to rise). */
+function progress(b: Snapshot, a: Snapshot): HTMLElement | null {
+  const parts: Kid[] = [];
+  const p = a.petition;
+  if (p) parts.push(`${RANK_DEFS[p.rank].name} petition: `, delta(b.petition?.rank === p.rank ? b.petition.met : p.met, p.met), ` of ${p.of} met`);
+  if (a.capitolium !== null && b.capitolium !== 1) {
+    parts.push(parts.length ? ' · Capitolium ' : 'Capitolium ', delta((b.capitolium ?? 0) * 100, a.capitolium * 100, (n) => pct(n / 100)));
+  }
+  return parts.length ? h('span', null, ...parts) : null;
+}
+
 function awaiting(g: Game, r: AwayReport, close: () => void): HTMLElement | null {
   const s = g.state;
   const items: HTMLElement[] = [];
-  if (r.awaiting.petition !== null) {
-    items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), h('span', { class: 'disp-await-text' }, `Rome would hear our petition for ${RANK_DEFS[r.awaiting.petition].name}.`),
+  // nothing moved: what holds the next rank leads (DESIGN §14), its checklist a click away
+  const stall = stalledLine(r);
+  if (stall) {
+    items.push(h('div', { class: 'disp-await s2' }, h('span', { class: 'disp-mark' }, '○'),
+      h('span', { class: 'disp-await-text' }, h('b', null, 'Stalled:'), stall.replace(/^Stalled:/, '')),
+      r.awaiting.stalled?.rank != null ? h('button', { class: 'btn small', onclick: () => { close(); g.openTab('council', 'petition'); } }, 'See the petition') : null));
+  }
+  const ready = readyLine(r);
+  if (ready) {
+    items.push(h('div', { class: 'disp-await gold' }, h('span', { class: 'disp-mark' }, '▲'), h('span', { class: 'disp-await-text' }, ready),
       h('button', { class: 'btn small legate', onclick: () => { close(); g.openTab('council', 'petition'); } }, 'Petition Rome')));
   }
   for (const rule of r.awaiting.advisories) {
@@ -114,6 +133,8 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     ' · Coin ', delta(b.res.denarii, a.res.denarii), ` (${coin >= 0 ? '+' : '−'}${fmt(Math.abs(coin))})`);
   const w = works(b, a);
   const hm = homes(b, a);
+  const pg = progress(b, a);
+  const cap = capLine(r, awayTime);
   const hl = r.highlights.slice(-HIGHLIGHTS).reverse();
   // what waits on the Praefectus comes first, before the account of what was done: on a phone the letter is several
   // screens long, and its Return to the city stays pinned at the foot (modals.css)
@@ -121,8 +142,10 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
     h('div', { class: 'disp-head' }, `from ${formatRoman(b.day)} to ${formatRoman(a.day, { year: true })}`,
       h('span', { class: 'disp-dim' }, ` · ${fmt(r.days)} days · you were away ${awayTime(r.awayMs)}`),
       wonWhileAway(g.state, r) ? h('span', { class: 'disp-dim' }, ' · the Capitolium was dedicated and the clock stopped') : null),
+    cap ? h('p', { class: 'disp-cap' }, cap) : null,
     awaiting(g, r, close),
     line('THE CITY', city),
+    pg ? line('PROGRESS', pg) : null,
     line('STORES', stores),
     line('WORKS RAISED', w.length ? h('span', { class: 'disp-works' }, w) : 'None this time.'),
     hm ? line('HOMES', hm) : null,
@@ -133,7 +156,7 @@ function awayBody(g: Game, r: AwayReport, close: () => void): HTMLElement {
       h('span', { class: 'disp-await-text' }, keepCopyWhy(platform())),   // Safari's week only in a Safari tab
       h('button', { class: 'btn small', onclick: () => openExportImport(g) }, 'Export a copy'))) : null,
     h('div', { class: 'disp-foot' },
-      h('span', { class: 'disp-note' }, 'Time away passes at half speed, up to five years.'),
+      h('span', { class: 'disp-note' }, `Time away passes at half speed, up to ${words(AWAY_CAP_YEARS)} years (${Math.round(AWAY_CAP_MS / 60_000)} minutes away).`),
       h('span', { class: 'disp-sign' }, '— Ordo Decurionum'),
       h('button', { class: 'btn primary', onclick: () => close() }, 'Return to the city')));
 }

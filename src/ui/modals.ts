@@ -14,6 +14,7 @@ import { toast } from './toasts';
 import { renameColony } from '../game/actions';
 import { B } from '../game/balance';
 import { lastExported, markExported } from '../game/save';
+import { awayRule } from '../game/offline';
 import type { GameState } from '../game/types';
 import { finePointer, pressWord, touchInput } from './pointer';
 import { tabShown } from './intro';
@@ -447,7 +448,7 @@ export function openHowTo(_g: Game): void {
     sec('Grain and water in days', h('p', null, 'The two tablets count days on hand, with the year ahead beneath: green is safe, gold is thin, red is danger. Every warning comes with a remedy.')),
     sec('Build where you like', h('p', null, build)),
     sec('Seasons and the two crunches', h('p', null, 'Aestas dries the wells; Hiems starves the fields. Fill the cisterns in Ver and the horrea before the Kalends of December.')),
-    sec('Time away', h('p', null, `Time away passes at half speed, up to five years. The Ordo governs and writes you a letter. ${keepCopyWhy(platform())} Keep a copy with Menu → Export.`)),
+    sec('Time away', h('p', null, `${awayRule()} The Ordo governs and writes you a letter. ${keepCopyWhy(platform())} Keep a copy with Menu → Export.`)),
     sec('Controls', controls),
   ), { kicker: 'QVOMODO LVDITVR', title: 'How to play', wide: true });
 }

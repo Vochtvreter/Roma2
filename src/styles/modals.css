@@ -88,6 +88,7 @@
 .disp-body { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-line); line-height: 1.45; }
 .disp-head { text-align: center; font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: .5px; color: #6f5639; margin: -4px 0 10px; }
 .disp-dim { color: #6f5639; }
+.disp-cap { margin: -6px 0 8px; text-align: center; font-style: italic; color: #5a4430; }   /* the absence ran past the cap */
 .disp-line { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 7px 0; border-top: 1px solid rgba(111, 86, 57, .28); }
 .disp-label { font-family: var(--font-caps); font-size: var(--fs-caps); letter-spacing: 1.2px; color: #8a3d2b; padding-top: 3px; }
 .disp-text { color: var(--ink); }

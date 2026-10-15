@@ -1144,7 +1144,7 @@ Names from rome: *Caravan from Lutetia, Syrian spice traders, Gallic cattle merc
 |---|---|
 | Trigger | on Continue (`now − lastSave`) and on tab return (`now − hiddenAt`) when the absence is **> 60 s** |
 | Rate | **0.5 game days per real second away** |
-| Cap | **1,825 days** (one *lustrum*), reached after ≈ 61 min away (≈ 13% of a run) |
+| Cap | **1,825 days** (one *lustrum*), reached after ≈ 61 min away (≈ 13% of a run); said in real time in How to play (*"each minute you are gone is 30 days in the colony, up to 5 years. That takes 61 minutes; time away beyond it is not counted"*) and, when an absence ran past it by a minute or more, under the letter's heading (*"The colony ran 5 years, the most it runs without you; 6 h 59 min of your absence went uncounted."*) |
 | Method | the real `tick()` N times with `ctx.offline = true`; `offline(N) === N ticks` (tested); sliced 30 ms per frame |
 | Differences (and nothing else) | benign events only, on half the days; no new choice cards except the auto-accepted relief; pending cards resolve to their default at expiry; starvation/thirst deaths ×0.4; **no house loses a tier** (decline counters stop at 55); fires and harmful events off; merchants only through the Ordo; **Govern while away** runs manual subsystems with the Ordo; emergency measures apply if on; fx discarded; rates not accumulated |
 | Stops early | on victory; `report.days` = days actually simulated |
@@ -1154,16 +1154,25 @@ Names from rome: *Caravan from Lutetia, Syrian spice traders, Gallic cattle merc
 ```
 LITTERAE ORDINIS · from a.d. IV Non. Apr. to Id. Nov. AUC DCCCII   (221 days · you were away 7 min 22 s)
 THE CITY      Souls 118 → 131 (+9 births, +11 arrivals, −7 deaths, −2 departed) · Rank Vicus · Spirits 61 → 76
+PROGRESS      Oppidum petition: 2 → 4 of 5 met
 STORES        Grain 41 → 88 days · Water 22 → 17 days · Coin 640 → 1,415 (+775)
 WORKS RAISED  Horreum · 2 house plots · Lararium · Olivetum          HOMES  3 casae became casae tegulatae
 DECIDED IN YOUR NAME
               · Veterans at the gate (3 families): sent on to Colonia Augusta.
               · Emergency: rations cut to Parcae for 12 days in Iul. (grain ran low).
 LOWEST POINT  Water fell to 6 days on a.d. III Id. Iul.; the concrete works paused.
-AWAITING YOU  ▲ Rome would hear our petition for Oppidum.  ● Oil for the insulae runs out in 24 days.
-              Time away passes at half speed, up to five years.            [ Return to the city ]
+AWAITING YOU  ▲ Rome would hear our petition for Oppidum: ready since a.d. III Id. Iul. AUC DCCCII, 120 days.
+              ● Oil for the insulae runs out in 24 days.
+              Time away passes at half speed, up to five years (61 minutes away).   [ Return to the city ]
 ```
-Awaiting You lists the ready petition first, then the top 3 advisories with their buttons.
+Awaiting You lists the ready petition first, with how long it has waited (from the day the Augur raised his
+*Opportunitas*; the path is still never chosen for you), then the top 3 advisories with their buttons. **Progress** gives
+the next rank's checklist (*Lex coloniae* included while the charter waits) and, once its works begin, the Capitolium
+(*"Capitolium 12% → 31%"*), before → after. **When nothing moved** (no more souls, no work raised, no home risen, no
+checklist item met, the Capitolium no higher) and no petition waits, Awaiting You leads with what holds the next rank:
+*"○ Stalled: nothing moved toward Oppidum. Still lacking: Homes of Casa tegulata or better 6 / 10 · Dignitas 31 / 40."*
+(its unmet items in checklist order, at most 3, with **See the petition**), or *"Stalled: the Capitolium did not rise
+past 34%."*
 
 **Away from the map is not away** (P7): while a ledger covers the whole map (a phone's full sheet or drawer, a tablet's
 wide pane under 960 px, a phone's letter or menu) the map is not drawn, but the colony runs on at the chosen speed:

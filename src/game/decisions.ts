@@ -222,6 +222,14 @@ export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisio
   return { decision, rank, needs, ready: needs.every((n) => n.met), fee, affordable: canAfford(s, fee) };
 }
 
+/** The next rank's checklist, its Lex coloniae line included while the charter waits (the away letter's progress,
+ *  offline.ts); null once the colony is a Colonia. */
+export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: Need[] } | null {
+  if (s.rank >= COLONIA) return null;
+  const rank = (s.rank + 1) as RankIndex;
+  return { rank, needs: rankNeeds(s, v, rank) };
+}
+
 /** Decides the next path: pays the fee × fx(petitionFee), records it, ranks up; Colonia begins the Capitolium. */
 export function choosePath(s: GameState, decision: PathDecisionId, option: PathOptionId): ActionResult {
   if (!PATH_DEFS[decision]) return { ok: false, code: 'invalid', reason: 'No such decision.' };
