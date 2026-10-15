@@ -228,6 +228,8 @@ export const B = {
     PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
     IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
     RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365,
+    WATER_START: 2 / 3,                               // the water pause starts only under this share of the level that
+                                                      // lifts it (economy.waterResume), so each pause refills a third first
   },
 
   // ───────── events and festivals (DESIGN §12) ─────────

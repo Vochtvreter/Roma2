@@ -435,12 +435,16 @@ describe('emergency (Lex de annona)', () => {
     for (const e of lines) expect(e.tags).toContain('decided');
   });
 
-  it('pauses the water-drawing works below 8 days and resumes above 15', () => {
+  it('pauses the water-drawing works below 8 days under two-thirds of the lift level, and resumes above 15', () => {
     const s = fresh(42);
     s.rank = 2;
     const works = built(s, 'caementarium');
     const roomy = { cap: 40 * view(s).f.water.need };                // stores that hold 40 days: the 15-day level stands
-    emergencyDay(s, ctx(), withForecast(s, {}, { runout: s.day + 7 }));
+    expect(B.emergency.WATER_START * B.emergency.WATER_RESUME).toBeCloseTo(10, 9);
+    // falling fast, but above two-thirds of the 15 days that lift it: a pause here would lift tomorrow
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: s.day + 7, doh: 10.5 }));
+    expect(s.ordo.emergency.waterPause).toBe(false);
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: s.day + 7, doh: 9.5 }));
     expect(s.ordo.emergency.waterPause).toBe(true);
     expect(planLabour(s, view(s)).perBuilding[works.id] ?? 0).toBe(0);
     emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: null, doh: 14 }));
@@ -469,6 +473,56 @@ describe('emergency (Lex de annona)', () => {
     const line = s.log.filter((e) => e.kind === 'emergency').at(-1);
     expect(line?.text).toMatch(/^Lex de annona: water is back to \d+ days; the works draw again\.$/);
     expect(Number(/back to (\d+)/.exec(line?.text ?? '')?.[1])).toBeLessThan(B.emergency.WATER_RESUME);
+  });
+
+  /** A small store's colony: 41 souls whose stores hold about 10 days, a concrete works and two baths that draw more than
+   *  the wells' surplus, the Ordo building nothing; `aquae` the edict. A year's run: the days the forecast ran out
+   *  within 8 days (the works drawing), the pauses (start day, length) and the Lex de annona's water lines. */
+  function thirstyWorks(aquae: 'populo' | 'aequa'): { fast: number; pauses: { day: number; len: number }[]; lines: number; bath: number; thirst: number } {
+    const s = fresh(42);
+    s.rank = 2;
+    built(s, 'caementarium'); built(s, 'balneum'); built(s, 'balneum');
+    s.ordo.on.build = false;
+    s.decisions.edicts.aquae = aquae;
+    const houses = s.buildings.filter((h) => h.house);
+    let id = 10_000;
+    for (let k = 0; k < 3; k++) houses.forEach((h) => s.people.push({ ...s.people[2], id: id++, spouse: null, work: null, home: h.id, skills: {} }));
+    s.nextId = 20_000;
+    touchPeople(s);
+    expect(caps(s).water / census(s).need.water).toBeLessThan(11);
+    let fast = 0, bath = 0, thirst = 0;
+    const pauses: { day: number; len: number }[] = [];
+    run(s, 365, (st, c) => {
+      const f = view(st).f.water;
+      if (f.runout !== null && f.runout - st.day < B.emergency.WATER_PAUSE) fast++;
+      bath += c.rates.cons.water.baths ?? 0;
+      thirst = Math.max(thirst, ...st.needs.thirst);
+      const last = pauses.at(-1);
+      if (st.ordo.emergency.waterPause && (!last || last.len >= 0)) pauses.push({ day: st.day, len: -1 });
+      else if (!st.ordo.emergency.waterPause && last && last.len < 0) last.len = st.day - last.day;
+    });
+    const lines = s.log.filter((e) => e.kind === 'emergency' && /^Lex de annona: water (would run out|is back)/.test(e.text)).length;
+    return { fast, pauses, lines, bath, thirst };
+  }
+
+  it('works that draw more than the wells\' surplus: under Populo prius their floor keeps the stores at the lift level, so no pause', () => {
+    // the pause starts on a rate and lifts on a level: started at any level, it lifted the next day and started again
+    // the day after (180 lines in two years). The works' floor is the level that lifts it, and a pause starts only
+    // under two-thirds of that level
+    const r = thirstyWorks('populo');
+    expect(r.fast).toBeGreaterThan(30);                              // the rate alone would pause them on many days
+    expect(r.bath).toBeGreaterThan(0);                               // the baths draw the wells' surplus above the floor
+    expect(r.lines).toBeLessThanOrEqual(2);
+    expect(r.thirst).toBe(0);
+  });
+
+  it('works that draw more than the wells\' surplus: under Aequa each pause refills a third of the stores\' lift level first', () => {
+    const r = thirstyWorks('aequa');
+    expect(r.pauses.length).toBeGreaterThan(0);                      // no floor: the works drain the stores
+    expect(Math.min(...r.pauses.filter((p) => p.len >= 0).map((p) => p.len))).toBeGreaterThanOrEqual(4);   // never a day
+    expect(r.pauses.length).toBeLessThanOrEqual(26);                 // at most one a fortnight
+    expect(r.lines).toBeLessThanOrEqual(2 * r.pauses.length);       // a line when each starts and when it lifts
+    expect(r.thirst).toBe(0);
   });
 
   it('imports grain below 8 days once per cooldown, and asks the Legate when that cannot save us', () => {

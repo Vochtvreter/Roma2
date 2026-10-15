@@ -64,13 +64,17 @@ export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void {
   }
 
   // 2 · water: the concrete works and baths stop drawing below 8 days, until water is back above 15, or above
-  //     three-quarters of the stores where they hold under 20 (economy.waterResume: a full store always lifts it)
+  //     three-quarters of the stores where they hold under 20 (economy.waterResume: a full store always lifts it).
+  //     It starts on a rate and lifts on a level, so it starts only under two-thirds of that level: a pause started
+  //     above it lifted the next day and started again the day after, wherever the works draw more than the wells'
+  //     surplus. Under Populo prius at the default reserve the works' floor is that level, so they never set it off
   const drawers = s.buildings.some((b) => b.status === 'done' && WATER_PAUSED.includes(b.type));
   const wR = runsOut(s, w);
-  if (on && !em.waterPause && drawers && wR < E.WATER_PAUSE) {
+  const resume = waterResume(w.need, w.cap);
+  if (on && !em.waterPause && drawers && wR < E.WATER_PAUSE && w.doh < E.WATER_START * resume) {
     em.waterPause = true;
     chronicle(s, 'emergency', { code: 'emergencyWater', params: { days: Math.floor(wR), paused: 1 } }, decided);
-  } else if (em.waterPause && (!on || !drawers || w.doh > waterResume(w.need, w.cap))) {
+  } else if (em.waterPause && (!on || !drawers || w.doh > resume)) {
     em.waterPause = false;
     chronicle(s, 'emergency', { code: 'emergencyWater', params: { doh: Math.floor(Math.min(w.doh, 9999)), paused: 0 } }, decided);
   }
