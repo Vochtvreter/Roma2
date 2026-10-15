@@ -174,30 +174,32 @@ export function outputChain(s: GameState, b: Building): { label: string; value: 
 
 /** Why a staffed works stands idle for want of water, and what lets it work again (DESIGN §5.2, §15.4): the inspector's
  *  idle line, which the Praefectus Fabrum repeats for a site that waits on its goods (§11.6); null while it draws. `why`
- *  follows "Idle: ". The fixes: under Populo prius the Aequa edict, a reserve low enough for the stock, more water (the
- *  wells first, else a new well); under the Lex de annona's pause more water, and a cistern when even full stores
- *  could not lift the pause. */
+ *  follows "Idle: ". The fixes: under Populo prius the Aequa edict, a reserve a day under the stock (only where the
+ *  setting goes that low: one at or above the stock would release nothing), more water (the wells first, else a new
+ *  well); under the Lex de annona's pause more water (a full store always lifts it: economy.waterResume). */
 export function waterIdle(s: GameState, v: SimView, b: Building): { why: string; remedies: Remedy[] } | null {
   const w = waterHold(s, b);
   if (!w) return null;
   const up = (x: number): number => Math.ceil(x - 1e-6), down = (x: number): number => Math.floor(x + 1e-6);
   const draw = (BUILDING_DEFS[b.type].inputs?.water ?? 0) * (v.c.staffed[b.id] ?? 0);
   const water: Remedy = openPosts(v, 'water') > 0 ? labourRemedy(s, v, 'water', 'water', draw) : { kind: 'place', building: 'puteus' };
+  const room = `${fractionWord(B.economy.RESERVE_ROOM)} of the ${down(w.full)} a full store holds`;
   if (w.why === 'pause') {
-    const short = w.full <= w.keep;
+    const small = w.keep < B.emergency.WATER_RESUME - 1e-6;      // stores that hold under 20 days lift it three-quarters full
     return {
-      why: `the Lex de annona paused the works that draw water when it ran low. They resume above ${up(w.keep)} days in store; we hold ${down(w.have)}.`
-        + (short ? ` Full, our stores hold only ${down(w.full)}.` : ''),
-      remedies: three(short ? { kind: 'place', building: 'cisterna' } : null, water),
+      why: `the Lex de annona paused the works that draw water when it ran low. They resume above ${up(w.keep)} days in store`
+        + `${small ? `, ${room}` : ''}; we hold ${down(w.have)}.`,
+      remedies: [water],
     };
   }
   const people = 'Under Populo prius the people drink first.';
   const why = w.keep >= w.reserve - 1e-6
     ? `the water reserve (${w.reserve} days) is not met; the stores hold ${down(w.have)}. ${people}`
-    : `the water reserve is not met; the stores hold ${down(w.have)} days, and the works draw only above ${up(w.keep)}, ${fractionWord(B.economy.RESERVE_ROOM)} of the ${down(w.full)} a full store holds. ${people}`;
+    : `the water reserve is not met; the stores hold ${down(w.have)} days, and the works draw only above ${up(w.keep)}, ${room}. ${people}`;
   const lower = Math.max(SETTING_DEFS.waterReserve.min, down(w.have) - 1);
+  const frees = lower < w.reserve && lower < w.have - 1e-6;       // the new floor falls under the stock: the works draw
   return {
     why,
-    remedies: three({ kind: 'edict', edict: 'aquae', option: 'aequa' }, lower < w.reserve ? { kind: 'setting', setting: 'waterReserve', value: lower } : null, water),
+    remedies: three({ kind: 'edict', edict: 'aquae', option: 'aequa' }, frees ? { kind: 'setting', setting: 'waterReserve', value: lower } : null, water),
   };
 }

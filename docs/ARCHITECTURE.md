@@ -1192,6 +1192,7 @@ export function maxPotential(s: GameState, res: Essential, season: SeasonIndex):
 export function caps(s: GameState): Res;
 export function horreaCap(s: GameState): number;
 export function industryWaterFloor(s: GameState, c?: Census): number;     // Populo prius: min(Water reserve × need, RESERVE_ROOM × water cap), so a full store always lets the works draw; 0 under Aequa/Operibus
+export function waterResume(need: number, cap: number): number;         // days in store that lift the Lex de annona's water pause: min(WATER_RESUME, RESERVE_ROOM × cap / need), so a full store always lifts it
 export function waterHold(s: GameState, b: Building): WaterHold | null;  // a staffed works that mixes water and draws none tomorrow: { why: 'pause' | 'reserve', have, keep, reserve, full } in days of need
 export function produce(s: GameState, ctx: TickContext, rng: Rng): void;   // water first, then food, passive, processing with per-worker reservations and the water/grain floors, idle forage, skill XP, forest draw; writes rates.prod
 export function consume(s: GameState, ctx: TickContext): void;             // tiered rationing per resource, hunger/thirst per group, fed EMA, Watch-band log; writes rates.cons

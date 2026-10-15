@@ -9,7 +9,7 @@ import type { EssentialForecast, GameState, HubId, LaborCat, LabourPlan, SimView
 import { edictOption, switchOn } from '../decisions';
 import { emergencyImport, hubOpen, price, tripDays } from '../trade';
 import { triggerRelief } from '../events';
-import { portion } from '../economy';
+import { portion, waterResume } from '../economy';
 import { touchPeople as touchPeople$ } from '../memo';
 import { chronicle } from './chronicle';
 import { WATER_PAUSED, planLabour } from './labour';
@@ -63,13 +63,14 @@ export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void {
     chronicle(s, 'emergency', { code: 'emergencyRations', params: { level: 'none', doh: Math.floor(Math.min(doh, 9999)) } }, decided);
   }
 
-  // 2 · water: the concrete works and baths stop drawing below 8 days, until water is back above 15
+  // 2 · water: the concrete works and baths stop drawing below 8 days, until water is back above 15, or above
+  //     three-quarters of the stores where they hold under 20 (economy.waterResume: a full store always lifts it)
   const drawers = s.buildings.some((b) => b.status === 'done' && WATER_PAUSED.includes(b.type));
   const wR = runsOut(s, w);
   if (on && !em.waterPause && drawers && wR < E.WATER_PAUSE) {
     em.waterPause = true;
     chronicle(s, 'emergency', { code: 'emergencyWater', params: { days: Math.floor(wR), paused: 1 } }, decided);
-  } else if (em.waterPause && (!on || !drawers || w.doh > E.WATER_RESUME)) {
+  } else if (em.waterPause && (!on || !drawers || w.doh > waterResume(w.need, w.cap))) {
     em.waterPause = false;
     chronicle(s, 'emergency', { code: 'emergencyWater', params: { doh: Math.floor(Math.min(w.doh, 9999)), paused: 0 } }, decided);
   }

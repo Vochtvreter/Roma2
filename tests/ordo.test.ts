@@ -7,7 +7,7 @@ import { getMap, idx } from '../src/game/map';
 import { isActiveBlock } from '../src/game/survey';
 import { blockOfTile, footprintOf } from '../src/game/derived';
 import { census } from '../src/game/census';
-import { invalidate } from '../src/game/memo';
+import { invalidate, touchPeople } from '../src/game/memo';
 import { placeBuilding, validSlots } from '../src/game/place';
 import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
@@ -16,7 +16,7 @@ import { manualPlan, manualReach, planLabour } from '../src/game/ordo/labour';
 import { currentReason, gardenSlot, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
 import type { Wish } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
-import { maxPotential } from '../src/game/economy';
+import { caps, maxPotential } from '../src/game/economy';
 import { startCapitolium } from '../src/game/construction';
 import { projectEssential } from '../src/game/forecast';
 import { B } from '../src/game/balance';
@@ -439,13 +439,36 @@ describe('emergency (Lex de annona)', () => {
     const s = fresh(42);
     s.rank = 2;
     const works = built(s, 'caementarium');
+    const roomy = { cap: 40 * view(s).f.water.need };                // stores that hold 40 days: the 15-day level stands
     emergencyDay(s, ctx(), withForecast(s, {}, { runout: s.day + 7 }));
     expect(s.ordo.emergency.waterPause).toBe(true);
     expect(planLabour(s, view(s)).perBuilding[works.id] ?? 0).toBe(0);
-    emergencyDay(s, ctx(), withForecast(s, {}, { runout: null, doh: 14 }));
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: null, doh: 14 }));
     expect(s.ordo.emergency.waterPause).toBe(true);
-    emergencyDay(s, ctx(), withForecast(s, {}, { runout: null, doh: 16 }));
+    emergencyDay(s, ctx(), withForecast(s, {}, { ...roomy, runout: null, doh: 16 }));
     expect(s.ordo.emergency.waterPause).toBe(false);
+  });
+
+  it('stores that hold under 15 days lift the water pause at three-quarters full, so a full store always lifts it', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    built(s, 'caementarium');
+    s.ordo.on.build = false;                                         // no cistern raised meanwhile: the stores stay as they are
+    const houses = s.buildings.filter((h) => h.house);              // one more adult in every tent: 30 souls drink more
+    houses.forEach((h, k) => s.people.push({ ...s.people[2], id: 10_000 + k, spouse: null, work: null, home: h.id, skills: {} }));
+    s.nextId = 20_000;
+    touchPeople(s);
+    const full = caps(s).water / census(s).need.water;
+    expect(full).toBeLessThan(B.emergency.WATER_RESUME);            // the playtest colony's 14 days: 15 could never be met
+    s.ordo.emergency.waterPause = true;
+    s.res.water = 2 * census(s).need.water;
+    run(s, 120);                                                     // the wells refill the stores
+    expect(s.res.water).toBeGreaterThan(B.economy.RESERVE_ROOM * caps(s).water);
+    expect(caps(s).water / census(s).need.water).toBeLessThan(B.emergency.WATER_RESUME);
+    expect(s.ordo.emergency.waterPause).toBe(false);
+    const line = s.log.filter((e) => e.kind === 'emergency').at(-1);
+    expect(line?.text).toMatch(/^Lex de annona: water is back to \d+ days; the works draw again\.$/);
+    expect(Number(/back to (\d+)/.exec(line?.text ?? '')?.[1])).toBeLessThan(B.emergency.WATER_RESUME);
   });
 
   it('imports grain below 8 days once per cooldown, and asks the Legate when that cannot save us', () => {

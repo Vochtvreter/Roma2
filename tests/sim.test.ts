@@ -309,18 +309,24 @@ describe('the works\' water floor (DESIGN §5.2, playtest #8)', () => {
     expect(waterHold(s, b)).toBeNull();
   });
 
-  it('under the Lex de annona\'s pause the line says when it lifts; a cistern first when full stores could not lift it', () => {
+  it('under the Lex de annona\'s pause the line says when it lifts: above 15 days, or three-quarters of a smaller store', () => {
     const { s, b } = works();
     s.ordo.emergency.waterPause = true;
     s.res.water = 6 * census(s).need.water;
+    const w = waterHold(s, b) as NonNullable<ReturnType<typeof waterHold>>;
+    expect(w.full).toBeLessThan(B.emergency.WATER_RESUME / B.economy.RESERVE_ROOM);   // a fresh colony's stores hold 17 days
+    expect(w.keep).toBeCloseTo(B.economy.RESERVE_ROOM * w.full, 9);
     const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
-    expect(idle.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${B.emergency.WATER_RESUME} days in store; we hold 6.`);
+    expect(idle.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${Math.ceil(w.keep)} days in store, three-quarters of the ${Math.floor(w.full)} a full store holds; we hold 6.`);
+    expect(idle.remedies).toHaveLength(1);                                       // more water: a full store lifts it, no cistern needed
     expect(idle.remedies.some((r) => r.kind === 'place' && r.building === 'cisterna')).toBe(false);
-    fillBeds(s);                                                                  // 30 souls: a full store holds < 15 days
-    expect(waterHold(s, b)?.full ?? Infinity).toBeLessThan(B.emergency.WATER_RESUME);
-    const short = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
-    expect(short.why).toMatch(/ Full, our stores hold only \d+\.$/);
-    expect(short.remedies[0]).toEqual({ kind: 'place', building: 'cisterna' });
+    const at = freeSlots(s, 'cisterna')[0];                                     // a cistern's room: the 15 days stand
+    const r = place(s, 'cisterna', at.x, at.y, { ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    Object.assign(s.buildings.find((x) => x.id === r.id) as Building, { status: 'done', progress: 1 });
+    invalidate(s);
+    expect(waterHold(s, b)?.keep).toBe(B.emergency.WATER_RESUME);
+    expect(waterIdle(s, view(s), b)?.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${B.emergency.WATER_RESUME} days in store; we hold 6.`);
   });
 });
 
