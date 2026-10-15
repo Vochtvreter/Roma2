@@ -456,7 +456,7 @@ export interface Rates {
   cons: Record<ResId, Partial<Record<RateSource, number>>>;
 }
 export type FxEvent =
-  | { kind: 'built'; id: number }
+  | { kind: 'built'; id: number; short?: number }   // short: by hand, the hands its category's target lacked for it as it was finished
   | { kind: 'evolved'; id: number; tier: HouseTierId }
   | { kind: 'declined'; id: number }
   | { kind: 'birth'; home: number | null }

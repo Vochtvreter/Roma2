@@ -2,7 +2,8 @@
 // only — Annales lines go to the ticker). Max B.ui.TOASTS_MAX visible (2 on a portrait phone), the oldest dropped;
 // repeats batch within 1.5 s.
 // A toast does not expire while the mouse rests on the stack, so the one being read or clicked never slides away; one
-// may carry a single action button (a finished work's +N hands under manual labour, DESIGN §10.2). Owner: WP-H.
+// may carry a single action button (a finished work's hands under manual labour, "Water hands to 4", DESIGN §10.2).
+// Owner: WP-H.
 import { h, img, tip } from './dom';
 import { B } from '../game/balance';
 

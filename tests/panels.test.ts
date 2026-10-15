@@ -2,7 +2,7 @@
 // Headless: imports the tab modules' signature/badge functions only (no DOM is touched at import or in a signature).
 import { describe, expect, it } from 'vitest';
 import { TABS } from '../src/game/types';
-import type { GameState, Remedy } from '../src/game/types';
+import type { FxEvent, GameState, Remedy } from '../src/game/types';
 import type { Game } from '../src/ui/types';
 import { PANELS, panelTokens } from '../src/ui/panels';
 import { emptyRates } from '../src/game/sim';
@@ -199,7 +199,7 @@ describe('remedy buttons follow the best plot (R15)', () => {
     const pave: Remedy = { kind: 'tool', tool: 'pave' };
     const key = (): string => remedyKey(s, { remedy: pave, check: checkRemedy(s, pave) });
     s.res.stone = 0;
-    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'unaffordable' });   // disabled: "…the stores hold 0."
+    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'unaffordable' });
     const short = key();
     s.res.stone = B.map.PAVE_STONE;
     expect(checkRemedy(s, pave).ok).toBe(true);
@@ -207,6 +207,30 @@ describe('remedy buttons follow the best plot (R15)', () => {
     expect(ready).not.toBe(short);                                      // the Consiliarii card rebuilds: no stale reason
     s.res.stone = 500;
     expect(key()).toBe(ready);                                          // more stone is no new key
+  });
+
+  it('a disabled remedy keeps its key while its reason stays, and the reason holds no live count; another reason is another key', async () => {
+    const { pave: paveRoads } = await import('../src/game/place');
+    const { derived } = await import('../src/game/derived');
+    const s = fresh(42);
+    s.guidance.milestoneDays.templum = s.day;
+    const pave: Remedy = { kind: 'tool', tool: 'pave' };
+    const key = (): string => remedyKey(s, { remedy: pave, check: checkRemedy(s, pave) });
+    const reason = (): string => { const c = checkRemedy(s, pave); return c.ok ? '' : c.reason; };
+    s.res.stone = 0;
+    const k0 = key(), r0 = reason();
+    s.res.stone = B.map.PAVE_STONE - 1;                                 // a stone in, still short of a pace
+    expect(key()).toBe(k0);                                             // no rebuild…
+    expect(reason()).toBe(r0);                                          // …and the reason it shows is still true
+    expect(r0).toBe(`Paving takes ${B.map.PAVE_STONE} stone a pace, and the stores hold less.`);
+    // every road paved: still disabled, for another reason, and the card rebuilds to say it
+    s.res.stone = 1e6;
+    const dirt = s.roads.filter((i) => derived(s).road[i] === 1);
+    expect(dirt.length).toBeGreaterThan(0);
+    expect(paveRoads(s, dirt).ok).toBe(true);
+    s.res.stone = 0;
+    expect(checkRemedy(s, pave)).toMatchObject({ ok: false, code: 'invalid', reason: 'Every road is already paved.' });
+    expect(key()).not.toBe(k0);
   });
 });
 
@@ -278,7 +302,7 @@ describe('panelTokens (#app[data-panel], what the stylesheets key on instead of 
 });
 
 describe('a work finished while the labour is the player\'s (finding 11)', () => {
-  it('its toast counts its hands and its +N is what the category target lacks; none while the Ordo staffs', async () => {
+  it('its toast counts its hands and its button names the target that staffs it; none while the Ordo staffs', async () => {
     const { finishedStaffing } = await import('../src/ui/tabs/labour');
     const { setManualTarget, setOrdo } = await import('../src/game/actions');
     const { validSlots } = await import('../src/game/place');
@@ -295,39 +319,149 @@ describe('a work finished while the labour is the player\'s (finding 11)', () =>
     const t = finishedStaffing(s, well.id)!;
     expect(t.text).toBe('Well finished: 0/2 hands');
     expect(t.sub).toBe('You staff by hand: 2 water hands set for 4 posts.');
-    expect([t.label, t.cat, t.n, t.to]).toEqual(['+2 water', 'water', 2, 4]);
-    expect(t.tip).toBe('Raise the water target from 2 to 4.');
+    // worded as the target, not "+2": a press after another toast's, or a target raised by hand, changes nothing, and
+    // the words still say what the target is
+    expect([t.label, t.cat, t.n, t.to]).toEqual(['Water hands to 4', 'water', 2, 4]);
+    expect(t.tip).toBe('Set the water target to 4 hands (a higher one stays).');
     expect(setManualTarget(s, 'water', Math.max(s.ordo.manual.water, t.to)).ok).toBe(true);   // ui/index.ts, the button
     expect(finishedStaffing(s, well.id)).toBeNull();          // the target reaches it now
   });
 
-  it('two works finished in one frame, or a target raised by hand since: the +N buttons never overshoot', async () => {
+  it('two works finished in one frame, the later one nearer the forum, or a target raised by hand since: the toasts staff both and never overshoot', async () => {
     const { finishedStaffing } = await import('../src/ui/tabs/labour');
     const { setManualTarget, setOrdo } = await import('../src/game/actions');
     const { validSlots } = await import('../src/game/place');
-    const s = fresh(42);
-    const wells: number[] = [];
-    for (const at of [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => a - b)) {
-      if (wells.length === 2) break;
-      const r = placeBuilding(s, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
-      if (r.ok && r.id !== undefined) wells.push(r.id);
+    const { manualPlan } = await import('../src/game/ordo/labour');
+    const { census } = await import('../src/game/census');
+    type Built = Extract<FxEvent, { kind: 'built' }>;
+    const OLD = fresh(42).buildings.find((b) => b.type === 'puteus' && b.status === 'done')!.id;
+    // where a lone new well stands in the manual order (High, then nearest the forum, then id): with the target at the
+    // old well's hands, a nearer one takes them, a farther one waits behind it
+    const side = (s: GameState, at: number): 'near' | 'far' | null => {
+      const t = structuredClone(s);
+      const r = placeBuilding(t, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
+      if (!r.ok || r.id === undefined) return null;
+      Object.assign(t.buildings.find((b) => b.id === r.id)!, { status: 'done', progress: 1 });
+      invalidate(t);
+      t.ordo.on.labour = false;
+      t.ordo.manual.water = census(t).catStaffed.water;
+      const plan = manualPlan(t, view(t)).perBuilding;
+      return (plan[r.id] ?? 0) > 0 && (plan[OLD] ?? 0) === 0 ? 'near' : (plan[r.id] ?? 0) === 0 && (plan[OLD] ?? 0) > 0 ? 'far' : null;
+    };
+    const slots = (s: GameState): number[] => [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => a - b);
+    const probe = fresh(42);
+    const farAt = slots(probe).find((at) => side(probe, at) === 'far')!;
+    expect(farAt).toBeDefined();
+    expect(placeBuilding(probe, 'puteus', farAt, { owner: 'player', ignoreCost: true, noStake: true }).ok).toBe(true);
+    const nearAt = slots(probe).find((at) => side(probe, at) === 'near')!;
+    expect(nearAt).toBeDefined();
+    // the farther well is placed first, so it is finished first in a tick (worksQueue), the nearer one after it
+    const wells = (): { s: GameState; far: number; near: number } => {
+      const s = fresh(42);
+      const [far, near] = [farAt, nearAt].map((at) => {
+        const r = placeBuilding(s, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
+        if (!r.ok || r.id === undefined) throw new Error('no well');
+        return r.id;
+      });
+      expect(setOrdo(s, 'labour', false).ok).toBe(true);        // water 2: the old well's hands, 6 posts once both stand
+      return { s, far, near };
+    };
+    const finish = (s: GameState, id: number): void => { s.buildings.find((b) => b.id === id)!.progress = 1 - 1e-6; };
+    // a frame's ticks, then its toasts as ui/index.ts onFx makes them: from the `built` fx, with each one's `short`
+    const frame = (s: GameState, ticks: ((s: GameState) => void)[]): Built[] => {
+      const fx: FxEvent[] = [];
+      for (const before of ticks) { before(s); run(s, 1, (_s, c) => fx.push(...c.fx)); }
+      return fx.filter((e): e is Built => e.kind === 'built');
+    };
+    const toast = (s: GameState, fx: Built[], id: number): ReturnType<typeof finishedStaffing> => {
+      const e = fx.find((x) => x.id === id);
+      expect(e).toBeDefined();
+      return finishedStaffing(s, id, e!.short);
+    };
+    const click = (s: GameState, t: NonNullable<ReturnType<typeof finishedStaffing>>): void => {
+      expect(setManualTarget(s, t.cat, Math.max(s.ordo.manual[t.cat], t.to)).ok).toBe(true);
+    };
+    const hands = (s: GameState, ids: number[]): number[] => ids.map((id) => census(s).staffed[id] ?? 0);
+    const shapes: [string, (far: number, near: number) => ((s: GameState) => void)[]][] = [
+      ['both in its one tick', (far, near) => [(s) => { finish(s, far); finish(s, near); }]],
+      ['both in its first tick, then a second (the nearer takes the old well\'s hands)', (far, near) => [(s) => { finish(s, far); finish(s, near); }, () => {}]],
+      ['the farther in its first tick, the nearer in its second', (far, near) => [(s) => finish(s, far), (s) => finish(s, near)]],
+    ];
+    for (const [what, ticks] of shapes) {
+      for (const order of [[0, 1], [1, 0]]) {
+        const { s, far, near } = wells();
+        const fx = frame(s, ticks(far, near));
+        // the farther well's posts wait behind the old well's and the nearer one's: 4 more, though as it was finished
+        // the nearer one had no posts yet and it lacked 2; the nearer one lacks 2 (or the old well does, its hands gone)
+        const ts = [toast(s, fx, far)!, toast(s, fx, near)!];
+        expect(ts.map((t) => [t.label, t.n]), what).toEqual([['Water hands to 6', 4], ['Water hands to 4', 2]]);
+        for (const k of order) click(s, ts[k]);
+        expect(s.ordo.manual.water, what).toBe(6);                  // every post, not 2 + 2 + 4
+        run(s, 2);
+        expect(hands(s, [OLD, far, near]), what).toEqual([2, 2, 2]);
+        for (const id of [far, near]) expect(finishedStaffing(s, id), what).toBeNull();
+      }
     }
-    for (const id of wells) Object.assign(s.buildings.find((b) => b.id === id)!, { status: 'done', progress: 1 });
-    invalidate(s);
-    expect(setOrdo(s, 'labour', false).ok).toBe(true);        // water 2: the old well's hands, 6 posts
-    // both toasts are written against the same state, before either button is pressed
-    const toasts = wells.map((id) => finishedStaffing(s, id)!);
-    expect(toasts.map((t) => t.n).sort()).toEqual([2, 4]);     // the nearer new well 2 more; the farther, past it, 4
-    const click = (t: (typeof toasts)[number]): void => { expect(setManualTarget(s, t.cat, Math.max(s.ordo.manual[t.cat], t.to)).ok).toBe(true); };
-    for (const order of [[0, 1], [1, 0]]) {
-      s.ordo.manual.water = 2;
-      for (const k of order) click(toasts[k]);
-      expect(s.ordo.manual.water).toBe(6);                    // every post, not 2 + 2 + 4
-      for (const id of wells) expect(finishedStaffing(s, id)).toBeNull();
-    }
+    // the target reached the farther well as it was finished (no `short`), and the nearer one, finished after it in the
+    // same tick, takes the posts it was counted against: its toast still says so
+    const { s, far, near } = wells();
+    s.ordo.manual.water = 4;
+    const fx = frame(s, [(t) => { finish(t, far); finish(t, near); }]);
+    expect(fx.map((e) => e.short)).toEqual([undefined, undefined]);
+    expect(toast(s, fx, near)).toBeNull();
+    const t = toast(s, fx, far)!;
+    expect([t.label, t.n]).toEqual(['Water hands to 6', 2]);
+    click(s, t);
+    run(s, 2);
+    expect(hands(s, [OLD, far, near])).toEqual([2, 2, 2]);
     // the player filled the row by hand first: a late press leaves the target as it is
     s.ordo.manual.water = 7;
-    click(toasts[0]);
+    click(s, t);
     expect(s.ordo.manual.water).toBe(7);
+  });
+
+  it('a frame that runs two ticks: the toast is the work\'s as it was finished, though the next day gave it an older well\'s hands', async () => {
+    const { finishedStaffing } = await import('../src/ui/tabs/labour');
+    const { setOrdo } = await import('../src/game/actions');
+    const { validSlots } = await import('../src/game/place');
+    const { manualPlan } = await import('../src/game/ordo/labour');
+    const { getMap } = await import('../src/game/map');
+    const { census } = await import('../src/game/census');
+    const s = fresh(42);
+    const old = s.buildings.find((b) => b.type === 'puteus' && b.status === 'done')!;
+    // a new well nearer the forum than the founders' one: by hand, the nearer posts fill first
+    const f = getMap(s.seed).survey.forum, W = getMap(s.seed).W;
+    const far = (t: number): number => Math.hypot((t % W) - (f.x + f.w / 2), Math.floor(t / W) - (f.y + f.h / 2));
+    const nearer = [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => far(a) - far(b)).find((at) => {
+      const t = structuredClone(s);
+      const r = placeBuilding(t, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
+      if (!r.ok || r.id === undefined) return false;
+      Object.assign(t.buildings.find((b) => b.id === r.id)!, { status: 'done', progress: 1 });
+      invalidate(t);
+      t.ordo.on.labour = false;
+      t.ordo.manual.water = census(t).catStaffed.water;
+      const plan = manualPlan(t, view(t)).perBuilding;
+      return (plan[r.id] ?? 0) > 0 && (plan[old.id] ?? 0) === 0;
+    });
+    expect(nearer).toBeDefined();
+    const r = placeBuilding(s, 'puteus', nearer!, { owner: 'player', ignoreCost: true, noStake: true });
+    if (!r.ok || r.id === undefined) throw new Error('no well');
+    const well = s.buildings.find((b) => b.id === r.id)!;
+    expect(setOrdo(s, 'labour', false).ok).toBe(true);                // water 2: the old well's hands, 4 posts once it stands
+    well.progress = 1 - 1e-6;
+    // the frame's first tick finishes it; the toast is not made before the second has run (ui/index.ts onFx)
+    const fx: FxEvent[] = [];
+    run(s, 2, (_s, c) => fx.push(...c.fx));
+    const built = fx.find((e): e is Extract<FxEvent, { kind: 'built' }> => e.kind === 'built' && e.id === well.id);
+    expect(built?.short).toBe(2);                                      // the hands the target lacked for it, as it stood
+    expect(census(s).staffed[well.id]).toBe(2);                        // the second day gave it the old well's hands
+    expect(census(s).staffed[old.id] ?? 0).toBe(0);
+    expect(finishedStaffing(s, well.id)).toBeNull();                   // the state now: the target reaches the new well
+    const t = finishedStaffing(s, well.id, built?.short)!;             // the toast: the old well's posts wait for hands
+    expect(t.text).toBe('Well finished: 2/2 hands');
+    expect(t.sub).toBe('You staff by hand: 2 water hands set for 4 posts.');
+    expect([t.label, t.n, t.to]).toEqual(['Water hands to 4', 2, 4]);
+    // nothing on the fx and the target reaching it now: no staffing toast
+    expect(finishedStaffing(s, well.id, 0)).toBeNull();
   });
 });

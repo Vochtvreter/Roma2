@@ -239,7 +239,9 @@ function checkClear(s: GameState, type: BuildingId, tile: number, ids: readonly 
   return OK;
 }
 
-/** A map tool, once its milestone reveals it; the Pave brush wants a dirt road and the stone for a pace. */
+/** A map tool, once its milestone reveals it; the Pave brush wants a dirt road and the stone for a pace. The reasons
+ *  carry no live count (the Consiliarii card rebuilds on whether and why, ui/tabs/common.ts remedyKey, not on each
+ *  stone that comes in). */
 function checkTool(s: GameState, t: Exclude<ToolId, 'pin'>): ActionResult {
   if (!TOOL_WORD[t]) return fail('invalid', 'No such tool.');
   if (!toolRevealed(s, t)) return fail('locked', unlockReason(milestoneUnlocking({ kind: 'tool', id: t })?.id ?? ''));
@@ -247,7 +249,7 @@ function checkTool(s: GameState, t: Exclude<ToolId, 'pin'>): ActionResult {
   const road = derived(s).road;
   if (!s.roads.some((i) => road[i] === 1)) return fail('invalid', 'Every road is already paved.');
   const need = B.map.PAVE_STONE;
-  return s.res.stone < need ? fail('unaffordable', `Paving takes ${need} stone a pace; the stores hold ${int(s.res.stone)}.`) : OK;
+  return s.res.stone < need ? fail('unaffordable', `Paving takes ${need} stone a pace, and the stores hold less.`) : OK;
 }
 
 function checkPriority(s: GameState, cat: LaborCat, n: number): ActionResult {
