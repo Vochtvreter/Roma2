@@ -403,12 +403,39 @@ function phaseOf(b: Building): Phase | null {
   return 'extract';
 }
 
+/** The water the works may not draw (DESIGN §5.2): under Aquae Populo prius the Water reserve in days of today's need,
+ *  but never above RESERVE_ROOM of what the stores hold, so a full store always lets them draw (a reserve the stores
+ *  cannot hold would idle them for good); none under the other edicts, which share the water instead. */
+export function industryWaterFloor(s: GameState, c: Census = census(s)): number {
+  if (edictOption(s, 'aquae') !== 'populo') return 0;
+  return Math.min(settingValue(s, 'waterReserve') * c.need.water, E.RESERVE_ROOM * caps(s).water);
+}
+
+/** A works held from its water, in days of today's need: `have` in store, `keep` the floor it waits for (the pause:
+ *  the level that lifts it), `reserve` the Water reserve setting, `full` what the stores hold. */
+export interface WaterHold { why: 'pause' | 'reserve'; have: number; keep: number; reserve: number; full: number }
+
+/** Why a staffed works that mixes water draws none of it tomorrow, or null: the Lex de annona's water pause, or Populo
+ *  prius keeping the stock for the people (at or below industryWaterFloor; tomorrow's pool is today's closing stock). */
+export function waterHold(s: GameState, b: Building): WaterHold | null {
+  if (b.status !== 'done' || !b.open || !((BUILDING_DEFS[b.type].inputs?.water ?? 0) > 0)) return null;
+  if ((peopleIndex(s).byWork.get(b.id)?.length ?? 0) === 0) return null;
+  const c = census(s);
+  const need = c.need.water;
+  if (!(need > 0)) return null;
+  const days = (x: number): number => x / need;
+  const out = { have: days(s.res.water), reserve: settingValue(s, 'waterReserve'), full: days(caps(s).water) };
+  if (waterPaused(s, b)) return { why: 'pause', keep: B.emergency.WATER_RESUME, ...out };
+  const floor = industryWaterFloor(s, c);
+  return floor > 0 && s.res.water <= floor ? { why: 'reserve', keep: days(floor), ...out } : null;
+}
+
 /** Stock industry may draw: start-of-day stock above the reserve floors (Aquae edict decides the water floor). */
 function industryPool(s: GameState, start: Res, c: Census, industryWater: number): Res {
   const pool = { ...start };
   pool.grain = Math.max(0, start.grain - settingValue(s, 'grainReserve') * c.need.grain);
   const opt = edictOption(s, 'aquae');
-  if (opt === 'populo') pool.water = Math.max(0, start.water - settingValue(s, 'waterReserve') * c.need.water);
+  if (opt === 'populo') pool.water = Math.max(0, start.water - industryWaterFloor(s, c));
   else if (opt === 'aequa' && start.water < industryWater + c.need.water && industryWater > 0) {
     pool.water = (start.water * industryWater) / (industryWater + c.need.water);
   }

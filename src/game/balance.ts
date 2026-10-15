@@ -117,6 +117,8 @@ export const B = {
     SERVICE_PARTIAL: 0.6,                             // otherwise floor(0.6 × r)
     SPILL_LOG_DAYS: 30,                               // overflow logged at most once per 30 days per resource
     OPERIBUS_CONCRETE: 1.05,                          // Aquae: Operibus prius — concrete ×1.05 (off the effect bus, §10.9)
+    RESERVE_ROOM: 0.75,                               // Populo prius: the works' water floor is at most ¾ of the water store,
+                                                      // so a full store always lets them draw (§5.2)
   },
 
   // ───────── houses (DESIGN §7) ─────────

@@ -4,13 +4,14 @@
 // import time, and tests must import engine.ts (or sim.ts) before any rule file.
 import { B as B$ } from '../balance';
 import { LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, TRADE_RES as TRADE_RES$ } from '../types';
-import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
+import type { AdvisorRule, AdvisoryEval, Building, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
 import { toRoman as toRoman$ } from '../calendar';
 import { capitoliumFlow } from '../construction';
 import { petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { missing } from '../state';
 import { newWishes } from '../ordo/build';
+import { waterIdle } from '../hints';
 import { reasonText } from '../ordo/reasons';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$, BUILD_ORDER as BUILD_ORDER$, slotsOf as slotsOf$ } from '../data/buildings';
@@ -150,6 +151,21 @@ function lackWhy(v: SimView, why: unknown): string {
 
 // ───────────────────────────── 12 · fabrum.stalled ─────────────────────────────
 
+/** The works that would make what a waiting plan lacks, staffed but idle for want of water (hints.waterIdle), or null:
+ *  the stalled site's real cause, which no day of production brings nearer. */
+function idleMaker(s: GameState, v: SimView, type: BuildingId): { b: Building; why: string; remedies: Remedy[] } | null {
+  const m = missing(s, BUILDING_DEFS[type].cost);
+  for (const r of RESOURCES) {
+    const t = (m[r] ?? 0) > 0 ? PRODUCER[r] : undefined;
+    if (!t) continue;
+    for (const b of s.buildings) {
+      const w = b.type === t ? waterIdle(s, v, b) : null;
+      if (w) return { b, ...w };
+    }
+  }
+  return null;
+}
+
 /** "40 stone and 10 tiles" for what a cost still lacks. */
 function lackWords(s: GameState, type: BuildingId): string {
   const m = missing(s, BUILDING_DEFS[type].cost);
@@ -186,14 +202,22 @@ const stalled: AdvisorRule = {
     const lack = p.lack === 'materials' ? lackWords(s, type) : 'builders';
     return `The ${bName(type)} ${buildingPlace(s, P(p.id))} has waited ${days(P(p.d))} for ${lack}.`;
   },
-  text(_s, v, a) {
+  text(s, v, a) {
     const p = a.params;
-    if (p.lack === 'materials') return 'It stays a plan until the stores cover it; every day of production brings it nearer.';
+    if (p.lack === 'materials') {
+      const idle = idleMaker(s, v, p.type as BuildingId);
+      if (!idle) return 'It stays a plan until the stores cover it; every day of production brings it nearer.';
+      const name = bName(idle.b.type);
+      return `It stays a plan until the stores cover it, and our ${name} ${buildingPlace(s, idle.b.id)} ${/s$/.test(name) ? 'stand' : 'stands'} idle: ${idle.why}`;
+    }
     return `Our ${v.c.catStaffed.builders} builders work through the queue in order; it stands ${P(p.pos)} of ${P(p.sites)}.`;
   },
-  remedies(s, _v, a) {
+  remedies(s, v, a) {
     const p = a.params;
     const type = p.type as BuildingId;
+    // a plan waiting on goods its works cannot make for want of water: what lets them work
+    const idle = p.lack === 'materials' ? idleMaker(s, v, type) : null;
+    if (idle) return idle.remedies;
     const share = SETTING_DEFS.builderShare;
     const more = Math.min(share.max, Math.round((settingValue(s, 'builderShare') + STEP.BUILDER_SHARE) * 100) / 100);
     const lacking = TRADE_RES.find((r) => (missing(s, BUILDING_DEFS[type].cost)[r] ?? 0) > 0) as TradeRes | undefined;

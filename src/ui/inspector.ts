@@ -28,7 +28,9 @@ import { effectiveRadius } from '../game/coverage';
 import { census } from '../game/census';
 import { forecast } from '../game/forecast';
 import { personName } from '../game/people';
-import { outputChain } from '../game/hints';
+import { outputChain, waterIdle } from '../game/hints';
+import { checkRemedy, remedyLabel } from '../game/advisors/remedies';
+import { view } from '../game/sim';
 import { isAquae, nextTier, unmetNeeds } from '../game/housing';
 import { reasonText } from '../game/ordo/reasons';
 import { seasonOf, formatRoman } from '../game/calendar';
@@ -77,6 +79,12 @@ function staffOf(s: GameState, b: Building): number {
   return census(s).staffed[b.id] ?? 0;
 }
 
+/** A works idle for want of water: its fixes and whether each can run now (a change rebuilds the card); '' while it draws. */
+function idleSig(s: GameState, b: Building): string {
+  const w = waterIdle(s, view(s), b);
+  return w ? w.remedies.map((r) => `${JSON.stringify(r)}${+checkRemedy(s, r).ok}`).join(',') : '';
+}
+
 /** Discrete facts of a target: a change rebuilds the card; everything continuous refreshes through updaters. */
 function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
   if (t.kind === 'building') {
@@ -85,7 +93,7 @@ function targetSig(s: GameState, t: InspectTarget, sticky: boolean): string {
     const hs = b.house;
     const next = hs ? nextTier(s, b) : null;
     return [`b${b.id}`, b.status, b.owner, +b.open, b.prio, staffOf(s, b), hs ? `${hs.tier}:${hs.pref}:${+hs.declining}:${+!!hs.renovating}` : '',
-      next ? unmetNeeds(s, b, next).join(',') : '', +s.ordo.on.build, +s.ordo.on.labour, s.rank].join('|');
+      next ? unmetNeeds(s, b, next).join(',') : '', +s.ordo.on.build, +s.ordo.on.labour, s.rank, hs ? '' : idleSig(s, b)].join('|');
   }
   if (t.kind === 'block') {
     const p = derived(s).plotOwner;
@@ -100,13 +108,14 @@ const same = (a: InspectTarget | null, b: InspectTarget | null): boolean => JSON
 export type CardKind = 'house' | 'works' | 'site' | 'block' | 'tile';
 /** What the phone's docked card shows before More, per kind: its lines by usefulness (the first BRIEF_LINES of those it
  *  has) and its main actions. The parts are the card's own (data-part); anything else waits behind More. A house: a
- *  decline first, then what it waits for (its first want, with the button that fixes it), beds and its tier. A work: its
- *  hands and its category's labour line (staffed in place), else what it stores, serves or yields; Close it and the
- *  staffing priority. A site: how far it has come and why; ↑ Build first and Cancel. A block: its plots; Place a house
- *  plot and Reserve. Ground: what it is and the wall on it; Lay out the town wall and what could be built on it. */
+ *  decline first, then what it waits for (its first want, with the button that fixes it), beds and its tier. A work: why
+ *  it stands idle for want of water first (with its fixes), its hands and its category's labour line (staffed in place),
+ *  else what it stores, serves or yields; Close it and the staffing priority. A site: how far it has come and why;
+ *  ↑ Build first and Cancel. A block: its plots; Place a house plot and Reserve. Ground: what it is and the wall on it;
+ *  Lay out the town wall and what could be built on it. */
 export const BRIEF: Readonly<Record<CardKind, { lines: readonly string[]; acts: readonly string[] }>> = {
   house: { lines: ['declining', 'needs', 'renovating', 'beds', 'sub', 'finest'], acts: [] },
-  works: { lines: ['staff', 'labour', 'benefit', 'stores', 'service', 'passive', 'chain'], acts: ['controls'] },
+  works: { lines: ['idle', 'staff', 'labour', 'benefit', 'stores', 'service', 'passive', 'chain'], acts: ['controls'] },
   site: { lines: ['progress', 'why', 'notes'], acts: ['queue'] },
   block: { lines: ['status', 'reserved', 'plots'], acts: ['actions'] },
   tile: { lines: ['facts', 'wall'], acts: ['walls', 'buildable'] },
@@ -684,6 +693,22 @@ class InspectorCard {
           : null;
         out.push(part(h('div', { class: 'ins-labour' }, labourEl(g, this.ups, [def.labor]), ordo), 'labour'));
       }
+    }
+    // staffed but idle for want of water: why, and the fixes (hints.waterIdle, DESIGN §15.4); its numbers refresh, a
+    // change of fixes rebuilds the card (idleSig)
+    const idle = waterIdle(s, view(s), b);
+    if (idle) {
+      const line = h('div', { class: 'ins-bad' }, `Idle: ${idle.why}`);
+      this.ups.push(() => {
+        const cur = getBuilding(g.state, b.id);
+        const w = cur ? waterIdle(g.state, view(g.state), cur) : null;
+        if (w) line.textContent = `Idle: ${w.why}`;
+      });
+      const fixes = idle.remedies.map((r, i) => {
+        const check = checkRemedy(s, r);
+        return btn(g, remedyLabel(s, r), () => { g.applyRemedy(r); }, { cls: i === 0 ? 'primary' : '', reason: check.ok ? null : check.reason });
+      });
+      out.push(part(h('div', { class: 'ins-group' }, line, h('div', { class: 'ins-fix' }, fixes)), 'idle'));
     }
     const chain = h('div', { class: 'ins-chain' });
     const refreshChain = (): void => {

@@ -1,11 +1,12 @@
-// src/game/hints.ts — "how to get more", benefit lines and the inspector's output chain (ARCHITECTURE §8.6,
-// DESIGN §8.1, §11.10). Owner: WP-E. Every line is generated from BUILDING_DEFS, HUB_DEFS and the live state.
+// src/game/hints.ts — "how to get more", benefit lines, the inspector's output chain and why a works stands idle for
+// water (ARCHITECTURE §8.6, DESIGN §5.2, §8.1, §11.10). Owner: WP-E. Every line is generated from BUILDING_DEFS,
+// HUB_DEFS and the live state.
 import { B } from './balance';
 import { HUBS, RESOURCES, TRADE_RES } from './types';
-import type { Building, BuildingId, Cost, GameState, ResId, SimView, TradeRes } from './types';
+import type { Building, BuildingId, Cost, GameState, Remedy, ResId, SimView, TradeRes } from './types';
 import { SEASON_NAMES, seasonOf } from './calendar';
 import { stageOf } from './census';
-import { buildingRate, seasonMult } from './economy';
+import { buildingRate, seasonMult, waterHold } from './economy';
 import { fx } from './fx';
 import { siteMult } from './site';
 import { HUB_DEFS } from './data/hubs';
@@ -13,7 +14,8 @@ import { BUILDING_DEFS, BUILD_ORDER, slotsOf } from './data/buildings';
 import { RANK_DEFS } from './data/ranks';
 import { TIER_DEFS } from './data/housing';
 import { RESOURCE_DEFS } from './data/resources';
-import { aName, bestHub, int, listJoin, num, rankWord } from './advisors/util';
+import { SETTING_DEFS } from './data/decisions';
+import { aName, bestHub, fractionWord, int, labourRemedy, listJoin, num, openPosts, rankWord, three } from './advisors/util';
 
 const STORE: Partial<Record<ResId, BuildingId>> = {
   grain: 'horreum', water: 'cisterna', timber: 'apotheca', stone: 'apotheca', tiles: 'apotheca', concrete: 'apotheca',
@@ -161,7 +163,38 @@ export function outputChain(s: GameState, b: Building): { label: string; value: 
     if (Math.abs(sm - 1) >= 0.005) out.push({ label: SEASON_NAMES[season], value: `×${num(sm)}` });
   }
   if (b.unpaid) out.push({ label: 'Unpaid', value: `×${num(B.economy.UNPAID)}` });
-  const total = buildingRate(s, b, season, 'current')[res] ?? 0;
+  // a works held from its water makes nothing, whatever its hands (its idle line says why: waterIdle)
+  const total = waterHold(s, b) ? 0 : buildingRate(s, b, season, 'current')[res] ?? 0;
   out.push({ label: 'Total', value: `${num(total)} ${RESOURCE_DEFS[res].unit} a day` });
   return out;
+}
+
+/** Why a staffed works stands idle for want of water, and what lets it work again (DESIGN §5.2, §15.4): the inspector's
+ *  idle line, which the Praefectus Fabrum repeats for a site that waits on its goods (§11.6); null while it draws. `why`
+ *  follows "Idle: ". The fixes: under Populo prius the Aequa edict, a reserve low enough for the stock, more water (the
+ *  wells first, else a new well); under the Lex de annona's pause more water, and a cistern when even full stores
+ *  could not lift the pause. */
+export function waterIdle(s: GameState, v: SimView, b: Building): { why: string; remedies: Remedy[] } | null {
+  const w = waterHold(s, b);
+  if (!w) return null;
+  const up = (x: number): number => Math.ceil(x - 1e-6), down = (x: number): number => Math.floor(x + 1e-6);
+  const draw = (BUILDING_DEFS[b.type].inputs?.water ?? 0) * (v.c.staffed[b.id] ?? 0);
+  const water: Remedy = openPosts(v, 'water') > 0 ? labourRemedy(s, v, 'water', 'water', draw) : { kind: 'place', building: 'puteus' };
+  if (w.why === 'pause') {
+    const short = w.full <= w.keep;
+    return {
+      why: `the Lex de annona paused the works that draw water when it ran low. They resume above ${up(w.keep)} days in store; we hold ${down(w.have)}.`
+        + (short ? ` Full, our stores hold only ${down(w.full)}.` : ''),
+      remedies: three(short ? { kind: 'place', building: 'cisterna' } : null, water),
+    };
+  }
+  const people = 'Under Populo prius the people drink first.';
+  const why = w.keep >= w.reserve - 1e-6
+    ? `the water reserve (${w.reserve} days) is not met; the stores hold ${down(w.have)}. ${people}`
+    : `the water reserve is not met; the stores hold ${down(w.have)} days, and the works draw only above ${up(w.keep)}, ${fractionWord(B.economy.RESERVE_ROOM)} of the ${down(w.full)} a full store holds. ${people}`;
+  const lower = Math.max(SETTING_DEFS.waterReserve.min, down(w.have) - 1);
+  return {
+    why,
+    remedies: three({ kind: 'edict', edict: 'aquae', option: 'aequa' }, lower < w.reserve ? { kind: 'setting', setting: 'waterReserve', value: lower } : null, water),
+  };
 }
