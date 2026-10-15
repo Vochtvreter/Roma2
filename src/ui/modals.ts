@@ -167,13 +167,20 @@ export function confirmPress(armedAt: number | null, now: number): 'arm' | 'wait
 const armed = new Map<HTMLButtonElement, () => void>();   // the armed two-step confirms, each with its disarm
 let escWatch = false;
 
-/** Esc disarms the armed confirms before anything else answers it (keys.ts skips a key already handled). Installed with
- *  the first confirm, so importing this module does no DOM work. */
+/** An armed confirm the player can see: in the page and shown, not inside something display: none (a panel folded by
+ *  C, a tab that closed) nor hidden (a pinned card whose target was panned away). One out of sight takes no Esc and
+ *  holds nothing still: it disarms by itself (its drain) or at the next press. */
+function inSight(b: HTMLButtonElement): boolean {
+  return b.isConnected && b.offsetParent !== null && getComputedStyle(b).visibility !== 'hidden';
+}
+
+/** Esc disarms the armed confirms in sight before anything else answers it (keys.ts skips a key already handled).
+ *  Installed with the first confirm, so importing this module does no DOM work. */
 function watchEsc(): void {
   if (escWatch) return;
   escWatch = true;
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && [...armed.keys()].some((b) => b.isConnected)) { e.preventDefault(); for (const off of [...armed.values()]) off(); }
+    if (e.key === 'Escape' && [...armed.keys()].some(inSight)) { e.preventDefault(); for (const off of [...armed.values()]) off(); }
   });
 }
 
@@ -183,9 +190,18 @@ export function armedWithin(root: Element): boolean {
   return [...armed.keys()].some((b) => b.isConnected && root.contains(b));
 }
 
-/** True while any two-step confirm is armed: the counsel card holds still (no tip unfolds above an armed button). */
+/** True while a two-step confirm in sight is armed: the counsel card holds still (no tip unfolds above an armed button),
+ *  and the Res Gestae with it (armedOr). */
 export function anyArmed(): boolean {
-  return [...armed.keys()].some((b) => b.isConnected);
+  return [...armed.keys()].some(inSight);
+}
+
+/** A widget's hold (steady.ts PointerHold) that is also busy while any confirm is armed (anyArmed): what the Res Gestae
+ *  waits on below it (objective.ts goalsWait, ui/index.ts). Its rebuild changes its height, so it would move the counsel
+ *  card, the DOCK's pane under its head, or the free map a pinned card glides into, out from under the second press;
+ *  it waits as on a press under way, a new goal too (a confirm disarms within B.ui.CONFIRM_MS unless a mouse rests on it). */
+export function armedOr(hold: { holds(): boolean; busy(): boolean }): { holds(): boolean; busy(): boolean } {
+  return { holds: () => hold.holds(), busy: () => anyArmed() || hold.busy() };
 }
 
 /** Two-step confirm (DESIGN §15.5): the first press arms the button with `armedLabel` ('Click again…' says Tap to a

@@ -41,7 +41,7 @@ import { shows, tabShown } from './intro';
 import { CARD_LESSONS, CARD_ROWS, bringTarget, currentHost, hostPointer, isPhone, lessonFolds, registerBringer, revealTarget, routeIntent } from './layout';
 import type { Host, Layout } from './layout';
 import { labourEl } from './tabs/labour';
-import { anyArmed } from './modals';
+import { anyArmed, confirm2 } from './modals';
 
 /** Whether the counsel is drawn as the voice line (pure): its folded two rows with the one action chip and the '+n' pip,
  *  on the phones (the SHEET, the DRAWER) and the tablet's DOCK, whose pane it heads; the desktop keeps the card. */
@@ -265,6 +265,16 @@ export function pulseTarget(target: string): void {
   go();
 }
 
+/** "Skip the lessons" on a lesson card (tests/confirm.test.ts): a two-step confirm like the others (modals.ts confirm2,
+ *  DESIGN §15.5): the first press asks "Skip every lesson?", a press within B.ui.CONFIRM_MIN_MS of it (a double-click)
+ *  does nothing, and it disarms as they do. Its state is the button's own, so a card built afresh asks again; while it
+ *  is armed the card holds still (anyArmed). */
+export function skipLessonsLink(g: Game): HTMLButtonElement {
+  const skip = h('button', { class: 'counsel-link', type: 'button' }, 'Skip the lessons');
+  confirm2(skip, 'Skip every lesson?', () => { g.act(skipIntro(g.state), { okSfx: 'click' }); });
+  return skip;
+}
+
 /** The portrait strip and the counsel card in #counsel (signature-diffed). */
 export class Counsel {
   private sig = '';
@@ -274,7 +284,6 @@ export class Counsel {
   private refresh: (() => void) | null = null;
   private open = false;                       // mobile: the card is expanded from its portrait chip
   private autoOpen = false;                   // … and it was a tip or lesson that unfolded it
-  private skipArmed = false;                  // "Skip the lessons" asks once more before it skips
   private live: Updater[] = [];               // live parts of the card (a lesson's labour line): refreshed every update
   private item: CounselItem = { kind: 'calm' };   // the item on the card
   /** The layout (UI.build): on a phone an unfolded card raises a closed panel to half and lets it drop again. */
@@ -504,11 +513,7 @@ export class Counsel {
       g.sfx('click');
       showLesson(g, l);
     };
-    const skip = h('button', { class: 'counsel-link', onclick: () => {
-      if (!this.skipArmed) { this.skipArmed = true; skip.textContent = 'Skip every lesson?'; return; }
-      this.skipArmed = false;
-      g.act(skipIntro(g.state), { okSfx: 'click' });
-    } }, 'Skip the lessons');
+    const skip = skipLessonsLink(g);
     let acts: HTMLElement;
     if (x.done) {
       acts = h('div', { class: 'counsel-actions' },

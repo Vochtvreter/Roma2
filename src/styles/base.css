@@ -67,7 +67,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .btn.armed { background: linear-gradient(#d65454, #9e2f25); color: #fff; animation: armedPulse .6s ease-in-out infinite alternate; }
 @keyframes armedPulse { to { filter: brightness(1.25); } }
 /* armed with no mouse on it (a finger, a key), a confirm drains along its foot until it disarms (modals.ts confirm2) */
-.btn.armed.draining::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 236, 200, .8);
+:is(.btn, .counsel-link).armed.draining::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 236, 200, .8);
   transform-origin: left; animation: confirmDrain var(--drain-ms) linear forwards; pointer-events: none; }
 @keyframes confirmDrain { to { transform: scaleX(0); } }
 
@@ -133,4 +133,9 @@ button.chip { cursor: pointer; }
 .kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin: 0 1px; border: 1px solid var(--line-2); border-bottom-width: 2px;
   border-radius: 3px; background: rgba(255, 255, 255, .05); font-family: var(--font-caps); font-size: var(--fs-caps); text-align: center; }
 
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  /* an armed confirm stands still: red without its pulse, and its drain bar whole until it disarms (run at .01 ms the
+     bar would be gone at once while the confirm stays armed for 8 s) */
+  .btn.armed, :is(.btn, .counsel-link).armed.draining::after { animation: none; }
+}
