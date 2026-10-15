@@ -1150,28 +1150,30 @@ Names from rome: *Caravan from Lutetia, Syrian spice traders, Gallic cattle merc
 | Differences (and nothing else) | benign events only, on half the days; no new choice cards except the auto-accepted relief; pending cards resolve to their default at expiry; starvation/thirst deaths ×0.4; **no house loses a tier** (decline counters stop at 55); fires and harmful events off; merchants only through the Ordo; **Govern while away** runs manual subsystems with the Ordo; emergency measures apply if on; fx discarded; rates not accumulated |
 | Stops early | on victory; `report.days` = days actually simulated |
 | Presentation | a semi-transparent veil *"Anni transeunt… — the years pass"* with a progress bar; the Roman date, HUD and map visibly race underneath; **[Skip]** runs the rest synchronously (identical result) |
-| Return | closing the letter (*Return to the city*, ✕, Esc) goes on as you left the colony (§2.1): at your last speed, or paused if you had paused it; a button in it that opens a panel (*Petition Rome*, a remedy that opens a tab or the contract form) leaves it paused while you read |
+| Return | closing the letter (*Return to the city*, ✕, Esc) goes on as you left the colony (§2.1): at your last speed, or paused if you had paused it; a button in it that opens a panel (*Petition Rome*, *See the petition*, a remedy that opens a tab or the contract form) leaves it paused while you read, and that pause is kept like your own (❚❚): a reload or the next letter finds the colony paused until you choose a speed |
 
 **The away report — *Litterae Ordinis*** (parchment modal; built from a highlight recorder: log entries tagged *highlight* / *decided*, stat deltas, and the runner's lowest-point tracker):
 ```
-LITTERAE ORDINIS · from a.d. IV Non. Apr. to Id. Nov. AUC DCCCII   (221 days · you were away 7 min 22 s)
-THE CITY      Souls 118 → 131 (+9 births, +11 arrivals, −7 deaths, −2 departed) · Rank Vicus · Spirits 61 → 76
-PROGRESS      Oppidum petition: 2 → 4 of 5 met
+LITTERAE ORDINIS · from a.d. VII Id. Apr. to Id. Nov. AUC DCCCII   (221 days · you were away 7 min 22 s)
+THE CITY      Souls 176 → 189 (+9 births, +11 arrivals, −5 deaths, −2 departed) · Rank Vicus · Spirits 61 → 76
+PROGRESS      Oppidum petition: 2 → 5 of 5 met
 STORES        Grain 41 → 88 days · Water 22 → 17 days · Coin 640 → 1,415 (+775)
 WORKS RAISED  Horreum · 2 house plots · Lararium · Olivetum          HOMES  3 casae became casae tegulatae
 DECIDED IN YOUR NAME
               · Veterans at the gate (3 families): sent on to Colonia Augusta.
               · Emergency: rations cut to Parcae for 12 days in Iul. (grain ran low).
-LOWEST POINT  Water fell to 6 days on a.d. III Id. Iul.; the concrete works paused.
-AWAITING YOU  ▲ Rome would hear our petition for Oppidum: ready since a.d. III Id. Iul. AUC DCCCII, 120 days.
-              ● Oil for the insulae runs out in 24 days.
+LOWEST POINT  Water fell to 6 days on a.d. III Id. Iul.
+AWAITING YOU  ▲ Rome would hear our petition for Oppidum: ready since a.d. III Id. Iul. AUC DCCCII, 123 days.
+              ● 3 homes fetch water from the river.
               Time away passes at half speed, up to five years (61 minutes away).   [ Return to the city ]
 ```
 Awaiting You lists the ready petition first, with how long it has waited (from the day the Augur raised his
 *Opportunitas*; the path is still never chosen for you), then the top 3 advisories with their buttons. **Progress** gives
 the next rank's checklist (*Lex coloniae* included while the charter waits) and, once its works begin, the Capitolium
-(*"Capitolium 12% → 31%"*), before → after. **When nothing moved** (no more souls, no work raised, no home risen, no
-checklist item met, the Capitolium no higher) and no petition waits, Awaiting You leads with what holds the next rank:
+(*"Capitolium 12% → 31%"*), before → after. **When nothing moved** toward the next rank (no line of its checklist met
+or nearer as it reads, or once its works begin the Capitolium no higher; souls past the count and works the checklist
+does not ask for, such as the Ordo's cisterns, are growth, not progress) and no petition waits, Awaiting You leads with
+what holds the next rank:
 *"○ Stalled: nothing moved toward Oppidum. Still lacking: Homes of Casa tegulata or better 6 / 10 · Dignitas 31 / 40."*
 (its unmet items in checklist order, at most 3, with **See the petition**), or *"Stalled: the Capitolium did not rise
 past 34%."*

@@ -51,7 +51,7 @@ export function tick(s: GameState, ctx: TickContext): void {
   goodsDay(s, ctx);              // oil and wine to T4 houses
   // 5 · works and homes
   constructionDay(s, ctx);       // builders along worksQueue(); Capitolium crew cap and materials; completions;
-                                 // Capitolium completion sets s.victory, stats.victoryDay, fx victory
+                                 // Capitolium completion sets s.victory, stats.victoryDay and atVictory, fx victory
   housingDay(s, ctx);            // houses with (id + day) % CHECK_EVERY == 0 (DESIGN §7.2): needs, evolution, renovation, decline
   urbsDay(s, ctx, v, isKalends(s.day));   // the growing town (§3.9): the footfall census and a needless well on the Kalends,
                                           // the town wall surveyed once the town outgrows its camp

@@ -1,5 +1,6 @@
 // tests/contract.test.ts — the contract checks of ARCHITECTURE §5 and §10.1 (determinism grep, import rules), id
-// uniqueness (§4, §10.3), balance.ts against ARCHITECTURE §7 and DESIGN §18.3/§18.4, and the effect keys (§4, DESIGN §9.3).
+// uniqueness (§4, §10.3), balance.ts against ARCHITECTURE §7 and DESIGN §18.3/§18.4, the away letter's documents
+// (DESIGN §14's sample, ARCHITECTURE §8.5's offline.ts listing) and the effect keys (§4, DESIGN §9.3).
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -10,6 +11,7 @@ import type { Effects } from '../src/game/types';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
 import { EDICT_DEFS, PATH_DEFS, SETTING_DEFS } from '../src/game/data/decisions';
 import { RANK_DEFS } from '../src/game/data/ranks';
+import { formatRoman } from '../src/game/calendar';
 import { RULE_DEFS } from '../src/game/advisors/engine';
 import { GUIDE } from '../src/game/guide';
 import { MILESTONES } from '../src/game/objectives';
@@ -255,6 +257,48 @@ describe('balance.ts mirrors the contract (ARCHITECTURE §7, DESIGN §18.3)', ()
       .toEqual(TARGETS.map((t) => ({ day: t.day, pop: t.pop, tiers: [...t.tiers] })));
     const coin = RANK_DEFS.map((d, k) => `${d.name} +${COIN_NET[k][0] === COIN_NET[k][1] ? COIN_NET[k][0] : `${COIN_NET[k][0]}–${COIN_NET[k][1]}`}`);
     for (const c of coin) expect(sec).toContain(c);
+  });
+});
+
+describe('the away letter in the documents (DESIGN §14, ARCHITECTURE §8.5)', () => {
+  /** The day a Roman date of year `auc` (a numeral) falls on. */
+  const dayOn = (date: string, auc: string): number => {
+    for (let d = 0; d < 20 * 366; d++) if (formatRoman(d, { year: true }) === `${date} AUC ${auc}`) return d;
+    return NaN;
+  };
+
+  it('the sample Litterae Ordinis adds up: its days, its souls, and a ready petition met in full', () => {
+    const sec = section(doc('DESIGN.md'), '## 14.', '## 15.');
+    const from = sec.indexOf('LITTERAE ORDINIS · from');
+    const letter = sec.slice(from, sec.indexOf('```', from));
+    const head = /from (.+?) to (.+?) AUC ([IVXLCDM]+) +\((\d+) days · you were away (\d+) min (\d+) s\)/.exec(letter);
+    expect(head, 'the heading').not.toBeNull();
+    const [, start, end, auc, days, min, s] = head!;
+    const last = dayOn(end, auc);
+    expect(last - dayOn(start, auc) + 1).toBe(Number(days));                     // from the first day away to the last
+    expect(Math.floor((Number(min) * 60 + Number(s)) * B.time.OFFLINE_RATE)).toBe(Number(days));
+    const souls = /Souls (\d+) → (\d+) \(\+(\d+) births, \+(\d+) arrivals, −(\d+) deaths, −(\d+) departed\) · Rank (\w+)/.exec(letter);
+    expect(souls, 'the city').not.toBeNull();
+    const [b, a, born, came, died, left] = souls!.slice(1, 7).map(Number);
+    expect(b + born + came - died - left).toBe(a);
+    const prog = /PROGRESS +(\w+) petition: (\d+) → (\d+) of (\d+) met/.exec(letter);
+    const ready = /▲ Rome would hear our petition for (\w+): ready since (.+?) AUC ([IVXLCDM]+), (\d+) days\./.exec(letter);
+    expect(prog && ready, 'the progress and the ready petition').toBeTruthy();
+    const rank = RANK_DEFS.findIndex((d) => d.name === ready![1]);
+    expect(prog![1]).toBe(ready![1]);
+    expect(RANK_DEFS.findIndex((d) => d.name === souls![7])).toBe(rank - 1);     // the next rank's petition
+    expect(prog![3]).toBe(prog![4]);                                              // a ready petition has every line met
+    expect(a).toBeGreaterThanOrEqual((B.progress.PETITION as Record<string, { POP: number }>)[RANK_DEFS[rank].id].POP);
+    expect(last - dayOn(ready![2], ready![3])).toBe(Number(ready![4]));
+  });
+
+  it('ARCHITECTURE §8.5 lists every offline.ts export the UI imports', () => {
+    const listing = section(doc('ARCHITECTURE.md'), '### 8.5', '### 8.6');
+    const offline = listing.slice(listing.indexOf('// offline.ts'));
+    const ui = [...tsFiles(join(ROOT, 'src', 'ui')), join(ROOT, 'src', 'main.ts')].map((f) => readFileSync(f, 'utf8')).join('\n');
+    const names = [...ui.matchAll(/import \{([^}]*)\} from '(?:\.\.?\/)+game\/offline'/g)].flatMap((m) => m[1].split(',').map((x) => x.trim()));
+    expect(names).toContain('pct');
+    for (const n of names) expect(offline, n).toMatch(new RegExp(`export (?:function|const) ${n}\\b`));
   });
 });
 

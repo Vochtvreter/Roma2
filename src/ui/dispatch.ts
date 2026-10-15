@@ -100,7 +100,7 @@ function awaiting(g: Game, r: AwayReport, done: (held: boolean) => void): HTMLEl
   const close = (held = true): void => done(held);   // a button here leads on to a panel: the colony waits there (DESIGN §14)
   const s = g.state;
   const items: HTMLElement[] = [];
-  // nothing moved: what holds the next rank leads (DESIGN §14), its checklist a click away
+  // nothing moved toward the next rank: what holds it leads (DESIGN §14), its checklist a click away
   const stall = stalledLine(r);
   if (stall) {
     items.push(h('div', { class: 'disp-await s2' }, h('span', { class: 'disp-mark' }, '○'),
