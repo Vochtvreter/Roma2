@@ -32,6 +32,7 @@ import { FocusRow } from './focusrow';
 import { Inspector } from './inspector';
 import { ChoiceCard } from './choice';
 import { BACK_RANK, registerBack, syncBack } from './history';
+import { armedOr } from './modals';
 import { watchPointer } from './pointer';
 import { applyTextSize, onTextSize } from './textsize';
 import { getBuilding } from '../game/state';
@@ -70,6 +71,7 @@ export class UI {
   private hud!: Hud;
   private objective!: Objective;
   private counsel!: Counsel;
+  private belowGoals!: ReturnType<typeof armedOr>;   // what the Res Gestae waits on below it: the counsel card, an armed confirm
   private ticker!: Ticker;
   private title!: TitleScreen;
   private last = -Infinity;
@@ -99,6 +101,7 @@ export class UI {
     this.hud.onFigure = (fig, from, key) => this.tray.toggle(fig, from, key);
     this.hud.quiet = (fig) => this.tray.covers(fig);   // a hover card that would drop over the open tray (which shows it) holds back
     this.counsel = new Counsel(g, el('counsel'));
+    this.belowGoals = armedOr(this.counsel.pointer);
     this.ticker = new Ticker(g, el('ticker'));
     this.title = new TitleScreen(g, el('title-screen'));
     this.side = new SidePanel(g, el('side'));
@@ -247,7 +250,9 @@ export class UI {
     present(g, el('overlay-bar'), shows(g, 'overlays'));
     this.hud.update();
     this.tray.update(now);
-    this.objective.update(this.counsel.pointer);
+    // the Res Gestae holds still with the counsel card below it, and, as that card does, while a confirm is armed: its
+    // rebuild changes its height and would move what stands under it (modals.ts armedOr)
+    this.objective.update(this.belowGoals);
     this.counsel.update();
     this.ticker.update(now);
     this.tools.update();

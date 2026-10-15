@@ -18,7 +18,7 @@
   padding: 18px 22px 20px; animation: modalRise .3s ease-out; scrollbar-width: thin;
 }
 .modal.wide { width: min(740px, 100%); }
-.modal:focus-visible { outline: none; }   /* a letter holds the focus on itself (modals.ts restingFocus): no ring round the page */
+.modal.parchment:focus-visible { outline: none; }   /* a letter holds the focus on itself (modals.ts restingFocus): no ring round the page */
 @keyframes modalRise { from { transform: translateY(16px) scale(.98); opacity: 0; } }
 .modal.dark {
   background: linear-gradient(rgba(255, 236, 200, .03), transparent 120px), var(--panel-solid);

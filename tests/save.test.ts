@@ -416,6 +416,22 @@ describe('the previous colony (the backup slot): a new colony never erases the s
     expect(replaceSave(fresh(), T0)).toBe(false);
   });
 
+  it('a backup that does not fit leaves no previous colony, never the one before it in its place', () => {
+    const a = fresh(7); a.name = 'Prima';
+    const b = fresh(8); b.name = 'Secunda';
+    const c = fresh(9); c.name = 'Tertia';
+    saveGame(a, T0);
+    replaceSave(b, T0 + DAY);                                            // Secunda founded over Prima: Prima is kept
+    expect(deserialize(loadBackup(T0 + DAY)!.raw)!.name).toBe('Prima');
+    const ls = globalThis.localStorage as unknown as { setItem: (k: string, v: string) => void };
+    const set = ls.setItem;
+    ls.setItem = (k, v) => { if (k === KEYS.backup) throw new Error('QuotaExceededError'); set(k, v); };
+    expect(replaceSave(c, T0 + 2 * DAY)).toBe(true);                     // Tertia imported over Secunda, which does not fit
+    expect(loadGame()!.name).toBe('Tertia');
+    expect(loadBackup(T0 + 2 * DAY)).toBeNull();                         // the title offers no Prima as "the previous colony"
+    expect(m.has(KEYS.backup)).toBe(false);
+  });
+
   it('a malformed backup slot is dropped', () => {
     for (const v of ['no stamp', '\n{}', 'soon\n{}']) {
       m.set(KEYS.backup, v);

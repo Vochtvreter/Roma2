@@ -1,7 +1,8 @@
 // tests/letters.test.ts — the parchment letters can never close unread, and the Victory dispatch can be read again
 // (DESIGN §9.5, §15.5, §15.8). A letter holds the focus on itself, so a reflex Space or Enter presses none of its buttons
 // (modals.ts restingFocus); under any modal the game's keys, Space the pause key among them, do nothing (keys.ts
-// keysToGame); the dedication day's figures are kept (stats.atVictory), so the letter the Annales reopen reads as it did.
+// keysToGame); the dedication day's figures are kept (stats.atVictory), so the letter the Annales reopen reads as it did,
+// and reopened it is only read: no Found a new colony at a click (victoryAnswers).
 // Headless: the pure decisions and the figures (the DOM wiring needs a browser).
 import { describe, expect, it } from 'vitest';
 import type { Building, GameState } from '../src/game/types';
@@ -10,7 +11,7 @@ import { constructionDay, startCapitolium } from '../src/game/construction';
 import { deserialize, serialize } from '../src/game/save';
 import { restingFocus } from '../src/ui/modals';
 import { keysToGame } from '../src/ui/keys';
-import { victoryFigures } from '../src/ui/dispatch';
+import { victoryAnswers, victoryFigures } from '../src/ui/dispatch';
 import { ctx, fresh } from './util';
 
 describe('where focus rests as a modal opens (restingFocus)', () => {
@@ -86,6 +87,11 @@ describe('the Victory dispatch, read again (victoryFigures)', () => {
     expect(f.births).toBe(s.stats.births);
     expect(f.pop).toBe(s.people.length);
     expect(f.day).toBe(s.stats.victoryDay);
+  });
+
+  it('read again it only reads: Keep governing alone, and no new colony founded at a click (victoryAnswers)', () => {
+    expect(victoryAnswers(false)).toEqual(['keep', 'found']);   // the dedication day: govern on, or found anew (Legacy N+1)
+    expect(victoryAnswers(true)).toEqual(['keep']);             // the Annales: a new colony is asked for by name elsewhere
   });
 
   it('the figures survive a save; a malformed set is dropped, and a colony not yet dedicated keeps none', () => {

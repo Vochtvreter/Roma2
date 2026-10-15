@@ -146,11 +146,12 @@ export function savingLine(g: Game, sv: Saving): string {
 
 /** A remedy's discrete identity for a panel signature: a building remedy's type, its target tile and whether it (and the
  *  "Ask the Ordo" beside it) can be used — all structural, so the card rebuilds when the best plot moves or is taken —
- *  any other remedy by its kind only; never live numbers. */
+ *  any other remedy by its kind and whether it can be used (the Pave brush once the stone for a pace comes in: its
+ *  button is no longer disabled with the stores' old count); never live numbers. */
 export function remedyKey(s: GameState, x: { remedy: Remedy; check: ActionResult }): string {
   const r = x.remedy;
   if (r.kind === 'clear') return `clear:${r.building}@${r.tile}:${r.ids.join('.')}:${x.check.ok ? 1 : 0}`;   // another block, or the same one changed
-  if (r.kind !== 'place' && r.kind !== 'ask') return r.kind;
+  if (r.kind !== 'place' && r.kind !== 'ask') return `${r.kind}:${x.check.ok ? 1 : 0}`;
   const ask = r.kind === 'ask' ? x.check.ok : s.ordo.on.build && checkRemedy(s, { kind: 'ask', building: r.building }).ok;
   return `${r.kind}:${r.building}@${r.kind === 'place' ? r.tile ?? '' : ''}:${x.check.ok ? 1 : 0}${ask ? 1 : 0}`;
 }

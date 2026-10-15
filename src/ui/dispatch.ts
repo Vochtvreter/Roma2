@@ -199,8 +199,17 @@ export function victoryFigures(s: GameState): VictoryStats & { day: number; year
   return { ...at, day, years: Math.max(0, aucYear(day) - aucYear(B.time.START_DAY)) };
 }
 
-function victoryBody(g: Game, close: () => void): HTMLElement {
+/** The Victory dispatch's answers (pure; tests/letters.test.ts). On the dedication day: Keep governing, or Found a new
+ *  colony at once (Legacy N+1). Read again from the Annales (`again`) the letter is for reading: Keep governing alone.
+ *  A new colony replaces this one, and every other way to that asks first (the Menu's Abandon, the title's dialog that
+ *  names it), so a letter opened hours later only to be read never founds one at a click. */
+export function victoryAnswers(again: boolean): readonly ('keep' | 'found')[] {
+  return again ? ['keep'] : ['keep', 'found'];
+}
+
+function victoryBody(g: Game, close: () => void, again: boolean): HTMLElement {
   const s: GameState = g.state;
+  const answers = victoryAnswers(again);
   const fig = victoryFigures(s);
   const paths = PATH_DECISIONS.map((d) => ({ d, o: s.decisions.paths[d] })).filter((x) => x.o)
     .map((x) => PATH_DEFS[x.d].options.find((o) => o.id === x.o)?.name ?? '');
@@ -217,9 +226,9 @@ function victoryBody(g: Game, close: () => void): HTMLElement {
     paths.length ? h('p', { class: 'disp-story' }, 'Your story: ', paths.join(' · ')) : null,
     h('div', { class: 'disp-foot' },
       h('span', { class: 'disp-sign' }, `Senatus Populusque Romanus · AUC ${toRoman(aucYear(fig.day))}`),
-      h('button', { class: 'btn', onclick: () => close() }, 'Keep governing'),
-      h('button', { class: 'btn primary disp-two', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
-        h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`))));
+      h('button', { class: answers.includes('found') ? 'btn' : 'btn primary', onclick: () => close() }, 'Keep governing'),
+      answers.includes('found') ? h('button', { class: 'btn primary disp-two', onclick: () => { close(); g.newGame({ afterVictory: true }); } },
+        h('span', null, 'Found a new colony'), h('small', null, `Legacy ${s.legacy + 1}: +10% output, +2 morale`)) : null));
 }
 
 /** How a colony goes on after Continue or the away letter (DESIGN §2.1): as the player left it, held if they had paused
@@ -240,8 +249,9 @@ export function resume(g: Game, held = false): void {
   else g.setSpeed(sp);
 }
 
-/** Opens one of the three parchment letters; closing it resumes the game as the letter says. */
-export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', report?: AwayReport): void {
+/** Opens one of the three parchment letters; closing it resumes the game as the letter says. `again`: the Victory
+ *  dispatch read again from the Annales, with no Found a new colony (victoryAnswers). */
+export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', report?: AwayReport, again = false): void {
   let close: () => void = () => undefined;
   const sealed = (body: HTMLElement): HTMLElement => h('div', { class: 'disp' }, waxSeal(), body);
   if (kind === 'founding') {
@@ -256,5 +266,5 @@ export function openDispatch(g: Game, kind: 'founding' | 'away' | 'victory', rep
     });
     return;
   }
-  close = openModal(sealed(victoryBody(g, () => close())), { kicker: 'VICTORIA · CAPITOLIVM DEDICATVM', title: 'The Capitolium is dedicated', parchment: true, wide: true });
+  close = openModal(sealed(victoryBody(g, () => close(), again)), { kicker: 'VICTORIA · CAPITOLIVM DEDICATVM', title: 'The Capitolium is dedicated', parchment: true, wide: true });
 }
