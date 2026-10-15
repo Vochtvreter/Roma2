@@ -101,6 +101,8 @@ describe('petitions', () => {
     const pn = (): NonNullable<ReturnType<typeof petitionNeeds>> => petitionNeeds(s, view(s))!;
     expect(pn().rank).toBe(1);
     expect(pn().needs.map((n) => n.met)).toEqual([true, false, false, false, false, false]);
+    // the Souls line names its count, for the ETA the checklist shows beside it (settlers.ts, playtest #6)
+    expect(pn().needs.map((n) => n.souls)).toEqual([undefined, B.progress.PETITION.vicus.POP, undefined, undefined, undefined, undefined]);
     growTo(s, 50);
     s.day = FIRST_HIEMS_OVER;
     addBuilding(s, 'horreum');

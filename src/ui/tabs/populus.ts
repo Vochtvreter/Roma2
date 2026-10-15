@@ -7,6 +7,9 @@ import { fmt, h, img, plural, tip } from '../dom';
 import { touchInput } from '../pointer';
 import { ageOf, census, stageOf } from '../../game/census';
 import { personName } from '../../game/people';
+import { arrivalOutlook, limiterLine, naturalWords, paceWords } from '../../game/settlers';
+import { birthRows, settlersRows } from '../hud-tips';
+import { tipCard } from '../tipkit';
 import { firstWant } from '../../game/housing';
 import { derived } from '../../game/derived';
 import { getBuilding } from '../../game/state';
@@ -83,6 +86,10 @@ function stats(g: Game, up: Updater[]): HTMLElement {
   const life = cell('Births · deaths a year', () => `Since the founding: ${g.state.stats.births} births, ${g.state.stats.deaths} deaths, ${g.state.stats.immigrants} arrivals, ${g.state.stats.emigrants} departures.`);
   const stage = h('div', { class: 'pop-stages' });
   const legend = h('div', { class: 'pop-legend' });
+  // the pace of growth (DESIGN §6.5, §6.6): the newcomers with what holds them back most, the births; their factors on hover
+  const newcomers = tip(h('div', { class: 'pop-pace' }), () => tipCard(...settlersRows(g)), { wide: true });
+  const natales = tip(h('div', { class: 'pop-pace' }), () => tipCard(...birthRows(g)), { wide: true });
+  let paceDay = -1;
   const refresh = (): void => {
     const s = g.state;
     const c = census(s);
@@ -96,10 +103,16 @@ function stats(g: Game, up: Updater[]): HTMLElement {
     life.textContent = `${fmt(s.stats.births / years)} · ${fmt(s.stats.deaths / years)}`;
     stage.replaceChildren(...c.byStage.map((n, i) => h('i', { class: `pop-st${i}`, style: { flexGrow: String(n) } })));
     legend.textContent = c.byStage.map((n, i) => `${STAGE_NAME[i]} ${n}`).join(' · ');
+    if (s.day === paceDay) return;   // once a day: the births read every soul's age
+    paceDay = s.day;
+    const a = arrivalOutlook(s);
+    const pace = a.shut ? 'none while the gates are shut' : paceWords(a);
+    newcomers.replaceChildren(h('b', null, 'Newcomers: '), `${pace}. ${limiterLine(s, a)}`);
+    natales.replaceChildren(h('b', null, 'Births: '), `${naturalWords(s)}.`);
   };
   refresh();
   up.push(refresh);
-  return h('div', null, grid, stage, legend);
+  return h('div', null, grid, stage, legend, newcomers, natales);
 }
 
 /** Houses of each tier, and what the next tier waits for (first unmet want), refreshed once a day. */

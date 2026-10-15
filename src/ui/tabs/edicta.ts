@@ -14,6 +14,9 @@ import { DUTY_DEFS, granted, learned, pendingOffers, wishDuty } from '../../game
 import { reasonText } from '../../game/ordo/reasons';
 import { view } from '../../game/sim';
 import { census } from '../../game/census';
+import { etaWords } from '../../game/settlers';
+import { birthRows, settlersRows } from '../hud-tips';
+import { tipCard, tipSep } from '../tipkit';
 import { portion } from '../../game/economy';
 import { aucYear, formatAuc, formatRoman } from '../../game/calendar';
 import { B } from '../../game/balance';
@@ -104,13 +107,21 @@ function crossroads(g: Game, up: Updater[]): HTMLElement {
     h('div', { class: 'ed-path-title' }, charter ? 'Proclaim the law of the colony' : `Petition Rome: ${rank?.name ?? def.name}`),
     h('p', { class: 'ed-path-prompt' }, def.prompt));
   if (rank) {
+    // the Souls line carries its ETA at today's pace (settlers.ts), reckoned once a day: it reads every soul's age
+    const eta = { day: -1, text: '' };
+    const line = (n: { label: string; met: boolean; souls?: number }): string => {
+      if (n.souls === undefined || n.met) return n.label;
+      if (eta.day !== g.state.day) { eta.day = g.state.day; eta.text = etaWords(g.state, n.souls); }
+      return eta.text ? `${n.label} · ${eta.text}` : n.label;
+    };
     const items = pn.needs.map((n) => {
-      const el = h('li', { class: n.met ? 'met' : 'unmet' }, n.met ? '✔ ' : '○ ', n.label);
+      const el = h('li', { class: n.met ? 'met' : 'unmet' }, n.met ? '✔ ' : '○ ', line(n));
+      if (n.souls !== undefined) tip(el, () => tipCard(...settlersRows(g), tipSep(), ...birthRows(g)), { wide: true });
       return el;
     });
     up.push(() => {
       const now = petitionNeeds(g.state, view(g.state));
-      now?.needs.forEach((n, i) => { const el = items[i]; if (el) { el.textContent = `${n.met ? '✔' : '○'} ${n.label}`; el.className = n.met ? 'met' : 'unmet'; } });
+      now?.needs.forEach((n, i) => { const el = items[i]; if (el) { el.textContent = `${n.met ? '✔' : '○'} ${line(n)}`; el.className = n.met ? 'met' : 'unmet'; } });
     });
     card.append(h('ul', { class: 'ed-checklist' }, items,
       h('li', { class: pn.affordable ? 'met' : 'unmet' }, pn.affordable ? '✔ ' : '○ ', 'Fee ', costEl(s, pn.fee))));

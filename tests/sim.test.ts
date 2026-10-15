@@ -10,6 +10,7 @@ import { buildingRate, caps, consume, industryWaterFloor, issueTools, lastRation
 import { outputChain, waterIdle } from '../src/game/hints';
 import { charterPaving } from '../src/game/urbs';
 import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor, splendour } from '../src/game/people';
+import { arrivalOutlook, birthOutlook, deathsPerYear, etaWords, limiterLine, paceWords, soulsEta } from '../src/game/settlers';
 import { constructionDay, startStaked } from '../src/game/construction';
 import { dignitas, kalendsDay, moraleDay, moraleTarget, taxesDay } from '../src/game/civic';
 import { forecast } from '../src/game/forecast';
@@ -478,6 +479,91 @@ describe('people (DESIGN §6)', () => {
     expect(splendour(s)).toBeCloseTo(2 * BUILDING_DEFS.hortus.dignitas + onAxes * B.dignitas.ROADS, 9);
     gardens(400);
     expect(renownFactor(s)).toBe(R.MAX);
+  });
+
+  it('the settlers\' pace the tooltips show is the tick\'s own: its factors, what holds them back, a shut gate (playtest #6)', () => {
+    const s = fresh();
+    s.morale = 80;
+    s.res.grain = 1e5;
+    s.res.water = 1e5;
+    let a = arrivalOutlook(s);
+    expect(a.perDay).toBe(immigrationChance(s));
+    expect(a.factors.map((x) => x.id)).toEqual(['rank', 'spirits', 'food', 'water', 'favour', 'edicts']);
+    expect(a.factors.reduce((p, x) => p * x.value, 1)).toBeCloseTo(a.perDay, 12);
+    expect(a.factors[0].value).toBe(B.people.IMM_RATE[0]);
+    expect(a.every).toBeCloseTo(1 / a.perDay, 9);
+    expect(paceWords(a)).toBe(`about one family every ${Math.round(1 / a.perDay)} days`);
+    expect(a.shut).toBeNull();
+    // spirits at their best: the favour (×1 of ×3) holds them back most
+    expect(a.limiter?.id).toBe('favour');
+    expect(limiterLine(s, a)).toMatch(/^Rome's favour holds them back most \(×1\.0 of ×3\): gardens and paved streets/);
+    s.morale = 40;                                                  // ×0.25 of ×1.25 is further below its best
+    a = arrivalOutlook(s);
+    expect(a.limiter?.id).toBe('spirits');
+    expect(limiterLine(s, a)).toMatch(/^Spirits hold them back most \(40\)/);
+    s.morale = 80;
+    s.res.grain = 0;                                                // thin granaries: ×0.1
+    expect(arrivalOutlook(s).limiter?.id).toBe('food');
+    s.res.grain = 1e5;
+    s.decisions.edicts.hospites = 'clausi';                         // closed gates: ×0.2
+    a = arrivalOutlook(s);
+    expect(a.limiter?.id).toBe('edicts');
+    expect(limiterLine(s, a)).toBe('The edicts hold them back most: Newcomers: Clausi ×0.2.');
+    s.decisions.edicts.hospites = 'cauti';
+    fillBeds(s);                                                    // no free bed: the gate is shut whatever the draw
+    a = arrivalOutlook(s);
+    expect(a.shut).toBe('beds');
+    expect(limiterLine(s, a)).toMatch(/^No house has a free bed/);
+  });
+
+  it('Rome\'s call brings the souls the outlook foretells (playtest #6)', () => {
+    const u = fresh();
+    u.morale = 80;
+    u.res.grain = 1e6;
+    u.res.water = 1e6;
+    for (const b of u.buildings) if (b.house) b.house.tier = 'insula';
+    touchPeople(u);
+    const perDay = arrivalOutlook(u).perDay, days = 1500;
+    for (let d = 0; d < days; d++) { u.day++; immigrationDay(u, ctx(), new Rng(d + 7)); }
+    expect(arrivalOutlook(u).perDay).toBeCloseTo(perDay, 12);       // nothing it reads has moved
+    const owed = perDay * B.people.CALL.SOULS * days;                // the souls the call accrued; at most a household is left on it
+    expect(u.stats.immigrants).toBeGreaterThanOrEqual(owed - B.people.CALL.TO);
+    expect(u.stats.immigrants).toBeLessThanOrEqual(owed + 2 + B.people.COUPLE_KIDS[1] - B.people.CALL.FROM);
+  });
+
+  it('births at today\'s pace, and the days until a count of souls (the petition\'s Souls line, playtest #6)', () => {
+    const s = fresh();
+    s.morale = 80;
+    s.res.grain = 1e5;
+    s.res.water = 1e5;
+    for (const b of s.buildings) if (b.house) b.house.tier = 'insula';
+    touchPeople(s);
+    const b = birthOutlook(s);
+    const mothers = s.people.filter((w) => w.female && w.spouse !== null && (s.day - w.born) / B.time.YEAR_DAYS >= 16 && (s.day - w.born) / B.time.YEAR_DAYS < 43).length;
+    expect(b.mothers).toBe(mothers);
+    expect(b.factors.map((x) => x.id)).toEqual(['food', 'spirits', 'favour', 'edicts', 'beds']);
+    expect(b.perYear).toBeCloseTo(b.mothers * B.people.BIRTH_RATE * b.factors.reduce((p, x) => p * x.value, 1), 12);
+    expect(deathsPerYear(s)).toBeGreaterThan(0);
+    const pop = census(s).pop;
+    expect(soulsEta(s, pop)).toBe(0);
+    expect(etaWords(s, pop)).toBe('');
+    const slow = soulsEta(s, pop + 10)!;
+    expect(slow).toBeGreaterThan(0);
+    const net = arrivalOutlook(s).perDay * B.people.CALL.SOULS + (b.perYear - deathsPerYear(s)) / B.time.YEAR_DAYS;
+    expect(slow).toBe(Math.ceil(10 / net));
+    const years = slow >= 2 * B.time.YEAR_DAYS ? ` (${Math.round(slow / B.time.YEAR_DAYS)} years)` : '';
+    expect(etaWords(s, pop + 10)).toBe(`≈ ${slow.toLocaleString('en-US')} days${years} at today's pace`);
+    // a garden for every home: Rome's favour draws them faster, and the count comes sooner
+    const garden = s.buildings.find((x) => x.type === 'area')!;
+    for (let k = 0; k < derived(s).houses.length; k++) s.buildings.push({ ...garden, id: s.nextId++, type: 'hortus', house: undefined, status: 'done', x: 2 + 3 * k, y: 70 });
+    invalidate(s);
+    expect(soulsEta(s, pop + 10)!).toBeLessThan(slow);
+    // no free bed: no settler and no cradle, while the old still die; the count is never reached
+    for (const x of s.buildings) if (x.house) x.house.tier = 'tentoria';
+    fillBeds(s);
+    expect(census(s).freeBeds).toBe(0);
+    expect(soulsEta(s, census(s).pop + 10)).toBeNull();
+    expect(etaWords(s, census(s).pop + 10)).toBe('no free beds: newcomers turn back');
   });
 
   it('marries, bears children and buries over the years without NaN', () => {

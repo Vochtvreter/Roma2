@@ -181,6 +181,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   economy.ts                       B   the one formula module: production, consumption, storage   (520)
   census.ts                        B   census memo                                                (170)
   people.ts                        B   names, jobs assignment, aging, births, deaths, marriage, immigration (460)
+  settlers.ts                      B   the pace of souls: settlers and births with their factors, the limiter, an ETA to a count (render-time) (150)
   housing.ts                       B   needs, evolution, renovation, decline, goods                (360)
   construction.ts                  B   works queue, stakes, plans, Capitolium                      (300)
   urbs.ts                          U   the growing town: footfall, the town wall, the castrum razed, renewal (DESIGN §3.9) (450)
@@ -859,7 +860,8 @@ export type Remedy =
   | { kind: 'toggleOrdo'; area: OrdoArea; on: boolean }
   | { kind: 'building'; op: 'open' | 'close' | 'prioritise' | 'center'; id: number }
   | { kind: 'open'; tab: TabId; anchor?: string }
-  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId };
+  | { kind: 'overlay'; overlay: OverlayId; layer?: CoverageLayerId }
+  | { kind: 'tool'; tool: Exclude<ToolId, 'pin'> };      // a map tool to start (the Pave brush, DESIGN §6.6)
 
 // ───────────────────────────── results ─────────────────────────────
 export type PlaceFail =
@@ -1179,10 +1181,25 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void;   // 
 export function immigrationDay(s: GameState, ctx: TickContext, rng: Rng): void;   // one Bernoulli roll; roll and beds respected
 export function splendour(s: GameState): number;                     // dignitas of the works the Ordo leaves to the player: gardens, paved streets (DESIGN §6.6)
 export function renownFactor(s: GameState): number;                  // Rome's favour: min(RENOWN.MAX, 1 + RENOWN.K × splendour per home); ×1 for a colony kept by the Ordo alone
+export function favourPaces(s: GameState): number;                   // dirt road paces whose paving would win Rome's favour (the Aedilis's Pave remedy)
+export function arrivalFactors(s: GameState): { rank: number; spirits: number; food: number; water: number; favour: number; edicts: number };   // immigrationChance is their product, in this order
+export function birthFactors(s: GameState): { food: number; spirits: number; favour: number; edicts: number };   // a mother's yearly chance = BIRTH_RATE × these (× bedsFactor, mother by mother)
+export function bedsFactor(free: number): number;                    // births: ≥ 2 free beds 1, 1 → 0.5, else 0
+export function mothersOf(s: GameState): Person[];                    // married women of FERTILE age
+export function ageHazard(age: number): number;                      // annual hazard of an ordinary death, before care (DESIGN §6.5)
 export function makeFamily(s: GameState, rng: Rng, kind: 'couple' | 'craftsman' | 'widow' | 'veteran', gentes: readonly string[]): { family: Family; people: Person[] };
 export function settleFamily(s: GameState, ctx: TickContext, fam: { family: Family; people: Person[] }): boolean;   // house in the most free beds nearest the forum; fx arrive
 export function rehouse(s: GameState): void;
 export function gainSkill(p: Person, skill: SkillId, amount: number): void;   // respects SKILL_MAX and SKILL_LIFETIME
+```
+**`settlers.ts`** — the pace of souls at today's rates (DESIGN §6.6 *The pace, shown*); render-time only, never read by the tick
+```ts
+export function arrivalOutlook(s: GameState): ArrivalOutlook;          // { perDay (= immigrationChance), every, shut: 'roll'|'beds'|null, factors, limiter }
+export function birthOutlook(s: GameState): BirthOutlook;              // { perYear, mothers, factors } (beds at today's free beds)
+export function deathsPerYear(s: GameState): number;                   // ordinary deaths (ageHazard × care) at today's ages
+export function soulsEta(s: GameState, goal: number): number | null;   // days to `goal` souls: settlers to the roll, then births − deaths; 0 reached, null never
+export function limiterLine(s: GameState, a: ArrivalOutlook): string;  // what holds the settlers back most, in words (a shut gate first)
+export function paceWords(a: ArrivalOutlook): string; export function naturalWords(s: GameState): string; export function etaWords(s: GameState, goal: number): string;
 ```
 **`housing.ts`**
 ```ts
@@ -1289,7 +1306,7 @@ export function setSetting(s: GameState, id: SettingId, value: number): ActionRe
 export function setSwitch(s: GameState, id: SwitchId, on: boolean): ActionResult;
 export function renameColony(s: GameState, name: string): ActionResult;
 export function nextPath(s: GameState): PathDecisionId | null;
-export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
+export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean; souls?: number }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
 export function choosePath(s: GameState, decision: PathDecisionId, option: PathOptionId): ActionResult;   // pays fee × fx(petitionFee), records, rankUp, Colonia → startCapitolium; pushActionFx
 export function rankUp(s: GameState, rank: RankIndex): void;          // rings/territory (invalidate), ceremony paving, log, fx rank
 export function isUnlocked(s: GameState, ref: UnlockRef): boolean;
@@ -1370,7 +1387,7 @@ export function unmute(s: GameState, rule: RuleId): ActionResult;
 // advisors/remedies.ts
 export function checkRemedy(s: GameState, r: Remedy): ActionResult;   // never throws; disabled-with-reason
 export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them)
-export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, building:center
+export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, tool, building:center
 export function remedyLabel(s: GameState, r: Remedy): string;
 // advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
 export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
@@ -1991,6 +2008,7 @@ check = checkRemedy(s, r); if (!check.ok) → toast(check.reason, 'bad'); sfx 'e
 place     → startPlacing({ kind: 'building', type: r.building, at: resolvePlaceAt(s, r.building, r.tile) })   // the tile while still valid, else the best slot
 open      → openTab(r.tab, r.anchor)
 overlay   → view.setOverlay(r.overlay, r.layer)
+tool      → startPlacing({ kind: r.tool })                     // the Pave brush (aedilis.favour)
 contract  → prefillContract(r.spec)
 building + op 'center' → focusTile(building tile)
 otherwise → act(applyRemedy(s, r))          // sim remedies run through actions
@@ -2280,7 +2298,7 @@ export class Layout {
 | `map.test.ts` | A | always | 200-seed guarantees, survey geometry, determinism of `getMap` |
 | `placement.test.ts` | A | always | every `canPlace` code in order; plans, stakes, auto-roads, aqueduct |
 | `coverage.test.ts` | A | always | BFS steps, effective radius, desirability |
-| `sim.test.ts` | B | always | opening arithmetic, rationing, hunger/thirst, storage, morale, taxes |
+| `sim.test.ts` | B | always | opening arithmetic, rationing, hunger/thirst, storage, morale, taxes, the settlers' pace and the souls ETA (settlers.ts) |
 | `housing.test.ts` | B | always | evolution, renovation, fork, decline, drop, offline stop |
 | `construction.test.ts` | B | always | queue, stakes, refunds, tools, Capitolium flow |
 | `ordo.test.ts` | C | always (+ `INTEGRATED`) | labour steps, wish list, stakes, saving, emergency ladder, toggles |

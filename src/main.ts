@@ -275,6 +275,7 @@ class App implements Game {
       case 'open': this.openTab(r.tab, r.anchor, 'remedy'); return;
       case 'overlay': this.view.setOverlay(r.overlay, r.layer); return;
       case 'contract': this.prefillContract(r.spec); return;
+      case 'tool': this.startPlacing({ kind: r.tool }); return;
       case 'building':
         if (r.op === 'center') {
           const b = getBuilding(s, r.id);

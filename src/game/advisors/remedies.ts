@@ -1,9 +1,9 @@
 // src/game/advisors/remedies.ts — typed, pre-checked remedies (ARCHITECTURE §8.6, §13.6, DESIGN §11.5). Owner: WP-E.
 // checkRemedy says whether a remedy can run now and, if not, why (the button stays visible, disabled with that reason);
-// applyRemedy runs sim remedies through the frozen action API; UI remedies (place, open, overlay, contract,
+// applyRemedy runs sim remedies through the frozen action API; UI remedies (place, open, overlay, contract, tool,
 // building:center) are executed by App.applyRemedy and only checked here. Nothing here throws.
 import { B as B$ } from '../balance';
-import type { ActionResult, BuildingId, EdictId, FailCode, GameState, LaborCat, OrdoArea, OverlayId, Remedy, TabId } from '../types';
+import type { ActionResult, BuildingId, EdictId, FailCode, GameState, LaborCat, OrdoArea, OverlayId, Remedy, TabId, ToolId } from '../types';
 import * as act from '../actions';
 import { formatRoman as formatRoman$ } from '../calendar';
 import { census } from '../census';
@@ -11,9 +11,9 @@ import { derived as derived$ } from '../derived';
 import { edictOption, edictWindow, isUnlocked, settingValue, switchOn } from '../decisions';
 import { triggerRelief } from '../events';
 import { pushActionFx as pushActionFx$ } from '../memo';
-import { MILESTONES } from '../objectives';
+import { MILESTONES, milestoneUnlocking } from '../objectives';
 import { canPlace, validSlots } from '../place';
-import { overlayRevealed, tabRevealed } from '../reveal';
+import { overlayRevealed, tabRevealed, toolRevealed } from '../reveal';
 import { newCtx, view } from '../sim';
 import { getBuilding as getBuilding$ } from '../lookup';
 import { checkDispatch, hubOpen, price } from '../trade';
@@ -38,10 +38,11 @@ const AREA_WORD: Record<OrdoArea, string> = { labour: 'labour', build: 'construc
 const TAB_WORD: Record<TabId, string> = { council: 'Edicta', advisors: 'Consiliarii', build: 'Aedificia', people: 'Populus', trade: 'Commercium', annals: 'Annales' };
 const ANCHOR_WORD: Record<string, string> = { petition: 'petition', watch: 'Watch', merchant: 'merchant', labour: 'labour', road: 'roads' };
 const OVERLAY_WORD: Record<OverlayId, string> = { none: 'plain', aqua: 'Aqua', domus: 'Domus', officia: 'Officia', desir: 'Dignitas loci', terra: 'Terra' };
+const TOOL_WORD: Record<Exclude<ToolId, 'pin'>, string> = { road: 'Lay a road', pave: 'Pave roads', reserve: 'Keep a block free', demolish: 'Demolish' };
 
-/** UI-executed remedies: place, open, overlay, contract, building:center. */
+/** UI-executed remedies: place, open, overlay, contract, tool, building:center. */
 export function isUiRemedy(r: Remedy): boolean {
-  return r.kind === 'place' || r.kind === 'open' || r.kind === 'overlay' || r.kind === 'contract' || (r.kind === 'building' && r.op === 'center');
+  return r.kind === 'place' || r.kind === 'open' || r.kind === 'overlay' || r.kind === 'contract' || r.kind === 'tool' || (r.kind === 'building' && r.op === 'center');
 }
 
 /** Whether a remedy can be applied now; never throws (a failure carries its reason for the disabled button). */
@@ -105,6 +106,7 @@ function check(s: GameState, r: Remedy): ActionResult {
     }
     case 'open': return tabRevealed(s, r.tab) ? OK : fail('locked', `${TAB_WORD[r.tab]} is not yet open to us.`);
     case 'overlay': return overlayRevealed(s, r.overlay) ? OK : fail('locked', `The ${OVERLAY_WORD[r.overlay]} overlay is not yet revealed.`);
+    case 'tool': return checkTool(s, r.tool);
   }
 }
 
@@ -146,6 +148,17 @@ function checkPlace(s: GameState, type: BuildingId, tile?: number): ActionResult
     if (c.ok) return OK;
   }
   return validSlots(s, type, 'player').size > 0 ? OK : fail('noSlots', `No site can take ${aName(type)} yet.`);
+}
+
+/** A map tool, once its milestone reveals it; the Pave brush wants a dirt road and the stone for a pace. */
+function checkTool(s: GameState, t: Exclude<ToolId, 'pin'>): ActionResult {
+  if (!TOOL_WORD[t]) return fail('invalid', 'No such tool.');
+  if (!toolRevealed(s, t)) return fail('locked', unlockReason(milestoneUnlocking({ kind: 'tool', id: t })?.id ?? ''));
+  if (t !== 'pave') return OK;
+  const road = derived(s).road;
+  if (!s.roads.some((i) => road[i] === 1)) return fail('invalid', 'Every road is already paved.');
+  const need = B.map.PAVE_STONE;
+  return s.res.stone < need ? fail('unaffordable', `Paving takes ${need} stone a pace; the stores hold ${int(s.res.stone)}.`) : OK;
 }
 
 function checkPriority(s: GameState, cat: LaborCat, n: number): ActionResult {
@@ -266,5 +279,6 @@ function label(s: GameState, r: Remedy): string {
       if (r.anchor?.startsWith('contract-')) return 'Open the contract';
       return `Open ${TAB_WORD[r.tab]}${r.anchor ? `: ${ANCHOR_WORD[r.anchor] ?? r.anchor}` : ''}`;
     case 'overlay': return `Show the ${OVERLAY_WORD[r.overlay]} overlay`;
+    case 'tool': return r.tool === 'pave' ? `${TOOL_WORD.pave} (${B.map.PAVE_STONE} stone a pace)` : TOOL_WORD[r.tool];
   }
 }
