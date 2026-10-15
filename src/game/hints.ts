@@ -63,7 +63,8 @@ function bestSeason(type: BuildingId): string {
   return q[k] !== 1 ? `, best in ${SEASON_NAMES[k]} (×${num(q[k])})` : '';
 }
 
-/** Ways to get more of a resource: producers from the registry, markets that sell it, idle forage, and a live line. */
+/** Ways to get more of a resource: producers from the registry, markets that sell it, idle forage or a road felling the
+ *  woods, and a live line. */
 export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
   const out: string[] = [];
   let main: BuildingId | null = null;
@@ -79,6 +80,8 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     }
   }
   if (res === 'grain') out.push(`Idle hands forage ${num(B.economy.IDLE_FORAGE)} a day each.`);
+  // a road is free and fells the woods it crosses into the stores (place.ts buildRoad, DESIGN §3.7)
+  if (res === 'timber') out.push(`Lay a road through the woods (free): the felled trees go to the stores, up to ${B.map.WOOD_DENSE} timber a pace.`);
   if (res === 'denarii') out.push(...coinLines(s));
   if ((TRADE_RES as readonly string[]).includes(res)) {
     const tr = res as TradeRes;

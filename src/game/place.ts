@@ -12,7 +12,7 @@ import { dayLayout as dayLayout$, invalidate as invalidate$, layoutEpoch as layo
 import { addCost, canAfford, log, missing, nextId, pay, refund, scaleCost } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
 import { cancelSite } from './construction';
-import { buildingRate } from './economy';
+import { buildingRate, caps } from './economy';
 import { seasonOf as seasonOf$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { siteMultAt } from './site';
@@ -434,11 +434,30 @@ export function buildRoad(s: GameState, tiles: number[]): ActionResult {
     add.push(i);
   }
   if (add.length === 0) return { ok: true };
+  const over = fellingSpill(s, standingTimber(s, add));
   const timber = fell(s, add);
   s.roads = mergeSorted(s.roads, add);
-  log(s, 'build', `A road of ${add.length} ${add.length === 1 ? 'pace' : 'paces'} is laid${timber > 0 ? `; ${Math.round(timber)} timber cleared` : ''}.`);
+  const spills = over.spill >= 1 ? `, but the stores hold ${Math.round(over.cap)}: ${Math.round(over.spill)} spills` : '';
+  log(s, 'build', `A road of ${add.length} ${add.length === 1 ? 'pace' : 'paces'} is laid${timber > 0 ? `; ${Math.round(timber)} timber cleared${spills}` : ''}.`);
   invalidate(s);
   return { ok: true };
+}
+
+/** A road drag's preview (the road tool's label; pure): the paces it would add and the timber their felling brings. */
+export function roadPreview(s: GameState, tiles: readonly number[]): { paces: number; fell: number } {
+  const d = derived(s);
+  const add = [...new Set(tiles)].filter((i) => Number.isInteger(i) && i >= 0 && i < GN && d.road[i] === 0);
+  return { paces: add.length, fell: standingTimber(s, add) };
+}
+
+/** A felling against the timber stores (DESIGN §3.7, §8.6): they keep their cap and what lies over it spills at the
+ *  day's end. `spill` is the part of the yield `fell` that would; `most` when more would spill than be kept; `words`
+ *  "the stores hold 300", with ": 380 would spill" when some would (the previews of a road drag and a work's felling). */
+export function fellingSpill(s: GameState, fell: number): { cap: number; spill: number; most: boolean; words: string } {
+  const cap = caps(s).timber;
+  const spill = Math.min(fell, Math.max(0, s.res.timber + fell - cap));
+  const words = `the stores hold ${Math.round(cap)}${spill >= 1 ? `: ${Math.round(spill)} would spill` : ''}`;
+  return { cap, spill, most: spill >= 1 && spill > fell - spill, words };
 }
 
 /** Paves built dirt road tiles with stone (B.map.PAVE_STONE each). */

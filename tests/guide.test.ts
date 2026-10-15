@@ -371,6 +371,13 @@ describe('hints', () => {
     for (let k = 0; k < 6; k++) s.buildings.push({ ...ager[0], id: 9000 + k });   // seven fields: "raise an 8th"
     expect(howToGetMore(s, 'grain', view(s)).some((l) => / raise an 8th \(/.test(l))).toBe(true);
   });
+  it('teaches timber from the woods a free road fells (§3.7)', () => {
+    const s = run(fresh(42), 2);
+    const lines = howToGetMore(s, 'timber', view(s));
+    expect(lines[0]).toMatch(/^Lumber camp: /);
+    expect(lines).toContain('Lay a road through the woods (free): the felled trees go to the stores, up to 100 timber a pace.');
+    expect(howToGetMore(s, 'stone', view(s)).join(' ')).not.toMatch(/road through the woods/);
+  });
   it('says when a full store\'s building is not yet granted (R03)', () => {
     const s = run(fresh(42), 2);
     s.res.timber = 300;

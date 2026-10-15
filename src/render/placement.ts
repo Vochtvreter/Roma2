@@ -6,7 +6,7 @@
 import type { BuildingId, CoverageLayerId, GameState, PlaceCheck, Rect, SeasonIndex } from '../game/types';
 import { H, W, getMap, idx, inBounds } from '../game/map';
 import { T } from '../game/types';
-import { canPlace, snapSlot, validSlots } from '../game/place';
+import { canPlace, fellingSpill, roadPreview, snapSlot, validSlots } from '../game/place';
 import { bestSlot } from '../game/site';
 import { blockOfTile, classAt, derived, sizeOf } from '../game/derived';
 import { previewCoverage, previewDesir } from '../game/coverage';
@@ -243,7 +243,8 @@ export class Placement {
     }
   }
 
-  /** Over-layer (step 8): the ghost, verdict, bonus, felling yield, laurel, ↑ over houses that could evolve, costs. */
+  /** Over-layer (step 8): the ghost, verdict, bonus, felling yield (and its spill), laurel, ↑ over houses that could evolve,
+   *  costs; a road drag's paces and felling. */
   drawOver(g: CanvasRenderingContext2D, s: GameState, time: number, season: SeasonIndex, ins: Insets = NO_INSETS): void {
     const p = this.state;
     if (!p) return;
@@ -261,11 +262,20 @@ export class Placement {
         g.globalAlpha = 1;
       }
       this.ghost(g, s, p.type, time, season, ins);
-    } else if ((p.kind === 'road' || p.kind === 'pave') && this.path?.length) {
+    } else if (p.kind === 'road' && this.path?.length) {
+      // a road over woods fells them into the stores: what it brings, what they hold, ember when most would spill
+      const last = this.path[this.path.length - 1], x = (last % W) * TILE + 8;
+      const r = roadPreview(s, this.path);
+      let y = Math.floor(last / W) * TILE - 8;
+      if (r.fell >= 1) {
+        const f = fellingSpill(s, r.fell);
+        y -= label(g, f.words, x, y, f.most ? C.ember : C.white, ins);
+      }
+      label(g, `${r.paces} new · free${r.fell >= 1 ? ` · fells ${Math.round(r.fell)} timber` : ''}`, x, y, C.white, ins);
+    } else if (p.kind === 'pave' && this.path?.length) {
       const d = derived(s), last = this.path[this.path.length - 1];
-      const n = this.path.filter((t) => (p.kind === 'road' ? d.road[t] === 0 : d.road[t] === 1)).length;
-      const text = p.kind === 'road' ? `${n} new · free` : `${n} × ${B.map.PAVE_STONE} stone`;
-      label(g, text, (last % W) * TILE + 8, Math.floor(last / W) * TILE - 8, C.white, ins);
+      const n = this.path.filter((t) => d.road[t] === 1).length;
+      label(g, `${n} × ${B.map.PAVE_STONE} stone`, (last % W) * TILE + 8, Math.floor(last / W) * TILE - 8, C.white, ins);
     } else if (this.hoverTile !== null && p.kind === 'demolish') {
       const id = derived(s).buildingAt[this.hoverTile];
       const b = id ? s.buildings.find((x) => x.id === id) : undefined;
@@ -297,7 +307,11 @@ export class Placement {
       return;
     }
     if (c.mult >= GOLD_MULT) y -= label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold, ins);
-    if (c.fell > 0) y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
+    if (c.fell > 0) {
+      const f = fellingSpill(s, c.fell);   // most of the felling over the stores' cap: the warning under its yield
+      if (f.most) y -= label(g, f.words, cx, y, C.ember, ins);
+      y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
+    }
     if (c.route?.length) y -= label(g, `~${c.route.length} arches from the spring`, cx, y, C.spring, ins);
     const home = this.state?.kind === 'building' ? this.state.home : undefined, reach = this.preview?.home;
     if (home && reach !== undefined) {

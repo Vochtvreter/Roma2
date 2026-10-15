@@ -5,13 +5,13 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDINGS, F, T } from '../src/game/types';
 import type { Building, BuildingId, GameState, Owner, PlaceFail, PlaceOpts, RankIndex } from '../src/game/types';
-import { H, W, getMap, idx, tx, ty } from '../src/game/map';
+import { H, W, getMap, idx, tx, ty, woodAt } from '../src/game/map';
 import { WALL_RING, blockStreets, isActiveBlock, isFutureBlock, plotOrigin } from '../src/game/survey';
 import { classAt, derived, sizeOf } from '../src/game/derived';
 import { invalidate, structEpoch } from '../src/game/memo';
 import {
-  buildRoad, canPlace, demolish, pave, paveVia, placeBuilding, placementCost, roadPathFor, routeAqueduct,
-  streetsForBlock, toggleReserveBlock, validSlots,
+  buildRoad, canPlace, demolish, fellingSpill, pave, paveVia, placeBuilding, placementCost, roadPathFor, roadPreview,
+  routeAqueduct, streetsForBlock, toggleReserveBlock, validSlots,
 } from '../src/game/place';
 import { bestSlot, resolvePlaceAt, siteMultAt, siteScore } from '../src/game/site';
 import { fx } from '../src/game/fx';
@@ -416,6 +416,38 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     expect(buildRoad(s, [river])).toEqual({ ok: false, code: 'water', reason: 'The river.' });
     const lucus = [...Array(N).keys()].find((i) => map.feature[i] === F.lucus)!;
     expect(buildRoad(s, [lucus]).ok).toBe(false);
+  });
+
+  it('fells the woods a road crosses into the stores, and says what the stores hold and what would spill (§3.7)', () => {
+    const s = fresh(42);
+    const d = derived(s);
+    // three wooded paces in a row the road tool may lay: in the territory, outside the pomerium, nothing on them
+    const free = (i: number): boolean => woodAt(s, i) > 0 && d.territory[i] === 1 && d.pomerium[i] === 0 && d.buildingAt[i] === 0 && d.road[i] === 0;
+    const path = [...Array(N).keys()].map((i) => [i, i + 1, i + 2])
+      .find((p) => ty(p[0]) === ty(p[2]) && p.every(free) && buildRoad(structuredClone(s), p).ok)!;
+    expect(path).toBeDefined();
+    const fell = path.reduce((a, i) => a + woodAt(s, i), 0);
+    expect(fell).toBeGreaterThan(20);
+    expect(roadPreview(s, [...path, path[0]])).toEqual({ paces: 3, fell });
+    // room for it all: the drag names the stores' cap, nothing spills
+    s.res.timber = 0;
+    expect(fellingSpill(s, fell)).toEqual({ cap: 300, spill: 0, most: false, words: 'the stores hold 300' });
+    // half of it over the cap is not yet most of it
+    s.res.timber = 300 - fell / 2;
+    expect(fellingSpill(s, fell)).toMatchObject({ spill: fell / 2, most: false });
+    // the stores nearly full: most of it would spill, and the road's log line says so
+    s.res.timber = 290;
+    const f = fellingSpill(s, fell);
+    expect(f).toMatchObject({ cap: 300, most: true });
+    expect(f.spill).toBeCloseTo(fell - 10, 9);
+    expect(f.words).toBe(`the stores hold 300: ${Math.round(fell - 10)} would spill`);
+    expect(buildRoad(s, path).ok).toBe(true);
+    expect(s.log.at(-1)?.text).toBe(`A road of 3 paces is laid; ${Math.round(fell)} timber cleared, but the stores hold 300: ${Math.round(fell - 10)} spills.`);
+    expect(s.res.timber).toBeCloseTo(290 + fell, 9);
+    for (const i of path) expect(woodAt(s, i)).toBe(0);
+    expect(roadPreview(s, path)).toEqual({ paces: 0, fell: 0 });
+    run(s, 1);
+    expect(s.res.timber).toBeLessThanOrEqual(300);                    // the rest spilled at the day's end
   });
 
   it('paves dirt roads for two stone a pace', () => {
