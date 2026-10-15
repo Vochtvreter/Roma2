@@ -222,7 +222,7 @@ const evolve: CadencedRule = {
       const b = r.why === 'rising' && r.up !== undefined ? getBuilding(s, r.up) : undefined;
       if (b) return `${head}. ${cap1(aName(b.type))} already rises ${placeName(s, idx(b.x, b.y))}: once it stands, a block near them can be cleared for another.`;
       if (r.why === 'gain') return `${head}, and no block near them is worth clearing: each would let too few of them rise for the homes and works it pulls down.`;
-      if (r.why === 'works') return `${head}: the blocks near them hold what must stand (a granary, a warehouse, a civic work, or the shrine, shop or well they need), or are blocks you keep free.`;
+      if (r.why === 'works') return `${head}: the blocks near them hold what must stand (a granary, a warehouse, a civic work, or the shrine, shop or well they or their neighbours need), or are blocks you keep free.`;
       return `${head}, and no block of the town that could take one lies within reach of them.`;
     }
     if (r.idle) return `${idleHead(s, r.idle)}: ${r.k > 0 ? `staffed, it would let ${r.k} of them grow` : 'put hands on it before raising another'}.`;
@@ -388,13 +388,15 @@ const morale: AdvisorRule = {
 // a garden, the Pave brush where paving would raise the favour, the Urbs focus.
 
 /** The dirt road paces whose paving Rome marks that would lift the favour furthest (all of them, or as many as reach
- *  ×MAX), and the favour then; k 0 when the brush is not yet ours or nothing is left to pave. */
+ *  ×MAX), and the favour then; k 0 when the brush is not yet ours, nothing is left to pave, or the raise is no more than
+ *  PAVE_GAIN (a few paces among many homes). The text names the raise and the Pave remedy follows it: never one alone. */
 function paved(s: GameState, f: number): { k: number; to: number } {
   const R = B.people.RENOWN;
   if (!toolRevealed(s, 'pave') || f >= R.MAX) return { k: 0, to: f };
   const homes = Math.max(1, derived(s).houses.length), per = (R.K * B.dignitas.ROADS) / homes;   // the favour a pace adds
-  const k = Math.min(favourPaces(s), Math.ceil((R.MAX - (1 + (R.K * splendour(s)) / homes)) / per - 1e-9));
-  return { k: Math.max(0, k), to: Math.min(R.MAX, 1 + (R.K * splendour(s)) / homes + per * Math.max(0, k)) };
+  const k = Math.max(0, Math.min(favourPaces(s), Math.ceil((R.MAX - (1 + (R.K * splendour(s)) / homes)) / per - 1e-9)));
+  const to = Math.min(R.MAX, 1 + (R.K * splendour(s)) / homes + per * k);
+  return k > 0 && to > f + B.advisors.RULES.PAVE_GAIN ? { k, to } : { k: 0, to: f };
 }
 
 const favour: AdvisorRule = {
@@ -415,7 +417,7 @@ const favour: AdvisorRule = {
     const first = a.shut === null && a.limiter?.id === 'favour' ? '' : `${limiterLine(s, a)} `;
     const stands = first ? `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX} as well` : `Rome's favour stands at ${favourTimes(f)} of ×${B.people.RENOWN.MAX}`;
     const p = paved(s, f);
-    const pave = p.k > 0 && p.to > f + 0.05 ? ` Paving ${int(p.k)} ${p.k === 1 ? 'pace' : 'paces'} of our dirt roads (${int(p.k * B.map.PAVE_STONE)} stone) would raise it to ${favourTimes(p.to)}.` : '';
+    const pave = p.k > 0 ? ` Paving ${int(p.k)} ${p.k === 1 ? 'pace' : 'paces'} of our dirt roads (${int(p.k * B.map.PAVE_STONE)} stone) would raise it to ${favourTimes(p.to)}.` : '';
     return `${first}${stands}: gardens and paved streets among the homes draw settlers faster; the Ordo raises neither unless you set the Urbs focus, and then it plants gardens on free plots among the homes.${pave}`;
   },
   remedies(s) {

@@ -440,7 +440,7 @@ export function buildRoad(s: GameState, tiles: number[]): ActionResult {
   const over = fellingSpill(s, standingTimber(s, add));
   const timber = fell(s, add);
   s.roads = mergeSorted(s.roads, add);
-  const spills = over.spill >= 1 ? `, but the stores hold ${Math.round(over.cap)}: ${Math.round(over.spill)} spills` : '';
+  const spills = over.spill >= 1 ? `, but the stores hold ${Math.round(over.cap)}: ${Math.round(over.spill)} would spill at the day's end` : '';
   log(s, 'build', `A road of ${add.length} ${add.length === 1 ? 'pace' : 'paces'} is laid${timber > 0 ? `; ${Math.round(timber)} timber cleared${spills}` : ''}.`);
   invalidate(s);
   return { ok: true };
@@ -454,13 +454,20 @@ export function roadPreview(s: GameState, tiles: readonly number[]): { paces: nu
 }
 
 /** A felling against the timber stores (DESIGN §3.7, §8.6): they keep their cap and what lies over it spills at the
- *  day's end. `spill` is the part of the yield `fell` that would; `most` when more would spill than be kept; `words`
- *  "the stores hold 300", with ": 380 would spill" when some would (the previews of a road drag and a work's felling). */
-export function fellingSpill(s: GameState, fell: number): { cap: number; spill: number; most: boolean; words: string } {
+ *  day's end. `spend`: the timber paid out before the felling (a work's cost, which placeBuilding pays first). `spill`
+ *  is the part of the yield `fell` that would; `most` when more would spill than be kept; `words` "the stores hold
+ *  300", with ": 380 would spill" when some would (the previews of a road drag and a work's felling). */
+export function fellingSpill(s: GameState, fell: number, spend = 0): { cap: number; spill: number; most: boolean; words: string } {
   const cap = caps(s).timber;
-  const spill = Math.min(fell, Math.max(0, s.res.timber + fell - cap));
+  const spill = Math.min(fell, Math.max(0, s.res.timber - spend + fell - cap));
   const words = `the stores hold ${Math.round(cap)}${spill >= 1 ? `: ${Math.round(spill)} would spill` : ''}`;
   return { cap, spill, most: spill >= 1 && spill > fell - spill, words };
+}
+
+/** The timber a player's placement pays out before it fells (placeBuilding pays, then clears the land): its cost's
+ *  timber when the stores cover the cost, none for a plan (paid later) or a Move (the stake's cost returns first). */
+export function fellSpend(s: GameState, chk: PlaceCheck, replaceId?: number): number {
+  return chk.ok && replaceId === undefined && canAfford(s, chk.cost) ? chk.cost.timber ?? 0 : 0;
 }
 
 /** Paves built dirt road tiles with stone (B.map.PAVE_STONE each). */

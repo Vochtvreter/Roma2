@@ -1105,6 +1105,7 @@ export function roadNeighbors(s: GameState, b: Building): number[];   // built r
 **`coverage.ts`**
 ```ts
 export function effectiveRadius(s: GameState, b: Building, layer: CoverageLayerId): number;   // DESIGN §5.2 activity rule + fxAdd radius bonuses; 0 when inactive/unpaid-halved
+export function fullReachHands(type: BuildingId): number;             // the hands of a service's full radius: ceil(base slots × SERVICE_FULL), whatever a rank adds (a well from the Oppidum: 1 of 4)
 export function coverage(s: GameState): Coverage;                     // BFS per layer over built roads; memo on structEpoch + effective-radius key
 export function houseHas(s: GameState, houseId: number, layer: CoverageLayerId): boolean;
 export function previewCoverage(s: GameState, type: BuildingId, x: number, y: number): { layer: CoverageLayerId; tiles: Uint8Array; houses: number[] }[];   // as if built and fully staffed
@@ -1138,9 +1139,10 @@ export function canPlace(s: GameState, type: BuildingId, tile: number, opts?: Pl
 export function validSlots(s: GameState, type: BuildingId, owner: Owner): Map<number, number>;   // origin tile → mult; memo on type+owner+structEpoch
 export function placeBuilding(s: GameState, type: BuildingId, tile: number, opts?: PlaceOpts): ActionResult;
 export function demolish(s: GameState, id: number): ActionResult;
-export function buildRoad(s: GameState, tiles: number[]): ActionResult;           // fells the woods it crosses; the log says what spills
+export function buildRoad(s: GameState, tiles: number[]): ActionResult;           // fells the woods it crosses; the log says what would spill at the day's end
 export function roadPreview(s: GameState, tiles: readonly number[]): { paces: number; fell: number };   // a road drag's new paces and felling yield
-export function fellingSpill(s: GameState, fell: number): { cap: number; spill: number; most: boolean; words: string };   // a felling against the timber cap (DESIGN §3.7)
+export function fellingSpill(s: GameState, fell: number, spend?: number): { cap: number; spill: number; most: boolean; words: string };   // a felling against the timber cap, `spend` paid out first (DESIGN §3.7)
+export function fellSpend(s: GameState, chk: PlaceCheck, replaceId?: number): number;   // the timber a player's placement pays before it fells: its cost's when affordable, 0 for a plan or a Move
 export function pave(s: GameState, tiles: number[]): ActionResult;
 export function toggleReserveBlock(s: GameState, blockId: number): ActionResult;
 export function roadPathFor(s: GameState, footprint: number[]): number[] | null;   // new tiles only
@@ -1454,7 +1456,7 @@ export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: rea
 export function blockWorks(s: GameState, tile: number): number[] | null;   // what the advice may pull down on a block (homes, plot works); null if anything else stands there
 export function worksWord(s: GameState, ids: readonly number[]): string;   // what stands there in words: "2 gardens and a well"
 export function risingReach(s: GameState, need: NeedId): ReadonlyMap<number, number>;   // house → the work answering `need`, still rising, that will reach it (they wait for it: no second one advised)
-export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null;   // manual labour: a finished work answering the need that stands short of hands (a service serving one of `ids`, a grove, a grain work), with the hands its target lacks; its remedy (staffRemedy: assign) comes before a work to place (DESIGN §11.5)
+export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly number[]): IdleWork | null;   // manual labour: a finished work answering the need that stands short of hands (a service below `fullReachHands` serving one of `ids`, a grove, a grain work), with the hands its target lacks; its remedy (staffRemedy: assign) comes before a work to place (DESIGN §11.5)
 // guide.ts
 export const GUIDE: GuideStep[];                                      // DESIGN §11.7 in priority order
 export function pruneGuide(s: GameState): void;
@@ -1700,7 +1702,7 @@ frame pays the minimap's held-back redraw (`Minimap.pending`) and bakes an off-s
 5. **Y-sorted objects** (by footprint bottom, then x): buildings and houses (via `buildingSprite`), walls and gates, aqueduct spans, trees/stumps/rocks/reeds/ruins, walkers and carts.
 6. **Status marks** above objects: scaffolds and `rise()`, cracked plaster (declining), CLAVSVM plank (closed), unpaid coin, unstaffed pip, Ordo seal on fresh Ordo sites, plan ⌛, want cues (level ≥ 2 only; the first unmet need): a want pip (≤ 8 px, in the colour of the need's icon) inside every wanting house's own roof box, and the full want bubble only over the selected or hovered house (a bubble over every house covers the facade of the house to its north); no want cues while the Domus overlay shows them; ↑ arrows during placement. Then the overlay's marks: houses tinted and outlined in their overlay colour over their sprites (Domus, Aqua), the want icon of one-need houses, ✕ on dry houses, red rings on unstaffed services.
 7. **Particles and floating text**.
-8. **Placement ghost**: sprite at 60% alpha snapped to the slot, red tint + ✕ when invalid, gold *+NN%* when `mult ≥ 1.05`, felling yield (with `fellingSpill`'s words in ember when most of it would spill over the timber cap), laurel marker on the Ordo's best slot.
+8. **Placement ghost**: sprite at 60% alpha snapped to the slot, red tint + ✕ when invalid, gold *+NN%* when `mult ≥ 1.05`, felling yield (with `fellingSpill`'s words in ember when most of it would spill over the timber cap once the work's own timber is paid, `fellSpend`), laurel marker on the Ordo's best slot.
 9. **Selection/hover outlines** and `flash()` rectangles.
 
 Culling: tiles and objects outside `visibleTiles(margin 4)` are skipped. Budget: ≤ 6 ms per frame at 1,100 × 800, level 2, 600 buildings, 220 walkers.
@@ -2091,7 +2093,7 @@ otherwise → act(applyRemedy(s, r))          // sim remedies run through action
 ### 13.7 FxEvent → UI (`UI.onFx`, H)
 | FxEvent | UI |
 |---|---|
-| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with **+N** (`setManualTarget`) |
+| `built` | `toastBatch('built', n => n === 1 ? '{Name} finished' : n + ' works finished')`, sfx `build`; under manual labour a work whose category target does not reach it (`tabs/labour.finishedStaffing`) gets its own toast instead, *"{Name} finished: 0/4 hands"* with **+N** (`setManualTarget` to the target it named, `to`, or a higher one set since) |
 | `evolved` | `toastBatch('evolved', …)`, sfx `tink` (batched) |
 | `milestone` | gold toast *"Res Gestae: {text}"* + unlock line, sfx `lyre` |
 | `rank` | rank banner 8 s, sfx `cornu` |

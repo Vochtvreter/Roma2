@@ -16,7 +16,7 @@ import { getBuilding as getBuilding$, getPerson as getPerson$ } from '../lookup'
 import { crowds, nextTier, shownWant, unmetNeeds } from '../housing';
 import { hubOpen, price, tripDays } from '../trade';
 import { validSlots } from '../place';
-import { houseDesir, previewCovered, previewDesir, previewSteps } from '../coverage';
+import { fullReachHands, houseDesir, previewCovered, previewDesir, previewSteps } from '../coverage';
 import { siteScore } from '../site';
 import { classAt, derived, sizeOf } from '../derived';
 import { isActiveBlock, isRazed } from '../survey';
@@ -417,10 +417,10 @@ export function blockWorks(s: GameState, tile: number): number[] | null {
 
 /** The block to clear for `type`, a block service, that best serves the houses `ids` waiting for it (`need`) when no
  *  free block can (DESIGN §11.6 row 17): an active block, not one the player keeps free, holding only what blockWorks
- *  may pull down and not the only works that bring one of those houses another need of its next tier (its shrine, its
- *  shop row, its well: it would decline instead of rising), where the site rule allows `type`; the most of the waiting
- *  houses served less the homes pulled down (at least CLEAR_GAIN), then the fewest souls moved, then the fewest works
- *  pulled down, then the lowest tile. With none, `why` names what kept the blocks within reach (gain over works over
+ *  may pull down and not the only works that bring a house a need (its shrine, its shop row, its well): one of those
+ *  houses another need of its next tier (it would decline instead of rising), any other house one of its own tier (it
+ *  would decline), where the site rule allows `type`; the most of the waiting houses served less the homes pulled
+ *  down (at least CLEAR_GAIN), then the fewest souls moved, then the fewest works pulled down, then the lowest tile. With none, `why` names what kept the blocks within reach (gain over works over
  *  far). Only blocks within the service's reach + 2 of a waiting house are previewed (as serveSlot). Memo on the
  *  structure, the homes, the rank, the kept blocks, the radius bonuses and the arguments. */
 export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: readonly number[]): { site: ClearSite | null; why: ClearWhy } {
@@ -441,22 +441,30 @@ export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: rea
       waiting.push({ x: b.x, y: b.y, w, h });
     }
     const reach = Math.max(...svc.map((x, k) => x.radius + bonus[k])) + 2;
-    // the works whose service reaches each waiting house, per layer, and the needs of its next tier they answer
-    const covers = new Map<string, number[]>();
+    // the works whose service reaches each house, per layer, and the houses each work reaches
+    const covers = new Map<string, number[]>(), reaches = new Map<number, Set<number>>();
     for (const b of s.buildings) {
       if (b.status !== 'done' || !BUILDING_DEFS[b.type].service) continue;
+      const mine = new Set<number>();
       for (const p of previewCovered(s, b.type, b.x, b.y)) for (const h of p.houses) {
-        if (!want.has(h)) continue;
+        mine.add(h);
         const l = covers.get(`${p.layer}:${h}`);
         if (l) l.push(b.id); else covers.set(`${p.layer}:${h}`, [b.id]);
       }
+      reaches.set(b.id, mine);
     }
-    const others = new Map<number, NeedId[]>();
-    for (const id of ids) {
-      const b = getBuilding(s, id);
-      const next = b ? nextTier(s, b) : null;
-      others.set(id, next ? TIER_DEFS[next].needs.filter((n) => n !== need && ANSWERS[n]) : []);
-    }
+    // the covered needs a house must keep: a waiting one the others of its next tier (or it would decline, not rise),
+    // any other house those of its own tier (or it would decline)
+    const kept = new Map<number, NeedId[]>();
+    const keeps = (h: number): NeedId[] => {
+      let k = kept.get(h);
+      if (k) return k;
+      const b = getBuilding(s, h);
+      const tier = !b?.house ? null : want.has(h) ? nextTier(s, b) : b.house.tier;
+      k = tier ? TIER_DEFS[tier].needs.filter((n) => (n !== need || !want.has(h)) && ANSWERS[n]) : [];
+      kept.set(h, k);
+      return k;
+    };
     let best: (ClearSite & { gain: number }) | null = null;
     let why: ClearWhy = 'far';
     const note = (w: ClearWhy): void => { if (WHY_RANK[w] > WHY_RANK[why]) why = w; };
@@ -470,19 +478,21 @@ export function clearSite(s: GameState, type: BuildingId, need: NeedId, ids: rea
       const gone = new Set(pull ?? []);
       const served = new Set<number>(), brings = new Map<number, Set<string>>();   // what the work brings them from here
       for (const p of previewCovered(s, type, blk.x, blk.y)) for (const h of p.houses) {
-        if (!want.has(h) || gone.has(h)) continue;
-        if (layers.includes(p.layer)) served.add(h);
+        if (gone.has(h)) continue;
+        if (want.has(h) && layers.includes(p.layer)) served.add(h);
         const got = brings.get(h);
         if (got) got.add(p.layer); else brings.set(h, new Set([p.layer]));
       }
       const k = served.size;
       if (k === 0) continue;
-      // a waiting house would lose a need when every work bringing it stands on the block and the new work does not
-      const takes = (): boolean => ids.some((h) => !gone.has(h) && (others.get(h) ?? []).some((n) => {
+      // a house a work on the block reaches would lose a need it must keep when every work bringing it stands on the
+      // block and the new work does not: a waiting one would decline instead of rising, any other would decline
+      const loses = (h: number): boolean => !gone.has(h) && keeps(h).some((n) => {
         const ls = ANSWERS[n] ?? [];
         const by = ls.flatMap((l) => covers.get(`${l}:${h}`) ?? []);
         return by.length > 0 && by.every((id) => gone.has(id)) && !ls.some((l) => brings.get(h)?.has(l));
-      }));
+      });
+      const takes = (): boolean => [...gone].some((id) => [...(reaches.get(id) ?? [])].some(loses));
       if (!pull || takes()) { note('works'); continue; }
       let homes = 0, souls = 0;
       for (const id of pull) if (getBuilding(s, id)?.house) { homes++; souls += byHome.get(id)?.length ?? 0; }
@@ -540,7 +550,7 @@ export function idleFor(s: GameState, v: SimView, need: NeedId, ids: readonly nu
     let k = 0, hands = slots;
     if (layers) {
       if (!def.service?.some((x) => layers.includes(x.layer))) continue;
-      hands = Math.ceil(slots * B.economy.SERVICE_FULL);   // a service reaches its full radius at half its posts
+      hands = fullReachHands(b.type);   // a service reaches its full radius at half its base posts (coverage.radiusWith)
       if (have >= hands) continue;
       const served = new Set<number>();
       for (const p of previewCovered(s, b.type, b.x, b.y)) if (layers.includes(p.layer)) for (const h of p.houses) if (want.has(h)) served.add(h);

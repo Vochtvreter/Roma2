@@ -39,12 +39,13 @@ import { Rng } from '../src/game/rng';
 import { invalidate, touchPeople } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
-import { bestFood, blockWorks, clearSite, int, serveSlot } from '../src/game/advisors/util';
+import { bestFood, blockWorks, clearSite, idleFor, int, serveSlot } from '../src/game/advisors/util';
 import { favourPaces, immigrationChance, renownFactor } from '../src/game/people';
 import { canPlace, placeBuilding, validSlots } from '../src/game/place';
 import { getMap, tx, ty } from '../src/game/map';
 import { census, residents } from '../src/game/census';
-import { houseHas, previewCovered } from '../src/game/coverage';
+import { effectiveRadius, fullReachHands, houseHas, previewCovered } from '../src/game/coverage';
+import { BUILDING_DEFS, slotsOf } from '../src/game/data/buildings';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
 type Setup = (s: GameState) => Patch | void;
@@ -462,6 +463,27 @@ describe('a block to clear for the work the homes wait for (playtest #2, DESIGN 
     expect(next.ids).not.toContain(shop.id);
   });
 
+  it('never pulls down the only shop row (shrine, well) of a home that does not wait: it would decline', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    for (const b of houses(s)) b.house!.tier = 'tegulata';              // a tiled cottage needs a market already
+    invalidate(s);
+    fill(s, 'hortus');
+    const first = clearSite(s, 'templum', 'temple', waiting(s)).site!;
+    // the garden there gives way to the town's one shop row, the only market of the homes it reaches; those homes are
+    // left out of the waiting group, so only the others are asked about
+    s.buildings = s.buildings.filter((b) => b.id !== first.ids[0]);
+    const shop = put(s, 'taberna', tx(first.tile), ty(first.tile));
+    const served = previewCovered(s, 'taberna', shop.x, shop.y).find((p) => p.layer === 'market')?.houses ?? [];
+    const others = waiting(s).filter((id) => served.includes(id));
+    expect(others.length).toBeGreaterThan(0);
+    const ids = waiting(s).filter((id) => !others.includes(id));
+    const next = clearSite(s, 'templum', 'temple', ids).site!;
+    expect(next).not.toBeNull();
+    expect(next.tile).not.toBe(first.tile);
+    expect(next.ids).not.toContain(shop.id);
+  });
+
   it('when no block may be cleared the Nota says why; a work with no site says why too', () => {
     const s = base();
     wait(s);
@@ -531,19 +553,54 @@ describe('staffing by hand: hands before another work (finding 11)', () => {
     expect(render(s, 'aquarum.access').remedies[0].remedy.kind).not.toBe('assign');
   });
 
+  it('from the Oppidum a well has 4 posts but its full reach at 1 hand: 1 is asked, not 2, and a well with it is not short', () => {
+    const s = base();
+    byHand(s);
+    s.rank = 2;
+    setTier(s, 'tentoria');
+    invalidate(s);
+    const well = s.buildings.find((b) => b.type === 'puteus')!;
+    expect(slotsOf('puteus', s.rank)).toBe(4);
+    expect(fullReachHands('puteus')).toBe(1);   // the reach coverage.radiusWith gives it: ceil(2 × 0.5), not ceil(4 × 0.5)
+    for (let i = 0; i < every('aquarum.access'); i++) day(s);
+    const r = render(s, 'aquarum.access');
+    expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'water', n: 1 });
+    expect(r.text).toMatch(/^The well .+ has 0 of 4 hands: staffed, it would reach \d+ of them\.$/);
+    // one hand on it: its full reach already, so it is no longer a work short of hands
+    s.ordo.manual.water = 1;
+    setJobs(s, { perBuilding: { [well.id]: 1 } });
+    expect(census(s).staffed[well.id]).toBe(1);
+    expect(effectiveRadius(s, well, 'water')).toBe(BUILDING_DEFS.puteus.service![0].radius);
+    expect(idleFor(s, view(s), 'water', houses(s).map((b) => b.id))).toBeNull();
+    expect(render(s, 'aquarum.access').remedies[0].remedy.kind).not.toBe('assign');
+  });
+
   it('annonae.hiems.forecast: a field short of hands is staffed before a lodge is raised', () => {
     const s = base();
     s.ordo.on.labour = false;
     s.ordo.manual.food = census(s).catStaffed.food;
-    const p: Patch = { grain: { crunch: crunch(3, 60, 0)(s) } };
+    const p: Patch = { grain: { crunch: crunch(3, 60, 0)(s), cap: 2500 } };   // room for the 2,000 needed in store
     day(s, p);
     const field = s.buildings.find((b) => b.type === 'ager')!;
     const have = census(s).staffed[field.id] ?? 0;
     const r = render(s, 'annonae.hiems.forecast', p);
     expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'food', n: 6 - have });
-    expect(r.text).toMatch(new RegExp(` The field .+ has ${have} of 6 hands\\.$`));
+    expect(r.text).toMatch(new RegExp(`with room for 2,500\\. The field .+ has ${have} of 6 hands\\.$`));
     s.ordo.on.labour = true;   // the Ordo staffs: the works and the reserve as before, which the hands now lead
     expect(r.remedies.slice(1).map((x) => x.remedy)).toEqual(render(s, 'annonae.hiems.forecast', p).remedies.slice(0, 2).map((x) => x.remedy));
+  });
+
+  it('annonae.hiems.forecast: when even full stores are too small, the granary comes first and the field\'s hands after', () => {
+    const s = base();
+    s.ordo.on.labour = false;
+    s.ordo.manual.food = census(s).catStaffed.food;
+    const p: Patch = { grain: { crunch: crunch(3, 60, 0)(s), cap: 1500 } };   // 2,000 needed in store
+    day(s, p);
+    const field = s.buildings.find((b) => b.type === 'ager')!;
+    const have = census(s).staffed[field.id] ?? 0;
+    const r = render(s, 'annonae.hiems.forecast', p);
+    expect(r.text).toMatch(new RegExp(` Even full, our stores are too small\\. The field .+ has ${have} of 6 hands\\.$`));
+    expect(r.remedies.slice(0, 2).map((x) => x.remedy)).toEqual([{ kind: 'place', building: 'horreum' }, { kind: 'assign', cat: 'food', n: 6 - have }]);
   });
 
   it('annonae.goods: an olive grove standing empty is staffed before another is planted', () => {
@@ -569,6 +626,12 @@ describe('staffing by hand: hands before another work (finding 11)', () => {
     expect(r.remedies[0].remedy).toEqual({ kind: 'assign', cat: 'food', n: 4 });
     expect(r.remedies[0].label).toBe('Put 4 more hands on the food');
     expect(r.text).toMatch(/ The olive grove .+ has 0 of 4 hands\.$/);
+    // stores too small for the lean season: the card's diagnosis is the stores, so the oil store comes first
+    const small: Patch = { c: { caps: { ...census(s).caps, oil: 1 } } };
+    day(s, small);
+    const q = render(s, 'annonae.goods', small);
+    expect(q.text).toMatch(/: the stores must hold [\d,]+ when Ver begins, and they hold 1\. A house without its oil falls back a tier\. The olive grove .+ has 0 of 4 hands\.$/);
+    expect(q.remedies.slice(0, 2).map((x) => x.remedy)).toEqual([{ kind: 'place', building: 'apotheca' }, { kind: 'assign', cat: 'food', n: 4 }]);
   });
 
   it('aedilis.evolve: the empty shrine near the waiting houses is staffed first, and the work to place follows', () => {
@@ -847,6 +910,30 @@ describe('aedilis.favour: the pace, what holds the settlers back, the Pave brush
     expect(favourPaces(s)).toBe(0);
     expect(remedies(s)).not.toContainEqual(PAVE);
     expect(checkRemedy(s, PAVE).ok).toBe(false);
+  });
+
+  it('offers the brush only where its sentence names the raise: none for a few paces among many homes', () => {
+    const s = base();
+    plenty(s);
+    s.res.stone = 50;
+    s.guidance.milestoneDays.templum = s.day;
+    extraHouses(s, 0);                                                     // 16 homes: a pace adds ×0.0125
+    day(s);
+    expect(s.guidance.advisories[F]?.active).toBe(true);
+    // two dirt paces left that Rome would mark: ×0.025 more, too little to name
+    const all = [...s.roads];
+    s.roads = [];
+    s.paved = [];
+    for (const i of all) {
+      invalidate(s);
+      if (favourPaces(s) >= 2) break;
+      s.roads.push(i);
+    }
+    expect(favourPaces(s)).toBe(2);
+    expect(renownFactor(s)).toBeLessThan(B.people.RENOWN.MAX);
+    const r = render(s);
+    expect(r.text).not.toMatch(/Paving/);
+    expect(r.remedies.map((x) => x.remedy)).not.toContainEqual(PAVE);
   });
 });
 

@@ -10,7 +10,7 @@ import { WALL_RING, blockStreets, isActiveBlock, isFutureBlock, plotOrigin } fro
 import { classAt, derived, sizeOf } from '../src/game/derived';
 import { invalidate, structEpoch } from '../src/game/memo';
 import {
-  buildRoad, canPlace, demolish, fellingSpill, pave, paveVia, placeBuilding, placementCost, roadPathFor, roadPreview,
+  buildRoad, canPlace, demolish, fellSpend, fellingSpill, pave, paveVia, placeBuilding, placementCost, roadPathFor, roadPreview,
   routeAqueduct, streetsForBlock, toggleReserveBlock, validSlots,
 } from '../src/game/place';
 import { bestSlot, resolvePlaceAt, siteMultAt, siteScore } from '../src/game/site';
@@ -442,12 +442,37 @@ describe('tools: demolish, roads, paving, reserve, ceremonies', () => {
     expect(f.spill).toBeCloseTo(fell - 10, 9);
     expect(f.words).toBe(`the stores hold 300: ${Math.round(fell - 10)} would spill`);
     expect(buildRoad(s, path).ok).toBe(true);
-    expect(s.log.at(-1)?.text).toBe(`A road of 3 paces is laid; ${Math.round(fell)} timber cleared, but the stores hold 300: ${Math.round(fell - 10)} spills.`);
+    expect(s.log.at(-1)?.text).toBe(`A road of 3 paces is laid; ${Math.round(fell)} timber cleared, but the stores hold 300: ${Math.round(fell - 10)} would spill at the day's end.`);
     expect(s.res.timber).toBeCloseTo(290 + fell, 9);
     for (const i of path) expect(woodAt(s, i)).toBe(0);
     expect(roadPreview(s, path)).toEqual({ paces: 0, fell: 0 });
     run(s, 1);
     expect(s.res.timber).toBeLessThanOrEqual(300);                    // the rest spilled at the day's end
+  });
+
+  it('a work\'s felling preview counts the timber its cost takes first: placeBuilding pays, then fells (§3.7)', () => {
+    const s = fresh(42);
+    s.res.timber = 300;                                                // the stores full
+    // the reviewer's case in numbers: 30 felled for a work that costs 20 timber leaves 10 over the cap, not most of it
+    expect(fellingSpill(s, 30)).toMatchObject({ spill: 30, most: true });
+    expect(fellingSpill(s, 30, 20)).toEqual({ cap: 300, spill: 10, most: false, words: 'the stores hold 300: 10 would spill' });
+    expect(fellingSpill(s, 30, 40)).toMatchObject({ spill: 0, most: false, words: 'the stores hold 300' });
+    // a field on wooded ground: its timber is paid out of the stores before its land is cleared into them
+    const tile = [...validSlots(s, 'ager', 'player').keys()].sort((a, b) => a - b)
+      .find((t) => { const c = canPlace(s, 'ager', t, { owner: 'player' }); return c.ok && c.fell > 0; })!;
+    const c = canPlace(s, 'ager', tile, { owner: 'player' });
+    if (!c.ok) throw new Error(c.reason);
+    const paid = c.cost.timber ?? 0;
+    expect(paid).toBeGreaterThan(0);
+    expect(fellSpend(s, c)).toBe(paid);
+    expect(fellSpend(s, c, 1)).toBe(0);                                // a Move: the stake's own cost returns first
+    const poor = structuredClone(s);
+    poor.res.denarii = 0;
+    expect(fellSpend(poor, c)).toBe(0);                                // a plan: nothing is paid until the stores allow
+    const preview = fellingSpill(s, c.fell, fellSpend(s, c));
+    expect(preview.spill).toBeCloseTo(c.fell - paid, 9);
+    expect(placeBuilding(s, 'ager', tile, { owner: 'player' }).ok).toBe(true);
+    expect(s.res.timber - 300).toBeCloseTo(preview.spill, 9);          // what the day's end will spill, as the ghost said
   });
 
   it('paves dirt roads for two stone a pace', () => {

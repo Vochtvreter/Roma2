@@ -295,9 +295,39 @@ describe('a work finished while the labour is the player\'s (finding 11)', () =>
     const t = finishedStaffing(s, well.id)!;
     expect(t.text).toBe('Well finished: 0/2 hands');
     expect(t.sub).toBe('You staff by hand: 2 water hands set for 4 posts.');
-    expect([t.label, t.cat, t.n]).toEqual(['+2 water', 'water', 2]);
+    expect([t.label, t.cat, t.n, t.to]).toEqual(['+2 water', 'water', 2, 4]);
     expect(t.tip).toBe('Raise the water target from 2 to 4.');
-    expect(setManualTarget(s, 'water', s.ordo.manual.water + t.n).ok).toBe(true);
+    expect(setManualTarget(s, 'water', Math.max(s.ordo.manual.water, t.to)).ok).toBe(true);   // ui/index.ts, the button
     expect(finishedStaffing(s, well.id)).toBeNull();          // the target reaches it now
+  });
+
+  it('two works finished in one frame, or a target raised by hand since: the +N buttons never overshoot', async () => {
+    const { finishedStaffing } = await import('../src/ui/tabs/labour');
+    const { setManualTarget, setOrdo } = await import('../src/game/actions');
+    const { validSlots } = await import('../src/game/place');
+    const s = fresh(42);
+    const wells: number[] = [];
+    for (const at of [...validSlots(s, 'puteus', 'player').keys()].sort((a, b) => a - b)) {
+      if (wells.length === 2) break;
+      const r = placeBuilding(s, 'puteus', at, { owner: 'player', ignoreCost: true, noStake: true });
+      if (r.ok && r.id !== undefined) wells.push(r.id);
+    }
+    for (const id of wells) Object.assign(s.buildings.find((b) => b.id === id)!, { status: 'done', progress: 1 });
+    invalidate(s);
+    expect(setOrdo(s, 'labour', false).ok).toBe(true);        // water 2: the old well's hands, 6 posts
+    // both toasts are written against the same state, before either button is pressed
+    const toasts = wells.map((id) => finishedStaffing(s, id)!);
+    expect(toasts.map((t) => t.n).sort()).toEqual([2, 4]);     // the nearer new well 2 more; the farther, past it, 4
+    const click = (t: (typeof toasts)[number]): void => { expect(setManualTarget(s, t.cat, Math.max(s.ordo.manual[t.cat], t.to)).ok).toBe(true); };
+    for (const order of [[0, 1], [1, 0]]) {
+      s.ordo.manual.water = 2;
+      for (const k of order) click(toasts[k]);
+      expect(s.ordo.manual.water).toBe(6);                    // every post, not 2 + 2 + 4
+      for (const id of wells) expect(finishedStaffing(s, id)).toBeNull();
+    }
+    // the player filled the row by hand first: a late press leaves the target as it is
+    s.ordo.manual.water = 7;
+    click(toasts[0]);
+    expect(s.ordo.manual.water).toBe(7);
   });
 });
