@@ -80,8 +80,12 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     }
   }
   if (res === 'grain') out.push(`Idle hands forage ${num(B.economy.IDLE_FORAGE)} a day each.`);
-  // a road is free and fells the woods it crosses into the stores (place.ts buildRoad, DESIGN §3.7)
-  if (res === 'timber') out.push(`Lay a road through the woods (free): the felled trees go to the stores, up to ${B.map.WOOD_DENSE} timber a pace.`);
+  // full stores, at the Ordo's own threshold (ordo.STORE_FULL): what comes in past the cap spills at the day's end
+  const store = STORE[res];
+  const full = !!store && s.res[res] >= B.ordo.STORE_FULL * v.c.caps[res];
+  // a road is free and fells the woods it crosses into the stores (place.ts buildRoad, DESIGN §3.7): taught only while
+  // they have room, never beside "the stores are full" for a felling that would all spill
+  if (res === 'timber' && !full) out.push(`Lay a road through the woods (free): the felled trees go to the stores, up to ${B.map.WOOD_DENSE} timber a pace.`);
   if (res === 'denarii') out.push(...coinLines(s));
   if ((TRADE_RES as readonly string[]).includes(res)) {
     const tr = res as TradeRes;
@@ -94,8 +98,7 @@ export function howToGetMore(s: GameState, res: ResId, v: SimView): string[] {
     }
   }
   if (main) out.push(liveLine(s, v, main));
-  const store = STORE[res];
-  if (store && s.res[res] >= 0.95 * v.c.caps[res]) {
+  if (store && full) {
     const lock = BUILDING_DEFS[store].rank > s.rank ? ` Rome grants it to ${rankWord(BUILDING_DEFS[store].rank)}.` : '';
     out.push(`The stores are full (${int(s.res[res])} of ${int(v.c.caps[res])}): ${aName(store)} adds room.${lock}`);
   }

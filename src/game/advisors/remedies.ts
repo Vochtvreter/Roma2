@@ -26,7 +26,7 @@ import { checkDispatch, hubOpen, price } from '../trade';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { EDICT_DEFS as EDICT_DEFS$, FOCUS_DEFS as FOCUS_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from '../data/decisions';
 import { HUB_DEFS as HUB_DEFS$ } from '../data/hubs';
-import { aName, bestHub, blockWorks, days, fractionWord, int, placeName, rankWord, resName, worksWord } from './util';
+import { aName, bestHub, blockWorks, buildingPlace, days, fractionWord, int, placeName, rankWord, resName, worksWord } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, formatRoman = formatRoman$, derived = derived$, pushActionFx = pushActionFx$,
@@ -159,20 +159,32 @@ function checkPlace(s: GameState, type: BuildingId, tile?: number): ActionResult
 
 /** Why no site can take a type now (the disabled button's reason, DESIGN §11.1 rule 7): an urban work names the slots
  *  that are all taken (and how more come: a block is cleared, a rank surveys a ring), the site rule every free one fails,
- *  or, for the Ordo, the blocks the player keeps from it; a work that may stand on rural land names its rule. */
+ *  or, for the Ordo, what keeps it off the free ones (place.ts ordoKeepsOff): the blocks the player keeps from it, and
+ *  the blocks holding a work of the player's not yet finished, named, where there is nothing to release. A work that
+ *  may also stand on rural land names its rule: its slots run out only when the land's do too. */
 function noSite(s: GameState, type: BuildingId, owner: Owner): string {
   const def = BUILDING_DEFS[type];
   const what = aName(type);
   const rule = type === 'castellum' ? RULE_REASON.noFons : type === 'lacus' ? RULE_REASON.nearAqueduct
     : def.rule !== 'none' && def.rule !== 'fixed' ? RULE_REASON[def.rule] : null;
   const low = (x: string): string => x.charAt(0).toLowerCase() + x.slice(1);
-  if (def.place.includes('rural')) return `No free land in our territory can take ${what}${rule ? `: ${low(rule)}` : '.'}`;
-  const cls = def.place.includes('block') ? 'block' : def.place.includes('half') ? 'half' : 'plot';
+  const rural = def.place.includes('rural');
+  const land = `No free land in our territory can take ${what}${rule ? `: ${low(rule)}` : '.'}`;
+  const cls = def.place.includes('block') ? 'block' : def.place.includes('half') ? 'half' : def.place.includes('plot') ? 'plot' : null;
+  if (!cls) return land;
   const word = cls === 'half' ? 'half-block' : cls;
-  // the free slots of the class, the rule aside, and whether any of them passes it
+  // the free slots of the class, the rule aside, and whether any of them passes it; for the Ordo, of those that pass,
+  // how many lie in blocks the player keeps from it, and the first work of the player's not yet finished on another
   const map = getMap(s.seed), sv = map.survey, d = derived(s), razed = isRazed(s);
   const [w, h] = cls === 'block' ? [B.map.BLOCK, B.map.BLOCK] : cls === 'half' ? [B.map.BLOCK, B.map.PLOT] : [B.map.PLOT, B.map.PLOT];
-  let free = 0, fits = 0;
+  const siteOn = new Map<number, number>();   // block → the player's first unfinished work on it (place.ts ordoKeepsOff)
+  if (owner === 'ordo') {
+    for (const b of s.buildings) {
+      const blk = b.owner === 'player' && b.status !== 'done' ? sv.blockAt[b.y * map.W + b.x] ?? -1 : -1;
+      if (blk >= 0 && !siteOn.has(blk)) siteOn.set(blk, b.id);
+    }
+  }
+  let free = 0, fits = 0, kept = 0, site: number | null = null;
   for (const blk of sv.blocks) {
     if (!isActiveBlock(sv, blk, s.rank, razed)) continue;
     const origins = cls === 'block' ? [{ x: blk.x, y: blk.y }] : cls === 'half' ? [halfOrigin(blk, 0), halfOrigin(blk, 1)] : ([0, 1, 2, 3] as const).map((k) => plotOrigin(blk, k));
@@ -181,13 +193,23 @@ function noSite(s: GameState, type: BuildingId, owner: Owner): string {
       for (let y = o.y; ok && y < o.y + h; y++) for (let x = o.x; x < o.x + w; x++) { const i = y * map.W + x; if (d.buildingAt[i] !== 0 || d.reservedTile[i]) { ok = false; break; } }
       if (!ok) continue;
       free++;
-      if (!ruleFail(s, type, o.x, o.y, w, h)) fits++;
+      if (ruleFail(s, type, o.x, o.y, w, h)) continue;
+      fits++;
+      // a block holding a work of the player's stays closed to the Ordo even released: the work, not the keeping, binds
+      const on = siteOn.get(blk.id);
+      if (on !== undefined) site = site === null ? on : Math.min(site, on);
+      else if (s.ordo.reserved.includes(blk.id)) kept++;
     }
   }
-  if (free > 0 && (fits === 0 || type === 'castellum') && rule) return `No free ${word} can take ${what}: ${low(rule)}`;
-  if (free > 0 && owner === 'ordo') {
-    return `${cls === 'block' ? 'Every free block is one' : `Every free ${word} lies in a block`} you keep from the Ordo: place it yourself, or release one.`;
+  if (!rural && free > 0 && (fits === 0 || type === 'castellum') && rule) return `No free ${word} can take ${what}: ${low(rule)}`;
+  if (fits > 0 && owner === 'ordo') {
+    if (site === null) return `${cls === 'block' ? 'Every free block is one' : `Every free ${word} lies in a block`} you keep from the Ordo: place it yourself, or release one.`;
+    const b = getBuilding(s, site);
+    const yours = `beside a work of yours not yet finished (the ${b ? BUILDING_DEFS[b.type].name.toLowerCase() : 'site'} ${buildingPlace(s, site)})`;
+    return kept > 0 ? `Every free ${word} lies in a block you keep from the Ordo or ${yours}: place it yourself, or release one.`
+      : `Every free ${word} lies in a block ${yours}: the Ordo leaves those to you, so place it yourself.`;
   }
+  if (rural) return land;
   const next = RANK_DEFS[s.rank + 1];
   const more = next && next.rings.length > RANK_DEFS[s.rank].rings.length ? `, or petition for ${rankWord(s.rank + 1)} to survey more` : '';
   if (cls === 'block') return `Every block of the town is built on: pull down what stands on one to clear it${more}.`;

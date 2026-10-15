@@ -106,6 +106,19 @@ export function savingFor(s: GameState, v: SimView): { cost: Cost; for: SavingKi
   return { cost, for: parts[0]?.kind ?? 'wish' };
 }
 
+/** What the saving target keeps a good back for: the work of its first part that costs some ('petition' for the fee),
+ *  else the wish it saves for; null when none does. The Capitolium's words name it (construction.capitoliumFlow). */
+export function savingHolds(s: GameState, v: SimView, r: ResId): BuildingId | 'petition' | null {
+  const part = savingParts(s, v).find((p) => (p.cost[r] ?? 0) > 0);
+  if (part) return part.type ?? 'petition';
+  if (walking) return null;   // asked from inside the wish walk, as savingFor: no wish is saved for yet
+  walking = true;
+  try {
+    const w = walkWishes(s, v).pending;
+    return w && (w.cost[r] ?? 0) > 0 ? w.type : null;
+  } finally { walking = false; }
+}
+
 /** The next CAP_RESERVE_DAYS of Capitolium materials at its current flow (gradual materials × fx capMat). */
 export function capitoliumAhead(s: GameState): Cost {
   const b = s.buildings.find((x) => x.type === 'capitolium' && x.status !== 'done');

@@ -106,7 +106,7 @@ function stats(g: Game, up: Updater[]): HTMLElement {
     if (s.day === paceDay) return;   // once a day: the births read every soul's age
     paceDay = s.day;
     const a = arrivalOutlook(s);
-    const pace = a.shut ? 'none while the gates are shut' : paceWords(a);
+    const pace = a.shut === 'beds' && c.freeBeds > 0 ? 'hardly any' : a.shut ? 'none while the gates are shut' : paceWords(a);
     newcomers.replaceChildren(h('b', null, 'Newcomers: '), `${pace}. ${limiterLine(s, a)}`);
     natales.replaceChildren(h('b', null, 'Births: '), `${naturalWords(s)}.`);
   };

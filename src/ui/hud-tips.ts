@@ -173,7 +173,10 @@ export function settlersRows(g: Game): Node[] {
   const c = census(s);
   const a = arrivalOutlook(s);
   const when = a.every !== null ? ` (${realTime(a.every, g.speed)})` : '';
-  const pace = a.shut ? `None while ${a.shut === 'roll' ? "Rome's roll is full" : 'no bed is free'}; then ${paceWords(a)}.`
+  // under BEDS_FREE free beds the gate is as good as shut: a lone craftsman may still find the one, most families not
+  const few = a.shut === 'beds' && c.freeBeds > 0;
+  const why = a.shut === 'roll' ? "Rome's roll is full" : few ? `only ${c.freeBeds} ${c.freeBeds === 1 ? 'bed is' : 'beds are'} free` : 'no bed is free';
+  const pace = a.shut ? `${few ? 'Hardly any' : 'None'} while ${why}; then ${paceWords(a)}.`
     : `${paceWords(a).replace(/^./, (x) => x.toUpperCase())}${when}.`;
   return [
     tipKicker('NEWCOMERS · HOSPITES'),
