@@ -239,6 +239,7 @@
 .ann-stats { display: flex; flex-direction: column; }
 .ann-fasti { margin: 0; padding-left: 0; list-style: none; font-size: var(--fs-xs); display: flex; flex-direction: column; gap: 2px; }
 .ann-fasti .ann-date { margin-right: 6px; }
+.ann-victory { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; margin-bottom: 6px; font-size: var(--fs-xs); color: var(--gold); }
 .ann-tip summary { cursor: pointer; font-size: var(--fs-small); color: var(--muted); }
 .ann-tip p { margin: 2px 0 6px 14px; font-size: var(--fs-xs); }
 .ann-filters .btn.bld-cat { padding: 1px 5px; font-size: var(--fs-xs); }

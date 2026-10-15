@@ -57,6 +57,7 @@ const SPEED_SET: readonly number[] = [...B.time.SPEEDS, B.time.DEV_SPEED];
 type Obj = Record<string, unknown>;
 const STATUSES: readonly string[] = ['plan', 'staked', 'building', 'done'];
 const PREFS: readonly string[] = ['auto', 'insula', 'domus'];
+const VICTORY_STATS = ['pop', 'peakPop', 'births', 'immigrants', 'built', 'evolved', 'playMs'] as const;
 
 function isObj(v: unknown): v is Obj {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -230,6 +231,9 @@ function sanitise(s: GameState): void {
   for (const q of [s.needs.hunger, s.needs.thirst]) for (let g = 0; g < 4; g++) q[g] = clamp(finite(q[g]), 0, NEED_MAX);
   sanitiseNumbers(s.counters as unknown as Obj);
   sanitiseNumbers(s.stats as unknown as Obj);
+  // the dedication day's figures (the Victory dispatch): whole and with a victory, else none (the letter reads today's)
+  const av: unknown = s.stats.atVictory;
+  if (av !== undefined && (!s.victory || !isObj(av) || VICTORY_STATS.some((k) => typeof av[k] !== 'number'))) delete s.stats.atVictory;
 
   sanitiseDecisions(s);
   sanitiseEntities(s);

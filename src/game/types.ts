@@ -399,7 +399,10 @@ export interface Stats {
   built: number; builtBy: Partial<Record<BuildingId, number>>;
   evolved: number; evolvedBy: Partial<Record<HouseTierId, number>>; devolved: number;
   denariiTaxed: number; playMs: number; startedAt: number; victoryDay: number | null;
+  atVictory?: VictoryStats;                          // the figures of the dedication day (set with victoryDay; older saves lack it)
 }
+/** The colony on the day its Capitolium was dedicated: the Victory dispatch reads these, also when read again later. */
+export interface VictoryStats { pop: number; peakPop: number; births: number; immigrants: number; built: number; evolved: number; playMs: number }
 
 // ───────────────────────────── the growing town (urbs.ts) ─────────────────────────────
 /** The town wall: surveyed around the whole town at Municipium, raised by the builders, then the castrum is razed. */
