@@ -491,6 +491,7 @@ export interface BuildingDef {
   cost: Cost; work: number; rank: RankIndex;
   perTile?: { cost: Cost; work: number };    // castellum aqueduct route
   slots: number; labor: LaborCat | null; skill: SkillId | null;
+  slotsFrom?: readonly [RankIndex, number];         // from this rank the work takes this many hands (data/buildings.slotsOf)
   output?: { res: ResId; perWorker: number };
   inputs?: Partial<Record<ResId, number>>;   // per worker-day (processing)
   passive?: { res: ResId; perDay: number };
@@ -705,7 +706,7 @@ export interface UrbsState {
   traffic: Record<number, number>;                   // sparse: road tile → footfall (walkers a day, monthly average)
   moenia: Moenia | null;                             // the town wall, once surveyed
   razed: number | null;                              // day the castrum's vallum came down and its fossa was filled
-  renewed: number;                                   // last day the Ordo renewed a quarter (a well filled in, homes bought out)
+  renewed: number;                                   // last day the Ordo renewed a quarter (homes bought out for a civic block)
 }
 
 // ───────────────────────────── the save ─────────────────────────────
@@ -1029,7 +1030,7 @@ export function getBuilding(s: GameState, id: number): Building | undefined;   /
 export function getPerson(s: GameState, id: number): Person | undefined;
 export function emptyRes(): Res;
 ```
-`newGame` builds: the map (`getMap`), the six start tentoria plots and the start puteus on the plots of DESIGN §18.1 (direct insertion, status `done`, owner `start`), the principia, the ager at `map.startAger`, all castrum interior street tiles + gate tiles + the via (`roads`), the roster with homes and jobs, defaults for decisions (focus `concordia`, edicts at `initial`, settings at `initial`, switches on), Ordo (all on; `manual` = 0s), trade (market 1.0), guidance (appointed annonae/aquarum/fabrum), counters, stats, the opening log line. `s.rng = (seed ^ 0x9e3779b9) | 0`.
+`newGame` builds: the map (`getMap`), the six start tentoria plots and the start puteus on the plots of DESIGN §18.1 (direct insertion, status `done`, owner `start`), the principia, the ager at `map.startAger`, with `intro` the lignarius on the Ordo's best lumber site (one woodcutter), all castrum interior street tiles + gate tiles + the via (`roads`), the roster with homes and jobs, defaults for decisions (focus `concordia`, edicts at `initial`, settings at `initial`, switches on), Ordo (all on; `manual` = 0s), trade (market 1.0), guidance (appointed annonae/aquarum/fabrum), counters, stats, the opening log line. `s.rng = (seed ^ 0x9e3779b9) | 0`.
 
 **Data** (`src/game/data/*.ts`) — transcriptions of DESIGN tables:
 | File | Exports |
@@ -1124,7 +1125,7 @@ export function toggleReserveBlock(s: GameState, blockId: number): ActionResult;
 export function roadPathFor(s: GameState, footprint: number[]): number[] | null;   // new tiles only
 export function streetsForBlock(s: GameState, blockId: number): number[];           // new tiles only
 export function routeAqueduct(s: GameState, x: number, y: number): { fons: number; tiles: number[] } | null;
-export function ceremonyPaving(s: GameState, what: 'castrumAxes' | 'via'): void;    // called by rankUp / Via militaris
+export function paveVia(s: GameState): void;                                       // called by Via militaris
 ```
 `placeBuilding`: validates; with `replaceId` first cancels that Ordo stake at 100%; affordable → pays and creates the site (`status` = `staked` for owner `ordo` unless `noStake`, else `building`); unaffordable → owner `player` makes a `plan`, owner `ordo` fails `unaffordable`. Then fells forest under rural footprints (timber to stores, `s.wood[i] = 0`, work += stock × FELL_WORK), lays streets (urban) or the auto-road (rural) instantly and free, sets `reason`/`notes`, sets `order` = next id, appends the building (ids ascending), logs (Ordo placements: kind `ordo` with the reason text), and calls `invalidate(s)`. `house` state is created when an `area` completes.
 

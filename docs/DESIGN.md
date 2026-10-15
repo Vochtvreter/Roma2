@@ -172,11 +172,11 @@ Orientation is fixed (no rotation). Rural buildings auto-lay a free dirt road to
 - Two levels: **dirt** (free) and **paved** (*silex*, 2 stone per tile; cosmetic plus desirability +1 r1).
 - Rural placement auto-lays the cheapest dirt road (Dijkstra, ≤ 40 tiles) from a non-corner ring tile to the network. Step cost: grass/meadow/loam/scrub 1, hills 1.7, forest/dense 3 (the timber goes to stores), rock 2.5, survey street tile 0.5, unmasked future-ring block tile 6; river (except the via bridge), crag, castrum rectangle (except gates) and active-pomerium non-street tiles are impassable. No path → *"No road can reach it."*
 - The **road tool** (R) lets the player drag dirt roads on rural land; inside the pomerium roads may only follow survey lines (*"The groma forbids it: streets follow the survey."*). The **paving brush** paves built road tiles.
-- At Oppidum the cardo and decumanus inside the castrum are paved (ceremony). The *Via Militaris* path paves the via. Under the *Urbs* focus the Ordo paves the dirt streets of the pomerium the most feet tread (the footfall census, §3.9; nearer the forum on a tie), 2 streets a month.
+- **The charter streets**: the streets are paved as the town rises, at the town's cost (2 stone a pace, like the brush): at **Oppidum** the castrum's cardo and decumanus with their gates and causeways, at **Municipium** every street of the inner city (the camp's own streets, ring 0), at **Colonia** the streets of Ring 1 and those across the old wall line. The rank's day announces them; from the next Kalends, every Kalends paves up to 24 of the dirt ones, nearest the forum first (logged). **The renovations come first**: no paving while a home waits for stone to rise, and paving draws only on the share of the unreserved stone the *Renovation allowance* leaves (40% at its default 60%; lower the allowance and the streets get more). The rest wait, and streets of those rings laid later (a new block's streets, the lines across the razed wall) join them. They count for dignitas like any paving; for Rome's favour (§6.6) only the cardo and decumanus count, as they always did, so a colony the Ordo keeps alone keeps its pace (§18.5). The *Via Militaris* path paves the via.
 - **Roads wear with their footfall** (§3.9): a little-used track is grassy and broken by turf, a track a lane, a road two ruts, the busiest a gravelled highway with a ditch either side; dirt streets in the pomerium grow grass when quiet and are churned when busy. The look only: steps and coverage do not change.
 
 ### 3.8 Aqueduct
-Placing a **castellum** (Municipium) auto-routes an aqueduct with A* from the nearest reachable `fons` to the castellum's footprint edge. Step cost: hills 0.8, flat 1.0, forest 1.4, river 2.5 (arches), road 1.2 (arch over road); buildings and reserved sites block; max 70 tiles. The route is part of the castellum: its cost and work grow with length, its tiles are reserved while it is built, and the arches are drawn progressively as work progresses (taller over low ground). Water flows (600/day) only when the castellum completes. Maximum one castellum per spring (1, or 2 if the map has two springs).
+Placing a **castellum** (Municipium) auto-routes an aqueduct with A* from the nearest reachable `fons` to the castellum's footprint edge. Step cost: hills 0.8, flat 1.0, forest 1.4, river 2.5 (arches), road 1.2 (arch over road); buildings and reserved sites block; max 70 tiles. The route is part of the castellum: its cost and work grow with length, its tiles are reserved while it is built, and the arches are drawn progressively as work progresses (taller over low ground). Water flows (2,000/day) only when the castellum completes. Maximum one castellum per spring (1, or 2 if the map has two springs).
 - **Water where it matters** (§3.9): a *lacus* may stand within 18 paces of an active castellum *or* within 8 of the finished aqueduct where it runs through the pomerium (the specus is tapped along its course); the *thermae* still need the castellum. Once the water flows the Ordo pipes it to the great houses: a fountain wherever one reaches ≥ 4 insulae or domus without one (row 5b, §10.5), so they become the *aquae* variant (§7.1).
 - The aqueduct may cross the town wall (arches through it, step cost 2, like the castrum's vallum and fossa).
 
@@ -193,7 +193,7 @@ A frontier colony did not keep the plan it was founded on, and neither does this
 - **Once it stands**: dignitas +8, morale +2, bandits on the roads ×0.6, and **the castrum is razed**: its rampart torn down (2 stone a pace salvaged; timber before Oppidum), its fossa filled, and the pitch lines across its old wall line laid as streets, so the inner city opens on the outer at every survey line. **Ring 3** — the 24 blocks of the old wall line — joins the pomerium as house plots (district *Vetus vallum*). The old camp is the **inner city**; Rings 1–3 inside the town wall the **outer city**.
 
 **Renewal.** The council replans a quarter now and then; it never touches the player's works.
-- **A needless well filled in** (the *water* duty): on the Kalends, once the aqueduct flows and water is at or above the *Water reserve* now and through the coming crunch, the Ordo fills in one of its own (or the founders') wells on a house plot — at least a year old, and never one raised for the supply (`survivalWater`, `aestasWater`) — when every home it waters a fountain reaches, and no home beside it would fall within 0.5 of its tier's desirability for want of it. The plot is free for a home.
+- **A needless well filled in** (the *water* duty): on the Kalends, once the aqueduct flows and water is at or above the *Water reserve* now and through the coming crunch, the Ordo fills in one of its own (or the founders') wells on a house plot — at least a year old, and never one raised for the supply (`survivalWater`, `aestasWater`) until **the aqueduct carries the town** (what flows without hands in Aestas, the castellum and the cisterns' rain, covers what the town drinks and its works draw, with 10% to spare) — when every home it waters a fountain reaches, and no home beside it would fall within 0.5 of its tier's desirability for want of it. The plot is free for a home. Once the aqueduct carries the town a well may go every Kalends: the 60-day clock is the buy-outs' alone.
 - **Homes bought out for a civic block** (the *services* duty): when a temple, a bathhouse or a market hall waits for ≥ 3 homes and no free block can bring it to them (row 6, §10.5), the Ordo buys out a block of its own or the founders' homes of tier ≤ *casa tegulata* (none renovating) from which it would reach ≥ 3 of the waiting homes, if the town's other homes can take every family with 2 beds to spare: the families are rehoused household by household, and the work is staked there. At most once every 60 days. Most homes reached, then fewest souls moved, then the lowest tile.
 
 ---
@@ -267,17 +267,17 @@ Per-worker output is per day before season, site, skill, tools, morale, effects 
 
 | id | Slots (cat) | Output per worker-day (or passive) | Season mult [Ver, Aes, Aut, Hie] | Coverage (layer r) | Storage | Upkeep den/day | Desir | Dignitas |
 |---|---|---|---|---|---|---|---|---|
-| `principia` | — | +3 den/day subsidy at Castra, +1.5 at Vicus | — | shrine r4 (*aedes signorum*) | base sheds (§4) | 0 | +4/r5 (stage ≥ 3: +6/r6) | 5/8/12/16/20 by stage |
+| `principia` | — | +3 den/day subsidy at Castra, +1.5 at Vicus | — | shrine r10 (*aedes signorum*) | base sheds (§4) | 0 | +4/r5 (stage ≥ 3: +6/r6) | 5/8/12/16/20 by stage |
 | `ager` | 6 food | 6 grain × site | 1.0 / 1.3 / 0.9 / **0.35** | — | — | 0 | −1/r1 | 0 |
 | `venatio` | 2 food | 5 grain × site | 0.8 / 0.8 / 1.2 / **1.3** | — | — | 0 | −1/r1 | 0 |
 | `pabulatio` | 2 food | 4 grain × site | 0.5 / 1.4 / **1.8** / 0.1 | — | — | 0 | −1/r1 | 0 |
 | `olivetum` | 4 food | 1.2 oil × site | 0.2 / 0.2 / 1.4 / **2.2** | — | — | 0 | +1/r2 | 0 |
 | `horreum` | 0 | — | — | — | grain +4,000 (safe) | 0.2 | −2/r2 | 2 |
 | `apotheca` | 0 | — | — | — | timber, stone +400; tiles, concrete, ore, iron +150; tools +10; oil, wine +300 | 0.2 | −2/r2 | 1 |
-| `puteus` | 2 water | 11 water × site | 1.0 / **0.8** / 1.0 / 1.0 | water r4 | water +50 | 0 | +1/r1 | 0 |
-| `cisterna` | 0 | passive 8 water | 1.2 / **0.3** / 1.0 / 1.5 | water r2 | water +400 | 0 | 0 | 0 |
-| `castellum` | 1 water | passive 600 water when complete | 1.0 / 0.9 / 1.0 / 1.0 | fountain r3 | water +2,000 | 1.0 | +2/r2 | 4 |
-| `lacus` | 0 | — | — | fountain r6 | — | 0.1 | +3/r3 | 0.5 |
+| `puteus` | 2 water (4 from Oppidum: a windlass) | 11 water × site | 1.0 / **0.8** / 1.0 / 1.0 | water r10 | water +50 | 0 | +1/r1 | 0 |
+| `cisterna` | 0 | passive 8 water | 1.2 / **0.3** / 1.0 / 1.5 | water r6 | water +1,000 | 0 | 0 | 0 |
+| `castellum` | 1 water | passive 2,000 water when complete | 1.0 / 0.9 / 1.0 / 1.0 | fountain r6 | water +10,000 | 1.0 | +2/r2 | 4 |
+| `lacus` | 0 | — | — | fountain r12 | — | 0.1 | +3/r3 | 0.5 |
 | `lignarius` | 3 materials | 4 timber × catchment (0.2–1.3), draws forest stock | 1 / 1 / 1 / 0.7 | — | — | 0 | −2/r2 | 0 |
 | `lapicidina` | 4 materials | 3 stone × site | — | — | — | 0 | −4/r4 | 0 |
 | `figlina` | 3 industry | 0.5 timber → 2.5 tiles | — | — | — | 0.1 | −4/r3 | 0 |
@@ -285,16 +285,16 @@ Per-worker output is per day before season, site, skill, tools, morale, effects 
 | `fodina` | 3 materials | 1.5 ore × vein | — | — | — | 0.1 | −4/r3 | 0 |
 | `officina` | 2 industry | 2 ore + 1 timber → 1 iron | — | — | — | 0.2 | −5/r4 | 0 |
 | `fabrica` | 2 industry | 1 iron + 1 timber → 0.4 tools | — | — | — | 0.2 | −2/r2 | 0 |
-| `taberna` | 2 services | market tax 0.008 den per covered resident | — | market r6 | — | 0.3 | +1/r2 | 0.5 |
-| `macellum` | 4 services | market tax 0.015 den per covered resident; delivers oil & wine | — | macellum r10 (also market) | oil, wine +300 | 0.8 | +2/r3 | 4 |
+| `taberna` | 2 services | market tax 0.008 den per covered resident | — | market r12 | — | 0.3 | +1/r2 | 0.5 |
+| `macellum` | 4 services | market tax 0.015 den per covered resident; delivers oil & wine | — | macellum r18 (also market) | oil, wine +300 | 0.8 | +2/r3 | 4 |
 | `mansio` | 2 services | +1 caravan slot (max 2 mansiones count); merchants ×1.5; trips −1 day each way | — | — | — | 0.5 | −2/r2 | 2 |
-| `lararium` | 1 services | — | — | shrine r5 | — | 0.05 | +2/r2 | 1 |
-| `templum` | 3 services | — | — | temple r12 (also shrine) | — | 0.8 | +6/r5 | 8 |
-| `balneum` | 4 services | uses 20 water/day | — | baths r8 | — | 1.0 | +3/r4 | 6 |
-| `thermae` | 8 services | uses 60 water/day | — | baths r14 | — | 3.0 | +5/r5 | 12 |
-| `theatrum` | 6 services | — | — | culture r14 | — | 2.0 | +4/r5 | 10 |
+| `lararium` | 1 services | — | — | shrine r10 | — | 0.05 | +2/r2 | 1 |
+| `templum` | 3 services | — | — | temple r20 (also shrine) | — | 0.8 | +6/r5 | 8 |
+| `balneum` | 4 services | uses 20 water/day | — | baths r15 | — | 1.0 | +3/r4 | 6 |
+| `thermae` | 8 services | uses 60 water/day | — | baths r24 | — | 3.0 | +5/r5 | 12 |
+| `theatrum` | 6 services | — | — | culture r24 | — | 2.0 | +4/r5 | 10 |
 | `hortus` | 0 | — | — | — | — | 0 | +4/r3 | 0.5 |
-| `capitolium` | builders (crew cap 64) | on completion: victory, morale +10 | — | temple r20 | — | 0 | +10/r8 | 40 |
+| `capitolium` | builders (crew cap 64) | on completion: victory, morale +10 | — | temple r30 | — | 0 | +10/r8 | 40 |
 | T4i house (insula) | — | — | — | — | — | — | −1/r2 | (§7) |
 | T4d house (domus) | — | — | — | — | — | — | +1/r2 | (§7) |
 
@@ -315,7 +315,7 @@ Per-worker output is per day before season, site, skill, tools, morale, effects 
 ## 6. People
 
 ### 6.1 Individuals
-- Every person is a plain record (`Person`, ARCHITECTURE §4): praenomen, gens (nomen, stored in masculine form), optional ordinal and cognomen, sex, birth day, family, spouse, parents, home, work, skills, veteran flag, sick-until. Hard cap **1,500** living people; the design peak is ≈ 1,100.
+- Every person is a plain record (`Person`, ARCHITECTURE §4): praenomen, gens (nomen, stored in masculine form), optional ordinal and cognomen, sex, birth day, family, spouse, parents, home, work, skills, veteran flag, sick-until. Hard cap **1,500** living people (Rome's roll at Colonia); the attentive player's town fills it by the dedication (§18.4).
 - **Households** are families (`Family`: gens, head, home). Families arrive together and are housed together; a house is labelled after its principal family (*"Casa tegulata · gens Antonia"*).
 - **Gentes**: 6 founding (Valerius, Antonius, Flavius, Cassius, Aemilius, Iulius); 14 veteran (Pompeius, Crassus, Sertorius, Vitellius, Lentulus, Metellus, Corvinus, Silanus, Regulus, Maximus, Drusus, Sabinus, Marcellus, Scaevola); 30 immigrant (Aurelius, Cornelius, Domitius, Fabius, Fulvius, Herennius, Licinius, Lucretius, Manlius, Marius, Minucius, Octavius, Papirius, Petronius, Plautius, Porcius, Quinctius, Rutilius, Sempronius, Sergius, Servilius, Sulpicius, Terentius, Tullius, Vettius, Vibius, Volusius, Atilius, Calpurnius, Hostilius).
 - **Naming** (patrilineal, fixing rome): sons get a praenomen from rome's 36-name pool, with an ordinal if a living family member shares it (*Marcus II Valerius*). Daughters take the feminine gens name (*-ius → -ia*): the first daughter *Valeria*, later ones *Valeria Secunda / Tertia / Quarta*. Wives keep their birth gens and join the husband's household. Children take the father's gens and family.
@@ -357,7 +357,7 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 - **Rate** (households per day): `IMM_RATE[rank] = [0.0046, 0.0036, 0.002, 0.0025, 0.04]` (a third of the old rates to the Oppidum: Rome's favour brings an attentive player's colony back to them; the Municipium keeps its old rate, for an old town kept by the Ordo alone cannot outgrow its deaths by births) × attract, where attract = clamp((morale − 30)/40, 0, 1.25) × foodF (grain DoH ≥ 20 → 1, ≥ 10 → 0.5, else 0.1) × waterF (water DoH ≥ 10 → 1, else 0.5) × Rome's favour × fx(`immigration`). Rome sends many colonists to found the camp and the vicus, fewer once the town grows by its own births, and a new wave to the Colonia.
 - **Rome's favour** (*splendour*): Rome sends colonists faster to a splendid town, and its families thrive: favour =
   min(3, 1 + 4 × splendour per home) multiplies immigration and births, where **splendour** is the dignitas of the works
-  the Ordo leaves to the player (§10.3): gardens (*hortus*, 0.5 each) and paved streets (0.05 a tile). A garden for every
+  the Ordo leaves to the player (§10.3): gardens (*hortus*, 0.5 each) and paved streets (0.05 a tile; of the charter streets only the cardo and decumanus, §3.7). A garden for every
   home is ×3, from tents to insulae. The Ordo raises neither unless the player sets the *Urbs* focus, so a
   colony kept by the Ordo alone has ×1 and grows slowly but steadily; a Praefectus who beautifies it draws colonists up
   to ×MAX (`RENOWN` in `balance.ts`). Gardens and homes share the plots, so splendour is a real choice, not a free
@@ -393,7 +393,7 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 - Each house is checked every 5 days on its own slot (`(id + day) % 5 == 0`). If all needs of the next tier hold, `okDays += 5`, otherwise `okDays = 0`.
 - When `okDays ≥ 15`, the evolution throttle allows (≤ 1 + floor(houses / 8) renovations *started* per 10-day window, by house id), and the **renovation pool** covers the materials, the household **renovates**: materials are paid, a scaffold overlay shows for **8 days** (4 under *Opera: Magna*), then the tier rises (`fx evolved`, floating *"+Casa tegulata"*, hammer *tink*, toast batched per update).
 - **A rise never crowds a neighbour down.** A house whose next tier gives its street less desirability (a stone house becoming an insula, −1/r2; a domus converting to one) checks every house that tier's influence reaches. If a neighbour holds its own tier's minimum now (counting the renovations already under way, a neighbour's rise into its new tier included) but would fall below it once the rise finished, the rise waits. Its *desirability* need reads unmet even though its own street holds (laurel bubble; the inspector says which neighbour it would push below, and that a garden or a fountain lifting that street lets it rise). Without this, a stone house beside a new insula at a thin margin (desirability 0.4 → −0.1) declined, then fell to a tiled cottage 60 days later, with no warning the player could have acted on. A garden's ↑ (§7.7), the Aedilis's *"a garden here would let k of them grow"* (§11.6 row 17) and the Ordo's garden for houses waiting on a finer street (§10.5) all count the street of the neighbour that holds the rise: lifting it clear lets the rise go. A standing insula never declines for its neighbours; the check is made only by the house that would rise.
-- **No builders are used.** The renovation pool per resource = `max(0, stock − reserved) × Renovation setting` (default 60%), where *reserved* = the Ordo's saving target (petition fee, pins, requests, player plans, pending wish) plus the next 30 days of Capitolium materials. Renovation never deadlocks construction and vice versa (tested).
+- **No builders are used.** The renovation pool per resource = `max(0, stock − reserved) × Renovation setting` (default 60%), where *reserved* = the Ordo's saving target (petition fee, pins, requests, player plans, pending wish) plus the next 30 days of Capitolium materials. Renovation never deadlocks construction and vice versa (tested). The charter streets (§3.7) pave only from the other share (1 − Renovation setting), and not while a home waits for stone.
 
 ### 7.3 Declining and devolution (idle-safe)
 - If the needs of the **current** tier fail on a check, `badDays += 5`. At `badDays ≥ 20` the house is **Declining**: tax ×0.5, a morale term, a cracked-plaster overlay, and an Aedilis warning with a countdown. Needs restored for 10 days end the decline.
@@ -401,7 +401,8 @@ Seven skills: `agri` (fields, forage, olives, hunting), `aqua` (wells, castellum
 - **Offline, no house ever drops a tier**: the decline counter stops at 55 during replay, and the player returns to warnings, not losses. Fires and other harmful events are also off offline.
 
 ### 7.4 Coverage (exact)
-- Layers: `water` (puteus r4, cisterna r2), `fountain` (castellum r3, lacus r6; counts as water access), `shrine` (principia r4, lararium r5; temple counts too), `temple` (templum r12, capitolium r20), `market` (taberna r6; macellum counts too), `macellum` (macellum r10), `baths` (balneum r8, thermae r14), `culture` (theatrum r14).
+- Layers: `water` (puteus r10, cisterna r6), `fountain` (castellum r6, lacus r12; counts as water access), `shrine` (principia r10, lararium r10; temple counts too), `temple` (templum r20, capitolium r30), `market` (taberna r12; macellum counts too), `macellum` (macellum r18), `baths` (balneum r15, thermae r24), `culture` (theatrum r24).
+- **Reach is a neighbourhood, not a doorstep.** On the pitch-5 survey a radius under 5 barely reaches the next crossing: a well at r4 watered a dozen of the camp's sixty homes from its best plot, and the founders' own well left two of their six tents dry. The radii serve a quarter, as a Roman street fountain or crossroads shrine did: a well or a shrine (r10) reaches about two streets each way, some 45 homes on open blocks and two dozen of the camp's sixty from a good plot; a shop row or a fountain (r12) about 70 homes on open blocks; the block-sized works most of a district (a temple, r20, about 200). Three wells water the whole camp; more are raised for their water, not their reach.
 - **BFS over built road tiles** (N4, both dirt and paved, the via included). Sources are road tiles N4-adjacent to the service footprint; distance in steps; a road tile is covered when its distance ≤ the effective radius (§5.2 activity rule, + path bonuses). A **house is covered** when any road tile N4-adjacent to its footprint is covered.
 - One `Uint8Array` per layer, recomputed when the structure epoch or the set of effective radii changes. The placement ghost, the Ordo's site scoring and the advisors' "best spot" all use the same function.
 
@@ -450,7 +451,7 @@ Every house exposes its **first unmet need for the next tier** as an icon bubble
 FOOD      Ager 6/wkr ─┐ Venatio 5/wkr (Hiems) ─┐ Pabulatio 4/wkr (Autumnus) ─┐
                       └──────────────► GRAIN ◄──┘ idle adults forage 0.3 ────┘ ─► eaten (children first) · export · festivals
           Olivetum 1.2/wkr (Hiems) ──► OIL ─► T4 houses (0.05/res) · export        WINE ◄─ trade only ─► domus (0.05/res), festivals
-WATER     Puteus 11/wkr · Cisterna 8 passive · Castellum 600 passive ─► WATER ─► drunk · Caementarium · Balneum 20 · Thermae 60
+WATER     Puteus 11/wkr · Cisterna 8 passive · Castellum 2,000 passive ─► WATER ─► drunk · Caementarium · Balneum 20 · Thermae 60
 TIMBER    Lignarius 4/wkr (forest stock) ─► TIMBER ─► building · Figlina 0.5 · Officina 1 · Fabrica 1 · export
 STONE     Lapicidina 3/wkr ─► STONE ─► building · renovation · Caementarium · paving · export
 TILES     Figlina: 0.5 timber ─► 2.5 TILES (clay free) ─► roofs T2+ · civic · export
@@ -483,7 +484,7 @@ Bands (rome): ≤ 25 *Sated/Hydrated*, ≤ 50 *Peckish/Thirsty*, ≤ 75 *Hungry/
 - Shed rot and evaporation per §8.2. Horrea grain never rots.
 
 ### 8.7 Woods
-Forest tiles hold timber (60, dense 100). A lumber camp draws from its r4 catchment: first tiles at ≥ 50% of their maximum, nearest first, then the rest (visible clearings). Tiles under 25% show stumps. Regrowth per day: 0.3% of max for tiles inside a lumber catchment (replanting) — 0 under *Silvae: Caedua*, ×2 under *Lucus* — and 0.05% for other tiles next to standing wood; ×0.25 in Hiems. The forest layer repaints only changed tiles, so **woods visibly recede** around a growing city. Quarries and ore veins never deplete.
+Forest tiles hold timber (60, dense 100). A lumber camp draws from its r4 catchment: first tiles at ≥ 50% of their maximum, nearest first, then the rest (visible clearings). Its catchment factor is standing timber / 2,400 clamped to 0.2–1.3 (the floor stands for regrowth), and 0 once nothing stands within r4: a camp whose woods are all felled or built over yields nothing, and the Ordo counts it so. Tiles under 25% show stumps. Regrowth per day: 0.3% of max for tiles inside a lumber catchment (replanting) — 0 under *Silvae: Caedua*, ×2 under *Lucus* — and 0.05% for other tiles next to standing wood; ×0.25 in Hiems. The forest layer repaints only changed tiles, so **woods visibly recede** around a growing city. Quarries and ore veins never deplete.
 
 ### 8.8 Denarii
 - **Taxes**: Σ residents × tier tax × (declining ×0.5) × (aquae domus ×1.3) × Tributum × fx(`tax`) × (forum stage ≥ 3: ×1.10), plus market tax (taberna 0.008, macellum 0.015 per covered resident, × fx(`marketTax`)). Accrued daily, **paid on each Kalends** (`fx taxes`).
@@ -534,9 +535,9 @@ Holding no duty, the Ordo still raises a famine's field or a drought's well unde
 |---|---|---|---|---|---|
 | **I Castra** | *Praefectus castrorum* | start | — | area (T0–T1), ager, venatio, pabulatio, puteus, cisterna, horreum, lignarius, lapicidina, lararium, hortus; hub Vicus Metellianus; roll 100; subsidy 3/day | food, water, the first winter |
 | **II Vicus** | *Magister vici* | Lex coloniae chosen · pop ≥ 50 · first Hiems weathered (≥ Kal. Mart. DCCCI) · a Horreum · *Stabilitas* (grain ≥ 30 d, water ≥ 10 d, morale ≥ 55, held 10 days) · dignitas ≥ 12 | 250 den, 100 timber | Ring 1 (canabae) joins the pomerium (a plough-ox walks the new *sulcus primigenius*, fx); territory 26; T2; figlina, taberna, apotheca, mansio, olivetum; hubs Pagus Durii, Oppidum Silvanum; **Commercium** tab and trade toggle; roll 260; subsidy 1.5/day; forum stage 1 (timber principia) | caravans & contracts, tiled roofs, markets |
-| **III Oppidum** | *Praefectus oppidi* | pop ≥ 180 · ≥ 10 houses at T2+ · ≥ 70% of houses with religion **and** market coverage · caravans returned from ≥ 2 hubs · dignitas ≥ 40 | 900 den, 250 stone, 150 tiles | Ring 2 joins the pomerium (final); territory 34; T3 and the T4 fork; caementarium, fodina, officina, fabrica, templum, macellum, balneum; hubs Forum Narbonis, Portus Massiliae; **palisade and gates become stone** (sprite swap); cardo & decumanus paved; roll 560; subsidy ends; forum stage 2 (stone colonnade) | concrete & iron, temple, insula/domus fork |
-| **IV Municipium** | *Duumvir* | pop ≥ 400 · ≥ 16 houses at T3+ incl. ≥ 4 at T4 · templum, macellum and balneum staffed · 60 iron smelted (lifetime) · dignitas ≥ 100 | 2,500 den, 400 stone, 200 concrete, 60 iron | territory 44; castellum + aqueduct, lacus, thermae, theatrum, T4 aquae variant; hub Colonia Augusta; roll 900; forum stage 3 (basilica & curia: taxes ×1.10) | aqueduct routing, great baths, fountains |
-| **V Colonia** | *Patronus coloniae* | pop ≥ 700 · aqueduct flowing · thermae and theatrum staffed · ≥ 12 houses at T4 · contracts completed with ≥ 5 hubs · dignitas ≥ 190 | 5,000 den, 600 stone, 300 concrete, 120 iron | territory = whole map; roll 1,500; forum stage 4 (marble, statues); **the Capitolium works begin** | the Capitolium set piece |
+| **III Oppidum** | *Praefectus oppidi* | pop ≥ 180 · ≥ 10 houses at T2+ · ≥ 70% of houses with religion **and** market coverage · caravans returned from ≥ 2 hubs · dignitas ≥ 40 | 900 den, 250 stone, 150 tiles | Ring 2 joins the pomerium (final); territory 34; T3 and the T4 fork; caementarium, fodina, officina, fabrica, templum, macellum, balneum; hubs Forum Narbonis, Portus Massiliae; **palisade and gates become stone** (sprite swap); cardo & decumanus paved (§3.7); roll 560; subsidy ends; forum stage 2 (stone colonnade) | concrete & iron, temple, insula/domus fork |
+| **IV Municipium** | *Duumvir* | pop ≥ 400 · ≥ 16 houses at T3+ incl. ≥ 4 at T4 · templum, macellum and balneum staffed · 60 iron smelted (lifetime) · dignitas ≥ 100 | 2,500 den, 400 stone, 200 concrete, 60 iron | territory 44; castellum + aqueduct, lacus, thermae, theatrum, T4 aquae variant; hub Colonia Augusta; roll 900; the inner city's streets paved (§3.7); forum stage 3 (basilica & curia: taxes ×1.10) | aqueduct routing, great baths, fountains |
+| **V Colonia** | *Patronus coloniae* | pop ≥ 700 · aqueduct flowing · thermae and theatrum staffed · ≥ 12 houses at T4 · contracts completed with ≥ 5 hubs · dignitas ≥ 190 | 5,000 den, 600 stone, 300 concrete, 120 iron | territory = whole map; roll 1,500; Ring 1's streets paved (§3.7); forum stage 4 (marble, statues); **the Capitolium works begin** | the Capitolium set piece |
 
 - **The petition is the Crossroads.** When every requirement is ticked the Res Gestae CTA glows (*"Petition Rome: Oppidum"*) and the Augur raises the gold *Opportunitas* advisory. While requirements are met but the fee is short, the Ordo **saves for the fee** (every Ordo spend respects it) and the card says *"The Ordo is saving: 120 stone (≈ 9 days)."*
 - Petitioning = choosing one of three **permanent paths**; it pays the fee and grants the rank. A non-blocking banner follows (*"AUC DCCCVII · CASTRA VALERIA FIT OPPIDVM"*), a cornu fanfare, legionaries march out of the forum, a beam sweeps the new pomerium.
@@ -731,7 +732,7 @@ The wish list is walked in order. Each wish names a type and a slot (`bestSlot`)
 | 5b | `aquae` | a castellum flows and ≥ 4 insulae or domus lack a fountain | lacus at the slot reaching the most of them, if it reaches ≥ 4 (§3.9) | yes |
 | 6 | `evolve` | a service type is the first unmet need of ≥ 2 houses (≥ 3 for block-sized services, balnea included) | that service at the slot unblocking the most houses (greedy set cover; ties by the site score) — *the Aedilis's top advisory, executed*; none when no valid slot reaches one of them — then, for a block-sized service, `renewal`: homes bought out where no free block reaches them (§3.9) | yes |
 | 7 | `rank` | a building named by the next petition is missing | it | yes |
-| 8 | `materials` | a resource lacking for the saving target, pending wish, renovations or Capitolium with ETA > 30 days | its producer | yes |
+| 8 | `materials` | a resource lacking for the saving target, pending wish, renovations or Capitolium with ETA > 30 days | its producer; where its producers all stand but yield nothing (a lumber camp's woods felled), the new one is saved and traded for before the pending wish that lacks the good, and requests keep its share of that good, since no saving brings it otherwise | yes |
 | 9 | `luxury` | oil demand × 1.2 > the groves' yearly yield (olivetum unlocked); demand is the houses' draw at full supply (§7.6) — then, planned as the grain is for Hiems, the stores for the lean season: while the reserve (the draw the presses leave uncovered from Kal. Mart. to Kal. Sept.; wine: 60 days of the draw) plus a 15-day floor exceeds the oil (wine) capacity | olivetum, then apotheca | yes |
 | 10 | `focusPlan` | the focus's ordered `[type, count]` plan | next item | yes |
 | 11 | `beauty` | *Urbs* focus only | hortus lifting the most T3 houses toward desirability 10 | yes |
@@ -848,7 +849,7 @@ Before its unlock a setting uses its default and is shown only in the one-line t
 | `aquarum` | *Curator Aquarum* | Sextus Aquilius Fonteius | water, wells, cisterns, summer forecast, aqueduct | blue-grey cloak, water jar | start |
 | `fabrum` | *Praefectus Fabrum* | Titus Vibius Faber | builders, sites, labour, idle hands, materials, Capitolium flow | leather cap, soot smudge, groma pin | start |
 | `quaestor` | *Quaestor* | Publius Nonius Arca | coin, upkeep, taxes, contracts, merchants | bald, toga with a thin stripe, wax tablet | Vicus, first coin advisory, or first contract |
-| `aedilis` | *Aedilis* | Quintus Sempronius Lepidus | houses and evolution, beds and the roll, morale | young, toga praetexta, city-plan scroll | Vicus or a house blocked ≥ 5 days |
+| `aedilis` | *Aedilis* | Quintus Sempronius Lepidus | houses and evolution, beds and the roll, morale | young, toga praetexta, city-plan scroll | Vicus, a house blocked ≥ 5 days, or his first favour advisory (§6.6: colonists come slowly) |
 | `augur` | *Augur* | Servius Volusius Auspex | pending choices, petitions, omens | veiled head, curved lituus | first event card or Kal. Sept. AUC DCCC |
 
 Unappointed advisors show as silhouettes (*"Appointed at Vicus"*). Tie order: annonae > aquarum > aedilis > fabrum > quaestor > augur.
@@ -1366,7 +1367,7 @@ Other: cypress and umbrella pine `#24402c` / `#3d6b3a`; dirt road `#9b7a52` edge
 | Frames | meander 12×12 border tile · wax seal 16×16 · aquila logo 32×32 · favicon SVG · the app icons (180, 192 and 512 px PNGs and a 512 px maskable one: the aquila at whole-number scales on the chrome's ground, `node scripts/icons.mjs`) |
 
 ### 16.4 What visibly matures (core checklist)
-1. Roofs: thatch → terracotta (T1 → T2). 2. Houses rise from 1 to 4 storeys. 3. Forum stages 0–4. 4. Palisade → stone murus; timber → stone gatehouses (Oppidum); a town wall rises round the whole town and the camp's rampart comes down, its ditch filled and built over (§3.9). 5. Streets staked → dirt → paved cardo/decumanus (Oppidum) and more (Urbs, brush); roads wear with their footfall from grassy tracks to gravelled highways. 6. The via paved with milestones (*Via militaris*). 7. Aqueduct arches stride in (Municipium). 8. Fountains sparkle. 9. Bath steam, kiln and bloomery smoke, temple incense. 10. Fields ring outward, olive groves on the hills. 11. Woods recede. 12. Walker crowds thicken; patrician togas appear. 13. The Capitolium rises in four stages.
+1. Roofs: thatch → terracotta (T1 → T2). 2. Houses rise from 1 to 4 storeys. 3. Forum stages 0–4. 4. Palisade → stone murus; timber → stone gatehouses (Oppidum); a town wall rises round the whole town and the camp's rampart comes down, its ditch filled and built over (§3.9). 5. Streets staked → dirt → paved cardo/decumanus (Oppidum), the whole inner city (Municipium) and Ring 1 (Colonia), and more (Urbs, brush); roads wear with their footfall from grassy tracks to gravelled highways. 6. The via paved with milestones (*Via militaris*). 7. Aqueduct arches stride in (Municipium). 8. Fountains sparkle. 9. Bath steam, kiln and bloomery smoke, temple incense. 10. Fields ring outward, olive groves on the hills. 11. Woods recede. 12. Walker crowds thicken; patrician togas appear. 13. The Capitolium rises in four stages.
 **Construction feedback**: groma pegs → trench → scaffold and `rise()` → dust, stars, pennant. **Evolution feedback**: scaffold flash, floating *"+Casa tegulata"*, *tink*. **Kalends**: gold coins rise over the forum.
 
 ---
@@ -1386,11 +1387,11 @@ Other: cypress and umbrella pine `#24402c` / `#3d6b3a`; dirt road `#9b7a52` edge
 |---|---|
 | People | the roster of §6.2 (24; 13 adults, 3 youths, 8 children); 6 families |
 | Houses | **6 tentoria plots (30 beds)**: the 4 plots of the Retentura block west/east of the forum in block row 1 (the side away from the Porta Praetoria) and the 2 forum-side plots of the block below it (row 2) |
-| Buildings | principia (stage 0); **1 puteus** on a remaining plot of that row-2 block; **1 ager** on the best loam site in Castra territory (the Ordo's site score); vallum, fossa and 4 timber gates; all castrum streets (dirt); the Via Valeria with its bridge; the altar on the Area Capitolina |
-| Jobs | Marcus Valerius on the ager; Lucius Antonius and Titus Flavius at the well (the Ordo re-plans on day 1) |
+| Buildings | principia (stage 0); **1 puteus** on a remaining plot of that row-2 block; **1 ager** on the best loam site in Castra territory (the Ordo's site score); in a new colony (with the lessons) **1 lignarius** on the Ordo's best lumber site, with one woodcutter: a trickle of timber, so a colony that has spent its timber can always build again in time, but too little to grow on alone; vallum, fossa and 4 timber gates; all castrum streets (dirt); the Via Valeria with its bridge; the altar on the Area Capitolina |
+| Jobs | Marcus Valerius on the ager; Lucius Antonius and Titus Flavius at the well; Gnaeus Aemilius at the lumber camp, where it stands (the Ordo re-plans on day 1) |
 | Stocks | denarii **600** · grain **480** (cap 600 → 23.6 days) · water **240** (cap 300 → 11.8 days) · timber **80** · stone **40** · tools **4** · others 0 |
 | Meters | morale 65 · fed index 1.0 · dignitas ≈ 5 |
-| Ordo | a new colony (with the lessons): **no duty held**, labour targets as the founders stand (water 2 · food 1 · builders 2); colonies without the lessons and the bots: labour, build and trade on, every duty held (trade inert until Vicus unless *Mercatores*) · focus *Concordia* · settings at defaults · emergency and govern-away on |
+| Ordo | a new colony (with the lessons): **no duty held**, labour targets as the founders stand (water 2 · food 1 · materials 1 · builders 2); colonies without the lessons and the bots: labour, build and trade on, every duty held (trade inert until Vicus unless *Mercatores*) · focus *Concordia* · settings at defaults · emergency and govern-away on |
 | Advisors | Annonae, Aquarum, Fabrum appointed |
 | Market | all 1.0, easing toward the Ver targets |
 
@@ -1443,7 +1444,7 @@ The attentive player's curve (`npm run trace`; houses by tier are medians per co
 
 Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Municipium +30–50 · Colonia +40–80.
 
-**Bands** (assertions, the attentive player): Vicus 420–780 · Oppidum 2,100–3,400 · Municipium 5,000–7,600 · Colonia 8,800–14,000 · victory 11,000–17,500 · Capitolium phase 1,800–3,000 days, each stage 350–900 · pop at victory 700–1,400. **Idle floor**: the Ordo alone reaches each rank 2.2–3.6× later (median), and the Capitolium.
+**Bands** (assertions, the attentive player): Vicus 420–780 · Oppidum 2,100–3,400 · Municipium 5,000–7,600 · Colonia 8,800–14,000 · victory 11,000–17,500 · Capitolium phase 1,800–3,000 days, each stage 350–900 · pop at victory 700–1,500. **Idle floor**: the Ordo alone reaches each rank 2.2–3.6× later (median), and the Capitolium.
 
 ### 18.5 Balance-bot and contract assertions (headless vitest)
 
@@ -1473,7 +1474,7 @@ Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Munici
 
 **Stretch (only after the core is integrated, in this order)**: tombs along the via (every 6th death); drag-to-place rows of plots; glowing insula windows on Hiems evenings; tip-codex history notes; T5 *insula magna / domus magna*; an ambient seasonal drone; a second castellum on a second spring; hub price sparklines; barter.
 
-**If over budget, cut from the top**: theatrum (Colonia then needs thermae only) → pabulatio (idle foraging gets the Autumnus ×1.8) → lacus (castellum fountain radius 6) → mansio (slots from ranks only) → olivetum (oil import-only) → forest depletion (static wood density) → the aquae variant → the paving brush.
+**If over budget, cut from the top**: theatrum (Colonia then needs thermae only) → pabulatio (idle foraging gets the Autumnus ×1.8) → lacus (castellum fountain radius 12) → mansio (slots from ranks only) → olivetum (oil import-only) → forest depletion (static wood density) → the aquae variant → the paving brush.
 
 **Never cut**: the survey grid with plots and blocks; houses T0–T4 with the fork and want icons; road-BFS coverage; grain and water in days with horrea and the two crunches; vital tablets with the forecast strip; the Ordo with stakes, reasons and three toggles; six advisors with the 24 rules and typed remedies; mentor tips; Res Gestae; nine edicts; charter + four paths; offline replay with *Litterae Ordinis*; the five overlays; ≥ 10 events including the veterans; six hubs with contracts; `rise()` construction; the Capitolium set piece.
 
@@ -1486,14 +1487,15 @@ Treasury net (den/day): Castra +3 · Vicus +6–10 · Oppidum +12–25 · Munici
 | Base | *Builder* proposal, with the steward's guidance layer and the idle proposal's contract tests grafted in. |
 | Player vs Ordo | Ordo stakes (5 days, cancel 100% / move); player sites first in the queue; Ordo counts all coverage, never demolishes/moves/converts; modest cadence; beautification, fork and extra culture left to the player; builder-persona test (§10.3, §18.5). |
 | Calendar | real Julian 365-day calendar, aging on it, edict windows on season Kalends (§2). |
-| Arc and scale | ≈ 3½ h at 1× for the attentive player (≈ 8 h with the Ordo alone), ≈ 950 people at victory, cap 1,500 (§2.3, §18.4); ≈ 1,200–1,350 since the growing town (§3.9): the razed camp joins the inner city to the outer, services reach further and homes rise (still inside the 1,400 band). |
+| Arc and scale | ≈ 3½ h at 1× for the attentive player (≈ 8 h with the Ordo alone), ≈ 950 people at victory, cap 1,500 (§2.3, §18.4); ≈ 1,200–1,350 since the growing town (§3.9): the razed camp joins the inner city to the outer, services reach further and homes rise (still inside the 1,400 band). Since services serve a neighbourhood (§7.4), more homes reach the insula and the domus and their aqueduct form: the town's beds outgrow Rome's roll, and the attentive player's town fills it (1,500) by the dedication, on the same days; the band's top is the roll. |
 | Finale | Capitolium crew cap 64 + gradual materials; 30–45 min; stage bands asserted (§9.5). |
 | First rank-up | Vicus at 7–13 min with pop 50, first Hiems, horreum, Stabilitas (§9.1). |
 | Devolution | Declining after 20 days, one-tier drop after 60 more, never offline (§7.3). |
 | No-decision stall | Rome's roll (immigration ceiling per rank), not a plot allotment; building is never capped (§6.6). |
 | Pomerium geometry | interior → Ring 1 (Vicus) → Ring 2 (Oppidum, final); loam masked; no farm demolition; map guarantees (§3.3–3.5). |
 | The growing town | (owner's request, after release) cities were not boxes that kept their walls and streets for centuries: footfall wears roads into a hierarchy; a town wall rings the whole town from Colonia (the player may from Municipium), and the castrum is razed into the inner city with Ring 3 on its old wall line; the Ordo fills in wells the fountains made needless and buys out its own homes for a civic block no free block can host, rehousing every family; fountains draw from the aqueduct through the town and go where they reach the great houses. Never the player's works. Map generation is unchanged (Ring 3 is appended to the survey, older block ids stand); saves migrate (v2) (§3.9). |
-| Coverage | BFS over built road tiles in integer steps; paving is cosmetic + desirability (§7.4). |
+| Coverage | BFS over built road tiles in integer steps; paving is cosmetic + desirability (§7.4). (Owner's request, after release) the radii were doubled or more: a well reached a dozen of the camp's sixty homes, and a town of house blocks needed well after well; a service now serves a neighbourhood (§7.4). |
+| Water works | (Owner's request, after release) a grown town raised some 40 wells and 40 cisterns, one on nearly every other plot, and 60 souls hauled water: the castellum gives 2,000 a day into a 10,000 reservoir, so the aqueduct carries the Colonia and the Ordo fills in the supply wells it made needless (§3.9); a cistern holds 1,000; a well takes four hands from the Oppidum (a windlass), two before, so the camp's first summer still needs its cistern (§11.13) and a well's full reach still needs one hand. At victory 5–19 wells (a hand each, kept for their streets' reach) and 6–9 cisterns, against 28–45 and 39–42 before. |
 | Event cadence | no events before day 300; ≥ 200 days between cards; ≥ 120 between harmful events; slow for news; explicit defaults (§12.1). |
 | Names | unique ids for tabs, toggles, focuses, edicts, advisors and hubs (ARCHITECTURE §4). |
 | UI density | one counsel card, one ticker, chips from Periculum only, toasts for completions/milestones (§15.1). |

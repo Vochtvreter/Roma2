@@ -34,7 +34,7 @@ import { reasonText } from '../game/ordo/reasons';
 import { seasonOf, formatRoman } from '../game/calendar';
 import { buildingVisible, toolRevealed } from '../game/reveal';
 import { B } from '../game/balance';
-import { BUILD_ORDER, BUILDING_DEFS } from '../game/data/buildings';
+import { BUILD_ORDER, BUILDING_DEFS, slotsOf } from '../game/data/buildings';
 import { LAYER_META, TIER_DEFS } from '../game/data/housing';
 import { RESOURCE_DEFS } from '../game/data/resources';
 import { RANK_DEFS } from '../game/data/ranks';
@@ -668,7 +668,7 @@ class InspectorCard {
       const refresh = (): void => {
         const st = g.state;
         const ppl = st.people.filter((p) => p.work === b.id);
-        staff.textContent = `${ppl.length} of ${def.slots} hands${b.open ? '' : ' · closed (CLAVSVM)'}`;
+        staff.textContent = `${ppl.length} of ${slotsOf(b.type, st.rank)} hands${b.open ? '' : ' · closed (CLAVSVM)'}`;
         names.textContent = ppl.map((p) => `${personName(p)}${def.skill && p.skills[def.skill] ? ` (${def.skill} ${Math.floor(p.skills[def.skill] ?? 0)})` : ''}`).join(', ');
       };
       refresh();

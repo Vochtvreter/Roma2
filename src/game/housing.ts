@@ -28,6 +28,9 @@ const B = B$, HOUSE_TIERS = HOUSE_TIERS$, RESOURCES = RESOURCES$, derived = deri
 
 const H = B.housing;
 const TOP = 4;
+/** The desirability field is a Float32Array summed over many sources: a street that sums to its tier's minimum may read
+ *  a hair below it. Needs and the crowding check both hold a house within this of its minimum. */
+const DESIR_EPS = 1e-3;
 const PREFS: readonly HousePref[] = ['auto', 'insula', 'domus'];
 /** The house needs a coverage layer satisfies. */
 const LAYER_NEEDS: Record<CoverageLayerId, readonly NeedId[]> = {
@@ -90,7 +93,7 @@ export function unmetNeeds(s: GameState, b: Building, tier: HouseTierId): NeedId
       case 'market': met = houseHas(s, b.id, 'market') || houseHas(s, b.id, 'macellum'); break;
       case 'temple': met = houseHas(s, b.id, 'temple'); break;
       case 'desirability':
-        met = t.desirMin === null || houseDesir(s, b.id) >= t.desirMin;
+        met = t.desirMin === null || houseDesir(s, b.id) >= t.desirMin - DESIR_EPS;
         if (met && h && tier !== h.tier && crowds(s, b, tier).length > 0) met = false;   // a rise that would crowd a neighbour waits
         break;
       case 'baths': met = houseHas(s, b.id, 'baths'); break;
@@ -159,7 +162,7 @@ export function crowds(s: GameState, b: Building, to: HouseTierId): { id: number
     }
     before /= tiles.length;
     after /= tiles.length;
-    if (before >= min && after < min) out.push({ id: nb.id, short: min - after });
+    if (before >= min - DESIR_EPS && after < min - DESIR_EPS) out.push({ id: nb.id, short: min - after });
   }
   cache.set(key, out);
   return out;
@@ -300,6 +303,9 @@ export function housingDay(s: GameState, ctx: TickContext): void {
     const b = getBuilding(s, id);
     if (b?.house?.renovating && day >= b.house.renovating.until) { finishRenovation(s, ctx, b); changed = true; }
   }
+  // a finished rise leaves the renovations under way: the checks below read it in the desirability field instead, or a
+  // rise checked today would miss it and crowd a neighbour below its tier (five insulae finished around one stone house)
+  if (changed) { invalidateTiers(s); changed = false; }
   const win = s.counters.renovWindow;
   if (day - win.start >= H.THROTTLE_WINDOW) { win.start = day; win.count = 0; }
   const allowed = 1 + Math.floor(ids.length / H.THROTTLE_PER);

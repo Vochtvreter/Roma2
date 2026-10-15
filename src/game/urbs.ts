@@ -9,14 +9,16 @@ import { F, RESOURCES, T } from './types';
 import type { ActionResult, Building, BuildingId, Cost, GameState, NeedId, Person, Reason, ResId, SimView, TickContext } from './types';
 import { getMap, idx } from './map';
 import { classAt, derived, footprintOf, sizeOf } from './derived';
-import { WALL_RING, isActiveBlock, isRazed } from './survey';
+import { WALL_RING, charterStreets, isActiveBlock, isRazed } from './survey';
 import { homesEpoch, invalidate, memo, pushActionFx, structEpoch, touchPeople } from './memo';
 import { log } from './state';
 import { getBuilding } from './lookup';
 import { census, houseBeds, peopleIndex } from './census';
+import { passivePotential } from './economy';
 import { houseDesir, houseHas, previewCovered } from './coverage';
 import { rehouseGroups } from './people';
-import { savingFor, treasuryFloor } from './ordo/saving';
+import { firstWant, targetTier } from './housing';
+import { reserved, savingFor, treasuryFloor } from './ordo/saving';
 import { settingValue } from './decisions';
 import { granted, walkMask } from './ordo/duties';
 import { placeName } from './advisors/util';
@@ -27,6 +29,7 @@ import { feminine } from './data/names';
 import { GH, GN, GW, sideTiles } from './world/grid';
 
 const U = B.urbs;
+const AESTAS = 1;
 const TR = U.TRAFFIC;
 const M = U.MOENIA;
 const EPS = 1e-9;
@@ -166,6 +169,47 @@ export function busiestDirt(s: GameState, n: number): number[] {
   const d = derived(s);
   return s.roads.filter((i) => d.road[i] === 1 && d.pomerium[i] === 1 && d.stepsToForum[i] >= 0)
     .sort((a, b) => footfall(s, b) - footfall(s, a) || d.stepsToForum[a] - d.stepsToForum[b] || a - b).slice(0, n);
+}
+
+// ───────────────────────────── the charter streets ─────────────────────────────
+
+/** The rank's charter streets still dirt (survey.ts charterStreets, DESIGN §3.7): nearest the forum first, then the
+ *  lowest tile. */
+export function charterDirt(s: GameState): number[] {
+  const d = derived(s);
+  const charter = charterStreets(getMap(s.seed).survey, s.rank);
+  const far = (i: number): number => d.stepsToForum[i] >= 0 ? d.stepsToForum[i] : GN;
+  return s.roads.filter((i) => charter[i] === 1 && d.road[i] === 1).sort((a, b) => far(a) - far(b) || a - b);
+}
+
+/** A home that could rise but for the stone its renovation lacks: the renovations come first (charterPaving). */
+export function stoneWaits(s: GameState): boolean {
+  for (const id of derived(s).houses) {
+    const b = getBuilding(s, id);
+    if (!b?.house || b.house.renovating) continue;
+    const next = targetTier(s, b);
+    if (next && (TIER_DEFS[next].renovation.stone ?? 0) > 0 && firstWant(s, b) === 'materials') return true;
+  }
+  return false;
+}
+
+/** Paves the rank's charter streets that lie dirt, nearest the forum first, at B.map.PAVE_STONE stone a pace (on the
+ *  Kalends, urbsDay, from the first after the rank, with the streets laid since). The renovations come first: no paving
+ *  while a home waits for stone to rise, and only from the share of the unreserved stone the Renovation allowance
+ *  leaves them (40% by default), at most CHARTER.MONTH paces. Returns the paces paved. */
+export function charterPaving(s: GameState, ctx?: TickContext): number {
+  const dirt = charterDirt(s);
+  if (dirt.length === 0) return 0;
+  const per = B.map.PAVE_STONE;
+  const spare = Math.max(0, s.res.stone - (reserved(s, view(s)).stone ?? 0)) * (1 - settingValue(s, 'renovation'));
+  const n = Math.min(dirt.length, B.map.CHARTER.MONTH, Math.floor(spare / per + EPS));
+  if (n <= 0 || stoneWaits(s)) return 0;
+  const stone = n * per;
+  s.res.stone = Math.max(0, s.res.stone - stone);
+  if (ctx) ctx.rates.cons.stone.construction = (ctx.rates.cons.stone.construction ?? 0) + stone;
+  s.paved = [...new Set([...s.paved, ...dirt.slice(0, n)])].sort((a, b) => a - b);
+  invalidate(s);
+  return n;
 }
 
 // ───────────────────────────── the town wall ─────────────────────────────
@@ -435,23 +479,31 @@ export function wellNeedless(s: GameState, b: Building): boolean {
   return true;
 }
 
+/** The aqueduct carries the town (DESIGN §3.9): what flows without hands in Aestas, the leanest season (the castellum,
+ *  the cisterns' rain), covers what the town drinks and its works draw, with RENEW.CARRY to spare. The wells raised for
+ *  the supply are then needless for it too. */
+export function aqueductCarries(s: GameState, v: SimView): boolean {
+  return v.d.castellumActive && passivePotential(s, 'water', AESTAS) >= v.f.water.cons * U.RENEW.CARRY;
+}
+
 /** On the Kalends, once the aqueduct flows and water is plentiful all year: the Ordo fills in one old well on a house plot
  *  that the fountains have made needless (its own or the founders', never the player's, nor one it raised for the water
- *  supply in a drought or before Aestas), freeing the plot for a home. */
+ *  supply in a drought or before Aestas until the aqueduct carries the town), freeing the plot for a home. The buy-out
+ *  clock (RENEW.GAP) is its own: once the aqueduct carries the town, a well a month may go. */
 function renewWells(s: GameState, ctx: TickContext, v: SimView): void {
   if (!v.d.castellumActive || !holds(s, 'water')) return;
   const reserve = settingValue(s, 'waterReserve'), crunch = v.f.water.crunch;
   if (v.f.water.doh < reserve || (crunch && crunch.lowestDoh < reserve)) return;   // not while water is, or will be, short
+  const carried = aqueductCarries(s, v);
   for (const b of s.buildings) {
     if (b.type !== 'puteus' || b.status !== 'done' || b.owner === 'player') continue;
     if (s.day - (b.doneDay ?? b.placed) < U.RENEW.WELL_AGE) continue;
-    if (b.reason?.code === 'aestasWater' || b.reason?.code === 'survivalWater') continue;   // raised for the supply, not the street
+    if (!carried && (b.reason?.code === 'aestasWater' || b.reason?.code === 'survivalWater')) continue;   // the supply still needs it
     if (classAt(s, 'puteus', b.x, b.y) !== 'plot' || !wellNeedless(s, b)) continue;
     const place = placeName(s, idx(b.x, b.y));
     const tiles = footprintOf(b, s);
     for (const p of peopleIndex(s).byWork.get(b.id) ?? []) p.work = null;
     s.buildings = s.buildings.filter((x) => x.id !== b.id);
-    s.urbs.renewed = s.day;
     log(s, 'ordo', `The Ordo fills in the old well ${place}: the fountains water that street now, and the plot is free for a home.`, undefined);
     ctx.fx.push({ kind: 'renewed', tiles });
     invalidate(s);
@@ -569,11 +621,14 @@ export function buyOut(s: GameState, houseIds: readonly number[], forType: Build
 
 // ───────────────────────────── the day ─────────────────────────────
 
-/** The growing town's day (sim step 5, after the homes): on the Kalends the footfall census and a well the fountains made
- *  needless; on the Ordo's build days, a town wall once the town has outgrown its camp (the plan duty). */
+/** The growing town's day (sim step 5, after the homes): on the Kalends the footfall census, the rank's charter streets
+ *  paved as the stone allows (charterPaving) and a well the fountains made needless; on the Ordo's build days, a town
+ *  wall once the town has outgrown its camp (the plan duty). */
 export function urbsDay(s: GameState, ctx: TickContext, v: SimView, kalends: boolean): void {
   if (kalends) {
     countFootfall(s);
+    const paved = charterPaving(s, ctx);
+    if (paved > 0) log(s, 'build', `${paved} more ${paved === 1 ? 'pace' : 'paces'} of the town's streets paved in silex (${paved * B.map.PAVE_STONE} stone).`);
     renewWells(s, ctx, v);
   }
   if (s.day % B.ordo.BUILD_EVERY === 0 && holds(s, 'plan') && moeniaDue(s)) surveyWalls(s, 'ordo', (e) => ctx.fx.push(e));

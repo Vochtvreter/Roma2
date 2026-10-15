@@ -10,6 +10,7 @@ import { getMap as getMap$ } from './map';
 import { plotOrigin as plotOrigin$ } from './survey';
 import { footprintOf as footprintOf$ } from './derived';
 import { roadPathFor } from './place';
+import { bestSlot } from './site';
 import { invalidate as invalidate$ } from './memo';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
 import { EDICT_DEFS as EDICT_DEFS$, SETTING_DEFS as SETTING_DEFS$, SWITCH_DEFS as SWITCH_DEFS$ } from './data/decisions';
@@ -50,7 +51,7 @@ const ROSTER: readonly RosterRow[] = [
     kids: [{ prae: 'Quintus', age: 16, female: false }, { prae: '', age: 12, female: true }] },
   { gens: 'Cassius', head: { prae: 'Decimus', age: 41, skills: { fabri: 2 } }, wife: { gens: 'Iunius', age: 33 },
     kids: [{ prae: '', age: 9, female: true }, { prae: 'Aulus', age: 4, female: false }] },
-  { gens: 'Aemilius', head: { prae: 'Gnaeus', age: 39, skills: { aqua: 1 } }, wife: { gens: 'Caecilius', age: 35 },
+  { gens: 'Aemilius', head: { prae: 'Gnaeus', age: 39, skills: { aqua: 1 }, job: 'lignarius' }, wife: { gens: 'Caecilius', age: 35 },
     kids: [{ prae: 'Sextus', age: 11, female: false }, { prae: '', age: 6, female: true }] },
   { gens: 'Iulius', head: { prae: 'Publius', age: 40, skills: { lapis: 1 } }, wife: { gens: 'Claudius', age: 37 },
     kids: [{ prae: 'Lucius', age: 15, female: false }, { prae: '', age: 7, female: true }] },
@@ -191,7 +192,8 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
     log: [], lastSave: opts.now,
   };
 
-  // buildings: principia, six tentoria plots, the well, the field (direct insertion, owner 'start', done)
+  // buildings: principia, six tentoria plots, the well, the field (direct insertion, owner 'start', done); a colony
+  // run by hand's lumber camp follows once the roads are laid
   const add = (type: BuildingId, x: number, y: number): Building => {
     const b = startBuilding(nextId(s), type, x, y, day);
     s.buildings.push(b);
@@ -244,6 +246,24 @@ export function newGame(opts: { seed: number; legacy?: number; legacyBonus?: num
   for (const i of track) if (map.woodMax[i] > 0) s.wood[i] = 0;
   if (track.length > 0) s.roads = [...new Set([...s.roads, ...track])].sort((a, c) => a - c);
   invalidate(s);
+
+  // a colony run by hand (below) gets a lumber camp on the Ordo's best wooded site, with one woodcutter: a trickle of
+  // timber, so a colony that has spent its timber can always build again in time (every work costs timber, the camp
+  // too; the lessons offer the camp late and trade opens at Vicus), but too little to grow on alone. The Ordo raises
+  // its own.
+  const site = opts.intro ? bestSlot(s, 'lignarius', { owner: 'ordo' }) : null;
+  if (site) {
+    const camp = add('lignarius', site.x, site.y);
+    const fp = footprintOf(camp, s);
+    const path = roadPathFor(s, fp) ?? [];
+    for (const i of [...fp, ...path]) if (map.woodMax[i] > 0) s.wood[i] = 0;
+    if (path.length > 0) s.roads = [...new Set([...s.roads, ...path])].sort((a, c) => a - c);
+    ROSTER.forEach((row, k) => {
+      const head = getPerson(s, s.families[k].head);
+      if (row.head.job === 'lignarius' && head) head.work = camp.id;
+    });
+    invalidate(s);
+  }
 
   // a new colony with the opening lessons (intro.ts, DESIGN §11.13) is run by hand: every duty is the player's until
   // they have done it themselves, then theirs to hand to the Ordo (ordo/duties.ts, DESIGN §10.2). The hands stay where

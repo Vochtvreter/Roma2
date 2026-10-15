@@ -16,7 +16,7 @@ import { classAt, sizeOf } from '../src/game/derived';
 import { previewCovered } from '../src/game/coverage';
 import { nextTier, unmetNeeds } from '../src/game/housing';
 import { getMap, tx, ty } from '../src/game/map';
-import { fresh } from './util';
+import { dryHouse, fresh } from './util';
 
 type Draw = [PlacingState | null, PlaceCheck | null];
 
@@ -66,6 +66,7 @@ describe('openPlacing: the banner of a pre-positioned placement', () => {
 describe('the inspector pre-positions its Place buttons', () => {
   it("a house's Place button sets the ghost on a free slot that serves that house", () => {
     const s = fresh(42);
+    dryHouse(s);
     const dry = s.buildings.filter((b) => b.house && unmetNeeds(s, b, nextTier(s, b)!).includes('water'));
     expect(dry.length).toBeGreaterThan(0);
     for (const b of dry) {
@@ -79,6 +80,7 @@ describe('the inspector pre-positions its Place buttons', () => {
 
   it("with no free slot that reaches the house, its Place still starts by it: the valid slot nearest the house", () => {
     const s = fresh(42);
+    dryHouse(s);
     const b = s.buildings.find((x) => x.house && unmetNeeds(s, x, nextTier(s, x)!).includes('water'))!;
     expect(b).toBeDefined();
     // every free slot that reaches it taken (the Ordo builds there) until none serves it

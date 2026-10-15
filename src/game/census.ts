@@ -12,7 +12,7 @@ import { caps, horreaCap, portion } from './economy';
 import { fx as fx$, fxAdd as fxAdd$ } from './fx';
 import { getBuilding as getBuilding$ } from './lookup';
 import { isAquae } from './housing';
-import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { BUILDING_DEFS as BUILDING_DEFS$, slotsOf as slotsOf$ } from './data/buildings';
 import { TIER_DEFS as TIER_DEFS$ } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
@@ -20,7 +20,7 @@ import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 const B = B$, BUILDER = BUILDER$, HOUSE_TIERS = HOUSE_TIERS$, LABOR_CATS = LABOR_CATS$, censusEpoch = censusEpoch$,
   memo = memo$, peopleEpoch = peopleEpoch$, structEpoch = structEpoch$, derived = derived$, fx = fx$, fxAdd = fxAdd$,
   homesEpoch = homesEpoch$, jobsEpoch = jobsEpoch$, layoutEpoch = layoutEpoch$,
-  BUILDING_DEFS = BUILDING_DEFS$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
+  BUILDING_DEFS = BUILDING_DEFS$, slotsOf = slotsOf$, TIER_DEFS = TIER_DEFS$, RANK_DEFS = RANK_DEFS$,
   getBuilding = getBuilding$;
 
 const YEAR = B.time.YEAR_DAYS;
@@ -254,7 +254,7 @@ function slotCounts(s: GameState): SlotCounts {
     for (const b of s.buildings) {
       const def = BUILDING_DEFS[b.type];
       if (def.slots <= 0) continue;
-      const n = b.status === 'done' && b.open ? def.slots : 0;
+      const n = b.status === 'done' && b.open ? slotsOf(b.type, s.rank) : 0;
       if (def.labor) catSlots[def.labor] += n;
       staffable.push({ id: b.id, labor: def.labor ?? null });
     }
@@ -262,7 +262,7 @@ function slotCounts(s: GameState): SlotCounts {
     for (let k = s.buildings.length - 1; k >= 0; k--) {
       const b = s.buildings[k];
       const def = BUILDING_DEFS[b.type];
-      if (def.slots > 0) slots[b.id] = b.status === 'done' && b.open ? def.slots : 0;
+      if (def.slots > 0) slots[b.id] = b.status === 'done' && b.open ? slotsOf(b.type, s.rank) : 0;
     }
     return { slots, catSlots, staffable };
   });

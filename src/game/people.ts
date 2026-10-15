@@ -9,10 +9,12 @@ import { derived as derived$, roadNeighbors as roadNeighbors$ } from './derived'
 import { toRoman as toRoman$ } from './calendar';
 import { fx as fx$ } from './fx';
 import { layoutEpoch as layoutEpoch$, memo as memo$, touchJobs as touchJobs$, touchPeople as touchPeople$ } from './memo';
-import { careShare, dignitas } from './civic';
+import { careShare } from './civic';
+import { getMap as getMap$ } from './map';
+import { charterStreets as charterStreets$ } from './survey';
 import { log, nextId } from './state';
 import { getBuilding as getBuilding$, getPerson as getPerson$ } from './lookup';
-import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { BUILDING_DEFS as BUILDING_DEFS$, slotsOf as slotsOf$ } from './data/buildings';
 import { aTier } from './data/housing';
 import { RANK_DEFS as RANK_DEFS$ } from './data/ranks';
 import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, PRAENOMINA as PRAENOMINA$, feminine as feminine$ } from './data/names';
@@ -20,9 +22,9 @@ import { DAUGHTER_COG as DAUGHTER_COG$, GENTES_IMMIGRANT as GENTES_IMMIGRANT$, P
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, BUILDER = BUILDER$, SKILLS = SKILLS$, derived = derived$, roadNeighbors = roadNeighbors$,
   toRoman = toRoman$, fx = fx$, layoutEpoch = layoutEpoch$, memo = memo$, touchJobs = touchJobs$,
-  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, RANK_DEFS = RANK_DEFS$,
+  touchPeople = touchPeople$, BUILDING_DEFS = BUILDING_DEFS$, slotsOf = slotsOf$, RANK_DEFS = RANK_DEFS$,
   DAUGHTER_COG = DAUGHTER_COG$, GENTES_IMMIGRANT = GENTES_IMMIGRANT$, PRAENOMINA = PRAENOMINA$, feminine = feminine$,
-  getBuilding = getBuilding$, getPerson = getPerson$;
+  getBuilding = getBuilding$, getPerson = getPerson$, getMap = getMap$, charterStreets = charterStreets$;
 
 const P = B.people;
 const YEAR = B.time.YEAR_DAYS;
@@ -84,7 +86,7 @@ export function assignJobs(s: GameState, plan: LabourPlan): void {
   }
   const target = (b: Building): number => {
     if (b.status !== 'done' || !b.open) return 0;
-    return Math.max(0, Math.min(BUILDING_DEFS[b.type].slots, Math.floor(plan.perBuilding[b.id] ?? 0)));
+    return Math.max(0, Math.min(slotsOf(b.type, s.rank), Math.floor(plan.perBuilding[b.id] ?? 0)));
   };
   const leastFirst = (skill: SkillId | null) => (a: Person, c: Person): number => skillOf(a, skill) - skillOf(c, skill) || c.id - a.id;
   for (const { b, list } of at.values()) {
@@ -601,11 +603,17 @@ export function peopleDay(s: GameState, ctx: TickContext, rng: Rng): void {
 // ───────────────────────────── immigration (DESIGN §6.6) ─────────────────────────────
 
 /** The colony's splendour (DESIGN §6.6, §10.3): the dignitas of the works the Ordo leaves to the player — gardens and
- *  paved streets (the Ordo raises them only under the Urbs focus, which the player sets). */
+ *  paved streets (the Ordo raises them only under the Urbs focus, which the player sets); the charter streets
+ *  the town paves as it rises (survey.ts charterStreets, urbs.ts) count only for the camp's cardo and decumanus, as
+ *  they always did: the rest are not the player's work, and a colony the Ordo keeps alone keeps its pace (§18.5). */
 export function splendour(s: GameState): number {
   let gardens = 0;
   for (const b of s.buildings) if (b.type === 'hortus' && b.status === 'done') gardens++;
-  return gardens * BUILDING_DEFS.hortus.dignitas + dignitas(s).groups.roads;
+  const sv = getMap(s.seed).survey;
+  const charter = charterStreets(sv, s.rank), axes = charterStreets(sv, B.map.CHARTER.axes);
+  let paved = 0;
+  for (const i of s.paved) if (charter[i] === 0 || axes[i] === 1) paved++;
+  return gardens * BUILDING_DEFS.hortus.dignitas + B.dignitas.ROADS * paved;
 }
 
 /** Rome's favour (DESIGN §6.6): Rome sends colonists faster to a splendid town, ×(1 + RENOWN.K × splendour per home),
