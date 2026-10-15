@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // decisions.ts is imported first on purpose: the real civic.ts imports housing.ts → decisions.ts, so if decisions.ts were
 // first loaded from inside the civic mock's importOriginal() it would bind the original dignitas, not the mock below.
 import {
-  choosePath, edictWindow, isUnlocked, nextColonyLegacy, nextPath, pathStory, petitionNeeds, rankUp, setEdict, setFocus, setSetting,
-  setSwitch, settingValue,
+  choosePath, edictWindow, isUnlocked, nextColonyLegacy, nextPath, nextRankNeeds, pathStory, petitionNeeds, rankUp, setEdict, setFocus,
+  setSetting, setSwitch, settingValue,
 } from '../src/game/decisions';
 import { HUBS, MILESTONE_IDS, PATH_DECISIONS } from '../src/game/types';
 import type { Building, BuildingId, GameState, HouseTierId, MilestoneId, MulKey, AddKey } from '../src/game/types';
@@ -137,8 +137,10 @@ describe('petitions', () => {
     const pn = (): NonNullable<ReturnType<typeof petitionNeeds>> => petitionNeeds(s, view(s))!;
     expect(pn().rank).toBe(2);
     expect(pn().ready).toBe(false);                       // the stub coverage reaches nobody
+    expect(nextRankNeeds(s, view(s))!.needs[2].progress).toBe(0);   // how far the reach line is, as it reads (the away letter's stall)
     hooks.covered = true;
     expect(pn().ready).toBe(true);
+    expect(nextRankNeeds(s, view(s))!.needs[2].progress).toBe(1);
     s.trade.hubsTraded = ['durii'];
     expect(pn().ready).toBe(false);
     s.trade.hubsTraded = ['metellianus', 'durii'];
@@ -168,10 +170,12 @@ describe('petitions', () => {
     expect(pn().needs.find((n) => !n.met)?.label).toContain('missing: Temple');
     staff(s, t); staff(s, m);
     expect(pn().ready).toBe(false);
+    expect(nextRankNeeds(s, view(s))!.needs[3].progress).toBe(2 / 3);   // two of the three works staffed (the away letter's stall)
     staff(s, b);
     expect(pn().ready).toBe(true);
     s.counters.ironMade = 59;
     expect(pn().ready).toBe(false);
+    expect(nextRankNeeds(s, view(s))!.needs[4].progress).toBe(59 / 60);
     s.counters.ironMade = 60;
     expect(choosePath(s, 'path3', 'iusLatii').ok).toBe(true);
     expect(s.res.iron).toBe(20_000 - 60);

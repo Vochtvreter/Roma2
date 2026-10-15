@@ -567,8 +567,8 @@ describe('offline catch-up', () => {
 
   it('the progress line: the next rank\'s checklist and the Capitolium, before → after (F9)', () => {
     const rep = simulateOffline(fresh(42), 60_000)!;
-    expect(rep.before.petition).toEqual({ rank: 1, met: 0, of: 6 });             // the charter's line counts while it waits
-    expect(rep.after.petition).toEqual({ rank: 1, met: 1, of: 6 });              // the horreum is raised
+    expect(rep.before.petition).toEqual({ rank: 1, met: 0, of: 6, items: [0, 24 / 50, 0, 0, 0, 5 / 12] });   // the charter's line counts while it waits
+    expect(rep.after.petition).toEqual({ rank: 1, met: 1, of: 6, items: [0, 24 / 50, 0, 1, 0, 9 / 12] });    // the horreum is raised
     expect(rep.before.capitolium).toBeNull();
     expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 1 of 6 met');
     expect(rep.awaiting.stalled).toBeNull();                                     // works raised: not stalled
@@ -599,6 +599,30 @@ describe('offline catch-up', () => {
     expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 0 of 6 met');
     const cap = { ...rep, after: { ...rep.after, capitolium: 0.344 }, awaiting: { ...rep.awaiting, stalled: { rank: null, lacking: [] } } };
     expect(stalledLine(cap)).toBe('Stalled: the Capitolium did not rise past 34%.');
+  });
+
+  it('stalled reads the next rank\'s checklist, not growth: souls past the count and the Ordo\'s works stay stalled (F9)', () => {
+    // the charter is never proclaimed in your name: once the rest of the Vicus checklist is met, the colony grows on under
+    // Govern while away (souls past 50, works raised) and nothing moves toward Vicus (playtest #9: the letter hid the blocker)
+    const s = fresh(1);
+    simulateOffline(s, AWAY_CAP_MS);
+    const near = simulateOffline(s, 400_000)!;
+    expect(near.after.petition!.met).toBeGreaterThan(near.before.petition!.met);   // the souls reach the count: moved
+    expect(near.awaiting.stalled).toBeNull();
+    const rep = simulateOffline(s, 400_000)!;
+    expect(rep.after.pop).toBeGreaterThan(rep.before.pop);
+    expect(rep.after.built).toBeGreaterThan(rep.before.built);
+    expect(rep.after.petition).toEqual(rep.before.petition);
+    expect(rep.awaiting.petition).toBeNull();
+    expect(rep.awaiting.stalled).toEqual({ rank: 1, lacking: ['Lex coloniae proclaimed'] });
+    expect(stalledLine(rep)).toBe('Stalled: nothing moved toward Vicus. Still lacking: Lex coloniae proclaimed.');
+    // a counted line nearer, though not yet met, is progress: souls still short of the count, nothing raised
+    const short = run(fresh(42), 600);
+    const up = simulateOffline(short, 400_000)!;
+    expect(up.after.petition!.met).toBe(up.before.petition!.met);
+    expect(up.after.built).toBe(up.before.built);
+    expect(up.after.petition!.items[1]).toBeGreaterThan(up.before.petition!.items[1]);   // the Souls line
+    expect(up.awaiting.stalled).toBeNull();
   });
 
   it('the lowest point ends in one full stop after a Roman date (R48)', () => {

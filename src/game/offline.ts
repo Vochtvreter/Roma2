@@ -52,20 +52,25 @@ function snapshot(s: GameState): Snapshot {
     grainDoh: doh(s.res.grain, c.need.grain), waterDoh: doh(s.res.water, c.need.water),
     births: s.stats.births, deaths: s.stats.deaths, immigrants: s.stats.immigrants, emigrants: s.stats.emigrants,
     built: s.stats.built, evolvedBy: { ...s.stats.evolvedBy }, builtBy: { ...s.stats.builtBy },
-    petition: next ? { rank: next.rank, met: next.needs.filter((n) => n.met).length, of: next.needs.length } : null,
+    petition: next ? {
+      rank: next.rank, met: next.needs.filter((n) => n.met).length, of: next.needs.length, items: next.needs.map((n) => n.progress ?? (n.met ? 1 : 0)),
+    } : null,
     capitolium: cap ? (cap.status === 'done' ? 1 : cap.progress) : null,
   };
 }
 
-/** True when the absence moved the colony on: more souls, a work raised, a home risen, a petition item met, the
- *  Capitolium higher. */
+/** True when the absence moved the colony toward its next rank: a line of its checklist met or nearer as it reads
+ *  (souls still short, dignitas, homes of the tier asked, …), or at Colonia the Capitolium higher. Growth the checklist
+ *  does not ask for is not progress: souls past the count, the Ordo's cisterns and gardens (DESIGN §14). */
 function moved(b: Snapshot, a: Snapshot): boolean {
-  return a.pop > b.pop || a.built > b.built || HOUSE_TIERS.some((t) => (a.evolvedBy[t] ?? 0) > (b.evolvedBy[t] ?? 0))
-    || (a.petition?.met ?? 0) > (b.petition?.met ?? 0) || (a.capitolium ?? 0) > (b.capitolium ?? 0);
+  const pb = b.petition, pa = a.petition;
+  if (pa?.rank !== pb?.rank) return true;   // a rank gained
+  if (pa && pb) return pa.met > pb.met || pa.items.some((x, i) => x > (pb.items[i] ?? 0));
+  return (a.capitolium ?? 0) > (b.capitolium ?? 0);
 }
 
-/** What holds the next rank when nothing moved and no petition waits on the player (DESIGN §14 "Stalled"): the next
- *  rank's unmet items in checklist order, or (rank null) the Capitolium that did not rise; null when something moved. */
+/** What holds the next rank when nothing moved toward it and no petition waits on the player (DESIGN §14 "Stalled"): the
+ *  next rank's unmet items in checklist order, or (rank null) the Capitolium that did not rise; null when something moved. */
 function stalled(s: GameState, b: Snapshot, a: Snapshot, ready: boolean): AwayReport['awaiting']['stalled'] {
   if (ready || moved(b, a)) return null;
   const next = nextRankNeeds(s, view(s));
@@ -213,8 +218,8 @@ export function readyLine(r: AwayReport): string | null {
   return d > 0 ? `${head}: ready since ${formatRoman(since, { year: true })}, ${int(d)} ${d === 1 ? 'day' : 'days'}.` : `${head}: ready as of today.`;
 }
 
-/** The stall's line, leading Awaiting you when nothing moved: the next rank and what it still lacks (the checklist's
- *  "Souls: 120 / 180" read "Souls 120 / 180"), or the Capitolium that did not rise. */
+/** The stall's line, leading Awaiting you when nothing moved toward the next rank: the rank and what it still lacks
+ *  (the checklist's "Souls: 120 / 180" read "Souls 120 / 180"), or the Capitolium that did not rise. */
 export function stalledLine(r: AwayReport): string | null {
   const st = r.awaiting.stalled;
   if (!st) return null;

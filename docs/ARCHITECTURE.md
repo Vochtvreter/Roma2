@@ -884,7 +884,8 @@ export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolea
 // ───────────────────────────── offline, prefs ─────────────────────────────
 export interface Snapshot {
   day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
-  petition: { rank: RankIndex; met: number; of: number } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+  petition: { rank: RankIndex; met: number; of: number; items: number[] } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+                                                                   // items: each line's progress 0..1 in checklist order (a yes/no line 0 or 1)
   capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
 }
 export interface AwayReport {
@@ -895,7 +896,7 @@ export interface AwayReport {
   awaiting: {
     petition: RankIndex | null;
     readySince: number | null;                                      // the day the ready petition became ready (the Augur's Opportunitas raised)
-    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved: the next rank's unmet items, or (rank null) the Capitolium
+    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved toward the next rank: its unmet items, or (rank null) the Capitolium
     advisories: RuleId[];
   };
 }
@@ -1349,7 +1350,7 @@ export function setSwitch(s: GameState, id: SwitchId, on: boolean): ActionResult
 export function renameColony(s: GameState, name: string): ActionResult;
 export function nextPath(s: GameState): PathDecisionId | null;
 export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean; souls?: number }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
-export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: { label: string; met: boolean }[] } | null;   // the next rank's checklist, the charter's line included while it waits; null at Colonia
+export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: { label: string; met: boolean; progress?: number }[] } | null;   // the next rank's checklist, the charter's line included while it waits; null at Colonia; progress: a measured line's 0..1 as it reads (1 once met)
 export function choosePath(s: GameState, decision: PathDecisionId, option: PathOptionId): ActionResult;   // pays fee × fx(petitionFee), records, rankUp, Colonia → startCapitolium; pushActionFx
 export function rankUp(s: GameState, rank: RankIndex): void;          // rings/territory (invalidate), ceremony paving, log, fx rank
 export function isUnlocked(s: GameState, ref: UnlockRef): boolean;
@@ -1413,9 +1414,13 @@ export function addFasti(e: FastiEntry): void;
 export function offlineDays(awayMs: number): number;                   // min(OFFLINE_MAX_DAYS, floor(awayMs / 1000 × OFFLINE_RATE))
 export function offlineRun(s: GameState, awayMs: number): OfflineRun | null;   // null below OFFLINE_MIN_MS
 export function simulateOffline(s: GameState, awayMs: number): AwayReport | null;
+export function wonWhileAway(s: GameState, r: AwayReport): boolean;   // the Capitolium dedicated during the absence: main.ts replays the lost victory fx
 export const AWAY_CAP_MS: number;                                      // OFFLINE_MAX_DAYS / OFFLINE_RATE × 1000: the real time that fills the cap (≈ 61 min)
+export const AWAY_CAP_YEARS: number;                                   // the cap in years (one lustrum: 5): How to play, the cap line, the letter's foot
 export function awayRule(): string;                                    // How to play's Time away sentence, in real time
 export function awayUnusedMs(r: AwayReport): number;                  // the absence past the cap, when the whole lustrum ran (≥ OFFLINE_MIN_MS, else 0)
+export const sentence: (t: string) => string;                          // ends a line in one full stop (a Roman date already ends in one)
+export const pct: (x: number) => string;                               // "34%": the Capitolium's progress, rounded down (99.9% is not yet done)
 export function capLine(r: AwayReport, dur?: (ms: number) => string): string | null;   // the letter's cap line
 export function readyLine(r: AwayReport): string | null;              // "Rome would hear our petition for Oppidum: ready since …, N days."
 export function stalledLine(r: AwayReport): string | null;            // "Stalled: nothing moved toward Oppidum. Still lacking: …"
@@ -1594,7 +1599,7 @@ Unreadable save on Continue: the title shows the reason and an **Export raw save
 **Rule for every later shape change**: bump `SAVE_VERSION`, add `MIGRATIONS[n]`, add a round-trip test from a hand-written v(n) object in `save.test.ts`. During the build (before 1.0) shape changes go through the integrator and rely on step 4. An optional key added later, which older saves simply lack and the code reads as absent (`stats.atVictory`), needs no migration: there is nothing to convert.
 
 ### 11.3 Prefs, Fasti, export/import
-- `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed; `paused` is the player's pause (❚❚, Space, *Pause on Periculum* and an import set it through `setPaused`; any speed clears it), never the app's own holds (the title, a letter, the catch-up). A continued game loads paused and then goes on as the player left it (`dispatch.ts resume`: still paused if `paused`, else at `speed`), after the away report when there is one.
+- `castravaleria.prefs.v1`: `Prefs` JSON; `DEFAULT_PREFS = { sound: true, volume: 0.7, speed: 1, paused: false, tips: true, slowForNews: true, pauseOnCritical: false }`. `speed` is the last chosen speed; `paused` is the player's pause (❚❚, Space, *Pause on Periculum*, an import and the away letter's buttons that open a panel (`resume(g, true)`) set it through `setPaused`; any speed clears it), never the app's own holds (the title, a letter, the catch-up). A continued game loads paused and then goes on as the player left it (`dispatch.ts resume`: still paused if `paused`, else at `speed`), after the away report when there is one.
 - `castravaleria.fasti.v1`: `FastiEntry[]`, newest first, max 50. `addFasti` is called once at dedication (victory). A new colony after a victory gets `legacy = previous legacy + 1` and `legacyBonus += 0.05` if *Imperium* was chosen; abandoning a colony adds nothing.
 - Export: `'CV1:' + base64(UTF-8 JSON)` (TextEncoder + chunked `btoa`). Import accepts the prefixed text, bare base64 or raw JSON; runs `deserialize`; on success replaces the game after a two-click confirm, saves (keeping the colony it replaces as the previous colony, §11.4), and attaches the view. On failure: *"That text is not a Castra Valeria save."*
 
@@ -1614,7 +1619,7 @@ export function offlineDays(awayMs: number): number {
 export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
   if (awayMs < B.time.OFFLINE_MIN_MS) return null;
   const days = offlineDays(awayMs); if (days < 1) return null;
-  const before = snapshot(s);                       // census pop, res, DoH, stats counters, next rank's checklist (met / of), Capitolium progress
+  const before = snapshot(s);                       // census pop, res, DoH, stats counters, next rank's checklist (met / of, each line's progress), Capitolium progress
   const lowest = { grain: { doh: Infinity, day: s.day }, water: { doh: Infinity, day: s.day } };
   const decided: string[] = []; const highlights: LogEntry[] = [];
   let done = 0, stopped = false;
@@ -1635,8 +1640,10 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
     report: () => ({ awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided, highlights, lowest,
                      awaiting: { petition: readyPetitionRank(s),   // a ready petition is not listed again as augur.petition
                                  readySince,                       // the augur.petition memo's `since` (its rank the petition's), else null
-                                 stalled,                          // nothing moved (souls, works, homes, checklist, Capitolium) and no petition ready:
-                                                                   // the next rank's unmet items (≤ 3, checklist order), or { rank: null } for a Capitolium that did not rise
+                                 stalled,                          // nothing moved toward the next rank (no checklist line met or nearer: before/after
+                                                                   // petition.items; at Colonia the Capitolium no higher; souls past the count and works
+                                                                   // the checklist does not ask for are not progress) and no petition ready: the next
+                                                                   // rank's unmet items (≤ 3, checklist order), or { rank: null } for a Capitolium that did not rise
                                  advisories: activeAdvisories(s, { forCard: true }).filter(a => petition === null || a.rule !== 'augur.petition').slice(0, 3).map(a => a.rule) } }),
   };
 }
@@ -1645,7 +1652,7 @@ export function simulateOffline(s: GameState, awayMs: number): AwayReport | null
 `main.ts` flow:
 1. **Continue**: `awayMs = max(0, now − s.lastSave)`; **tab return**: `awayMs = now − hiddenAt`. Absences < 60 s simulate nothing (the rAF accumulator clamp drops the gap).
 2. `run = offlineRun(s, awayMs)`; if non-null → mode `catchup`: the veil *"Anni transeunt… — the years pass"* with a progress bar and **[Skip]**; each frame runs `run.step(B.time.SLICE_DAYS)` repeatedly until `SLICE_MS` (30 ms) of the frame is used; the map, HUD and date redraw from the live state; input is blocked by the veil; fx are discarded; **Skip** calls `run.step(run.days)`.
-3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes as the player left it (`resume`: paused if `prefs.paused`, else at `prefs.speed`), but a button of *Awaiting you* that opens a panel (*Petition Rome*, a remedy of kind `open` or `contract`: `opensPanel`) leaves it paused; no letter (`report.days` 0): `resume` at once. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
+3. When finished: `report = run.report()`; save; mode `game` (paused); if `report.days ≥ 1` open the **Litterae Ordinis** dispatch (DESIGN §14); closing it resumes as the player left it (`resume`: paused if `prefs.paused`, else at `prefs.speed`), but a button of *Awaiting you* that opens a panel (*Petition Rome*, *See the petition*, a remedy of kind `open` or `contract`: `opensPanel`) leaves it paused, stored like the player's own pause (`setPaused`); no letter (`report.days` 0): `resume` at once. A Capitolium dedicated during the absence (`wonWhileAway`) replays the lost `victory` fx, so the Victory dispatch opens over the letter and the Fasti entry is written.
    A colony still on `START_DAY` (the founding letter not yet answered) is never caught up: Continue shows the founding letter again.
 4. `previewRates(s)` refreshes the HUD ledger after a load (the last tick's rates are not saved).
 
@@ -2386,7 +2393,7 @@ export class Layout {
 | `loop.test.ts` | H | always | the loop's clock (`game/loop.ts`): 30 s at 5× is 150 ticks and one state hash at 12 and 60 Hz; with speed changes and a pause, 124 ticks and one hash at 12, 15 (covered clamp), 60 and 120 Hz; uneven rates add up exactly; DT_CLAMP drops the time of 250 ms turns, the covered clamp does not; a paused colony keeps its part tick; MAX_STEPS drops a backlog; time never runs backwards |
 | `resume.test.ts` | H | always | a colony comes back as the player left it (DESIGN §2.1): `resumeAs` (the last speed, or paused when `prefs.paused` or the letter closed on a panel button), `opensPanel` per remedy kind, `resume` over a stub Game (the pause stays stored for the next reload) |
 | `pwa.test.ts` | H | always | `platform.ts` probes (standalone, iOS, Safari over real user agents), the Safari reminder only in a Safari tab, the Menu's and the title's entries by platform; `scripts/precache.ts` (`precacheFiles`, `buildId`, `swSource` on `public/sw.js`); the written worker run over stand-in caches and network (install past the HTTP cache into `castra-<folder>-<BUILD>`, activate drops only the folder's older caches, the page network first and kept only when it is the app's HTML, another file opened in a tab left alone, offline the kept page); the manifest, `index.html`'s relative links, the icons' sizes, opaque ground and whole-number art (the maskable one inside its safe circle) |
-| `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, effect keys used |
+| `contract.test.ts` | J | always | determinism grep, id uniqueness, constants mirror DESIGN, the away letter's documents (DESIGN §14's sample adds up, §8.5 lists what the UI imports from `offline.ts`), effect keys used |
 | `determinism.test.ts` | J | always (+ `INTEGRATED` long runs) | §10.9 |
 | `balance.test.ts` | J | `INTEGRATED`; full bands with `BAL_FULL=1` | DESIGN §18.5 |
 | `perf.test.ts` | J | `npm run perf` only (`PERF=1`; vite.config.ts leaves it out of `npm test`) | tick, offline, map generation budgets |

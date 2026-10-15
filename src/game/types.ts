@@ -590,7 +590,8 @@ export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolea
 // ───────────────────────────── offline, prefs ─────────────────────────────
 export interface Snapshot {
   day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
-  petition: { rank: RankIndex; met: number; of: number } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+  petition: { rank: RankIndex; met: number; of: number; items: number[] } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+                                                                   // items: each line's progress 0..1 in checklist order (a yes/no line 0 or 1)
   capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
 }
 export interface AwayReport {
@@ -601,7 +602,7 @@ export interface AwayReport {
   awaiting: {
     petition: RankIndex | null;
     readySince: number | null;                                      // the day the ready petition became ready (the Augur's Opportunitas raised)
-    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved: the next rank's unmet items, or (rank null) the Capitolium
+    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved toward the next rank: its unmet items, or (rank null) the Capitolium
     advisories: RuleId[];
   };
 }

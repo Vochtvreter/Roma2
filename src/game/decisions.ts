@@ -127,7 +127,8 @@ export function nextPath(s: GameState): PathDecisionId | null {
   return PATH_DECISIONS.find((d) => s.decisions.paths[d] === undefined) ?? null;
 }
 
-type Need = { label: string; met: boolean; souls?: number };   // souls: the count a Souls line asks for (the petition's ETA, settlers.ts)
+type Need = { label: string; met: boolean; souls?: number; progress?: number };   // souls: the count a Souls line asks for (the petition's ETA, settlers.ts)
+// progress: how far a measured line is, 0..1 as it reads (1 once met; the away letter's stall, offline.ts); a yes/no line has none
 
 /** A finished building of `type` with at least one worker. */
 function staffed(s: GameState, v: SimView, type: BuildingId): boolean {
@@ -148,7 +149,8 @@ function religionMarketShare(s: GameState, v: SimView): number {
   return n / houses.length;
 }
 
-const count = (label: string, have: number, goal: number): Need => ({ label: `${label}: ${Math.floor(have)} / ${goal}`, met: have >= goal });
+const count = (label: string, have: number, goal: number): Need =>
+  ({ label: `${label}: ${Math.floor(have)} / ${goal}`, met: have >= goal, progress: have >= goal ? 1 : Math.floor(have) / goal });
 const soulsNeed = (pop: number, goal: number): Need => ({ ...count('Souls', pop, goal), souls: goal });
 
 /** The DESIGN §9.1 checklist to ENTER `rank` (1..4). */
@@ -161,7 +163,8 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
   const staffList = (types: BuildingId[]): Need => {
     const missing = types.filter((t) => !staffed(s, v, t)).map((t) => BUILDING_DEFS[t].name);
     const all = types.map((t) => BUILDING_DEFS[t].name).join(', ');
-    return { label: missing.length ? `${all} staffed (missing: ${missing.join(', ')})` : `${all} staffed`, met: missing.length === 0 };
+    return { label: missing.length ? `${all} staffed (missing: ${missing.join(', ')})` : `${all} staffed`, met: missing.length === 0,
+      progress: (types.length - missing.length) / types.length };
   };
   switch (def.id) {
     case 'vicus': {
@@ -182,7 +185,8 @@ function rankNeeds(s: GameState, v: SimView, rank: RankIndex): Need[] {
       const share = religionMarketShare(s, v);
       needs.push(soulsNeed(pop, q.POP));
       needs.push(count('Homes of Casa tegulata or better', housesAtLeast(c, 2), q.T2_HOUSES));
-      needs.push({ label: `Shrine and market reach ${Math.round(q.COVERAGE * 100)}% of homes (now ${Math.round(share * 100)}%)`, met: share >= q.COVERAGE });
+      needs.push({ label: `Shrine and market reach ${Math.round(q.COVERAGE * 100)}% of homes (now ${Math.round(share * 100)}%)`, met: share >= q.COVERAGE,
+        progress: share >= q.COVERAGE ? 1 : Math.round(share * 100) / Math.round(q.COVERAGE * 100) });
       needs.push(count('Caravans returned from markets', s.trade.hubsTraded.length, q.HUBS));
       break;
     }
