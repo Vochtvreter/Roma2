@@ -16,6 +16,7 @@ import { manualPlan, planLabour } from '../src/game/ordo/labour';
 import { currentReason, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
 import { maxPotential } from '../src/game/economy';
+import { startCapitolium } from '../src/game/construction';
 import { projectEssential } from '../src/game/forecast';
 import { B } from '../src/game/balance';
 import { BUILDING_DEFS } from '../src/game/data/buildings';
@@ -519,6 +520,25 @@ describe('water for Aestas (DESIGN §10.5 row 2, §11.11)', () => {
     expect(low).toBeGreaterThanOrEqual(10);                                        // the realised runway never fell below 10 days
     expect(s.stats.deathsBy.thirst).toBe(0);
   }, 120_000);
+});
+
+describe('the builders line in monument mode (playtest #7)', () => {
+  it('counts the town wall\'s crew apart and says when the Capitolium has all the builders it can take', () => {
+    const s = fresh(42);
+    startCapitolium(s);
+    s.urbs.moenia = { tiles: [], gates: [], surveyed: s.day, work: 30_000, progress: 0, matUsed: {}, done: null };
+    s.res.stone = 1e5;
+    s.res.denarii = 1e5;
+    invalidate(s);
+    const v0 = view(s);
+    const v = { d: v0.d, f: v0.f, cov: v0.cov, c: { ...v0.c, workforce: 400 } } as SimView;   // hands enough for both crews
+    const line = planLabour(s, v).lines.find((l) => l.cat === 'builders')!;
+    expect(line.target).toBe(B.construction.CAP_CREW + B.urbs.MOENIA.CREW);
+    expect(line.reason).toMatchObject({ code: 'monument', params: { n: 72, crew: 64, max: 64, full: 1, walls: 8 } });
+    expect(reasonText(line.reason)).toBe('72 builders: 64 of 64 on the Capitolium (the most that can work on it) and 8 on the town wall.');
+    expect(reasonShort(line.reason)).toBe('64 of 64 builders on the Capitolium (its full crew)');
+    expect(reasonText({ code: 'monument', params: { n: 30, crew: 22, max: 64, full: 0 } })).toBe('30 builders, 22 of them on the Capitolium.');
+  });
 });
 
 describe('reasons', () => {

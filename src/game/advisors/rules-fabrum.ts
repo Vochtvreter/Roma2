@@ -7,7 +7,7 @@ import { LABOR_CATS as LABOR_CATS$, RESOURCES as RESOURCES$, TRADE_RES as TRADE_
 import type { AdvisorRule, AdvisoryEval, BuildingId, GameState, LaborCat, Remedy, ResId, SimView, TradeRes } from '../types';
 import { toRoman as toRoman$ } from '../calendar';
 import { capitoliumFlow } from '../construction';
-import { petitionNeeds, settingValue } from '../decisions';
+import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { missing } from '../state';
 import { newWishes } from '../ordo/build';
@@ -206,35 +206,78 @@ const stalled: AdvisorRule = {
 };
 
 // ───────────────────────────── 13 · fabrum.capitolium ─────────────────────────────
+// What really holds the Capitolium back (construction.capitoliumFlow): its crew, at most CAP_CREW fabri, or a material
+// its works cannot make for want of an input (concrete works without water). Only levers not yet in force are offered:
+// more builders only while fewer than CAP_CREW work on it (the builder share never adds to its crew), Opera Magna only
+// while the crew binds. With no lever left (the full crew under Opera Magna) the Fabrum keeps silent: it rises as fast
+// as it can.
+
+const isTrade = (r: string): r is TradeRes => (TRADE_RES as readonly string[]).includes(r);
+
+/** The levers on the Capitolium's bottleneck that are not yet in force (DESIGN §11.6 row 13). */
+function capitoliumLevers(s: GameState, v: SimView, p: AdvisoryEval['params']): Remedy[] {
+  const res = typeof p.res === 'string' ? p.res : '';
+  const magna: Remedy | null = edictOption(s, 'opera') === 'magna' ? null : { kind: 'edict', edict: 'opera', option: 'magna' };
+  if (res === 'crew' || res === '') {
+    if (P(p.full) === 1) return three(magna);   // more builders would have nothing to do on it
+    const cap = Math.max(1, Math.floor(v.c.workforce * B.ordo.BUILDERS_MAX));
+    const first = s.ordo.priorities.some((x) => x.cat === 'builders' && x.until > s.day) || v.c.catStaffed.builders >= cap;
+    const hands: Remedy | null = !s.ordo.on.labour ? { kind: 'assign', cat: 'builders', n: Math.max(1, B.construction.CAP_CREW - P(p.crew)) }
+      : first ? null : { kind: 'priority', cat: 'builders', days: B.ordo.PRIORITY_DAYS };
+    return three(hands, magna);
+  }
+  if (res === 'denarii') return three(edictOption(s, 'tributum') === 'grave' ? null : { kind: 'edict', edict: 'tributum', option: 'grave' });
+  const input = typeof p.short === 'string' && p.short !== '' ? p.short as ResId : null;
+  const place = (r: ResId): Remedy | null => (PRODUCER[r] ? { kind: 'place', building: PRODUCER[r] as BuildingId } : null);
+  // water for the works: Operibus prius lets them draw below the water reserve (not through the Lex de annona's pause)
+  const works: Remedy | null = edictOption(s, 'aquae') === 'operibus' || s.ordo.emergency.waterPause ? null : { kind: 'edict', edict: 'aquae', option: 'operibus' };
+  const fix: (Remedy | null)[] = input === 'water'
+    ? [works, { kind: 'place', building: 'puteus' }]
+    : input ? [place(input), isTrade(input) ? importRemedy(s, input, B.ordo.CARGO) : null]
+    : [place(res as ResId)];
+  return three(...fix, isTrade(res) ? importRemedy(s, res, B.ordo.CARGO) : null);
+}
 
 const capitolium: AdvisorRule = {
   id: 'fabrum.capitolium', advisor: 'fabrum',
-  evaluate(s) {
+  evaluate(s, v) {
     const f = capitoliumFlow(s);
     if (!f) return null;
     const limit = R.CAP_ETA / (held(s, 'fabrum.capitolium') ? CLEAR : 1);
     if (f.eta !== null && f.eta <= limit) return null;
-    return {
-      rule: 'fabrum.capitolium', severity: 1, metric: f.eta !== null ? { label: 'Next stage', value: Math.ceil(f.eta), unit: 'days' } : undefined,
-      params: { stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand },
+    const params = {
+      stage: f.stage, eta: f.eta === null ? -1 : Math.ceil(f.eta), res: f.bottleneck ?? '', supply: f.supply, demand: f.demand,
+      crew: f.crew, full: f.crew >= B.construction.CAP_CREW ? 1 : 0, stock: f.stock, inflow: f.inflow,
+      short: f.starved?.input ?? '', works: f.starved?.works ?? '', share: f.starved?.share ?? 1,
     };
+    if (capitoliumLevers(s, v, params).length === 0) return null;   // nothing left to pull: it rises as fast as it can
+    return { rule: 'fabrum.capitolium', severity: 1, metric: f.eta !== null ? { label: 'Next stage', value: Math.ceil(f.eta), unit: 'days' } : undefined, params };
   },
   title(_s, a) {
     const p = a.params;
     const stage = STAGES[Math.min(STAGES.length - 1, P(p.stage))];
     const when = P(p.eta) >= 0 ? `the ${stage} rises in ${days(P(p.eta))}` : `the ${stage} will not rise`;
-    if (p.res === 'crew' || p.res === '') return `At this flow ${when}; the crew is the bottleneck (${B.construction.CAP_CREW} fabri at most).`;
-    return `At this flow ${when}; ${resName(p.res as ResId)} is the bottleneck (${num(P(p.supply))}/day of ${num(P(p.demand))}).`;
+    const cap = B.construction.CAP_CREW;
+    if (p.res === 'crew' || p.res === '') {
+      return P(p.full) === 1 ? `At this flow ${when}; the crew is at its maximum (${cap} fabri, the most that can work on it).`
+        : `At this flow ${when}; the crew is the bottleneck (${int(P(p.crew))} of the ${cap} fabri who could work on it).`;
+    }
+    const flow = `${P(p.inflow) < 0 ? '−' : '+'}${num(Math.abs(P(p.inflow)))}/day of ${num(P(p.demand))}`;
+    return `At this flow ${when}; it waits for ${resName(p.res as ResId)}: ${num(P(p.stock))} in store, ${flow}.`;
   },
-  text: (_s, _v, a) => `The Capitolium stands at stage ${toRoman(P(a.params.stage)) || 'nought'} of IV. Its materials are drawn as the work proceeds.`,
-  remedies(s, _v, a) {
-    const res = a.params.res as ResId | 'crew' | '';
-    const magna: Remedy = { kind: 'edict', edict: 'opera', option: 'magna' };
-    if (res === 'crew' || res === '') return three(magna, { kind: 'setting', setting: 'builderShare', value: Math.min(SETTING_DEFS.builderShare.max, settingValue(s, 'builderShare') + STEP.BUILDER_SHARE) });
-    if (res === 'denarii') return three({ kind: 'edict', edict: 'tributum', option: 'grave' }, magna);
-    const prod = PRODUCER[res];
-    const trade = (TRADE_RES as readonly string[]).includes(res) ? importRemedy(s, res as TradeRes, B.ordo.CARGO) : null;
-    return three(prod ? { kind: 'place', building: prod } : null, trade, magna);
+  text(_s, _v, a) {
+    const p = a.params;
+    const stage = `The Capitolium stands at stage ${toRoman(P(p.stage)) || 'nought'} of IV.`;
+    if (typeof p.short === 'string' && p.short !== '' && typeof p.works === 'string' && p.works in BUILDING_DEFS) {
+      const def = BUILDING_DEFS[p.works as BuildingId];
+      return `The ${def.latin} (${def.name.toLowerCase()}) gets ${P(p.share) < 0.05 ? 'no' : 'too little'} ${resName(p.short as ResId)}, so the temple waits for its ${resName(p.res as ResId)}. ${stage}`;
+    }
+    if (p.res === 'crew' || p.res === '') return `${stage} ${P(p.full) === 1 ? 'More builders would only stand by.' : 'Every builder on it raises it faster.'}`;
+    return `${stage} Its materials are drawn as the work proceeds.`;
+  },
+  remedies(s, v, a) {
+    const r = capitoliumLevers(s, v, a.params);
+    return r.length > 0 ? r : three({ kind: 'open', tab: 'build' });   // a lever pulled while the counsel fades: the works row says the rest
   },
 };
 

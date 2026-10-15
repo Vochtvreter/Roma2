@@ -8,6 +8,7 @@ import type { Game, Updater } from '../types';
 import { h, tip } from '../dom';
 import * as A from '../../game/actions';
 import { census } from '../../game/census';
+import { capitoliumFlow, crewWords } from '../../game/construction';
 import { derived } from '../../game/derived';
 import { councilReport } from '../../game/ordo/index';
 import { reasonText } from '../../game/ordo/reasons';
@@ -113,7 +114,10 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
       put(count, cat === 'builders' ? `${have} / ${target}` : `${have} / ${target} · ${c.catSlots[cat]}`);
       count.classList.toggle('short', have < target);
       const would = rep.would.labour[cat];
-      put(why, manual ? (would !== undefined ? `The Ordo would assign ${would}.` : '') : line ? reasonText(line.reason) : '');
+      // by hand, the Fabri row says how many of them the Capitolium can take (the Ordo's own line says it already)
+      const flow = manual && cat === 'builders' ? capitoliumFlow(s) : null;
+      const ghost = would !== undefined ? `The Ordo would assign ${would}.` : '';
+      put(why, manual ? (flow ? `${crewWords(flow)} ${ghost}`.trim() : ghost) : line ? reasonText(line.reason) : '');
       const p = s.ordo.priorities.find((x) => x.cat === cat && x.until > s.day);
       put(prio, p ? `first, ${p.until - s.day} d` : '');
     };

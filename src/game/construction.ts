@@ -3,26 +3,27 @@
 // at most CAP_CREW builders' worth, and draws its materials pro rata to the work it receives.
 import { B as B$ } from './balance';
 import { RESOURCES as RESOURCES$ } from './types';
-import type { ActionResult, Building, Cost, GameState, HouseState, Person, ResId, TickContext } from './types';
+import type { ActionResult, Building, BuildingId, Cost, GameState, HouseState, Person, ResId, TickContext } from './types';
 import { getMap as getMap$ } from './map';
 import { invalidate as invalidate$, touchPeople as touchPeople$ } from './memo';
 import { canAfford, log, nextId, pay, refund } from './state';
 import { getBuilding as getBuilding$ } from './lookup';
 import { fx as fx$ } from './fx';
 import { census, peopleIndex, stageOf } from './census';
-import { buildingRate, legacyMult, productivity } from './economy';
+import { buildingRate, inputShares, legacyMult, productivity } from './economy';
 import { gainSkill } from './people';
 import { savingFor } from './ordo/saving';
 import { settingValue } from './decisions';
 import { seasonOf as seasonOf$ } from './calendar';
 import { view } from './sim';
 import { placementCost } from './place';
-import { wallsDay } from './urbs';
+import { wallsDay, wallsRising } from './urbs';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from './data/buildings';
+import { RESOURCE_DEFS as RESOURCE_DEFS$ } from './data/resources';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
 const B = B$, RESOURCES = RESOURCES$, getMap = getMap$, invalidate = invalidate$, touchPeople = touchPeople$, fx = fx$,
-  seasonOf = seasonOf$, BUILDING_DEFS = BUILDING_DEFS$,
+  seasonOf = seasonOf$, BUILDING_DEFS = BUILDING_DEFS$, RESOURCE_DEFS = RESOURCE_DEFS$,
   getBuilding = getBuilding$;
 
 const C = B.construction;
@@ -200,43 +201,106 @@ export function capitoliumStage(b: Building): 0 | 1 | 2 | 3 | 4 {
   return k as 0 | 1 | 2 | 3 | 4;
 }
 
-/** The Capitolium's flow: completed stage, days to the next stage at today's flow, the bottleneck (a material or the
- *  crew), work per day and the work still needed for the next stage; and, for a material bottleneck, that material
- *  per day: what comes in (`supply`) against what the crew would use (`demand`), 0 and 0 when the crew binds. Work and
- *  material are different units: "concrete 1.7/day of 3.8", never "30/day of 40,000". Null when it is not under way. */
-export function capitoliumFlow(s: GameState): {
+/** The Capitolium's flow (capitoliumFlow). The crew: `crew` builders work on it today, of the CAP_CREW that may (the
+ *  town wall's `walls` first; `spare` more have nothing to build while no other site is in hand). For a material
+ *  bottleneck, that material a day: what comes in (`supply`: the works' net output and the stock it may draw spread
+ *  over CAP_RESERVE_DAYS) against what the crew would use (`demand`), the stock itself (`stock`), the works' net output
+ *  (`inflow`), and `starved`, its works held back by a missing input (the scarcest); all 0 or null when the crew binds. */
+export interface CapitoliumFlow {
   stage: number; eta: number | null; bottleneck: ResId | 'crew' | null; rate: number; need: number; supply: number; demand: number;
-} | null {
+  crew: number; walls: number; spare: number; stock: number; inflow: number;
+  starved: { works: BuildingId; input: ResId; share: number } | null;
+}
+
+/** The Capitolium's flow: completed stage, days to the next stage at today's flow, the bottleneck (a material or the
+ *  crew), work per day and the work still needed for the next stage, the crew, and the bottleneck material's stock and
+ *  flow (CapitoliumFlow). The works' output counts their inputs as production will draw them (economy.inputShares):
+ *  concrete works without water make no concrete, and the stone they mix is no stone for the temple. Work and material
+ *  are different units: "concrete 1.7/day of 3.8", never "30/day of 40,000". Null when it is not under way. */
+export function capitoliumFlow(s: GameState): CapitoliumFlow | null {
   const b = s.buildings.find((x) => x.type === 'capitolium' && x.status !== 'done');
   if (!b) return null;
   const stage = capitoliumStage(b);
   const need = Math.max(0, (C.CAP_STAGES[Math.min(stage, C.CAP_STAGES.length - 1)] - b.progress) * b.work);
   const builders = peopleIndex(s).builders;
   const factor = builderFactor(s);
-  let crew = 0;
-  for (const p of builders) crew += builderWork(s, p, factor);
-  if (builders.length > C.CAP_CREW) crew *= C.CAP_CREW / builders.length;
-  crew *= (b.toolUntil ?? 0) > s.day ? B.economy.TOOL_MULT : 1;
+  let all = 0;
+  for (const p of builders) all += builderWork(s, p, factor);
+  // as constructionDay, the queue aside: the town wall takes its crew's worth of what the builders and the idle spare,
+  // then the Capitolium at most CAP_CREW builders' worth
+  const avg = builders.length > 0 ? all / builders.length : 0;
+  const idle = census(s).idle.length * B.economy.IDLE_BUILD;
+  const wall = wallsRising(s) ? Math.min(all + idle, B.urbs.MOENIA.CREW * Math.max(avg, B.economy.IDLE_BUILD)) : 0;
+  const work = Math.max(0, Math.min(all + idle - wall, all, C.CAP_CREW * avg));
+  const onIt = avg > 0 ? Math.round(work / avg) : 0;
+  const walls = avg > 0 ? Math.min(builders.length - onIt, Math.round(wall / avg)) : 0;
+  const queue = worksQueue(s).some((x) => x.status === 'building' && x.type !== 'capitolium');
+  const crew = work * ((b.toolUntil ?? 0) > s.day ? B.economy.TOOL_MULT : 1);
   let rate = crew;
   let bottleneck: ResId | 'crew' = 'crew';
   const per = capPerWork(s, b);
   const season = seasonOf(s.day);
+  const shares = inputShares(s);
   const made: Partial<Record<ResId, number>> = {};
   for (const x of s.buildings) {
     const out = buildingRate(s, x, season, 'current');
-    for (const r of CAP_RES) if ((out[r] ?? 0) > 0) made[r] = (made[r] ?? 0) + (out[r] ?? 0);
+    const k = shares.get(x.id)?.share ?? 1;
+    for (const r of CAP_RES) if (out[r]) made[r] = (made[r] ?? 0) + (out[r] ?? 0) * k;
   }
   made.denarii = Math.max(0, s.counters.coinEma);
   const avail = capAvailable(s);
   let supply = 0;
   for (const r of CAP_RES) {
     if (!(per[r] > 0)) continue;
-    const comes = (made[r] ?? 0) + (avail[r] ?? 0) / B.ordo.CAP_RESERVE_DAYS;
+    const comes = Math.max(0, (made[r] ?? 0) + (avail[r] ?? 0) / B.ordo.CAP_RESERVE_DAYS);
     const allow = comes / per[r];
     if (allow < rate) { rate = allow; bottleneck = r; supply = comes; }
   }
-  const demand = bottleneck === 'crew' ? 0 : per[bottleneck] * crew;
-  return { stage, eta: rate > EPS ? Math.ceil(need / rate) : null, bottleneck, rate, need, supply, demand };
+  let starved: CapitoliumFlow['starved'] = null;
+  if (bottleneck !== 'crew') {
+    for (const x of s.buildings) {
+      const sh = shares.get(x.id);
+      if (sh && BUILDING_DEFS[x.type].output?.res === bottleneck && (!starved || sh.share < starved.share)) starved = { works: x.type, input: sh.short, share: sh.share };
+    }
+  }
+  const mat = bottleneck === 'crew' ? null : bottleneck;
+  return {
+    stage, eta: rate > EPS ? Math.ceil(need / rate) : null, bottleneck, rate, need, supply, demand: mat ? per[mat] * crew : 0,
+    crew: onIt, walls, spare: queue ? 0 : Math.max(0, builders.length - onIt - walls),
+    stock: mat ? avail[mat] ?? 0 : 0, inflow: mat ? made[mat] ?? 0 : 0, starved,
+  };
+}
+
+/** A count or a flow for the Capitolium's words: one decimal under 10 (dropped when whole), else a whole number with
+ *  thousands separators. */
+function amount(n: number): string {
+  const r = Math.abs(n) < 10 ? Math.round(n * 10) / 10 : Math.round(n);
+  return String(r === 0 ? 0 : r).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/** The builders on the Capitolium in a sentence for the Fabri row: "64 of 64 builders on the Capitolium (the most that
+ *  can work on it), 8 on the town wall; 56 more have nothing to build." */
+export function crewWords(f: CapitoliumFlow): string {
+  const on = f.crew >= C.CAP_CREW ? `${f.crew} of ${C.CAP_CREW} builders on the Capitolium (the most that can work on it)`
+    : `${f.crew} ${f.crew === 1 ? 'builder' : 'builders'} on the Capitolium, which takes up to ${C.CAP_CREW}`;
+  return `${on}${f.walls > 0 ? `, ${f.walls} on the town wall` : ''}${f.spare > 0 ? `; ${f.spare} more ${f.spare === 1 ? 'has' : 'have'} nothing to build` : ''}.`;
+}
+
+/** A material's works held back by a missing input, in words: "no water for the concrete works". */
+export function starvedWords(st: NonNullable<CapitoliumFlow['starved']>): string {
+  return `${st.share < 0.05 ? 'no' : 'too little'} ${RESOURCE_DEFS[st.input].name.toLowerCase()} for the ${BUILDING_DEFS[st.works].name.toLowerCase()}`;
+}
+
+/** What holds the Capitolium back, in words for the works row and its card (DESIGN §9.5): "crew at its maximum: 64 of
+ *  64 builders (the most that can work on it)", "bottleneck: builders (40 of the 64 who could work on it)", or
+ *  "waiting for concrete: 0 in store, +0/day of 3.9 (no water for the concrete works)". */
+export function capitoliumHold(f: CapitoliumFlow): string {
+  if (f.bottleneck === 'crew' || f.bottleneck === null) {
+    return f.crew >= C.CAP_CREW ? `crew at its maximum: ${f.crew} of ${C.CAP_CREW} builders (the most that can work on it)`
+      : `bottleneck: builders (${f.crew} of the ${C.CAP_CREW} who could work on it)`;
+  }
+  const flow = `${f.inflow < 0 ? '−' : '+'}${amount(Math.abs(f.inflow))}/day of ${amount(f.demand)}`;
+  return `waiting for ${RESOURCE_DEFS[f.bottleneck].name.toLowerCase()}: ${amount(f.stock)} in store, ${flow}${f.starved ? ` (${starvedWords(f.starved)})` : ''}`;
 }
 
 /** Creates the Capitolium site on the Area Capitolina (once); its materials are drawn as the work proceeds. */

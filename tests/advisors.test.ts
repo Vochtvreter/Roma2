@@ -2,6 +2,7 @@
 // hush/mute, appointment, and remedies that never throw (ARCHITECTURE §14.2 WP-E, §15). Owner: WP-E.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADVISORS, BUILDINGS, EDICTS, HUBS, LABOR_CATS, ORDO_AREAS, OVERLAYS, RULES, SETTINGS, TABS, TRADE_RES } from '../src/game/types';
+import type { CapitoliumFlow } from '../src/game/construction';
 import type { Census, CoverageLayerId, EssentialForecast, Forecast, GameState, HouseTierId, Remedy, RuleId, Severity, SimView, TickContext } from '../src/game/types';
 
 const ctl = vi.hoisted(() => ({ pet: null as unknown, flow: null as unknown, morale: null as unknown, covered: null as string[] | null, wishes: null as unknown }));
@@ -118,6 +119,11 @@ const merchant = (s: GameState): void => {
 };
 const pet = (ready: boolean, label = '50 souls') => ({ decision: 'path1', rank: 1, ready, fee: { denarii: 9e9 }, affordable: false, needs: [{ label, met: ready }] });
 
+/** A Capitolium flow for the mocked capitoliumFlow: the Cella 400 days off, its full crew of 64 at work. */
+const FLOW: CapitoliumFlow = {
+  stage: 1, eta: 400, bottleneck: 'crew', rate: 3, need: 1200, supply: 0, demand: 0, crew: 64, walls: 0, spare: 0, stock: 0, inflow: 0, starved: null,
+};
+
 const FIX: Record<RuleId, Fix> = {
   'annonae.grain.runout': runout('grain', A.RULES.GRAIN_RUNOUT),
   'annonae.famine': { levels: [[3, () => ({ grain: { ...ess(250, -50), maxPotential: 20, structural: true } })]], clear: () => ({ grain: { maxPotential: 90 } }) },
@@ -164,8 +170,8 @@ const FIX: Record<RuleId, Fix> = {
     clear: () => { ctl.wishes = []; },
   },
   'fabrum.capitolium': {
-    levels: [[1, () => { ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 }; }]],
-    clear: () => { ctl.flow = { stage: 1, eta: 100, bottleneck: null, rate: 11, need: 1100, supply: 0, demand: 0 }; },
+    levels: [[1, () => { ctl.flow = { ...FLOW, bottleneck: 'stone', supply: 1.7, demand: 3.8, stock: 12, inflow: 1.3 }; }]],
+    clear: () => { ctl.flow = { ...FLOW, eta: 100, bottleneck: null, rate: 11, need: 1100 }; },
   },
   'quaestor.coin': {
     levels: [[3, () => ({ coin: { stock: 1000, net30: -100 } })], [2, () => ({ coin: { stock: 3000, net30: -100 } })], [1, () => ({ coin: { stock: 8000, net30: -100 } })],
@@ -500,13 +506,58 @@ describe('the Legate\'s relief remedy (R20) and dates in remedy reasons (R48)', 
   });
 });
 
-describe('fabrum.capitolium in the bottleneck material\'s own units (R23)', () => {
-  it('reads "stone is the bottleneck (1.7/day of 3.8)"', () => {
+describe('fabrum.capitolium names what really holds it back (R23, playtest #7)', () => {
+  const C = 'fabrum.capitolium';
+  const say = (s: GameState) => renderAdvisory(s, view(s), { rule: C, advisor: 'fabrum', memo: s.guidance.advisories[C]! });
+  const levers = (s: GameState) => say(s).remedies.map((x) => x.remedy);
+
+  it('a material in its own units: what is in store and what comes in a day, against what the crew would use', () => {
     const s = base();
-    ctl.flow = { stage: 1, eta: 400, bottleneck: 'stone', rate: 3, need: 1200, supply: 1.7, demand: 3.8 };
+    ctl.flow = { ...FLOW, bottleneck: 'stone', supply: 1.7, demand: 3.8, stock: 12, inflow: 1.3, crew: 64 };
     day(s);
-    const m = s.guidance.advisories['fabrum.capitolium']!;
-    expect(renderAdvisory(s, view(s), { rule: 'fabrum.capitolium', advisor: 'fabrum', memo: m }).title).toBe('At this flow the Cella rises in 400 days; stone is the bottleneck (1.7/day of 3.8).');
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; it waits for stone: 12 in store, +1.3/day of 3.8.');
+    expect(levers(s)).toContainEqual({ kind: 'place', building: 'lapicidina' });
+    expect(levers(s)).not.toContainEqual({ kind: 'edict', edict: 'opera', option: 'magna' });   // harder work lays no more stone
+  });
+
+  it('concrete works without water: it names the water, and the remedies bring water to the works', () => {
+    const s = base();
+    ctl.flow = { ...FLOW, eta: null, rate: 0, bottleneck: 'concrete', demand: 3.9, starved: { works: 'caementarium', input: 'water', share: 0 } };
+    day(s);
+    const r = say(s);
+    expect(r.title).toBe('At this flow the Cella will not rise; it waits for concrete: 0 in store, +0/day of 3.9.');
+    expect(r.text).toBe('The Caementarium (concrete works) gets no water, so the temple waits for its concrete. The Capitolium stands at stage I of IV.');
+    expect(levers(s)).toEqual([{ kind: 'edict', edict: 'aquae', option: 'operibus' }, { kind: 'place', building: 'puteus' }]);
+    s.decisions.edicts.aquae = 'operibus';                          // a lever in force is not offered again
+    day(s);
+    expect(levers(s)).toEqual([{ kind: 'place', building: 'puteus' }]);
+    s.decisions.edicts.aquae = 'populo';
+    s.ordo.emergency.waterPause = true;                              // nor one the Lex de annona's water pause overrules
+    day(s);
+    expect(levers(s)).toEqual([{ kind: 'place', building: 'puteus' }]);
+  });
+
+  it('the full crew: "at its maximum", Opera Magna the one lever, and silence once it is in force', () => {
+    const s = base();
+    ctl.flow = { ...FLOW };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; the crew is at its maximum (64 fabri, the most that can work on it).');
+    expect(levers(s)).toEqual([{ kind: 'edict', edict: 'opera', option: 'magna' }]);   // never the builder share: it adds no crew
+    s.decisions.edicts.opera = 'magna';
+    for (let i = 0; i < LIFE; i++) day(s);
+    expect(s.guidance.advisories[C]!.active).toBe(false);
+  });
+
+  it('a crew short of 64: more builders (by hand, or builders first), not the builder share', () => {
+    const s = base();
+    ctl.flow = { ...FLOW, crew: 40 };
+    day(s);
+    expect(say(s).title).toBe('At this flow the Cella rises in 400 days; the crew is the bottleneck (40 of the 64 fabri who could work on it).');
+    expect(levers(s)).toEqual([{ kind: 'priority', cat: 'builders', days: B.ordo.PRIORITY_DAYS }, { kind: 'edict', edict: 'opera', option: 'magna' }]);
+    s.ordo.on.labour = false;
+    day(s);
+    expect(levers(s)[0]).toEqual({ kind: 'assign', cat: 'builders', n: 24 });
+    expect(levers(s).some((x) => x.kind === 'setting')).toBe(false);
   });
 });
 
