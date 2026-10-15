@@ -51,7 +51,7 @@ export const FOCUS_DEFS: Record<FocusId, FocusDef> = {
   },
   urbs: {
     id: 'urbs', name: 'The city beautiful', latin: 'Urbs',
-    desc: 'Shrines, gardens, temples and fountains. Raises gardens for the stone houses, paves 2 busy streets a month, imports oil and wine.',
+    desc: 'Shrines, gardens, temples and fountains. Plants gardens on free plots among the homes (one to a block, beside the stone houses that want a finer street), paves 2 busy streets a month, imports oil and wine.',
     plan: [['lararium', 2], ['hortus', 2], ['taberna', 2], ['templum', 1], ['lacus', 2], ['balneum', 1]],
     split: { services: 0.60, materials: 0.20, industry: 0.20 },
   },

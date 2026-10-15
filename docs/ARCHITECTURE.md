@@ -1245,6 +1245,7 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void;   /
 export function processRequests(s: GameState, ctx: TickContext, v: SimView): void;   // places requests and the pin (player sites, no stake, fx ordoPlaced)
 export function wishList(s: GameState, v: SimView, n: number): WishView[];      // pure; the Agenda and the "would" ghost
 export function keptBlocks(s: GameState): readonly { rect: Rect; for: BuildingId }[];   // blocks kept free for a temple/bathhouse/market hall to come, the theatrum, the thermae (DESIGN §10.5)
+export function gardenSlot(s: GameState, v: SimView): { tile: number; n: number; k: number; lift: number } | null;   // the Ordo's garden plot under Urbs: land the homes can spare, the most lift to the stone houses (DESIGN §10.5 row 11)
 // ordo/goods.ts
 export function goodsPlan(s: GameState, v: SimView, res: 'oil' | 'wine', own?: boolean): GoodsPlan;   // demand, presses by season, lean-season reserve, export keep, projection low/empty day, shortfall (memo per day)
 // ordo/trade.ts
@@ -1361,6 +1362,7 @@ export function checkRemedy(s: GameState, r: Remedy): ActionResult;   // never t
 export function applyRemedy(s: GameState, r: Remedy): ActionResult;   // sim remedies through actions; UI remedies return ok (the UI executes them)
 export function isUiRemedy(r: Remedy): boolean;                       // place, open, overlay, contract, building:center
 export function remedyLabel(s: GameState, r: Remedy): string;
+export function remedyTip(r: Remedy): string | null;                  // what a remedy sets in motion, for its button's tooltip (a focus: what the council raises under it)
 // advisors/util.ts (shared with the Ordo: the advice and the work it asks for read the same slot)
 export function serveSlot(s: GameState, type: BuildingId, owner: 'ordo' | 'player', need: NeedId, ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number } | null;   // the slot serving the most waiting houses
 export function liftSlot(s: GameState, owner: 'ordo' | 'player', ids: readonly number[], skip?: ReadonlySet<number>): { tile: number; k: number; lift: number } | null;   // the garden lifting the most of them

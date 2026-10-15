@@ -6,7 +6,7 @@ import type { Game, Updater } from '../types';
 import { fmt, h, img } from '../dom';
 import * as A from '../../game/actions';
 import { activeAdvisories, advisorMood, renderAdvisory } from '../../game/advisors/engine';
-import { checkRemedy, remedyLabel } from '../../game/advisors/remedies';
+import { checkRemedy, remedyLabel, remedyTip } from '../../game/advisors/remedies';
 import { councilReport } from '../../game/ordo/index';
 import { reasonShort } from '../../game/ordo/reasons';
 import { view } from '../../game/sim';
@@ -39,7 +39,7 @@ function remedies(g: Game, list: { remedy: Remedy; label: string; check: ActionR
   const row = h('div', { class: 'adv-remedies' });
   const seen = new Set<BuildingId>();
   const add = (r: Remedy, label: string, check: ActionResult, cls = ''): void => {
-    row.append(btn(g, label, () => { g.applyRemedy(r); }, { cls, reason: check.ok ? null : check.reason }));
+    row.append(btn(g, label, () => { g.applyRemedy(r); }, { cls, reason: check.ok ? null : check.reason, tip: remedyTip(r) ?? undefined }));
   };
   for (const x of list) {
     const r = x.remedy;

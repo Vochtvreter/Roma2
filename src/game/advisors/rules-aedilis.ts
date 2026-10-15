@@ -296,7 +296,7 @@ const favour: AdvisorRule = {
     return `Colonists come slowly: Rome's favour stands at ×${(Math.floor(P(a.params.f) * 10) / 10).toFixed(1)}.`;
   },
   text() {
-    return `Rome sends settlers faster to a splendid town, up to ×${B.people.RENOWN.MAX}. Gardens and paved streets among the homes draw them; the Ordo raises neither unless you set the Urbs focus.`;
+    return `Rome sends settlers faster to a splendid town, up to ×${B.people.RENOWN.MAX}. Gardens and paved streets among the homes draw them; the Ordo raises neither unless you set the Urbs focus, and then it plants gardens on free plots among the homes.`;
   },
   remedies(s) {
     return three({ kind: 'place', building: 'hortus' }, sectionRevealed(s, 'focus') && s.decisions.focus !== 'urbs' ? { kind: 'focus', focus: 'urbs' } : null);

@@ -223,6 +223,14 @@ function settingWord(id: keyof typeof SETTING_DEFS, v: number): string {
   return `${int(v)} ${u}`;
 }
 
+/** What a remedy will set in motion, for its button's tooltip before it is applied (a focus: what the council will
+ *  raise under it, so Urbs says it plants gardens on free plots), or null. */
+export function remedyTip(r: Remedy): string | null {
+  if (r.kind !== 'focus') return null;
+  const f = FOCUS_DEFS[r.focus];
+  return f ? `${f.latin} · ${f.name}\n${f.desc}` : null;
+}
+
 /** Button label of a remedy, with live numbers; never throws. */
 export function remedyLabel(s: GameState, r: Remedy): string {
   try {

@@ -5,15 +5,16 @@
 // of a good the target lacks. Survival wishes ignore the reserve, the treasury floor, the stake and the site limit.
 // Never: demolish, move or convert the player's works, build in reserved blocks or blocks holding unfinished player works,
 // place on future-ring blocks (canPlace for owner 'ordo'), raise a hortus or pave except under Urbs (or on request). Its
-// one renewal here: a block-sized service no free block can bring to the homes waiting for it goes where a block of its
-// own homes is bought out, every family rehoused (urbs.ts, DESIGN §3.9).
+// renewals here: a block-sized service no free block can bring to the homes waiting for it goes where a block of its
+// own homes is bought out, every family rehoused (urbs.ts, DESIGN §3.9); and a home, a service or a petition's work that
+// no free land can take goes where the Ordo clears its own gardens (make room, DESIGN §10.3).
 import { B as B$ } from '../balance';
 import { NEEDS as NEEDS$, RESOURCES as RESOURCES$ } from '../types';
-import type { BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
+import type { Building, BuildingId, Cost, GameState, NeedId, Reason, ReasonCode, Rect, ResId, SimView, TickContext, WishView } from '../types';
 import { dateOf as dateOf$, seasonOf as seasonOf$ } from '../calendar';
 import { NEVER, addCost, canAfford, log, missing } from '../state';
 import { getBuilding as getBuilding$ } from '../lookup';
-import { memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
+import { invalidate, memo as memo$, structEpoch as structEpoch$, dayEpoch as dayEpoch$, dayStruct as dayStruct$, layoutEpoch as layoutEpoch$ } from '../memo';
 import { settingValue } from '../decisions';
 import { sectionRevealed } from '../reveal';
 import { bestSlot, siteScore } from '../site';
@@ -33,7 +34,7 @@ import { goodsPlan } from './goods';
 import { maskAllows, walkMask } from './duties';
 import { busiestDirt, buyOut, cottageBlock, renewalReason } from '../urbs';
 import { view } from '../sim';
-import { classAt as classAt$, derived, sizeOf as sizeOf$ } from '../derived';
+import { classAt as classAt$, derived, footprintOf, sizeOf as sizeOf$ } from '../derived';
 import { getMap } from '../map';
 import { isActiveBlock, isRazed } from '../survey';
 import { rectGap as rectGap$ } from '../world/grid';
@@ -66,6 +67,7 @@ const PETITION_WORKS: BuildingId[][] = [[], ['horreum'], [], ['templum', 'macell
 export interface Wish {
   type: BuildingId; tile: number; cost: Cost; reason: Reason; survival: boolean; unblock: boolean; renew?: number[];
   revive?: ResId;   // a producer of a good whose own producers have run dry (a lumber camp whose woods are felled)
+  clear?: number[]; // the Ordo's own gardens cleared to make room for it (gardenRoom)
 }
 /** The walked wish list: entries with states, the first ready wish (`take`) and the one being saved for (`pending`). */
 export interface Walk { list: { wish: Wish; state: 'saving' | 'waiting' | 'proposed'; lacking?: Cost }[]; take: Wish | null; pending: Wish | null }
@@ -262,8 +264,10 @@ function reckonKept(s: GameState): readonly { rect: Rect; for: BuildingId }[] {
   });
 }
 const NONE: readonly { rect: Rect; for: BuildingId }[] = [];
-/** The coverage layer each kept block's need is answered by. */
-const ANSWER: Partial<Record<NeedId, readonly string[]>> = { temple: ['temple'], baths: ['baths'], macellum: ['macellum'] };
+/** The coverage layers a house need is answered by (a kept block's need; the services raised where gardens stood). */
+const ANSWER: Partial<Record<NeedId, readonly string[]>> = {
+  water: ['water', 'fountain'], religion: ['shrine', 'temple'], market: ['market', 'macellum'], temple: ['temple'], baths: ['baths'], macellum: ['macellum'],
+};
 
 /** The castellum's slot: the best slot when a free block for the thermae lies within its reach (or the thermae is no
  *  longer ahead), else the best-scoring slot that has one (the theatre's block aside); the best slot when none has (the
@@ -317,6 +321,138 @@ function ordoServeSlot(s: GameState, v: SimView, type: BuildingId, need: NeedId)
   return serveSlot(s, type, 'ordo', need, waitingFor(s, v, need), keptSlots(s, type));
 }
 
+// ── the Ordo's gardens (DESIGN §10.3, §10.5 row 11). Under Urbs a garden went every six days to the free plot nearest the
+//    forum once a single stone house stood below a domus's street, lifting nobody: in playtests the gardens took every
+//    plot the homes, the market hall, the baths and the aqueduct needed (241 gardens to 26 homes), and growth stalled.
+//    A garden now goes only to land the homes can spare, and the Ordo clears its own when a higher work needs the land.
+
+/** The Ordo's garden plot (memo on day and structure): a valid Ordo slot on a plot whose neighbour on its half-block
+ *  already holds a work — so a garden never breaks a free half or block that a horreum, a temple, a bathhouse, a market
+ *  hall or a theatre could take — on a block with fewer than GARDEN.PER_BLOCK gardens and off the kept blocks; none while
+ *  the town has a garden for every 1/PER_HOME homes or the free house plots are down to KEEP_PLOTS. The plot lifting the
+ *  stone houses that may yet become a domus the most toward its street: the most brought clear (`k`), then the most lift
+ *  (each house counted up to what it lacks), then the Ordo's site score, then the lowest tile; `n` the houses it lifts. */
+export function gardenSlot(s: GameState, v: SimView): { tile: number; n: number; k: number; lift: number } | null {
+  return memo(s, 'ordo.garden', `${dayStruct(s)}|${s.ordo.reserved.join(',')}`, () => {
+    const G = B.ordo.GARDEN, d = v.d;
+    if ((d.all.hortus ?? 0) >= d.houses.length * G.PER_HOME) return null;
+    if (validSlots(s, 'area', 'ordo').size <= G.KEEP_PLOTS) return null;   // the last free plots are the homes'
+    // the stone houses a garden is for: short of a domus's street, not set on an insula, not already rising
+    const low: { rect: Rect; short: number }[] = [];
+    for (const id of d.houses) {
+      const b = getBuilding(s, id), h = b?.house;
+      if (!b || !h || h.tier !== 'domusParva' || h.pref === 'insula' || h.renovating) continue;
+      const short = B.housing.DESIR_DOMUS - houseDesir(s, id);
+      const [w, hh] = sizeOf(b.type, classAt(s, b.type, b.x, b.y));
+      if (short > EPS) low.push({ rect: { x: b.x, y: b.y, w, h: hh }, short });
+    }
+    const sv = getMap(s.seed).survey;
+    const [gv, gr] = BUILDING_DEFS.hortus.desir;
+    let best: { tile: number; n: number; k: number; lift: number; score: number } | null = null;
+    for (const tile of [...validSlots(s, 'hortus', 'ordo').keys()].sort((a, b) => a - b)) {
+      const bi = sv.blockAt[tile];
+      if (bi < 0) continue;
+      const x = tx(tile), y = ty(tile), blk = sv.blocks[bi];
+      const plot = (y - blk.y >= B.map.PLOT ? 2 : 0) + (x - blk.x >= B.map.PLOT ? 1 : 0);
+      if (d.plotOwner[bi * 4 + (plot ^ 1)] === 0) continue;                // beside a work on its half-block
+      let gardens = 0;
+      for (let p = 0; p < 4; p++) { const id = d.plotOwner[bi * 4 + p]; if (id !== 0 && getBuilding(s, id)?.type === 'hortus') gardens++; }
+      if (gardens >= G.PER_BLOCK || overlapsKept(s, 'hortus', tile)) continue;
+      const [w, h] = sizeOf('hortus', classAt(s, 'hortus', x, y));
+      const r: Rect = { x, y, w, h };
+      let n = 0, k = 0, lift = 0;
+      for (const hh of low) {
+        if (rectGap(r, hh.rect) > gr) continue;
+        let sum = 0;   // the garden's desirability on the house's tiles (coverage.addInfluence)
+        for (let yy = hh.rect.y; yy < hh.rect.y + hh.rect.h; yy++) for (let xx = hh.rect.x; xx < hh.rect.x + hh.rect.w; xx++) {
+          const dd = rectGap(r, { x: xx, y: yy, w: 1, h: 1 });
+          if (dd <= gr) sum += gv * (1 - dd / (gr + 1));
+        }
+        const avg = sum / (hh.rect.w * hh.rect.h);
+        if (avg <= EPS) continue;
+        n++;
+        if (avg >= hh.short - EPS) k++;
+        lift += Math.min(avg, hh.short);
+      }
+      if (best && (k < best.k || (k === best.k && lift < best.lift - EPS))) continue;
+      const score = siteScore(s, 'hortus', x, y, 'beauty').score;
+      if (!best || k > best.k || lift > best.lift + EPS || score > best.score + EPS) best = { tile, n, k, lift, score };
+    }
+    return best && { tile: best.tile, n: best.n, k: best.k, lift: best.lift };
+  });
+}
+const EPS = 1e-6;
+
+/** Land the Ordo's own finished gardens hold where a work of `type` could stand once they are cleared (DESIGN §10.3,
+ *  make room): a garden's own plot for a plot work; for a half- or block-sized work the half or block it lies on, if
+ *  nothing else stands there; off the blocks kept for other works, and valid for the work with the gardens gone. A
+ *  service (`need`) goes where it serves the most of the houses `ids` (at least `min`); then the fewest gardens cleared,
+ *  the best site score, the lowest tile. Null when no garden of the Ordo's gives such land (memo on the layout). */
+function gardenRoom(s: GameState, type: BuildingId, code: ReasonCode, need: NeedId | undefined, ids: readonly number[] | undefined, min: number):
+  { tile: number; clear: number[]; k: number; cost: Cost } | null {
+  const mine = s.buildings.filter((b) => b.type === 'hortus' && b.owner === 'ordo' && b.status === 'done');
+  const cls = BUILDING_DEFS[type].place.find((p) => p === 'plot' || p === 'half' || p === 'block');
+  if (mine.length === 0 || !cls || type === 'hortus') return null;
+  const key = `${layoutEpoch(s)}|${s.rank}|${s.ordo.reserved.join(',')}|${code}|${need ?? ''}|${ids?.join(',') ?? ''}|${min}`;
+  return memo(s, `ordo.room.${type}`, key, () => {
+    const sv = getMap(s.seed).survey, d = derived(s);
+    const ours = new Set(mine.map((b) => b.id));
+    // the land as it would lie with the Ordo's gardens cleared (a view for canPlace; the state itself is not touched)
+    const bare: GameState = { ...s, buildings: s.buildings.filter((b) => !ours.has(b.id)) };
+    const want = ids ? new Set(ids) : null;
+    const layers = need ? ANSWER[need] ?? [] : [];
+    const [w, h] = sizeOf(type, cls);
+    const tried = new Set<number>();
+    let best: { tile: number; clear: number[]; k: number; cost: Cost; score: number } | null = null;
+    for (const g of mine) {
+      const bi = sv.blockAt[idx(g.x, g.y)];
+      if (bi < 0) continue;
+      const blk = sv.blocks[bi];
+      const x = cls === 'plot' ? g.x : blk.x;
+      const y = cls === 'plot' ? g.y : cls === 'half' && g.y >= blk.y + h ? blk.y + h : blk.y;
+      const tile = idx(x, y);
+      if (tried.has(tile)) continue;
+      tried.add(tile);
+      const clear = new Set<number>();
+      let only = true;
+      for (let yy = y; only && yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+        const id = d.buildingAt[idx(xx, yy)];
+        if (id === 0) continue;
+        if (!ours.has(id)) { only = false; break; }
+        clear.add(id);
+      }
+      if (!only || clear.size === 0 || overlapsKept(s, type, tile)) continue;
+      const chk = canPlace(bare, type, tile, { owner: 'ordo', ignoreCost: true });
+      if (!chk.ok) continue;
+      let k = 0;
+      if (want) {
+        const served = new Set<number>();
+        for (const p of previewCovered(s, type, x, y)) if (layers.includes(p.layer)) for (const hid of p.houses) if (want.has(hid)) served.add(hid);
+        k = served.size;
+        if (k < min) continue;
+      }
+      const score = siteScore(s, type, x, y, code).score;
+      const better = !best || k > best.k || (k === best.k && (clear.size < best.clear.length || (clear.size === best.clear.length
+        && (score > best.score + EPS || (Math.abs(score - best.score) <= EPS && tile < best.tile)))));
+      if (better) best = { tile, clear: [...clear].sort((a, b) => a - b), k, cost: chk.cost, score };
+    }
+    return best && { tile: best.tile, clear: best.clear, k: best.k, cost: best.cost };
+  });
+}
+
+/** Clears the Ordo's own gardens for the work it raises in their place (make room): their tiles, or null (nothing
+ *  changed) when one is gone or is no longer a finished garden of the Ordo's. Gardens have no hands and no residents. */
+function clearGardens(s: GameState, ids: readonly number[]): number[] | null {
+  const gs = ids.map((id) => getBuilding(s, id));
+  if (gs.some((b) => !b || b.type !== 'hortus' || b.owner !== 'ordo' || b.status !== 'done')) return null;
+  const tiles: number[] = [];
+  for (const b of gs as Building[]) tiles.push(...footprintOf(b, s));
+  const gone = new Set(ids);
+  s.buildings = s.buildings.filter((b) => !gone.has(b.id));
+  invalidate(s);
+  return tiles;
+}
+
 /** Defines `tile` on an object as a getter resolved (and kept) on first read. */
 function lazyTile<T extends object>(o: T, resolve: () => number): T & { tile: number } {
   let tile: number | undefined;
@@ -348,31 +484,50 @@ const unfinished = (v: SimView, t: BuildingId): boolean => (v.d.all[t] ?? 0) > (
 function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: string): Generator<Wish> {
   const { c, d, f } = v;
   const seen = new Set<BuildingId>();
-  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: { survival?: boolean; unblock?: boolean; revive?: ResId; again?: boolean; store?: boolean; serves?: NeedId; ids?: number[]; reach?: number } = {}): Wish | null => {
+  type MakeOpts = { survival?: boolean; unblock?: boolean; revive?: ResId; again?: boolean; store?: boolean; serves?: NeedId; ids?: number[]; reach?: number; room?: boolean };
+  const make = (type: BuildingId, code: ReasonCode, params: Reason['params'] = {}, o: MakeOpts = {}): Wish | null => {
     const def = BUILDING_DEFS[type];
     if (seen.has(type) || def.rank > s.rank) return null;
     if (!maskAllows(mask, { code, params }, !!o.survival)) return null;   // a duty the Ordo does not hold (duties.ts)
     if (type === 'hortus' && s.decisions.focus !== 'urbs') return null;
     if (def.maxCount !== undefined && (d.all[type] ?? 0) >= def.maxCount) return null;
     if (!o.again && unfinished(v, type)) return null;
-    // a service goes to the slot that serves the most of the houses waiting for it (none: the row is dropped, unless
-    // its cost overflows a store, which asks for the store first); a castellum's route cost is measured at its slot;
-    // any other row only needs a slot
-    const at = o.serves === undefined ? null : o.ids ? serveSlot(s, type, 'ordo', o.serves, o.ids, keptSlots(s, type)) : ordoServeSlot(s, v, type, o.serves);
-    if (o.serves !== undefined && !at && !overCap(s, c.caps, type)) return null;
-    const exact = o.serves !== undefined || type === 'castellum';
+    // a garden goes only to a plot the homes can spare (gardenSlot); a service to the slot that serves the most of the
+    // houses waiting for it (none: the row is dropped, unless its cost overflows a store, which asks for the store first);
+    // a castellum's route cost is measured at its slot; any other row only needs a slot. A row that finds no land may
+    // take the land of the Ordo's own gardens (`room`, make room)
+    const garden = type === 'hortus' ? gardenSlot(s, v) : null;
+    if (type === 'hortus' && !garden) return null;
+    const at = garden ? { tile: garden.tile, k: garden.n } : o.serves === undefined ? null
+      : o.ids ? serveSlot(s, type, 'ordo', o.serves, o.ids, keptSlots(s, type)) : ordoServeSlot(s, v, type, o.serves);
+    if (o.serves !== undefined && !at && !overCap(s, c.caps, type)) return room(type, code, params, o);
+    const exact = garden !== null || o.serves !== undefined || type === 'castellum';
     const tile = at ? at.tile : type === 'castellum' ? ordoSlot(s, type, code) : anyOpenSlot(s, type);
     const chk = tile === null ? null : canPlace(s, type, tile, { owner: 'ordo', ignoreCost: true });
-    if (tile === null || !chk?.ok) return null;
+    if (tile === null || !chk?.ok) return room(type, code, params, o);
     const over = RESOURCES.find((r) => (chk.cost[r] ?? 0) > c.caps[r]);
     if (over && !o.store) return store(over, type);
     const reach = at?.k ?? 0;
-    if (o.serves && reach < (o.reach ?? 1)) return null;
+    if (o.serves && reach < (o.reach ?? 1)) return room(type, code, params, o);
     seen.add(type);
     const p = o.serves ? { type, ...params, reach } : { type, ...params };
     const wish: Omit<Wish, 'tile'> = { type, cost: chk.cost, reason: { code, params: p }, survival: !!o.survival, unblock: !!o.unblock || !!o.revive };
     if (o.revive) wish.revive = o.revive;
     return exact ? { ...wish, tile } : lazyTile(wish, () => ordoSlot(s, type, code) ?? tile);
+  };
+  // make room (DESIGN §10.3): a home, a service or a petition's work no free land can take goes where the Ordo clears
+  // its own gardens (gardenRoom); the gardens go when the work is placed (ordoBuild)
+  const room = (type: BuildingId, code: ReasonCode, params: Reason['params'], o: MakeOpts): Wish | null => {
+    if (!o.room) return null;
+    const ids = o.serves === undefined ? undefined : o.ids ?? waitingFor(s, v, o.serves);
+    const at = gardenRoom(s, type, code, o.serves, ids, o.reach ?? 1);
+    if (!at) return null;
+    const over = RESOURCES.find((r) => (at.cost[r] ?? 0) > c.caps[r]);
+    if (over && !o.store) return store(over, type);
+    seen.add(type);
+    const p: Reason['params'] = o.serves ? { type, ...params, reach: at.k } : { type, ...params };
+    p.gardens = at.clear.length;
+    return { type, tile: at.tile, cost: at.cost, reason: { code, params: p }, survival: false, unblock: !!o.unblock, clear: at.clear };
   };
   const store = (r: ResId, forWhat?: string): Wish | null => {
     const t: BuildingId = r === 'grain' ? 'horreum' : r === 'water' ? 'cisterna' : 'apotheca';
@@ -432,7 +587,7 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
   // 4 · beds for newcomers while Rome's roll allows
   const planned = ((d.all.area ?? 0) - (d.counts.area ?? 0)) * (TIER_DEFS.tentoria.beds + fxAdd(s, 'lowCap'));
   const keep = settingValue(s, 'spareBeds') + (s.decisions.focus === 'copia' ? B.ordo.FOCUS.COPIA_BEDS : 0);
-  if (c.freeBeds + planned < keep && c.pop < c.roll) yield* yieldOf(make('area', 'beds', { free: c.freeBeds + planned, keep }, { again: true }));
+  if (c.freeBeds + planned < keep && c.pop < c.roll) yield* yieldOf(make('area', 'beds', { free: c.freeBeds + planned, keep }, { again: true, room: true }));
   // 5 · water within reach of the homes that lack it
   const hw = houseWants(s, v);
   const dry = hw.want.water ?? 0;
@@ -440,13 +595,13 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     // a fountain once the aqueduct flows; a well where no fountain can reach them (a lacus must stand near the castellum)
     const fountain = d.castellumActive && BUILDING_DEFS.lacus.rank <= s.rank;
     const w = fountain ? make('lacus', 'waterAccess', { n: dry }, { serves: 'water' }) : null;
-    yield* yieldOf(w ?? (fountain && unfinished(v, 'lacus') ? null : make('puteus', 'waterAccess', { n: dry }, { serves: 'water' })));
+    yield* yieldOf(w ?? (fountain && unfinished(v, 'lacus') ? null : make('puteus', 'waterAccess', { n: dry }, { serves: 'water', room: true })));
   }
   // 5b · running water for the great houses (DESIGN §3.9): once the aqueduct flows, a fountain within reach gives an
   //      insula or a domus beds and rent (the aquae variant), so the aqueduct's water goes where it matters
   if (d.castellumActive && BUILDING_DEFS.lacus.rank <= s.rank) {
     const great = d.houses.filter((id) => { const h = getBuilding(s, id)?.house; return !!h && TIER_DEFS[h.tier].level === 4 && !houseHas(s, id, 'fountain'); });
-    if (great.length >= B.urbs.AQUAE_REACH) yield* yieldOf(make('lacus', 'aquae', { n: great.length }, { serves: 'water', ids: great, reach: B.urbs.AQUAE_REACH }));
+    if (great.length >= B.urbs.AQUAE_REACH) yield* yieldOf(make('lacus', 'aquae', { n: great.length }, { serves: 'water', ids: great, reach: B.urbs.AQUAE_REACH, room: true }));
   }
   // 6 · the service most homes wait for (baths too: one balneum cannot reach every insula of a grown city)
   const wants = (Object.keys(SERVICE_FOR) as NeedId[]).filter((n) => (hw.want[n] ?? 0) > 0)
@@ -455,11 +610,11 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
     const t = SERVICE_FOR[n] as BuildingId;
     const min = BUILDING_DEFS[t].place.includes('block') ? B.ordo.EVOLVE_MIN_BLOCK : B.ordo.EVOLVE_MIN;
     if ((hw.want[n] ?? 0) < min) continue;
-    yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n }) ?? (min === B.ordo.EVOLVE_MIN_BLOCK ? renewal(t, n, hw.want[n] ?? 0) : null));
+    yield* yieldOf(make(t, 'evolve', { n: hw.want[n] ?? 0, want: n }, { serves: n, room: true }) ?? (min === B.ordo.EVOLVE_MIN_BLOCK ? renewal(t, n, hw.want[n] ?? 0) : null));
   }
   // 7 · works the next petition names (the Vicus petition only once the Lex coloniae is proclaimed)
   if (s.rank > 0 || s.decisions.paths.charter !== undefined) {
-    for (const t of PETITION_WORKS[s.rank + 1] ?? []) if (!d.all[t]) yield* yieldOf(make(t, 'rank', { rank: s.rank + 1 }));
+    for (const t of PETITION_WORKS[s.rank + 1] ?? []) if (!d.all[t]) yield* yieldOf(make(t, 'rank', { rank: s.rank + 1 }, { room: true }));
   }
   // 8 · producers of what the saving target, the pending wish, renovations or the Capitolium lack (ETA > 30 days),
   //     then of whatever those producers themselves lack (a quarry short of timber calls for a lumber camp)
@@ -498,7 +653,9 @@ function* rows(s: GameState, v: SimView, walk: { pending: Wish | null }, mask: s
   const focus = s.decisions.focus;
   const plan = focusParams(s);
   for (const [t, n] of FOCUS_DEFS[focus].plan) if ((d.all[t] ?? 0) < n) yield* yieldOf(make(t, 'focusPlan', plan));
-  if (focus === 'urbs' && hw.t3Low > 0) yield* yieldOf(make('hortus', 'beauty', { n: hw.t3Low }));
+  //    (a garden only where it lifts the stone houses by LIFT_MIN in all, or brings one to a domus's street)
+  const g = focus === 'urbs' && hw.t3Low > 0 ? gardenSlot(s, v) : null;
+  if (g && (g.k > 0 || g.lift >= B.ordo.GARDEN.LIFT_MIN)) yield* yieldOf(make('hortus', 'beauty', { n: g.n }));
 }
 
 /** The focus a focusPlan reason names: none before the council's focus is revealed (it is the Ordo's default then, and
@@ -642,8 +799,15 @@ export function ordoBuild(s: GameState, ctx: TickContext, v: SimView): void {
   const res = w.reason.params.res;
   const had = typeof res === 'string' && (RESOURCES as readonly string[]).includes(res) ? s.res[res as ResId] : 0;
   if (w.renew && !buyOut(s, w.renew, w.type, (e) => ctx.fx.push(e))) return;   // the cottages first, their families rehoused
+  const before = s.buildings;
+  const cleared = w.clear ? clearGardens(s, w.clear) : null;                     // its own gardens make room for it
+  if (w.clear && !cleared) return;
   const r = placeBuilding(s, w.type, w.tile, { owner: 'ordo', reason: w.reason, noStake: w.survival });
-  if (!r.ok) return;
+  if (!r.ok) {
+    if (cleared) { s.buildings = before; invalidate(s); }                      // the gardens stand as they stood
+    return;
+  }
+  if (cleared) ctx.fx.push({ kind: 'renewed', tiles: cleared });
   if (r.id !== undefined) ctx.fx.push({ kind: 'ordoPlaced', id: r.id });
   // the timber felled on the site enters the stores: a lack it made up is told as covered, here and on the site
   let reason = w.reason;

@@ -20,7 +20,7 @@ import { caps } from './tipkit';
 import { PointerHold } from './steady';
 import { dangerLabel } from './objective';
 import { activeAdvisories, advisorMood, renderAdvisory } from '../game/advisors/engine';
-import { checkRemedy } from '../game/advisors/remedies';
+import { checkRemedy, remedyTip } from '../game/advisors/remedies';
 import { beginNextLesson, dismissTip, handOverAll, hush, keepDuties, mute, setDuty, skipIntro, skipLesson } from '../game/actions';
 import { DUTY_DEFS, pendingOffers } from '../game/ordo/duties';
 import { LESSONS, currentLesson, introduced, lessonAge, lessonPointer } from '../game/intro';
@@ -647,7 +647,11 @@ export class Counsel {
   private remedyBtn(r: Remedy, label: string, check: ActionResult, primary: boolean): HTMLElement {
     const g = this.g;
     const btn = h('button', { class: primary ? 'btn small primary' : 'btn small', disabled: !check.ok, onclick: () => { g.sfx('click'); g.applyRemedy(r); } }, label);
-    if (check.ok) return btn;
+    if (check.ok) {
+      const what = remedyTip(r);   // a focus says what the council will raise under it
+      if (what) tip(btn, what);
+      return btn;
+    }
     const why = h('span', { class: 'counsel-why' }, check.reason);
     const wrap = h('span', { class: 'counsel-btnwrap' }, btn, why);
     tip(wrap, check.reason);

@@ -8,12 +8,13 @@ import { isActiveBlock } from '../src/game/survey';
 import { blockOfTile, footprintOf } from '../src/game/derived';
 import { census } from '../src/game/census';
 import { invalidate } from '../src/game/memo';
-import { placeBuilding } from '../src/game/place';
+import { placeBuilding, validSlots } from '../src/game/place';
 import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
 import { manualPlan, planLabour } from '../src/game/ordo/labour';
-import { currentReason, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
+import { currentReason, gardenSlot, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
+import type { Wish } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
 import { maxPotential } from '../src/game/economy';
 import { projectEssential } from '../src/game/forecast';
@@ -518,6 +519,159 @@ describe('water for Aestas (DESIGN §10.5 row 2, §11.11)', () => {
     expect((wells * 17.6 + tanks * 2.4) / census(s).need.water).toBeGreaterThan(0.8); // Aestas yield tracks the need
     expect(low).toBeGreaterThanOrEqual(10);                                        // the realised runway never fell below 10 days
     expect(s.stats.deathsBy.thirst).toBe(0);
+  }, 120_000);
+});
+
+describe('the Ordo\'s gardens (DESIGN §10.3 make room, §10.5 row 11)', () => {
+  const G = B.ordo.GARDEN;
+  /** The work on the other plot of a plot's half-block (0: none). */
+  const halfMate = (s: GameState, tile: number): number => {
+    const m = getMap(s.seed), bi = m.survey.blockAt[tile], blk = m.survey.blocks[bi];
+    const plot = (Math.floor(tile / m.W) - blk.y >= B.map.PLOT ? 2 : 0) + ((tile % m.W) - blk.x >= B.map.PLOT ? 1 : 0);
+    return view(s).d.plotOwner[bi * 4 + (plot ^ 1)];
+  };
+  /** The gardens on a tile's block. */
+  const gardensOn = (s: GameState, tile: number): number => {
+    const bi = getMap(s.seed).survey.blockAt[tile];
+    return [0, 1, 2, 3].filter((p) => s.buildings.find((b) => b.id === view(s).d.plotOwner[bi * 4 + p])?.type === 'hortus').length;
+  };
+  /** A finished garden of the Ordo's on every free plot it could take but the last `keep` (an old save flooded under Urbs). */
+  const flood = (s: GameState, keep = 0): Building[] => {
+    const tiles = [...validSlots(s, 'hortus', 'ordo').keys()].sort((a, b) => a - b);
+    const out: Building[] = [];
+    for (const tile of tiles.slice(0, tiles.length - keep)) {
+      const r = placeBuilding(s, 'hortus', tile, { owner: 'ordo', ignoreCost: true, noStake: true });
+      if (!r.ok || r.id === undefined) continue;
+      const b = s.buildings.find((x) => x.id === r.id) as Building;
+      Object.assign(b, { status: 'done', progress: 1 });
+      out.push(b);
+    }
+    invalidate(s);
+    return out;
+  };
+
+  /** The start under Urbs with every founder's home a stone house (short of a domus's street). */
+  const stoneStart = (): GameState => {
+    const s = fresh(42);
+    s.decisions.focus = 'urbs';
+    for (const id of view(s).d.houses) (s.buildings.find((b) => b.id === id) as Building).house!.tier = 'domusParva';
+    invalidate(s);
+    return s;
+  };
+
+  it('plants a garden under Urbs only beside the homes, one to a block, where it lifts a stone house', () => {
+    const s = stoneStart();
+    const g = gardenSlot(s, view(s));
+    expect(g).not.toBeNull();
+    expect(g!.n).toBeGreaterThan(0);
+    expect(g!.k > 0 || g!.lift >= G.LIFT_MIN).toBe(true);
+    expect(halfMate(s, g!.tile)).not.toBe(0);           // beside a work on its half-block: no free half or block is broken
+    expect(gardensOn(s, g!.tile)).toBeLessThan(G.PER_BLOCK);
+    // the council's garden goes there (the plan's first, then beauty), not to the plot nearest the forum
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 0;
+    expect(walkWishes(s, view(s), true).list.find((e) => e.wish.type === 'hortus')?.wish.tile).toBe(g!.tile);
+    // once its block holds a garden, the start's other block is full and no other block has a home: no garden is worth a plot
+    const r = placeBuilding(s, 'hortus', g!.tile, { owner: 'ordo', ignoreCost: true, noStake: true });
+    expect(r.ok).toBe(true);
+    expect(gardenSlot(s, view(s))).toBeNull();
+    expect(walkWishes(s, view(s), true).list.some((e) => e.wish.type === 'hortus')).toBe(false);
+  });
+
+  it('keeps the homes\' last free plots, and a garden for every two homes at most', () => {
+    const s = stoneStart();
+    const sv = getMap(s.seed).survey;
+    const block = sv.blockAt[gardenSlot(s, view(s))!.tile];
+    // a town with a garden for every two homes plants no more (the player's gardens count)
+    const away = [...validSlots(s, 'hortus', 'player').keys()].sort((a, b) => a - b).filter((tile) => sv.blockAt[tile] !== block);
+    const n = Math.ceil(view(s).d.houses.length * G.PER_HOME);
+    for (const tile of away.slice(0, n)) expect(placeBuilding(s, 'hortus', tile, { owner: 'player', ignoreCost: true, noStake: true }).ok).toBe(true);
+    expect(gardenSlot(s, view(s))).toBeNull();
+    s.buildings.pop();
+    invalidate(s);
+    expect(gardenSlot(s, view(s))).not.toBeNull();
+    // the last KEEP_PLOTS free house plots are the homes': no garden while no more are free (blocks reserved by the player)
+    const t = stoneStart();
+    for (const blk of sv.blocks) {
+      if (validSlots(t, 'area', 'ordo').size <= G.KEEP_PLOTS) break;
+      if (blk.id === block || blk.reserved !== null || ![0, 1, 2, 3].some((p) => view(t).d.plotOwner[blk.id * 4 + p] === 0)) continue;
+      const before = validSlots(t, 'area', 'ordo').size;
+      t.ordo.reserved = [...t.ordo.reserved, blk.id].sort((a, b) => a - b);
+      invalidate(t);
+      if (validSlots(t, 'area', 'ordo').size > G.KEEP_PLOTS) expect(gardenSlot(t, view(t)), `${before} free plots`).not.toBeNull();
+    }
+    expect(validSlots(t, 'area', 'ordo').size).toBeLessThanOrEqual(G.KEEP_PLOTS);
+    expect(gardenSlot(t, view(t))).toBeNull();
+  });
+
+  it('a flooded town: the Ordo clears its own garden for a home only where no free plot is left, never the player\'s', () => {
+    const s = fresh(42);
+    const mine = flood(s, 1);
+    const theirs = mine.splice(0, 2);                   // two of the gardens are the player's
+    for (const b of theirs) b.owner = 'player';
+    invalidate(s);
+    const beds = (st: GameState): Wish | undefined => walkWishes(st, view(st), true).list.map((e) => e.wish).find((w) => w.reason.code === 'beds');
+    // one free plot left: the home goes there and nothing is cleared
+    const free = [...validSlots(s, 'area', 'ordo').keys()];
+    expect(free.length).toBe(1);
+    expect(beds(s)?.tile).toBe(free[0]);
+    expect(beds(s)?.clear).toBeUndefined();
+    // none left: the home takes the place of one of the Ordo's own gardens, and says so
+    expect(placeBuilding(s, 'hortus', free[0], { owner: 'player', ignoreCost: true, noStake: true }).ok).toBe(true);
+    const w = beds(s);
+    expect(w?.clear).toHaveLength(1);
+    const g = s.buildings.find((b) => b.id === w!.clear![0]) as Building;
+    expect(g.owner).toBe('ordo');
+    expect(idx(g.x, g.y)).toBe(w!.tile);
+    expect(reasonText(w!.reason)).toContain('It takes the place of one of our gardens.');
+    expect(reasonShort(w!.reason)).toContain('(in place of a garden)');
+    // on the real economy the Ordo raises it there: the garden is cleared, the player's gardens all stand
+    const ordoGardens = mine.length;
+    run(s, 60);
+    const homes = s.buildings.filter((b) => b.type === 'area' && b.owner === 'ordo' && b.reason?.params.gardens === 1);
+    expect(homes.length).toBeGreaterThan(0);
+    expect(s.buildings.filter((b) => b.type === 'hortus' && b.owner === 'ordo').length).toBe(ordoGardens - homes.length);
+    for (const b of theirs) expect(s.buildings.some((x) => x.id === b.id)).toBe(true);
+    expect(s.log.some((l) => l.text.includes('It takes the place of one of our gardens.'))).toBe(true);
+  });
+
+  it('a block of its own gardens is cleared for the work the next petition names when no free block is left', () => {
+    const s = fresh(42);
+    s.rank = 2;
+    invalidate(s);
+    const mine = new Set(flood(s).map((b) => b.id));
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 0;
+    const w = walkWishes(s, view(s), true).list.map((e) => e.wish).find((x) => x.type === 'templum');
+    expect(w?.reason.code).toBe('rank');
+    expect(w?.clear?.length).toBeGreaterThan(0);
+    // the block holds the Ordo's gardens and nothing else, every one of them cleared
+    const W = getMap(s.seed).W, d = view(s).d, onBlock = new Set<number>();
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const id = d.buildingAt[w!.tile + y * W + x]; if (id) onBlock.add(id); }
+    expect([...onBlock].sort((a, b) => a - b)).toEqual(w!.clear);
+    for (const id of w!.clear!) expect(mine.has(id)).toBe(true);
+  });
+
+  it('under Urbs a colony keeps its plots: few gardens, each beside the homes (follower, seed 42, 4,000 days)', () => {
+    let beauty = 0;
+    const r = play(42, 'follower', {
+      days: 4000,
+      onDay: (s) => {
+        s.decisions.focus = 'urbs';
+        const v = view(s);
+        for (const b of s.buildings) {
+          if (b.type !== 'hortus' || b.owner !== 'ordo' || b.placed !== s.day) continue;
+          if (b.reason?.code === 'beauty') beauty++;
+          const tile = idx(b.x, b.y);
+          expect(halfMate(s, tile), `garden ${b.id} beside a work`).not.toBe(0);
+          expect(gardensOn(s, tile), `garden ${b.id} alone on its block`).toBeLessThanOrEqual(G.PER_BLOCK);
+          expect(validSlots(s, 'area', 'ordo').size).toBeGreaterThanOrEqual(G.KEEP_PLOTS);
+          expect((v.d.all.hortus ?? 0) - 1).toBeLessThan(v.d.houses.length * G.PER_HOME);
+        }
+      },
+    });
+    expect(beauty).toBeGreaterThan(0);                      // the stone houses had their gardens
+    const s = r.s;
+    expect(s.buildings.filter((b) => b.type === 'hortus' && b.owner === 'ordo').length).toBeLessThanOrEqual(view(s).d.houses.length * G.PER_HOME + 1);
+    expect(validSlots(s, 'area', 'ordo').size).toBeGreaterThan(G.KEEP_PLOTS);
   }, 120_000);
 });
 
