@@ -118,7 +118,8 @@ export const B = {
     SPILL_LOG_DAYS: 30,                               // overflow logged at most once per 30 days per resource
     OPERIBUS_CONCRETE: 1.05,                          // Aquae: Operibus prius — concrete ×1.05 (off the effect bus, §10.9)
     RESERVE_ROOM: 0.75,                               // Populo prius: the works' water floor is at most ¾ of the water store,
-                                                      // so a full store always lets them draw (§5.2)
+                                                      // so a full store always lets them draw (§5.2); the Lex de annona's
+                                                      // water pause lifts at that level at most (economy.waterResume, §8.12)
   },
 
   // ───────── houses (DESIGN §7) ─────────
@@ -228,6 +229,8 @@ export const B = {
     PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
     IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
     RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365,
+    WATER_START: 2 / 3,                               // the water pause starts only under this share of the level that
+                                                      // lifts it (economy.waterResume), so each pause refills a third first
   },
 
   // ───────── events and festivals (DESIGN §12) ─────────

@@ -963,7 +963,7 @@ describe('fabrum.stalled: a plan that waits on works idle for water (playtest #8
     invalidate(s);
     setJobs(s, { perBuilding: { [works.id]: 2 } });
     s.res.concrete = 0;
-    s.res.water = 5 * census(s).need.water;                                      // 5 days: below the 15-day reserve
+    s.res.water = 8 * census(s).need.water;                                      // 8 days: below the 15-day reserve
     s.buildings.push({ id: s.nextId++, type: 'balneum', x: 2, y: 2, owner: 'player', status: 'plan', placed: s.day - 30, progress: 0, work: 160, paid: false, order: 1, open: true, prio: 1 });
     invalidate(s);
     day(s);
@@ -972,11 +972,23 @@ describe('fabrum.stalled: a plan that waits on works idle for water (playtest #8
     const out = renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m });
     expect(out.title).toMatch(/has waited \d+ days for .*20 concrete/);
     // a fresh colony's stores hold 17 days: the works may draw above three-quarters of them, 13 days, not the 15 asked
-    expect(out.text).toMatch(/^It stays a plan until the stores cover it, and our concrete works .+ stand idle: the water reserve is not met; the stores hold 5 days, and the works draw only above 13, three-quarters of the 17 a full store holds\. Under Populo prius the people drink first\.$/);
+    expect(out.text).toMatch(/^It stays a plan until the stores cover it, and our concrete works .+ stand idle: the water reserve is not met; the stores hold 8 days, and the works draw only above 13, three-quarters of the 17 a full store holds\. Under Populo prius the people drink first\.$/);
     expect(out.remedies.map((x) => x.remedy).slice(0, 2)).toEqual([
-      { kind: 'edict', edict: 'aquae', option: 'aequa' }, { kind: 'setting', setting: 'waterReserve', value: 5 },
+      { kind: 'edict', edict: 'aquae', option: 'aequa' }, { kind: 'setting', setting: 'waterReserve', value: 7 },   // a day under the stock
     ]);
     expect(out.remedies).toHaveLength(3);
+    // near the setting's 5-day minimum: the minimum while it still frees some water; at or under it no reserve is offered
+    // (one at or above the stock would leave the works idle, and the button would vanish having done nothing): the water
+    // remedies come forward
+    const levers = () => renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m }).remedies.map((x) => x.remedy);
+    s.res.water = 5.5 * census(s).need.water;
+    expect(levers()[1]).toEqual({ kind: 'setting', setting: 'waterReserve', value: 5 });
+    for (const d of [5, 4]) {
+      s.res.water = d * census(s).need.water;
+      expect(levers()[0]).toEqual({ kind: 'edict', edict: 'aquae', option: 'aequa' });
+      expect(levers().some((x) => x.kind === 'setting')).toBe(false);
+      expect(levers()).toHaveLength(2);
+    }
     // with the water flowing to the works again, the plan only waits: the old counsel
     s.decisions.edicts.aquae = 'aequa';
     const calm = renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m });

@@ -447,6 +447,12 @@ export function industryWaterFloor(s: GameState, c: Census = census(s)): number 
   return Math.min(settingValue(s, 'waterReserve') * c.need.water, E.RESERVE_ROOM * caps(s).water);
 }
 
+/** The days of water in store above which the Lex de annona's water pause lifts (DESIGN §8.12): WATER_RESUME, but
+ *  never above RESERVE_ROOM of what the stores hold, so a full store always lifts it (as industryWaterFloor). */
+export function waterResume(need: number, cap: number): number {
+  return Math.min(B.emergency.WATER_RESUME, need > 0 ? (E.RESERVE_ROOM * cap) / need : Infinity);
+}
+
 /** A works held from its water, in days of today's need: `have` in store, `keep` the floor it waits for (the pause:
  *  the level that lifts it), `reserve` the Water reserve setting, `full` what the stores hold. */
 export interface WaterHold { why: 'pause' | 'reserve'; have: number; keep: number; reserve: number; full: number }
@@ -461,7 +467,7 @@ export function waterHold(s: GameState, b: Building): WaterHold | null {
   if (!(need > 0)) return null;
   const days = (x: number): number => x / need;
   const out = { have: days(s.res.water), reserve: settingValue(s, 'waterReserve'), full: days(caps(s).water) };
-  if (waterPaused(s, b)) return { why: 'pause', keep: B.emergency.WATER_RESUME, ...out };
+  if (waterPaused(s, b)) return { why: 'pause', keep: waterResume(need, caps(s).water), ...out };
   const floor = industryWaterFloor(s, c);
   return floor > 0 && s.res.water <= floor ? { why: 'reserve', keep: days(floor), ...out } : null;
 }

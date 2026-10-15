@@ -972,7 +972,7 @@ export const B = {
              LUXURY_RUNWAY: 60, GOODS_FLOOR: 15 },
   emergency: { PARCAE: 12, ARCTAE: 6, LIFT: 25, WATER_PAUSE: 8, WATER_RESUME: 15, IMPORT_AT: 8, IMPORT_DAYS: 20,
              IMPORT_COOLDOWN: 90, RELIEF_STRUCT: 10, RELIEF_LOW: 6, RELIEF_DAYS: 30, RELIEF_ARRIVE: 5, RELIEF_PRICE: 2,
-             RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365 },
+             RELIEF_REPAY: 0.25, RELIEF_COOLDOWN: 365, WATER_START: 2 / 3 },
   events:  { START: 300, CHANCE: 1 / 40, CHOICE_GAP: 200, HARMFUL_GAP: 120, CHOICE_DAYS: 30, RELIEF_DAYS: 15,
              CLAMP_RES: 0.3, CLAMP_POP: 0.05, MERCHANT_P: 0.012, MERCHANT_GAP: 60, MERCHANT_STAY: 30,
              BANDIT_P: 0.08, BANDIT_DAYS: 12, BANDIT_LOSS: 0.3, VETERAN_STAY: 30 },
@@ -1194,6 +1194,7 @@ export function maxPotential(s: GameState, res: Essential, season: SeasonIndex):
 export function caps(s: GameState): Res;
 export function horreaCap(s: GameState): number;
 export function industryWaterFloor(s: GameState, c?: Census): number;     // Populo prius: min(Water reserve × need, RESERVE_ROOM × water cap), so a full store always lets the works draw; 0 under Aequa/Operibus
+export function waterResume(need: number, cap: number): number;         // days in store that lift the Lex de annona's water pause: min(WATER_RESUME, RESERVE_ROOM × cap / need), so a full store always lifts it; the pause starts only under WATER_START of it
 export function waterHold(s: GameState, b: Building): WaterHold | null;  // a staffed works that mixes water and draws none tomorrow: { why: 'pause' | 'reserve', have, keep, reserve, full } in days of need
 export function produce(s: GameState, ctx: TickContext, rng: Rng): void;   // water first, then food, passive, processing with per-worker reservations and the water/grain floors, idle forage, skill XP, forest draw; writes rates.prod
 export function consume(s: GameState, ctx: TickContext): void;             // tiered rationing per resource, hunger/thirst per group, fed EMA, Watch-band log; writes rates.cons
@@ -1317,7 +1318,7 @@ export function ordoTrade(s: GameState, ctx: TickContext, v: SimView): void;   /
 export function ordoTradeWould(s: GameState, v: SimView): Reason | null;
 export function luxuryCaravans(s: GameState, v: SimView, res: 'oil' | 'wine'): { need: number; short: number };   // standing imports the projection lacks
 // ordo/emergency.ts
-export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void; // DESIGN §8.7 steps 1–4 (step 4 calls events.triggerRelief)
+export function emergencyDay(s: GameState, ctx: TickContext, v: SimView): void; // DESIGN §8.12 steps 1–3 and 5 (step 5 calls events.triggerRelief); the water pause starts on the run-out (< WATER_PAUSE) under WATER_START × waterResume and lifts above waterResume
 // ordo/saving.ts
 export function savingFor(s: GameState, v: SimView): { cost: Cost; for: 'petition' | 'plan' | 'pin' | 'request' | 'wish' } | null;
 export function reserved(s: GameState, v: SimView): Cost;           // saving target + next 30 days of Capitolium materials
