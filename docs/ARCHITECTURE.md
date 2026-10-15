@@ -2055,7 +2055,7 @@ Never use `title=` attributes or `innerHTML` with game text (names are data); bu
 ```ts
 // modals.ts
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
-  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped (restingFocus: a parchment letter on the dialog itself, else data-autofocus or the first control but ✕)
+  parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped (restingFocus: a parchment letter on the dialog itself, else data-autofocus or the first control but ✕); a press on the backdrop closes the top closable one from B.ui.CONFIRM_MIN_MS after it opened, never a parchment letter (backdropCloses, pure)
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-step confirm: armed while a mouse rests on it (leave, a press elsewhere, Esc disarm), else drains for B.ui.CONFIRM_MS; a press within B.ui.CONFIRM_MIN_MS of arming is ignored
 export interface ChoiceAsk { kicker: string; title: string; lines: readonly string[]; ok: string; cancel: string; danger?: boolean }   // tabs/edicta.ts pathAsk builds the paths' (pure)
 export function confirmChoice(q: ChoiceAsk, fn: () => void): () => void;   // a permanent choice asked by name (charter, paths, abandon, quit unsaved): Cancel (focused) + ok, no timeout, ok ignored for B.ui.CONFIRM_MIN_MS

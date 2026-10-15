@@ -1,15 +1,17 @@
 // tests/letters.test.ts — the parchment letters can never close unread, and the Victory dispatch can be read again
 // (DESIGN §9.5, §15.5, §15.8). A letter holds the focus on itself, so a reflex Space or Enter presses none of its buttons
-// (modals.ts restingFocus); under any modal the game's keys, Space the pause key among them, do nothing (keys.ts
+// (modals.ts restingFocus), and a press on the backdrop around it does not close it (backdropCloses: a click meant for
+// the map as it arrives); under any modal the game's keys, Space the pause key among them, do nothing (keys.ts
 // keysToGame); the dedication day's figures are kept (stats.atVictory), so the letter the Annales reopen reads as it did,
 // and reopened it is only read: no Found a new colony at a click (victoryAnswers).
 // Headless: the pure decisions and the figures (the DOM wiring needs a browser).
 import { describe, expect, it } from 'vitest';
 import type { Building, GameState } from '../src/game/types';
+import { B } from '../src/game/balance';
 import { assignJobs } from '../src/game/people';
 import { constructionDay, startCapitolium } from '../src/game/construction';
 import { deserialize, serialize } from '../src/game/save';
-import { restingFocus } from '../src/ui/modals';
+import { backdropCloses, restingFocus } from '../src/ui/modals';
 import { keysToGame } from '../src/ui/keys';
 import { victoryAnswers, victoryFigures } from '../src/ui/dispatch';
 import { ctx, fresh } from './util';
@@ -26,6 +28,20 @@ describe('where focus rests as a modal opens (restingFocus)', () => {
     expect(restingFocus(false, 'dialog', null, ['✕', 'Resume', 'Save'], isX)).toBe('Resume');
     expect(restingFocus(false, 'dialog', null, ['✕'], isX)).toBe('✕');
     expect(restingFocus(false, 'dialog', null, [], isX)).toBe('dialog');
+  });
+});
+
+describe('a press on the backdrop (backdropCloses)', () => {
+  const MIN = B.ui.CONFIRM_MIN_MS;
+  it('never closes a parchment letter, however long it has been open: ✕, Esc and its buttons do', () => {
+    expect(backdropCloses(true, true, MIN)).toBe(false);          // the Litterae Ordinis and the Victory dispatch
+    expect(backdropCloses(true, true, 60_000)).toBe(false);       // a click meant for the map, a minute on
+    expect(backdropCloses(true, false, 60_000)).toBe(false);      // the Founding Dispatch is not closable at all
+  });
+  it('closes any other closable modal, but not the second half of the double-click that opened it', () => {
+    expect(backdropCloses(false, true, MIN)).toBe(true);
+    expect(backdropCloses(false, true, MIN - 1)).toBe(false);
+    expect(backdropCloses(false, false, 60_000)).toBe(false);
   });
 });
 
