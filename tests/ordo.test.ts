@@ -28,7 +28,8 @@ import { ordoTrade, ordoTradeWould, tradeMoves } from '../src/game/ordo/trade';
 import { reasonShort, reasonText } from '../src/game/ordo/reasons';
 import { applyOnce, askOrdo, pinBuild, setDuty, setLabourPriority, setManualTarget, setOrdo } from '../src/game/ordo/actions';
 import { Rng } from '../src/game/rng';
-import { INTEGRATED, ctx, fresh, noNaN, run, setJobs } from './util';
+import { INTEGRATED, ctx, dryHouse, fresh, noNaN, run, setJobs } from './util';
+import { reachSteps, serveSlot, serviceReach } from '../src/game/advisors/util';
 
 // Pass-through spies: the emergency tests make the (WP-D) import and relief succeed on demand.
 vi.mock('../src/game/trade', async (orig) => {
@@ -185,6 +186,52 @@ describe('building', () => {
     setOrdo(s, 'build', false);
     s.ordo.requests = [];
     expect(askOrdo(s, 'area')).toMatchObject({ ok: false, code: 'ordoOnly' });
+  });
+
+  it('a house card\'s request carries its home: the Ordo raises the work where it reaches that home', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);                                       // a tent beyond the founders' well and shrine
+    const plain = structuredClone(s);
+    expect(askOrdo(s, 'lararium', b.id).ok).toBe(true);
+    expect(s.ordo.requests).toEqual([{ type: 'lararium', day: s.day, house: b.id }]);
+    expect(s.log[s.log.length - 1].text).toContain('within reach of that home');
+    processRequests(s, ctx(), view(s));
+    const shrine = s.buildings.find((x) => x.type === 'lararium' && x.reason?.code === 'request') as Building;
+    expect(shrine.owner).toBe('player');
+    expect(reachSteps(s, 'lararium', shrine.x, shrine.y, b.id, 'religion')).not.toBeNull();
+    expect(shrine.reason?.params).toMatchObject({ n: 1, want: 'religion' });   // that home lacked one
+    // asked for no home, the shrine goes to the Ordo's best site, which does not reach that tent (the advice ignored)
+    expect(askOrdo(plain, 'lararium').ok).toBe(true);
+    expect(plain.ordo.requests).toEqual([{ type: 'lararium', day: plain.day }]);
+    processRequests(plain, ctx(), view(plain));
+    const other = plain.buildings.find((x) => x.type === 'lararium' && x.reason?.code === 'request') as Building;
+    expect(reachSteps(plain, 'lararium', other.x, other.y, b.id, 'religion')).toBeNull();
+  });
+
+  it('asked for a home no free plot reaches, the Ordo says so at once; one that comes to pass later is said as it builds', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);
+    const fill = (st: GameState): void => {                      // every free slot whose well would reach the tent taken
+      for (let i = 0; i < 60; i++) {
+        const at = serveSlot(st, 'puteus', 'ordo', 'water', [b.id])?.tile;
+        if (at === undefined) return;
+        expect(placeBuilding(st, 'puteus', at, { owner: 'ordo', ignoreCost: true }).ok).toBe(true);
+      }
+    };
+    const later = structuredClone(s);
+    fill(s);
+    expect(askOrdo(s, 'puteus', b.id)).toEqual({ ok: false, code: 'noSlots',
+      reason: `The surveyors find no free plot within ${serviceReach(s, 'puteus', 'water')} steps of this house for a well; clearing one would help.` });
+    expect(s.ordo.requests).toEqual([]);
+    expect(askOrdo(s, 'puteus').ok).toBe(true);                  // asked for no home, it goes to the best site as before
+    // asked while a plot reached the tent, and the plots taken before the stores allowed it: the Ordo says so as it builds
+    expect(askOrdo(later, 'puteus', b.id).ok).toBe(true);
+    fill(later);
+    processRequests(later, ctx(), view(later));
+    const well = later.buildings.find((x) => x.type === 'puteus' && x.reason?.code === 'request');
+    expect(well).toBeDefined();
+    expect(later.log.some((l) => l.text === 'No free plot reaches the home that asked for a well any longer; the Ordo raises it at its best site.')).toBe(true);
+    expect(later.ordo.requests).toEqual([]);
   });
 
   it('a lumber camp whose woods are felled yields nothing; its replacement is saved for before the orders that lack timber', () => {

@@ -12,7 +12,7 @@
 // no chunk waiting its bake) and nothing changed (invalidate: an action, an input, a resize, the insets, an overlay, the
 // selection or the hover; and the state's day and epochs): the paused map holds still, its marks' bob and the selection's
 // pulse with it.
-import type { BuildingId, CoverageLayerId, FxEvent, GameState, OverlayId, PlaceCheck, Rect } from '../game/types';
+import type { BuildingId, CoverageLayerId, FxEvent, GameState, NeedId, OverlayId, PlaceCheck, Rect } from '../game/types';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { H, W, getMap, inBounds } from '../game/map';
 import { derived } from '../game/derived';
@@ -39,7 +39,9 @@ import { REQUIRED_SPRITES } from './art/index';
 
 /** What the player is placing: a building (optionally replacing an Ordo stake or pre-positioned) or a map tool. */
 export type PlacingState =
-  | { kind: 'building'; type: BuildingId; replaceId?: number; at?: number }   // at: pre-positioned origin tile (remedies)
+  // at: pre-positioned origin tile (remedies); home: the house whose want it answers (a house card's Place: the ghost
+  // says whether it reaches that home)
+  | { kind: 'building'; type: BuildingId; replaceId?: number; at?: number; home?: { id: number; need: NeedId } }
   | { kind: 'road' } | { kind: 'pave' } | { kind: 'reserve' } | { kind: 'demolish' };
 
 /** How the view reports input to the app (main.ts runs the actions). */

@@ -166,6 +166,14 @@ describe('sanitiser', () => {
     expect(noNaN(back)).toEqual([]);
   });
 
+  it('keeps the home a house card\'s request carries, and drops one that is no building id', () => {
+    const r = raw(fresh());
+    r.ordo.requests = [{ type: 'lararium', day: 95, house: 7 }, { type: 'taberna', day: 96, house: 'x' }, { type: 'templum', day: 97, house: 2.5 }];
+    const back = deserialize(JSON.stringify(r))!;
+    expect(back.ordo.requests).toEqual([{ type: 'lararium', day: 95, house: 7 }, { type: 'taberna', day: 96 }, { type: 'templum', day: 97 }]);
+    expect(noNaN(back)).toEqual([]);
+  });
+
   it('fills missing keys from a new game and re-sorts lists', () => {
     const s = run(fresh(3), 10);
     const r = raw(s);

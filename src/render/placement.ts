@@ -11,6 +11,7 @@ import { bestSlot } from '../game/site';
 import { blockOfTile, classAt, derived, sizeOf } from '../game/derived';
 import { previewCoverage, previewDesir } from '../game/coverage';
 import { housesUnlockedBy } from '../game/housing';
+import { reachSteps } from '../game/advisors/util';
 import { structEpoch } from '../game/memo';
 import { B } from '../game/balance';
 import { LAYER_META } from '../game/data/housing';
@@ -75,7 +76,9 @@ export function label(g: CanvasRenderingContext2D, text: string, x: number, y: n
 }
 
 interface Slot { r: Rect; mult: number; rural: boolean }
-interface Preview { cov: { layer: CoverageLayerId; tiles: Uint8Array }[]; houses: number[]; desir: { tile: number; v: number }[] }
+/** A valid origin's previews; `home`: the road steps to the home that asked (a house card's Place), null when the work
+ *  would not reach it, undefined when no home asked. */
+interface Preview { cov: { layer: CoverageLayerId; tiles: Uint8Array }[]; houses: number[]; desir: { tile: number; v: number }[]; home?: number | null }
 
 const redCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 function reddened(c: HTMLCanvasElement): HTMLCanvasElement {
@@ -149,10 +152,17 @@ export class Placement {
       this.origin = at;
       const x = at % W, y = Math.floor(at / W);
       this.preview = this.check.ok
-        ? { cov: previewCoverage(s, p.type, x, y), houses: housesUnlockedBy(s, p.type, x, y), desir: previewDesir(s, p.type, x, y) }
+        ? { cov: previewCoverage(s, p.type, x, y), houses: housesUnlockedBy(s, p.type, x, y), desir: previewDesir(s, p.type, x, y),
+          home: p.home ? reachSteps(s, p.type, x, y, p.home.id, p.home.need) : undefined }
         : null;
     }
     return this.check;
+  }
+
+  /** The ghost's reach to the home that asked (road steps), null when it would not reach it; undefined when no home asked
+   *  or the ghost stands on no valid plot. */
+  get homeReach(): number | null | undefined {
+    return this.preview?.home;
   }
 
   /** Under-layer (step 4): glowing valid slots, coverage preview on road tiles, the desirability footprint, tool paths. */
@@ -289,6 +299,13 @@ export class Placement {
     if (c.mult >= GOLD_MULT) y -= label(g, `+${Math.round((c.mult - 1) * 100)}%`, cx, y, C.gold, ins);
     if (c.fell > 0) y -= label(g, `+${Math.round(c.fell)} timber`, cx, y, C.ok, ins);
     if (c.route?.length) y -= label(g, `~${c.route.length} arches from the spring`, cx, y, C.spring, ins);
+    const home = this.state?.kind === 'building' ? this.state.home : undefined, reach = this.preview?.home;
+    if (home && reach !== undefined) {
+      // the home that asked, outlined, and whether this plot's work would reach it (DESIGN §15.4)
+      const hb = s.buildings.find((x) => x.id === home.id);
+      if (hb) { g.fillStyle = reach === null ? C.bad : C.ok; edge(g, footprintRect(s, hb), 2); }
+      y -= label(g, reach === null ? 'Does not reach this home' : `Reaches this home: ${reach} ${reach === 1 ? 'step' : 'steps'}`, cx, y, reach === null ? '#ff9b8f' : C.ok, ins);
+    }
     const houses = this.preview?.houses ?? [];
     if (houses.length) {
       label(g, `+${houses.length} ${houses.length === 1 ? 'house' : 'houses'} could evolve`, cx, y, C.ok, ins);
