@@ -1327,11 +1327,11 @@ export function savingFor(s: GameState, v: SimView): { cost: Cost; for: 'petitio
 export function reserved(s: GameState, v: SimView): Cost;           // saving target + next 30 days of Capitolium materials
 export function canSpend(s: GameState, cost: Cost, v: SimView, opts?: { survival?: boolean }): boolean;   // stock − reserved ≥ cost and denarii stay ≥ treasury floor (survival ignores both)
 // ordo/actions.ts
-export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionResult;   // max 3; needs Ordo construction on; a house card's carries the home (noSlots when no free plot reaches it)
+export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionResult;   // max 3; needs Ordo construction on; a house card's carries the home (noSlots when no free plot reaches it, or, said apart, when the only ones that do lie on blocks the Ordo leaves alone: build.homeByHand)
 export function pinBuild(s: GameState, type: BuildingId | null): ActionResult;
 export function setOrdo(s: GameState, area: OrdoArea, on: boolean): ActionResult;
 export function setManualTarget(s: GameState, cat: LaborCat, n: number): ActionResult;   // manual labour only
-export function applyOnce(s: GameState, area: OrdoArea): ActionResult;    // labour: copy the Ordo plan into manual targets; build: place wish #1 as a player site (wouldRaise: never one raised where the Ordo clears its own gardens, DESIGN §3.9); trade: create the would-be contract
+export function applyOnce(s: GameState, area: OrdoArea): ActionResult;    // labour: copy the Ordo plan into manual targets; build: place wish #1 as a player site (wouldRaise: never one that is the Ordo's alone to raise, build.ordoAlone: where it clears its own gardens or buys out homes, DESIGN §3.9); trade: create the would-be contract
 export function setLabourPriority(s: GameState, cat: LaborCat, days: number): ActionResult;
 // ordo/reasons.ts
 export function reasonText(r: Reason): string;                        // full sentence for tooltips/Annales

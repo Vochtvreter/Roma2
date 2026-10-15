@@ -11,7 +11,7 @@ import { view } from '../sim';
 import { BUILDING_DEFS } from '../data/buildings';
 import { RANK_DEFS } from '../data/ranks';
 import { planLabour } from './labour';
-import { homeReach, homeSlot, ordoSlot, wouldRaise } from './build';
+import { homeByHand, homeReach, homeSlot, ordoSlot, wouldRaise } from './build';
 import { granted, keepDuties as keep, learnDuty, learned, pendingOffers, setDuty as grant } from './duties';
 import { tradeMoves } from './trade';
 import { aWork, reasonText } from './reasons';
@@ -36,14 +36,20 @@ function raisable(s: GameState, type: BuildingId, code: 'request' | 'pin'): Acti
 
 /** Asks the Ordo to build a type next (max REQUESTS_MAX; needs Ordo construction on). Asked from a house card, the
  *  request carries the home (`house`): the Ordo raises the work where it reaches that home, and says at once when no
- *  free plot does (DESIGN §10.1). */
+ *  free plot does, or when the only ones that do lie on blocks it leaves alone, which a hand may still take (DESIGN
+ *  §10.1). */
 export function askOrdo(s: GameState, type: BuildingId, house?: number): ActionResult {
   if (!s.ordo.on.build) return fail('ordoOnly', 'Building is in your own hands: place it yourself, or give building back to the Ordo.');
   if (s.ordo.requests.length >= B.ordo.REQUESTS_MAX) return fail('full', `The Ordo already holds ${B.ordo.REQUESTS_MAX} of your requests.`);
   const chk = raisable(s, type, 'request');
   if (!chk.ok) return chk;
   const home = homeSlot(s, view(s), type, house);
-  if (home === null) return fail('noSlots', `The surveyors find no free plot ${homeReach(s, type)} for ${aWork(type)}; clearing one would help.`);
+  if (home === null) {
+    const reach = homeReach(s, type);
+    return fail('noSlots', homeByHand(s, type, house as number)
+      ? `The only free plots ${reach} are on blocks the Ordo leaves alone: reserved, kept for a work to come, or where you are building. Place ${aWork(type)} there yourself.`
+      : `The surveyors find no free plot ${reach} for ${aWork(type)}; clearing one would help.`);
+  }
   s.ordo.requests.push(home === undefined ? { type, day: s.day } : { type, day: s.day, house: house as number });
   log(s, 'ordo', `The Ordo will raise ${aWork(type)}${home ? ' within reach of that home' : ''} as you ask, within ${B.ordo.ASK_DAYS} days if the stores allow.`);
   return OK;

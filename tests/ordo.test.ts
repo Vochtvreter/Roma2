@@ -13,7 +13,7 @@ import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
 import { manualPlan, manualReach, planLabour } from '../src/game/ordo/labour';
-import { currentReason, gardenSlot, keptBlocks, maxSites, newWishes, ordoBuild, ordoSites, ordoSlot, processRequests, walkWishes, wishList, wouldRaise } from '../src/game/ordo/build';
+import { currentReason, gardenSlot, growthWait, keptBlocks, maxSites, newWishes, ordoAlone, ordoBuild, ordoSites, ordoSlot, processRequests, walkWishes, wishList, wouldRaise } from '../src/game/ordo/build';
 import type { Wish } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
 import { caps, maxPotential } from '../src/game/economy';
@@ -34,6 +34,9 @@ import { INTEGRATED, ctx, dryHouse, fresh, noNaN, run, setJobs } from './util';
 import { reachSteps, serveSlot, serviceReach } from '../src/game/advisors/util';
 import { FABRUM_RULES } from '../src/game/advisors/rules-fabrum';
 import { houseDesir, previewDesir } from '../src/game/coverage';
+import type { Game } from '../src/ui/types';
+import { wishState } from '../src/ui/tabs/common';
+import { noPlotNote } from '../src/ui/tabs/house';
 
 // Pass-through spies: the emergency tests make the (WP-D) import and relief succeed on demand.
 vi.mock('../src/game/trade', async (orig) => {
@@ -66,6 +69,9 @@ function withForecast(s: GameState, grain: Partial<EssentialForecast>, water: Pa
   const f = v.f;
   return { get d() { return v.d; }, get c() { return v.c; }, get cov() { return v.cov; }, f: { ...f, grain: { ...f.grain, ...grain }, water: { ...f.water, ...water } } };
 }
+
+/** The game as the Agenda's words read it (wishState reads only the state). */
+const game = (s: GameState): Game => ({ state: s }) as unknown as Game;
 
 /** Offline days (the away replay): ticks with ctx.offline. */
 function away(s: GameState, days: number): void {
@@ -276,6 +282,82 @@ describe('building', () => {
     expect(well).toBeDefined();
     expect(later.log.some((l) => l.text === 'No free plot reaches the home that asked for a well any longer; the Ordo raises it at its best site.')).toBe(true);
     expect(later.ordo.requests).toEqual([]);
+  });
+
+  it('asked for a home only plots the Ordo leaves alone reach, it says a hand may still raise the work there', () => {
+    const s = fresh(42);
+    const b = dryHouse(s);
+    const sv = getMap(s.seed).survey;
+    // the player reserves the block of each plot whose well would reach the tent, until none is the Ordo's to take
+    for (let i = 0; i < 60; i++) {
+      const at = serveSlot(s, 'puteus', 'ordo', 'water', [b.id])?.tile;
+      if (at === undefined) break;
+      s.ordo.reserved = [...s.ordo.reserved, sv.blockAt[at]].sort((x, y) => x - y);
+      invalidate(s);
+    }
+    expect(s.ordo.reserved.length).toBeGreaterThan(0);
+    // a plot still reaches it by hand: the house card says nothing of "no free plot", and neither does the Ordo
+    expect(serveSlot(s, 'puteus', 'player', 'water', [b.id])).not.toBeNull();
+    expect(noPlotNote(s, b.id, 'water', 'puteus')).toBeNull();
+    expect(askOrdo(s, 'puteus', b.id)).toEqual({ ok: false, code: 'noSlots',
+      reason: `The only free plots within ${serviceReach(s, 'puteus', 'water')} steps of this house are on blocks the Ordo leaves alone: reserved, kept for a work to come, or where you are building. Place a well there yourself.` });
+    expect(s.ordo.requests).toEqual([]);
+  });
+
+  it('a work raised where the Ordo buys out homes is not offered to raise by hand (Apply once, the Fabrum, the Agenda)', () => {
+    // rank 3: six stone houses wait for a temple round a block of the founders' tents, and every free block is the
+    // player's reserve: the Ordo would buy out the tents and raise the temple there (DESIGN §3.9)
+    const s = fresh(42);
+    s.rank = 3;
+    const sv = getMap(s.seed).survey, W = getMap(s.seed).W;
+    const start = view(s).d.houses.map((id) => s.buildings.find((x) => x.id === id) as Building);
+    const tents = sv.blockAt[idx(start[0].x, start[0].y)];
+    for (const b of start) if (sv.blockAt[idx(b.x, b.y)] !== tents) b.house!.tier = 'domusParva';
+    // four more stone houses, raised by the Ordo today (a growth work: the next waits on the pace) nearest the tents
+    const near = (t: number): number => Math.abs((t % W) - start[0].x) + Math.abs(Math.floor(t / W) - start[0].y);
+    for (const tile of [...validSlots(s, 'area', 'player').keys()].sort((a, c) => near(a) - near(c) || a - c).slice(0, 4)) {
+      const r = placeBuilding(s, 'area', tile, { owner: 'ordo', ignoreCost: true, noStake: true, reason: { code: 'beds', params: { free: 0, keep: 8 } } });
+      expect(r.ok).toBe(true);
+      const h = s.buildings[s.buildings.length - 1];
+      Object.assign(h, { status: 'done', progress: 1, doneDay: s.day });
+      h.house = { tier: 'domusParva', pref: 'auto', okDays: 0, badDays: 0, recoverDays: 0, declining: false, declineDays: 0, renovating: null, oil: 0, wine: 0 };
+    }
+    invalidate(s);
+    // a well, a shrine and a shop row of the player's, staffed, give them all but the temple
+    const jobs: Record<number, number> = {};
+    for (const [need, type] of [['water', 'puteus'], ['religion', 'lararium'], ['market', 'taberna']] as const) {
+      const at = serveSlot(s, type, 'player', need, view(s).d.houses);
+      if (!at) continue;
+      const r = placeBuilding(s, type, at.tile, { owner: 'player', ignoreCost: true, noStake: true });
+      expect(r.ok).toBe(true);
+      Object.assign(s.buildings[s.buildings.length - 1], { status: 'done', progress: 1 });
+      invalidate(s);
+    }
+    for (const b of s.buildings) if (b.type === 'puteus' || b.type === 'lararium' || b.type === 'taberna') jobs[b.id] = 2;
+    setJobs(s, { perBuilding: jobs });
+    const d = view(s).d;
+    s.ordo.reserved = sv.blocks.filter((k) => isActiveBlock(sv, k, s.rank) && k.reserved === null && [0, 1, 2, 3].every((p) => d.plotOwner[k.id * 4 + p] === 0))
+      .map((k) => k.id).sort((a, c) => a - c);
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 5000;
+    invalidate(s);
+    const renew = walkWishes(s, view(s), true).list.map((e) => e.wish).find((w) => w.renew);
+    expect(renew?.type).toBe('templum');
+    expect(renew?.reason.code).toBe('renewal');
+    expect(sv.blockAt[renew!.tile]).toBe(tents);
+    // the services are the player's: the temple is the one service the Ordo would raise, and no hand can place it on
+    // the tents, so Apply once has nothing to offer (it once failed with "That plot is taken.")
+    s.ordo.works.services = false;
+    const ids = s.buildings.map((b) => b.id);
+    expect(wouldRaise(s, view(s))).toBeNull();
+    expect(applyOnce(s, 'build')).toMatchObject({ ok: false, code: 'notFound' });
+    expect(s.buildings.map((b) => b.id)).toEqual(ids);
+    // the Ordo holds them again and the temple waits on the pace: the Praefectus Fabrum does not offer to place it, and
+    // its Agenda row does not ask for a hand
+    s.ordo.works.services = true;
+    const temple = newWishes(s, view(s), 3).find((w) => w.reason.code === 'renewal');
+    expect(temple?.state).toBe('paced');
+    expect(FABRUM_RULES.find((x) => x.id === 'fabrum.agenda')!.evaluate(s, view(s))).toBeNull();
+    expect(wishState(game(s), temple!)).toBe(`the Ordo raises it in ${growthWait(s)} d`);
   });
 
   it('a lumber camp whose woods are felled yields nothing; its replacement is saved for before the orders that lack timber', () => {
@@ -937,14 +1019,38 @@ describe('the Ordo\'s gardens (DESIGN §10.3 make room, §10.5 row 11)', () => {
     expect(placed.type).toBe(would!.type);
     expect(placed.owner).toBe('player');
     for (const b of mine) expect(s.buildings.some((x) => x.id === b.id)).toBe(true);
-    // the Ordo holds the house plots again, and a growth work raised today paces the home: the Praefectus Fabrum does
-    // not offer to place it himself
+    // the Ordo holds the house plots again, and a growth work raised today paces the home: it is the only work on the
+    // pace (the plan is still the player's), and the Praefectus Fabrum does not offer to place it himself; its Agenda
+    // row says when the Ordo raises it, and does not ask for a hand
     s.ordo.works.homes = true;
     Object.assign(mine[mine.length - 1], { reason: { code: 'beauty', params: {} }, placed: s.day });
     invalidate(s);
-    expect(newWishes(s, view(s), 3).some((w) => w.state === 'paced' && w.reason.params.gardens === 1)).toBe(true);
+    const fabrum = FABRUM_RULES.find((x) => x.id === 'fabrum.agenda')!;
+    const wait = growthWait(s);
+    expect(wait).toBe(B.ordo.GROWTH_EVERY);
+    const paced = newWishes(s, view(s), 3).filter((w) => w.state === 'paced');
+    expect(paced.map((w) => [w.type, w.reason.params.gardens, w.eta])).toEqual([['area', 1, wait]]);
+    expect(fabrum.evaluate(s, view(s))).toBeNull();
+    expect(wishState(game(s), paced[0])).toBe(`the Ordo raises it in ${wait} d`);
+  });
+
+  it('the Fabrum names the next work a hand can raise, a pace later for each of the Ordo\'s own ahead of it', () => {
+    const s = fresh(42);
+    const mine = flood(s);
+    for (const r of Object.keys(s.res) as (keyof typeof s.res)[]) s.res[r] = 5000;
+    Object.assign(mine[mine.length - 1], { reason: { code: 'beauty', params: {} }, placed: s.day });
+    invalidate(s);
+    // every duty held: the home that clears a garden comes first on the pace, then a work of the plan
+    const wait = growthWait(s);
+    const [home, work] = newWishes(s, view(s), 3).filter((w) => w.state === 'paced');
+    expect(home.reason.params.gardens).toBe(1);
+    expect(home.eta).toBe(wait);
+    // the Ordo raises the home when the pace lifts, and that work a pace after it: the card says so, not the home's day
+    expect(work.eta).toBe(wait + B.ordo.GROWTH_EVERY);
+    expect(ordoAlone(work)).toBe(false);
     const agenda = FABRUM_RULES.find((x) => x.id === 'fabrum.agenda')!.evaluate(s, view(s));
-    expect(agenda?.params.type).not.toBe('area');
+    expect(agenda?.params).toMatchObject({ type: work.type, tile: work.tile, wait: wait + B.ordo.GROWTH_EVERY });
+    expect(wishState(game(s), work)).toBe(`the Ordo raises it in ${wait + B.ordo.GROWTH_EVERY} d: raise it yourself for sooner`);
   });
 
   it('under Urbs a colony keeps its plots: few gardens, each beside the homes (follower, seed 42, 4,000 days)', () => {

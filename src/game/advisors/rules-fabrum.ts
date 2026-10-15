@@ -10,7 +10,7 @@ import { capitoliumFlow } from '../construction';
 import { edictOption, petitionNeeds, settingValue } from '../decisions';
 import { validSlots } from '../place';
 import { missing } from '../state';
-import { newWishes } from '../ordo/build';
+import { newWishes, ordoAlone } from '../ordo/build';
 import { waterIdle } from '../hints';
 import { reasonText } from '../ordo/reasons';
 import { getBuilding as getBuilding$ } from '../lookup';
@@ -314,8 +314,10 @@ const agenda: AdvisorRule = {
   id: 'fabrum.agenda', advisor: 'fabrum',
   evaluate(s, v) {
     if (!s.ordo.on.build) return null;
-    // (not a work the Ordo raises where it clears its own gardens: no placement by hand can take that slot)
-    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined && x.reason.params.gardens === undefined);
+    // (not a work that is the Ordo's alone to raise, where it clears its own gardens or buys out homes: no placement by
+    //  hand can take that land. The next one a hand can raise comes a pace later for each such work ahead of it, which
+    //  its ETA counts: newWishes)
+    const w = newWishes(s, v, 3).find((x) => x.state === 'paced' && x.tile !== undefined && !ordoAlone(x));
     if (!w) return null;
     return {
       rule: 'fabrum.agenda', severity: 1, metric: { label: 'In', value: w.eta ?? 1, unit: 'days' },

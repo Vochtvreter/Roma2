@@ -8,6 +8,7 @@ import type { Kid } from '../dom';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
 import { DUTY_DEFS, wishDuty } from '../../game/ordo/duties';
+import { ordoAlone } from '../../game/ordo/build';
 import { checkRemedy } from '../../game/advisors/remedies';
 import { reasonText } from '../../game/ordo/reasons';
 import { formatRoman } from '../../game/calendar';
@@ -167,7 +168,9 @@ export function rankReason(s: GameState, type: BuildingId): string | null {
   return r > s.rank ? `Rome grants this to ${article(RANK_DEFS[r].name)}.` : null;
 }
 
-/** A wish's state in words: 'staked: starts in 3 d', 'building 40%', 'saving: 40 stone ≈ 9 d', … */
+/** A wish's state in words: 'staked: starts in 3 d', 'building 40%', 'saving: 40 stone ≈ 9 d', … A growth work on the
+ *  pace asks to be raised by hand, unless it is the Ordo's alone to raise (where it clears its own gardens or buys out
+ *  homes, DESIGN §3.9). */
 export function wishState(g: Game, w: WishView): string {
   const s = g.state;
   const site = w.siteId !== undefined ? getBuilding(s, w.siteId) : undefined;
@@ -176,7 +179,7 @@ export function wishState(g: Game, w: WishView): string {
     case 'building': return `building ${Math.round((site?.progress ?? 0) * 100)}%`;
     case 'saving': return w.lacking ? `saving: ${fmtCost(w.lacking)}${w.eta !== undefined ? ` ≈ ${Math.max(0, Math.round(w.eta))} d` : ''}` : 'saving';
     case 'waiting': return 'waiting for builders';
-    case 'paced': return `the Ordo raises it in ${Math.max(1, w.eta ?? 1)} d: raise it yourself for sooner`;
+    case 'paced': return `the Ordo raises it in ${Math.max(1, w.eta ?? 1)} d${ordoAlone(w) ? '' : ': raise it yourself for sooner'}`;
     case 'proposed': return 'proposed';
   }
 }
