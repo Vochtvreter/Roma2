@@ -1,7 +1,8 @@
 // src/ui/tabs/labour.ts — labour by category: have / target / posts with the Ordo's reason; manual targets (± a tap,
-// Shift or a long press ±5, held: ±5 again every 300 ms), "Ordo would", Apply once, and "first for 30 days" priorities
-// (DESIGN §10.2, §10.4, §15.3). Shared by Populus, Aedificia (builders), the phone's context card (a work's own
-// category) and its first lesson's card (Annona). Owner: WP-I.
+// Shift or a long press ±5, held: ±5 again every 300 ms, Fill to every post; a row whose target leaves posts empty says
+// so), "Ordo would", Apply once, and "first for 30 days" priorities (DESIGN §10.2, §10.4, §15.3); the finished work's
+// staffing toast under manual labour (finishedStaffing). Shared by Populus, Aedificia (builders), the phone's context
+// card (a work's own category) and its first lesson's card (Annona). Owner: WP-I.
 import { LABOR_CATS } from '../../game/types';
 import type { GameState, LaborCat } from '../../game/types';
 import type { Game, Updater } from '../types';
@@ -9,8 +10,12 @@ import { h, tip } from '../dom';
 import * as A from '../../game/actions';
 import { census } from '../../game/census';
 import { derived } from '../../game/derived';
+import { getBuilding } from '../../game/lookup';
+import { view } from '../../game/sim';
 import { councilReport } from '../../game/ordo/index';
+import { manualReach } from '../../game/ordo/labour';
 import { reasonText } from '../../game/ordo/reasons';
+import { BUILDING_DEFS, slotsOf } from '../../game/data/buildings';
 import { B } from '../../game/balance';
 import { btn } from './common';
 import { focusOfLabour } from '../focusrow';
@@ -32,6 +37,24 @@ export function holdSteps(ms: number): number {
   return ms < HOLD.LONG_MS ? 0 : 1 + Math.floor((ms - HOLD.LONG_MS) / HOLD.REPEAT_MS);
 }
 
+/** A work finished under manual labour adds posts, not hands (DESIGN §10.2): its completion toast ("Well finished:
+ *  0/2 hands") and the hands its one button adds to the category's target (ordo/labour.manualReach); null while the
+ *  Ordo staffs, for a work without posts, or when the target already reaches it (pure; tests/panels.test.ts). */
+export function finishedStaffing(s: GameState, id: number): { text: string; sub: string; label: string; tip: string; cat: LaborCat; n: number } | null {
+  const b = getBuilding(s, id);
+  const def = b ? BUILDING_DEFS[b.type] : null;
+  if (!b || !def || s.ordo.on.labour || b.status !== 'done' || !def.labor || def.labor === 'builders') return null;
+  const v = view(s);
+  const n = manualReach(s, v, id);
+  if (n <= 0) return null;
+  const cat = def.labor, word = CAT_LABEL[cat][1].toLowerCase(), target = s.ordo.manual[cat];
+  return {
+    text: `${def.name} finished: ${v.c.staffed[id] ?? 0}/${slotsOf(b.type, s.rank)} hands`,
+    sub: `You staff by hand: ${target} ${word} ${target === 1 ? 'hand' : 'hands'} set for ${v.c.catSlots[cat]} posts.`,
+    label: `+${n} ${word}`, tip: `Raise the ${word} target from ${target} to ${target + n}.`, cat, n,
+  };
+}
+
 /** Writes a line only when its words change: the lines refresh on every UI tick, and an unchanged write is still a DOM
  *  mutation (the phones' voice line observes its slot for them, and would measure the layout again five times a
  *  second while lesson I's card carries this block). */
@@ -47,13 +70,17 @@ function stepBtn(g: Game, cat: LaborCat, dir: 1 | -1): HTMLButtonElement {
     const s = g.state;
     g.act(A.setManualTarget(s, cat, Math.max(0, s.ordo.manual[cat] + dir * n)), { okSfx: 'click' });
   };
-  let t0 = 0, done = 0, timer = 0, long = false, mouse = false;
-  const stop = (): void => { window.clearInterval(timer); timer = 0; };
+  let t0 = 0, done = 0, timer = 0, long = false, mouse = false, held = false;
+  const stop = (): void => { window.clearInterval(timer); timer = 0; held = false; };
   const b = h('button', { class: 'btn small ghost tab-lab-pm', type: 'button', 'aria-label': `${dir < 0 ? 'Fewer' : 'More'} ${CAT_LABEL[cat][1]} hands` }, dir < 0 ? '−' : '+');
+  // the mouse's tooltip names its steps; a finger's long press is the ±5 itself, not the tooltip's pinned card
+  const word = CAT_LABEL[cat][1].toLowerCase();
+  tip(b, () => (held ? '' : `${dir < 0 ? 'One fewer' : 'One more'} ${word} hand · Shift-click: ${dir < 0 ? '−' : '+'}${SHIFT_STEP}`));
   b.addEventListener('pointerdown', (e) => {
     mouse = e.pointerType === 'mouse';
     if (e.button !== 0 || mouse) return;   // a finger's or a pen's hold: a mouse clicks ±1, Shift ±5
     stop();
+    held = true;
     t0 = performance.now();
     done = 0;
     long = false;
@@ -95,6 +122,12 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
     const count = h('span', { class: 'tab-lab-count num' });
     const why = h('div', { class: 'tab-why' });
     const prio = h('span', { class: 'tab-lab-prio' });
+    // manual: a target below the posts leaves some empty (a work just finished adds posts, not hands): a gold line says
+    // how many, with Fill (the target to every post)
+    const openTxt = h('span');
+    const open = manual && cat !== 'builders' ? h('div', { class: 'tab-lab-open' }, openTxt,
+      btn(g, 'Fill', () => A.setManualTarget(g.state, cat, census(g.state).catSlots[cat]),
+        { cls: 'ghost', tip: `Set the ${CAT_LABEL[cat][1].toLowerCase()} target to every post.` })) : null;
     const ctl = h('div', { class: 'tab-lab-ctl' },
       manual ? stepBtn(g, cat, -1) : null,
       tip(count, () => countTip(g, cat)),
@@ -102,7 +135,7 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
       cat === 'builders' ? null : btn(g, 'First', () => A.setLabourPriority(g.state, cat, B.ordo.PRIORITY_DAYS),
         { cls: 'ghost', tip: `${CAT_LABEL[cat][1]} first for ${B.ordo.PRIORITY_DAYS} days: staffed right after water and food.` }));
     box.append(h('div', { class: 'tab-lab', 'data-cat': cat, 'data-key': `lab-${cat}`, 'data-focus': focusOfLabour(cat) },
-      h('div', { class: 'tab-lab-name' }, h('b', null, CAT_LABEL[cat][0]), h('span', { class: 'ed-en' }, CAT_LABEL[cat][1]), prio), ctl, why));
+      h('div', { class: 'tab-lab-name' }, h('b', null, CAT_LABEL[cat][0]), h('span', { class: 'ed-en' }, CAT_LABEL[cat][1]), prio), ctl, open, why));
     const refresh = (): void => {
       const s = g.state;
       const c = census(s);
@@ -112,6 +145,12 @@ export function labourEl(g: Game, up: Updater[], cats: readonly LaborCat[] = LAB
       const target = manual ? s.ordo.manual[cat] : line?.target ?? have;
       put(count, cat === 'builders' ? `${have} / ${target}` : `${have} / ${target} · ${c.catSlots[cat]}`);
       count.classList.toggle('short', have < target);
+      const empty = open ? Math.max(0, c.catSlots[cat] - target) : 0;   // posts the player's target leaves empty
+      count.classList.toggle('open', empty > 0 && have >= target);
+      if (open) {
+        if (open.hidden !== (empty === 0)) open.hidden = empty === 0;
+        put(openTxt, empty > 0 ? `Your target leaves ${empty} ${empty === 1 ? 'post' : 'posts'} empty.` : '');
+      }
       const would = rep.would.labour[cat];
       put(why, manual ? (would !== undefined ? `The Ordo would assign ${would}.` : '') : line ? reasonText(line.reason) : '');
       const p = s.ordo.priorities.find((x) => x.cat === cat && x.until > s.day);
@@ -140,7 +179,8 @@ function countTip(g: Game, cat: LaborCat): string {
   const s = g.state;
   const c = census(s);
   const line = councilReport(s).labour.find((l) => l.cat === cat);
-  const target = s.ordo.on.labour ? line?.target ?? c.catStaffed[cat] : s.ordo.manual[cat];
-  return `${CAT_LABEL[cat][0]} · ${CAT_LABEL[cat][1]}\n${c.catStaffed[cat]} at work · ${target} wanted${cat === 'builders' ? '' : ` · ${c.catSlots[cat]} posts in open buildings`}`
-    + (line && s.ordo.on.labour ? `\nWhy: ${reasonText(line.reason)}` : '');
+  const manual = !s.ordo.on.labour;
+  const target = manual ? s.ordo.manual[cat] : line?.target ?? c.catStaffed[cat];
+  return `${CAT_LABEL[cat][0]} · ${CAT_LABEL[cat][1]}\n${c.catStaffed[cat]} at work · ${target} ${manual ? 'your target' : 'wanted'}${cat === 'builders' ? '' : ` · ${c.catSlots[cat]} posts in open buildings`}`
+    + (line && !manual ? `\nWhy: ${reasonText(line.reason)}` : '');
 }

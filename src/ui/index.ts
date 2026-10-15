@@ -35,7 +35,7 @@ import { BACK_RANK, registerBack, syncBack } from './history';
 import { watchPointer } from './pointer';
 import { applyTextSize, onTextSize } from './textsize';
 import { getBuilding } from '../game/state';
-import { dismissTip } from '../game/actions';
+import { dismissTip, setManualTarget } from '../game/actions';
 import { aucYear, formatRoman, toRoman } from '../game/calendar';
 import { BUILDING_DEFS } from '../game/data/buildings';
 import { TIER_DEFS } from '../game/data/housing';
@@ -47,6 +47,7 @@ import { B } from '../game/balance';
 import { present, shows } from './intro';
 import { currentLesson, introRunning } from '../game/intro';
 import { DUTY_DEFS } from '../game/ordo/duties';
+import { finishedStaffing } from './tabs/labour';
 
 const STAGE_NAMES = ['', 'Podium', 'Cella', 'Columnae', 'Fastigium'] as const;
 const SPLASH: readonly string[] = ['castellum', 'lacus'];
@@ -291,7 +292,12 @@ export class UI {
         case 'built': {
           const b = getBuilding(s, e.id);
           const name = !b ? 'A work' : b.type === 'area' ? 'A house plot' : BUILDING_DEFS[b.type].name;
-          toastBatch('built', (n) => (n === 1 ? `${name} finished` : `${n} works finished`), 'good', 'i_star');
+          // staffing by hand, a work's posts wait on its category's target (DESIGN §10.2): its toast says so, +N on a button
+          const staff = finishedStaffing(s, e.id);
+          if (staff) {
+            toast(staff.text, 'good', 'i_star', 8000, staff.sub, { label: staff.label, tip: staff.tip,
+              run: () => { g.act(setManualTarget(g.state, staff.cat, g.state.ordo.manual[staff.cat] + staff.n), { okSfx: 'click' }); } });
+          } else toastBatch('built', (n) => (n === 1 ? `${name} finished` : `${n} works finished`), 'good', 'i_star');
           g.sfx(b && SPLASH.includes(b.type) ? 'splash' : 'build');
           break;
         }

@@ -201,7 +201,7 @@ export const panel: TabPanel = {
     const sec = section('Custodia', 'Watch', { anchor: 'watch' });   // always drawn: advisors open it by its anchor
     sec.append(w.length ? h('ul', { class: 'pop-watch' }, w.map((x) => h('li', null, x)))
       : h('div', { class: 'tab-quiet' }, 'No group is hungry or parched, and no one is sick or without a roof.'));
-    const labour = section('Operae', s.ordo.on.labour ? 'Labour: hands at work / wanted · posts' : 'Labour: your targets', { anchor: 'labour',
+    const labour = section('Operae', s.ordo.on.labour ? 'Labour: hands at work / wanted · posts' : 'Labour: at work / your target · posts', { anchor: 'labour',
       note: s.ordo.on.labour ? 'The Ordo staffs every post daily, water first, then food, and says why.' : null });
     labour.append(labourEl(g, up));
     // while the labour is the player's, its targets come first: what a phone's half sheet shows without a scroll

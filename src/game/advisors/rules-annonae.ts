@@ -14,8 +14,8 @@ import { getBuilding as getBuilding$ } from '../lookup';
 import { BUILDING_DEFS as BUILDING_DEFS$ } from '../data/buildings';
 import { SETTING_DEFS as SETTING_DEFS$ } from '../data/decisions';
 import {
-  CLEAR, R, STEP, bestFood, days, exportRemedy, fractionWord, held, idleBySkill, importRemedy, inDays, int, labourRemedy, listJoin, lowLadder,
-  namesOf, num, openPosts, runway, three, todayRate,
+  CLEAR, R, STEP, bestFood, days, exportRemedy, fractionWord, held, idleBySkill, idleFor, idleHead, importRemedy, inDays, int, labourRemedy, listJoin,
+  lowLadder, namesOf, num, openPosts, runway, staffRemedy, three, todayRate,
 } from './util';
 // Leaf-module imports copied into module constants: a hot loop then reads a local, not the module record the test
 // runner's transform puts behind every import (these modules import nothing that imports back, so they are loaded).
@@ -116,18 +116,20 @@ const hiems: AdvisorRule = {
     const head = P(p.D) > 0 ? `Hiems in ${days(P(p.D))}` : 'Hiems is upon us';
     return P(p.empty) >= 0 ? `${head}: grain would run out on ${formatRoman(P(p.empty))}.` : `${head}: our lowest would be ${days(P(p.low))} of grain.`;
   },
-  text(s, _v, a) {
+  text(s, v, a) {
     const p = a.params;
     const short = P(p.cap) < P(p.need) ? ' Even full, our stores are too small.' : '';
+    const idle = idleFor(s, v, 'fed', []);   // manual labour: a grain work short of hands fills the stores before another
     return `In Hiems our fields give ${fractionWord(seasonMult(s, 'ager', HIEMS))}. We need about ${int(P(p.need))} in store by `
-      + `${formatRoman(P(p.start))}; we hold ${int(P(p.stock))}, with room for ${int(P(p.cap))}.${short}`;
+      + `${formatRoman(P(p.start))}; we hold ${int(P(p.stock))}, with room for ${int(P(p.cap))}.${short}${idle ? ` ${idleHead(s, idle)}.` : ''}`;
   },
-  remedies(s, _v, a) {
+  remedies(s, v, a) {
     const p = a.params;
     const def = SETTING_DEFS.grainReserve;
     const x = Math.min(def.max, settingValue(s, 'grainReserve') + STEP.GRAIN_RESERVE);
     const reserve: Remedy | null = s.ordo.on.build && x > settingValue(s, 'grainReserve') ? { kind: 'setting', setting: 'grainReserve', value: x } : null;
-    return three(P(p.cap) < P(p.need) ? { kind: 'place', building: 'horreum' } : null, reserve,
+    const idle = idleFor(s, v, 'fed', []);
+    return three(idle ? staffRemedy(idle) : null, P(p.cap) < P(p.need) ? { kind: 'place', building: 'horreum' } : null, reserve,
       { kind: 'place', building: 'venatio' }, importRemedy(s, 'grain', B.ordo.CARGO));
   },
 };
@@ -296,21 +298,24 @@ const goodsRule: AdvisorRule = {
     const what = p.res === 'oil' ? 'Oil for the insulae' : 'Wine for the atrium houses';
     return P(p.R) >= 0 ? `${what} runs out ${inDays(P(p.R))}.` : `Only ${P(p.pct)}% of the better houses get their ${p.res}.`;
   },
-  text(_s, _v, a) {
+  text(s, v, a) {
     const p = a.params;
+    const idle = p.res === 'oil' ? idleFor(s, v, 'oil', []) : null;   // manual labour: a grove short of hands presses before another
+    const hands = idle ? ` ${idleHead(s, idle)}.` : '';
     const use = `${P(p.houses)} ${P(p.houses) === 1 ? 'house uses' : 'houses use'} ${num(P(p.demand))} amphorae a day`;
     if (p.res === 'oil' && p.room === 0) {
-      return `${use}, and the presses rest through Ver and Aestas: the stores must hold ${int(P(p.reserve))} when Ver begins, and they hold ${int(P(p.cap))}. A house without its oil falls back a tier.`;
+      return `${use}, and the presses rest through Ver and Aestas: the stores must hold ${int(P(p.reserve))} when Ver begins, and they hold ${int(P(p.cap))}. A house without its oil falls back a tier.${hands}`;
     }
     const src = p.res === 'oil' ? `our groves press ${num(P(p.prod))}${p.presses === 0 ? ', too little over the year' : ''}` : 'wine comes only by caravan';
-    return `${use}; ${src}. A house without its ${p.res} falls back a tier.`;
+    return `${use}; ${src}. A house without its ${p.res} falls back a tier.${hands}`;
   },
-  remedies(s, _v, a) {
+  remedies(s, v, a) {
     const res = a.params.res === 'wine' ? 'wine' : 'oil';
+    const idle = res === 'oil' ? idleFor(s, v, 'oil', []) : null;
     const store: Remedy | null = a.params.room === 0 ? { kind: 'place', building: 'apotheca' } : null;
     const grove: Remedy | null = res === 'oil' && a.params.presses === 0 ? { kind: 'place', building: 'olivetum' } : null;
     const more: Remedy | null = res === 'oil' && !store && !grove ? { kind: 'place', building: 'olivetum' } : null;
-    return three(store, grove, importRemedy(s, res, B.ordo.CARGO), more, { kind: 'overlay', overlay: 'domus' });
+    return three(idle ? staffRemedy(idle) : null, store, grove, importRemedy(s, res, B.ordo.CARGO), more, { kind: 'overlay', overlay: 'domus' });
   },
 };
 

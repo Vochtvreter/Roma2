@@ -12,13 +12,13 @@ import { placeBuilding } from '../src/game/place';
 import { createContract, emergencyImport } from '../src/game/trade';
 import { triggerRelief } from '../src/game/events';
 import { councilReport, runOrdo } from '../src/game/ordo/index';
-import { manualPlan, planLabour } from '../src/game/ordo/labour';
+import { manualPlan, manualReach, planLabour } from '../src/game/ordo/labour';
 import { currentReason, maxSites, ordoSites, ordoSlot, processRequests, walkWishes, wishList } from '../src/game/ordo/build';
 import { aestasWork } from '../src/game/ordo/water';
 import { maxPotential } from '../src/game/economy';
 import { projectEssential } from '../src/game/forecast';
 import { B } from '../src/game/balance';
-import { BUILDING_DEFS } from '../src/game/data/buildings';
+import { BUILDING_DEFS, slotsOf } from '../src/game/data/buildings';
 import { play } from './autoplayer';
 import { addCost } from '../src/game/state';
 import { canSpend, fullRate, reserved, savingFor } from '../src/game/ordo/saving';
@@ -130,6 +130,46 @@ describe('labour', () => {
     expect(manualPlan(s, view(s)).perBuilding[well.id]).toBe(1);
     expect(applyOnce(s, 'labour').ok).toBe(true);
     for (const l of planLabour(s, view(s)).lines) expect(s.ordo.manual[l.cat]).toBe(l.target);
+  });
+
+  it('manual labour: a finished work adds posts, not hands; manualReach is what its target lacks (finding 11)', () => {
+    const s = fresh(42);
+    expect(setOrdo(s, 'labour', false).ok).toBe(true);   // the targets: today's hands (water 2)
+    s.ordo.on.build = false;
+    s.ordo.on.trade = false;
+    const old = s.buildings.find((b) => b.type === 'puteus') as Building;
+    expect(manualReach(s, view(s), old.id)).toBe(0);      // its target keeps its hands
+    const well = built(s, 'puteus');
+    const slots = slotsOf('puteus', s.rank);
+    // the least the water target must rise by so the new well is staffed in full and no staffed post loses a hand,
+    // whichever of the two the manual order (nearest the forum) fills first
+    const fills = (extra: number): boolean => {
+      const keep = s.ordo.manual.water;
+      s.ordo.manual.water = keep + extra;
+      const per = manualPlan(s, view(s)).perBuilding;
+      s.ordo.manual.water = keep;
+      return (per[well.id] ?? 0) === slots && (per[old.id] ?? 0) >= (census(s).staffed[old.id] ?? 0);
+    };
+    const n = manualReach(s, view(s), well.id);
+    expect(n).toBe(slots);
+    expect(fills(n)).toBe(true);
+    expect(fills(n - 1)).toBe(false);
+    const one = manualReach(s, view(s), well.id, 1);         // one hand only (a service's full reach): no more
+    expect(one).toBeGreaterThanOrEqual(1);
+    expect(one).toBeLessThanOrEqual(n);
+    run(s, 1);                                              // unchanged, the target leaves one well short
+    expect(census(s).catStaffed.water).toBe(2);
+    // the posts ahead of a work count: with one hand off the target, the idle well needs that one too
+    s.ordo.manual.water = 1;
+    run(s, 1);
+    const idle = [old, well].find((b) => (census(s).staffed[b.id] ?? 0) === 0) as Building;
+    const m = manualReach(s, view(s), idle.id);
+    expect(m).toBeGreaterThanOrEqual(slots);
+    s.ordo.manual.water += m;
+    run(s, 1);
+    expect(census(s).staffed[well.id]).toBe(slots);
+    expect(census(s).staffed[old.id]).toBe(slots);
+    expect(manualReach(s, view(s), well.id)).toBe(0);
   });
 });
 

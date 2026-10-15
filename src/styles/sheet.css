@@ -374,8 +374,10 @@
 /* ───────── lesson I's card: the Annona labour line inside it ───────── */
 #app[data-host='sheet'] .lesson-labour { margin: 0 0 6px; }
 #app[data-host='sheet'] .lesson-labour .tab-note { display: none; }   /* the idle hands' note: Populus has it */
-/* a card's labour line is the hands alone (− have / target · posts +): "First" (the 30-day priority) stays in Populus */
+/* a card's labour line is the hands alone (− have / target · posts +): "First" (the 30-day priority) stays in Populus,
+   and in lesson I's card so does the line of posts its target leaves empty (a work's own card keeps it, with Fill) */
 #app[data-host='sheet'] .lesson-labour .tab-lab-ctl > .btn:not(.tab-lab-pm),
+#app[data-host='sheet'] .lesson-labour .tab-lab-open,
 #app:is([data-host='sheet'], [data-host='drawer']) .ins-labour .tab-lab-ctl > .btn:not(.tab-lab-pm) { display: none; }
 
 /* ───────── the tab body's dense rows (raised to the 12 px floor where the phone shows them) ───────── */
