@@ -215,7 +215,7 @@ src/game/                          pure simulation — no DOM, no render, no ui 
   advisors/rules-augur.ts          E   rules 21–22                                                 (60)
   advisors/remedies.ts             E   checkRemedy, applyRemedy, remedyLabel                       (170)
   guide.ts                         E   GUIDE tips engine                                           (200)
-  hints.ts                         E   "how to get more", benefit lines                            (120)
+  hints.ts                         E   "how to get more", benefit lines, a works idle for water    (120)
   actions.ts                       S   frozen dispatcher of all player actions (§8.7)             (40)
 src/render/
   sprites.ts                       S   PAL, raster, sprite, spriteURL, mirror, outline, compose, validateArt, registerArt, registerDraw (220)
@@ -1150,6 +1150,8 @@ export function buildingRate(s: GameState, b: Building, season: SeasonIndex, mod
 export function maxPotential(s: GameState, res: Essential, season: SeasonIndex): number;   // best assignment of the workforce to existing producers (food cap applied) + passive
 export function caps(s: GameState): Res;
 export function horreaCap(s: GameState): number;
+export function industryWaterFloor(s: GameState, c?: Census): number;     // Populo prius: min(Water reserve × need, RESERVE_ROOM × water cap), so a full store always lets the works draw; 0 under Aequa/Operibus
+export function waterHold(s: GameState, b: Building): WaterHold | null;  // a staffed works that mixes water and draws none tomorrow: { why: 'pause' | 'reserve', have, keep, reserve, full } in days of need
 export function produce(s: GameState, ctx: TickContext, rng: Rng): void;   // water first, then food, passive, processing with per-worker reservations and the water/grain floors, idle forage, skill XP, forest draw; writes rates.prod
 export function consume(s: GameState, ctx: TickContext): void;             // tiered rationing per resource, hunger/thirst per group, fed EMA, Watch-band log; writes rates.cons
 export function storage(s: GameState, ctx: TickContext): void;             // caps (spill), shed rot, evaporation, forest regrowth
@@ -1392,6 +1394,7 @@ export function pendingOffers(s: GameState): DutyId[];               // learned,
 export function howToGetMore(s: GameState, res: ResId, v: SimView): string[];   // generated from BUILDING_DEFS and HUB_DEFS + a live line
 export function benefitLine(type: BuildingId): string;
 export function outputChain(s: GameState, b: Building): { label: string; value: string }[];   // DESIGN §8.1 inspector chain
+export function waterIdle(s: GameState, v: SimView, b: Building): { why: string; remedies: Remedy[] } | null;   // why a staffed works stands idle for water (economy.waterHold) and its fixes: the inspector's idle line, which fabrum.stalled repeats
 ```
 
 ### 8.7 The action API (`src/game/actions.ts`, frozen dispatcher)

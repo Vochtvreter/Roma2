@@ -143,7 +143,7 @@ export const EDICT_DEFS: Record<EdictId, EdictDef> = {
     id: 'aquae', name: 'Water priority', latin: 'Aquae', prompt: 'When water is short, who drinks first?',
     options: [
       { id: 'operibus', name: 'Operibus prius', desc: 'Works first: industry and baths keep their full draw; concrete ×1.05.', fx: {} },
-      { id: 'populo', name: 'Populo prius', desc: 'People first: industry pauses below the water reserve.', fx: {} },
+      { id: 'populo', name: 'Populo prius', desc: 'People first: industry pauses below the water reserve, at most three-quarters of the stores\' room.', fx: {} },
       { id: 'aequa', name: 'Aequa', desc: 'Equal shares: people and works draw in proportion.', fx: {} },
     ],
     initial: 'populo', unlock: 'oppidum',

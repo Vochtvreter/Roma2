@@ -30,7 +30,7 @@ vi.mock('../src/game/coverage', async (orig) => {
 // loaded from inside one of the mocks' importOriginal() would bind the original export instead of the mock.
 import { activeAdvisories, advisorMood, advisorsDay, hush, mute, renderAdvisory, RULE_DEFS } from '../src/game/advisors/engine';
 import { applyRemedy, checkRemedy, isUiRemedy, remedyLabel } from '../src/game/advisors/remedies';
-import { fresh, run } from './util';
+import { freeSlots, fresh, place, run, setJobs } from './util';
 import { EDICT_DEFS, SETTING_DEFS } from '../src/game/data/decisions';
 import { B } from '../src/game/balance';
 import { Rng } from '../src/game/rng';
@@ -38,7 +38,7 @@ import { invalidate } from '../src/game/memo';
 import { newCtx, view } from '../src/game/sim';
 import { moraleTarget } from '../src/game/civic';
 import { bestFood } from '../src/game/advisors/util';
-import { residents } from '../src/game/census';
+import { census, residents } from '../src/game/census';
 import { houseHas } from '../src/game/coverage';
 
 type Patch = { grain?: Partial<EssentialForecast>; water?: Partial<EssentialForecast>; coin?: Partial<Forecast['coin']>; c?: Partial<Census>; eat?: number; rot?: number; spill?: number };
@@ -507,6 +507,41 @@ describe('fabrum.capitolium in the bottleneck material\'s own units (R23)', () =
     day(s);
     const m = s.guidance.advisories['fabrum.capitolium']!;
     expect(renderAdvisory(s, view(s), { rule: 'fabrum.capitolium', advisor: 'fabrum', memo: m }).title).toBe('At this flow the Cella rises in 400 days; stone is the bottleneck (1.7/day of 3.8).');
+  });
+});
+
+describe('fabrum.stalled: a plan that waits on works idle for water (playtest #8)', () => {
+  it('names the idle concrete works and why, and offers Aequa, a reserve the stock meets and water, not patience', () => {
+    const s = base();
+    s.rank = 2;
+    invalidate(s);
+    const at = freeSlots(s, 'caementarium')[0];
+    const r = place(s, 'caementarium', at.x, at.y, { ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    const works = s.buildings.find((b) => b.id === r.id)!;
+    Object.assign(works, { status: 'done', progress: 1 });
+    invalidate(s);
+    setJobs(s, { perBuilding: { [works.id]: 2 } });
+    s.res.concrete = 0;
+    s.res.water = 5 * census(s).need.water;                                      // 5 days: below the 15-day reserve
+    s.buildings.push({ id: s.nextId++, type: 'balneum', x: 2, y: 2, owner: 'player', status: 'plan', placed: s.day - 30, progress: 0, work: 160, paid: false, order: 1, open: true, prio: 1 });
+    invalidate(s);
+    day(s);
+    const m = s.guidance.advisories['fabrum.stalled']!;
+    expect(m.active).toBe(true);
+    const out = renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m });
+    expect(out.title).toMatch(/has waited \d+ days for .*20 concrete/);
+    // a fresh colony's stores hold 17 days: the works may draw above three-quarters of them, 13 days, not the 15 asked
+    expect(out.text).toMatch(/^It stays a plan until the stores cover it, and our concrete works .+ stand idle: the water reserve is not met; the stores hold 5 days, and the works draw only above 13, three-quarters of the 17 a full store holds\. Under Populo prius the people drink first\.$/);
+    expect(out.remedies.map((x) => x.remedy).slice(0, 2)).toEqual([
+      { kind: 'edict', edict: 'aquae', option: 'aequa' }, { kind: 'setting', setting: 'waterReserve', value: 5 },
+    ]);
+    expect(out.remedies).toHaveLength(3);
+    // with the water flowing to the works again, the plan only waits: the old counsel
+    s.decisions.edicts.aquae = 'aequa';
+    const calm = renderAdvisory(s, view(s), { rule: 'fabrum.stalled', advisor: 'fabrum', memo: m });
+    expect(calm.text).toBe('It stays a plan until the stores cover it; every day of production brings it nearer.');
+    expect(calm.remedies[0].remedy).toEqual({ kind: 'building', op: 'prioritise', id: m.params.id });
   });
 });
 

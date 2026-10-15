@@ -6,7 +6,8 @@ import { BUILDER } from '../src/game/types';
 import type { Building, GameState, Person } from '../src/game/types';
 import { Rng } from '../src/game/rng';
 import { census, canWork, houseBeds, residents } from '../src/game/census';
-import { buildingRate, consume, issueTools, lastRations, maxPotential, produce, storage, workerOutput } from '../src/game/economy';
+import { buildingRate, caps, consume, industryWaterFloor, issueTools, lastRations, maxPotential, produce, storage, waterHold, workerOutput } from '../src/game/economy';
+import { outputChain, waterIdle } from '../src/game/hints';
 import { charterPaving } from '../src/game/urbs';
 import { assignJobs, immigrationChance, immigrationDay, peopleDay, personName, renownFactor, splendour } from '../src/game/people';
 import { constructionDay, startStaked } from '../src/game/construction';
@@ -21,7 +22,7 @@ import { dateOf, dayOf } from '../src/game/calendar';
 import { B } from '../src/game/balance';
 import { getMap } from '../src/game/map';
 import { charterStreets } from '../src/game/survey';
-import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run } from './util';
+import { INTEGRATED, ctx, freeSlots, fresh, noNaN, place, run, setJobs } from './util';
 import { play } from './autoplayer';
 
 const pins = vi.hoisted(() => new Map<number, number>());
@@ -229,6 +230,96 @@ describe('storage (DESIGN §8.6)', () => {
     storage(s, c2);
     expect(c2.rates.cons.grain.rot).toBeCloseTo(500 * 0.006, 9);
     expect(c2.rates.cons.water.evaporation).toBeCloseTo(200 * 0.002, 9);
+  });
+});
+
+describe('the works\' water floor (DESIGN §5.2, playtest #8)', () => {
+  /** A finished concrete works with both hands and stone to mix, the water store full, and a Water reserve of 30 days:
+   *  more than the stores can hold (the playtests' 15-day default over 14 days of storage, in this colony's numbers). */
+  function works(): { s: GameState; b: Building } {
+    const s = fresh();
+    s.rank = 2;
+    invalidate(s);
+    const at = freeSlots(s, 'caementarium')[0];
+    const r = place(s, 'caementarium', at.x, at.y, { ignoreCost: true, noStake: true });
+    if (!r.ok) throw new Error(r.reason);
+    const b = s.buildings.find((x) => x.id === r.id) as Building;
+    Object.assign(b, { status: 'done', progress: 1 });
+    invalidate(s);
+    setJobs(s, { perBuilding: { [b.id]: 2 } });
+    s.res.stone = 100;
+    s.guidance.milestoneDays.stabilitas = s.day;                                  // the Water reserve is the council's to set
+    s.decisions.settings.waterReserve = 30;
+    s.res.water = caps(s).water;
+    return { s, b };
+  }
+
+  it('a full store lets the works draw under Populo prius, though it holds less than the Water reserve', () => {
+    const { s, b } = works();
+    expect(s.decisions.edicts.aquae).toBe('populo');
+    expect(caps(s).water / census(s).need.water).toBeLessThan(30);
+    expect(industryWaterFloor(s)).toBeCloseTo(B.economy.RESERVE_ROOM * caps(s).water, 9);
+    const c = ctx();
+    produce(s, c, new Rng(1));
+    expect(c.rates.cons.water.caementarium).toBeCloseTo(2, 9);
+    expect(c.rates.prod.concrete.caementarium ?? 0).toBeGreaterThan(0);
+    expect(waterHold(s, b)).toBeNull();
+    expect(waterIdle(s, view(s), b)).toBeNull();
+  });
+
+  it('below three-quarters of a full store the people drink first, the idle line says why, and Aequa shares', () => {
+    const { s, b } = works();
+    const need = census(s).need.water;
+    s.res.water = 0.7 * caps(s).water;
+    const c = ctx();
+    produce(s, c, new Rng(1));
+    expect(c.rates.prod.concrete.caementarium ?? 0).toBe(0);
+    const w = waterHold(s, b) as NonNullable<ReturnType<typeof waterHold>>;
+    expect(w.why).toBe('reserve');
+    expect(w.reserve).toBe(30);
+    expect(w.keep).toBeCloseTo(B.economy.RESERVE_ROOM * w.full, 9);
+    expect(w.have).toBeCloseTo(s.res.water / need, 9);
+    const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
+    const full = Math.floor(caps(s).water / need);
+    expect(idle.why).toBe(`the water reserve is not met; the stores hold ${Math.floor(w.have)} days, and the works draw only above ${Math.ceil(w.keep)}, three-quarters of the ${full} a full store holds. Under Populo prius the people drink first.`);
+    expect(idle.remedies.slice(0, 2)).toEqual([
+      { kind: 'edict', edict: 'aquae', option: 'aequa' },
+      { kind: 'setting', setting: 'waterReserve', value: Math.max(5, Math.floor(w.have) - 1) },
+    ]);
+    expect(idle.remedies).toHaveLength(3);                                       // and more water: the wells, or a new well
+    expect(outputChain(s, b).at(-1)).toEqual({ label: 'Total', value: '0 cubicae a day' });   // not what its hands would make
+    s.decisions.edicts.aquae = 'aequa';
+    const c2 = ctx();
+    produce(s, c2, new Rng(1));
+    expect(c2.rates.prod.concrete.caementarium ?? 0).toBeGreaterThan(0);
+    expect(waterHold(s, b)).toBeNull();
+  });
+
+  it('with room enough the floor is the Water reserve in days; the idle line names it; other edicts keep none', () => {
+    const { s, b } = works();
+    const need = census(s).need.water;
+    s.decisions.settings.waterReserve = 10;
+    expect(10 * need).toBeLessThan(B.economy.RESERVE_ROOM * caps(s).water);
+    expect(industryWaterFloor(s)).toBeCloseTo(10 * need, 9);
+    s.res.water = 6 * need;
+    expect(waterIdle(s, view(s), b)?.why).toBe('the water reserve (10 days) is not met; the stores hold 6. Under Populo prius the people drink first.');
+    s.decisions.edicts.aquae = 'operibus';
+    expect(industryWaterFloor(s)).toBe(0);
+    expect(waterHold(s, b)).toBeNull();
+  });
+
+  it('under the Lex de annona\'s pause the line says when it lifts; a cistern first when full stores could not lift it', () => {
+    const { s, b } = works();
+    s.ordo.emergency.waterPause = true;
+    s.res.water = 6 * census(s).need.water;
+    const idle = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
+    expect(idle.why).toBe(`the Lex de annona paused the works that draw water when it ran low. They resume above ${B.emergency.WATER_RESUME} days in store; we hold 6.`);
+    expect(idle.remedies.some((r) => r.kind === 'place' && r.building === 'cisterna')).toBe(false);
+    fillBeds(s);                                                                  // 30 souls: a full store holds < 15 days
+    expect(waterHold(s, b)?.full ?? Infinity).toBeLessThan(B.emergency.WATER_RESUME);
+    const short = waterIdle(s, view(s), b) as NonNullable<ReturnType<typeof waterIdle>>;
+    expect(short.why).toMatch(/ Full, our stores hold only \d+\.$/);
+    expect(short.remedies[0]).toEqual({ kind: 'place', building: 'cisterna' });
   });
 });
 
