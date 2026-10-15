@@ -11,6 +11,7 @@ import type { Host, Layout, WClass } from './layout';
 import { currentHost, registerBringer, safeArea, slimBanner, toolColumn } from './layout';
 import { clear, costEl, fmt, h, img, tip } from './dom';
 import { idx } from '../game/map';
+import { fellingSpill } from '../game/place';
 import { overlayRevealed, toolRevealed } from '../game/reveal';
 import { BACK_RANK, registerBack } from './history';
 import { present, shows } from './intro';
@@ -409,9 +410,12 @@ export function renderPlaceBanner(g: Game, root: HTMLElement, p: PlacingState | 
     return;
   }
   const def = BUILDING_DEFS[p.type];
+  // a felling most of which would spill over the stores' cap says so (DESIGN §3.7)
+  const spill = check?.ok && check.fell > 0 ? fellingSpill(g.state, check.fell) : null;
   const verdict = !check ? h('span', { class: 'place-verdict' }, def.benefit)
     : check.ok ? h('span', { class: 'place-verdict ok' }, check.mult >= 1.05 ? `+${Math.round((check.mult - 1) * 100)}% on this ground` : 'Good ground',
-      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
+      check.fell > 0 ? ` · fells ${fmt(check.fell)} timber` : '', spill?.most ? h('span', { class: 'place-warn' }, ` · ${spill.words}`) : null,
+      check.route?.length ? ` · ${check.route.length} arches from the spring` : '',
       check.warn ? h('span', { class: 'place-warn' }, ` · ${check.warn}`) : null)
       : h('span', { class: 'place-verdict bad' }, check.reason);
   const place = coarse && check?.ok
