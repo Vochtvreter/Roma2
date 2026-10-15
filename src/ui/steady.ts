@@ -1,9 +1,9 @@
 // src/ui/steady.ts — keeps what the player points at in place while the colony changes around it. Owner: WP-I.
 // ScrollAnchor: a scrolling list that is rebuilt or re-measured keeps the element under the mouse (else the first one in
 // view) where it was, borrowing blank room above or below while the mouse rests there. PointerHold: a widget defers
-// structural rebuilds while the mouse rests on it, except as the answer to the player's own click, and always while a
-// press made in it is still held (a finger holding a repeating ±). Ratchet: a widget's
-// box only grows while it is on screen, so a shorter number or date never pulls its neighbours across.
+// structural rebuilds while the mouse rests on it (a few seconds at most once it stops moving), except as the answer to
+// the player's own click, and always while a press made in it is still held (a finger holding a repeating ±). Ratchet: a
+// widget's box only grows while it is on screen, so a shorter number or date never pulls its neighbours across.
 import { h } from './dom';
 import { B } from '../game/balance';
 import { onTextSize } from './textsize';
@@ -14,6 +14,9 @@ const KEYED = '[data-key],[data-anchor]';
 const RELEASE_MS = 2000;
 /** A press held longer than this is taken for one whose let-go was lost (the window lost focus mid-press): it holds no more. */
 const PRESS_MAX_MS = 10_000;
+/** A mouse resting on a widget holds it this long after it last moved (or turned the wheel) there: one the widget shrank
+ *  or was rebuilt out from under, which hears no pointerleave, never freezes it for good. */
+const REST_MS = 4000;
 
 function keyOf(el: Element): string | null {
   const k = (el as HTMLElement).dataset;
@@ -112,13 +115,19 @@ export class ScrollAnchor {
 /** Tracks the mouse resting on a widget, the player's clicks in it, and a press still held down there (a finger holding
  *  a ± that repeats: labour.ts). */
 export class PointerHold {
-  private over = false;
+  private movedAt = -Infinity;   // the mouse's last move (or wheel) over the widget; −∞ once it is seen anywhere else
   private downAt = -Infinity;
   private readonly down = new Set<number>();   // pointers pressed in the widget and not yet let go (anywhere)
 
   constructor(el: HTMLElement) {
-    el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') this.over = true; });
-    el.addEventListener('pointerleave', () => { this.over = false; });
+    // the mouse is followed by every move, wherever it lands: a node removed from under the pointer (a rebuild, a card
+    // that folded or shrank) leaves no pointerleave behind, so the widget's own leave cannot be trusted alone
+    window.addEventListener('pointermove', (e) => {
+      if (!el.contains(e.target as Node | null)) this.movedAt = -Infinity;
+      else if (e.pointerType === 'mouse') this.movedAt = performance.now();
+    }, true);
+    el.addEventListener('pointerleave', () => { this.movedAt = -Infinity; });
+    el.addEventListener('wheel', () => { this.movedAt = performance.now(); }, { passive: true });
     el.addEventListener('pointerdown', (e) => { this.downAt = performance.now(); this.down.add(e.pointerId); });
     // the let-go is heard wherever it happens: a finger that slid off the button still ends its press. A long press
     // counts as a click at its let-go (the guard runs from there); a quick one keeps its press time, as it always had
@@ -139,13 +148,17 @@ export class PointerHold {
     return this.down.size > 0;
   }
 
-  /** True while a rebuild must wait: a press still held, just after a click or a let-go (it would swap the button being
-   *  pressed), or while the mouse rests on the widget and has not clicked lately (the player is reading it or aiming at it). */
+  /** True while a press is still held or a click or let-go was just now: a rebuild would swap the button being pressed.
+   *  This part of `holds` also holds back a change that will not wait on a resting mouse (a new goal: objective.ts). */
+  busy(now = performance.now()): boolean {
+    return this.pressed(now) || now - this.downAt < B.ui.CLICK_GUARD_MS;
+  }
+
+  /** True while a rebuild must wait: the widget is busy, or the mouse rests on it, has moved there in the last REST_MS
+   *  and has not clicked lately (the player is reading it or aiming at it). */
   holds(now = performance.now()): boolean {
-    if (this.pressed(now)) return true;
-    const since = now - this.downAt;
-    if (since < B.ui.CLICK_GUARD_MS) return true;
-    return this.over && since > RELEASE_MS;
+    if (this.busy(now)) return true;
+    return now - this.downAt > RELEASE_MS && now - this.movedAt < REST_MS;
   }
 
   /** Lets the next rebuild through at once (the widget's own controls: fold, collapse). */

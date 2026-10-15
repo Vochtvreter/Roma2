@@ -1,8 +1,9 @@
 // src/ui/objective.ts — the Res Gestae panel (DESIGN §11.8): kicker and progress, goal, hint, meter, "Unlocks: …", the
 // pulsing CTA (charter / petition), danger chips from Periculum advisories only, and active timed modifiers. Owner: WP-H.
 // Signature-diffed: rebuilt when the milestone, the CTA or the chip set changes; numbers are patched in place. A rebuild
-// changes the panel's height and so moves the counsel card below it: it waits while the mouse rests on either. The chips
-// only grow between rebuilds, so a countdown ("…, 9 d") never re-wraps the row and nudges the card either.
+// changes the panel's height and so moves the counsel card below it: it waits while the mouse rests on either, but never
+// past a new goal (goalsWait). The chips only grow between rebuilds, so a countdown ("…, 9 d") never re-wraps the row
+// and nudges the card either.
 // On a tablet (the DOCK host) the panel heads the docked pane in a one-line form (dock.css: the kicker over the goal, the
 // CTA): its ▾ (or a tap on the line) unfolds the rest in place (hint, meter, unlocks, chips), and folds it again.
 import type { ActiveAdvisory, Effects, MilestoneDef, Modifier, UnlockRef } from '../game/types';
@@ -25,6 +26,8 @@ const TOOL_LABEL: Record<string, string> = { pin: '"Build next" pin', road: 'Roa
 const OVERLAY_LABEL: Record<string, string> = { aqua: 'Aqua overlay', domus: 'Domus overlay', officia: 'Officia overlay', desir: 'Dignitas loci overlay', terra: 'Terra overlay' };
 const SECTION_LABEL: Record<string, string> = { focus: 'Council Focus', edicts: 'Edicts', settings: 'Council settings', switches: 'Switches', manual: '"Who decides the details?"', story: 'Your story' };
 const UNIT: Record<string, string> = { days: ' d', houses: '', den: ' den', pct: '%', souls: '' };
+/** What the panel asks of a widget's pointer (steady.ts): its own, and the counsel card's below it. */
+type Hold = Pick<PointerHold, 'holds' | 'busy'>;
 
 /** A readable name for a milestone unlock ("Hospites edict", "Spare beds setting"). */
 export function unlockLabel(u: UnlockRef): string {
@@ -57,6 +60,14 @@ export function effectsText(fx: Effects): string {
   return parts.join(' · ');
 }
 
+/** Whether a changed Res Gestae waits to rebuild (tests/steady.test.ts): while a press or click is under way in it or in
+ *  the counsel card below it (the rebuild would move the button being pressed), and while the mouse rests on either, but
+ *  never then through a new goal: a finished goal left up would hide the next one, and the CTA it brings. */
+export function goalsWait(newGoal: boolean, panel: Hold, below: Hold | null): boolean {
+  if (panel.busy() || below?.busy()) return true;
+  return !newGoal && (panel.holds() || !!below?.holds());
+}
+
 /** The Res Gestae panel in #objective (signature-diffed). */
 export class Objective {
   private sig = '';
@@ -83,9 +94,9 @@ export class Objective {
     this.root.querySelector('.obj-fold')?.setAttribute('aria-expanded', String(open));
   }
 
-  /** Rebuilds when the milestone, CTA or chips change (not while the panel or, `below`, the counsel card is pointed at);
-   *  otherwise refreshes the meter and chip numbers. */
-  update(below = false): void {
+  /** Rebuilds when the milestone, CTA or chips change (not while the panel or, `below`, the counsel card is pointed at,
+   *  save for a new goal: goalsWait); otherwise refreshes the meter and chip numbers. */
+  update(below: Hold | null = null): void {
     const s = this.g.state;
     const m = currentMilestone(s);
     const pn = petitionNeeds(s, view(s));
@@ -95,10 +106,10 @@ export class Objective {
     const mods = plain ? [] : s.modifiers.filter((x) => x.until > s.day);
     const sig = `${m?.id ?? '-'}|${s.guidance.objective}|${pn?.decision ?? '-'}|${pn?.ready ? 1 : 0}${pn?.affordable ? 1 : 0}|`
       + `${danger.map((a) => a.rule).join(',')}|${mods.map((x) => x.id).join(',')}|${+plain}`;
-    if (sig !== this.sig && !below && !this.hold.holds()) {
+    const id = m?.id ?? '';
+    if (sig !== this.sig && !goalsWait(id !== this.shownId, this.hold, below)) {
       this.sig = sig;
       this.build(m, pn, danger, mods);
-      const id = m?.id ?? '';
       if (this.shownId && id !== this.shownId) this.pop();
       this.shownId = id;
     }
