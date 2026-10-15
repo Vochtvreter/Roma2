@@ -91,10 +91,11 @@ function fasti(g: Game): HTMLElement | null {
   const colonies = loadFasti();
   if (!lines.length && !colonies.length && !s.victory) return null;
   const sec = section('Fasti', 'One line for each year, at the Parilia', { anchor: 'fasti' });
-  // the Victory dispatch opens once, at the dedication: here it can be read again (the figures of that day)
+  // the Victory dispatch opens once, at the dedication: here it can be read again (the figures of that day), to read
+  // only: no Found a new colony at a click (dispatch.ts victoryAnswers)
   if (s.victory) {
     sec.append(h('div', { class: 'ann-victory' }, h('span', null, `The Capitolium was dedicated on ${formatRoman(s.stats.victoryDay ?? s.day, { year: true })}`),
-      btn(g, 'Read the dispatch again', () => { g.sfx('click'); openDispatch(g, 'victory'); })));
+      btn(g, 'Read the dispatch again', () => { g.sfx('click'); openDispatch(g, 'victory', undefined, true); })));
   }
   if (lines.length) sec.append(h('ul', { class: 'ann-fasti' }, lines.map((e) => h('li', null, h('span', { class: 'ann-date num' }, formatAuc(aucYear(e.day))), e.text))));
   if (colonies.length) {

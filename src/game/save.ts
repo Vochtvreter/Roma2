@@ -370,11 +370,18 @@ export function rawSave(): string | null {
 /** Writes `s` over the stored colony (a new colony whose standard is raised, an import, a restore) and keeps that one,
  *  readable or not, in the backup slot from `now`: the previous colony. False when the save is refused (nothing changes
  *  then). The save goes first: a new colony is smaller than most it replaces, so both fit where one did; a backup that
- *  still does not fit is not kept (the title's confirm offers an export first). */
+ *  still does not fit is not kept (the title's confirm offers an export first). The older previous colony goes before
+ *  it is written: one that does not fit leaves no previous colony, never an older one that the title would offer (with
+ *  its old days left) as the colony just replaced. */
 export function replaceSave(s: GameState, now: number): boolean {
   const prev = rawSave();
   if (!saveGame(s, now)) return false;
-  if (prev !== null) { try { localStorage.setItem(KEYS.backup, `${now}\n${prev}`); } catch { /* storage full or blocked */ } }
+  if (prev !== null) {
+    try {
+      localStorage.removeItem(KEYS.backup);
+      localStorage.setItem(KEYS.backup, `${now}\n${prev}`);
+    } catch { /* storage full or blocked */ }
+  }
   return true;
 }
 

@@ -392,6 +392,9 @@ class App implements Game {
     const s = importText(text);
     if (!s) { toast('That text is not a Castra Valeria save.', 'bad'); this.sfx('error'); return false; }
     closeAllModals();
+    // an import from the game (Menu → Export / Import) saves the colony it leaves first, as newGame does: the previous
+    // colony is kept as it stands, not as its last autosave left it
+    if (this.mode === 'game') this.write(false);
     this.enter(s);
     this.setPaused(true);   // it waits for a speed, after a reload too
     this.replacing = true;   // the colony it replaces is kept as the previous colony (a restore swaps the two)
