@@ -39,7 +39,7 @@ import { LAYER_META, TIER_DEFS } from '../game/data/housing';
 import { RESOURCE_DEFS } from '../game/data/resources';
 import { RANK_DEFS } from '../game/data/ranks';
 import { buildingSprite, houseSprite } from '../render/art/index';
-import { confirm2 } from './modals';
+import { armedWithin, confirm2 } from './modals';
 import { PointerHold } from './steady';
 import { clearAround, currentFloating, currentFree, currentHost, isPhone } from './layout';
 import { bar, btn, caps, lackLine, lacking, pct, rankReason, seg, typeSprite } from './tabs/common';
@@ -377,7 +377,8 @@ class InspectorCard {
       const sig = t ? `${t.kind}|${targetSig(s, t, this.sticky)}|${+this.collapsed}${+this.docked}${this.docked && s.choice ? `e${s.choice.event}:${s.choice.created}` : ''}` : '';
       const sameTarget = sig.split('|')[1] === this.sig.split('|')[1];
       const reshaped = t !== null && this.docked !== (this.root.dataset.docked !== undefined);   // the host changed: docked or not
-      if (sig !== this.sig && (!sameTarget || reshaped || !this.hold.holds(now))) this.rebuild(t, sig, this.sticky);
+      // the same target's card holds still under the mouse, and while a confirm in it is armed (Demolish? …)
+      if (sig !== this.sig && (!sameTarget || reshaped || (!this.hold.holds(now) && !armedWithin(this.root)))) this.rebuild(t, sig, this.sticky);
       else for (const u of this.ups) { try { u(); } catch (e) { console.error('[inspector] updater', e); } }
     }
     if (this.sticky) this.place();

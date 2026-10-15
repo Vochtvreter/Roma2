@@ -366,7 +366,9 @@ export const B = {
     ZOOM_LEVELS: [1, 2, 3, 4, 5], ZOOM_DEFAULT: 3, ZOOM_SMALL: 2, ZOOM_SMALL_W: 700,   // §3.1 (× devicePixelRatio)
     RUNWAY_WEEKS: 21, RUNWAY_MONTHS: 120,             // stores shown in days < 3 weeks ≤ weeks < 4 months ≤ months (§8.6)
     NEWS_SPEED: 2,                                    // "Slow for news": a new choice card drops the speed to 2× (§2.1)
-    FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 3000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
+    FLASH_MS: 2000, PULSE_MS: 3000, CONFIRM_MS: 8000, TOAST_BATCH_MS: 1500, SEASON_FADE_MS: 2000,
+    CONFIRM_MIN_MS: 400,                              // a confirm ignores a press this soon after arming (a double-click); one
+                                                      // armed with no mouse on it drains for CONFIRM_MS (§15.5)
     ROSTER: 60, BEDS_LOW: 2,                          // Populus roster of the 60 oldest; souls chip amber below 2 free beds
     NEW_DAYS: 30,                                     // a NEW sticker stays this many days after a reveal
   },

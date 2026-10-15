@@ -5,7 +5,6 @@ import type { ActionResult, BuildingId, CouncilReport, Cost, GameState, Remedy, 
 import type { Game, Panel, Updater } from '../types';
 import { fmtCost, h, img, sentence, tip } from '../dom';
 import type { Kid } from '../dom';
-import { pressWord } from '../pointer';
 import * as A from '../../game/actions';
 import { councilReport } from '../../game/ordo/index';
 import { DUTY_DEFS, wishDuty } from '../../game/ordo/duties';
@@ -72,24 +71,6 @@ export function btn(g: Game, label: Kid, run: () => ActionResult | void, o: BtnO
   });
   if (o.reason) tip(b, o.reason);
   else if (o.tip) tip(b, o.tip);
-  return b;
-}
-
-const ARM_MS = 3000;
-
-/** Two-click confirm for a button with rich content: the first click arms it and shows `note`, the second runs `fn`. */
-export function confirmRich(b: HTMLButtonElement, note: string, fn: () => void): HTMLButtonElement {
-  let timer = 0;
-  const tag = h('span', { class: 'tab-confirm' }, note);
-  const disarm = (): void => { window.clearTimeout(timer); b.classList.remove('armed'); tag.remove(); };
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (b.classList.contains('armed')) { disarm(); fn(); return; }
-    b.classList.add('armed');
-    tag.textContent = pressWord(note);   // 'Click again…' says Tap to a finger
-    b.append(tag);
-    timer = window.setTimeout(disarm, ARM_MS);
-  });
   return b;
 }
 
