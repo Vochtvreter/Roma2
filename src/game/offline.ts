@@ -60,8 +60,9 @@ function snapshot(s: GameState): Snapshot {
 }
 
 /** True when the absence moved the colony toward its next rank: a line of its checklist met or nearer as it reads
- *  (souls still short, dignitas, homes of the tier asked, …), or at Colonia the Capitolium higher. Growth the checklist
- *  does not ask for is not progress: souls past the count, the Ordo's cisterns and gardens (DESIGN §14). */
+ *  (souls still short, dignitas, homes of the tier asked, the Stabilitas streak, …) or a work it asks for higher on its
+ *  site (the Horreum, the aqueduct, the Thermae), or at Colonia the Capitolium higher. Growth the checklist does not ask
+ *  for is not progress: souls past the count, the Ordo's cisterns and gardens (DESIGN §14). */
 function moved(b: Snapshot, a: Snapshot): boolean {
   const pb = b.petition, pa = a.petition;
   if (pa?.rank !== pb?.rank) return true;   // a rank gained

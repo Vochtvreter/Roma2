@@ -591,7 +591,7 @@ export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolea
 export interface Snapshot {
   day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
   petition: { rank: RankIndex; met: number; of: number; items: number[] } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
-                                                                   // items: each line's progress 0..1 in checklist order (a yes/no line 0 or 1)
+                                                                   // items: each line's progress 0..1 in checklist order (a work's line its site's while it rises; a yes/no line 0 or 1)
   capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
 }
 export interface AwayReport {
