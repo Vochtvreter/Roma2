@@ -874,13 +874,22 @@ export type PlaceCheck =
 export interface PlaceOpts { owner?: Owner; replaceId?: number; noStake?: boolean; reason?: Reason; ignoreCost?: boolean }
 
 // ───────────────────────────── offline, prefs ─────────────────────────────
-export interface Snapshot { day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>> }
+export interface Snapshot {
+  day: number; pop: number; rank: RankIndex; morale: number; res: Res; grainDoh: number; waterDoh: number; births: number; deaths: number; immigrants: number; emigrants: number; built: number; evolvedBy: Partial<Record<HouseTierId, number>>; builtBy: Partial<Record<BuildingId, number>>;
+  petition: { rank: RankIndex; met: number; of: number } | null;   // the next rank's checklist (decisions.ts nextRankNeeds); null at Colonia
+  capitolium: number | null;                                       // the Capitolium's progress 0..1; null before its works begin
+}
 export interface AwayReport {
   awayMs: number; daysPlanned: number; days: number;
   before: Snapshot; after: Snapshot;
   decided: string[]; highlights: LogEntry[];
   lowest: { grain: { doh: number; day: number }; water: { doh: number; day: number } };
-  awaiting: { petition: RankIndex | null; advisories: RuleId[] };
+  awaiting: {
+    petition: RankIndex | null;
+    readySince: number | null;                                      // the day the ready petition became ready (the Augur's Opportunitas raised)
+    stalled: { rank: RankIndex | null; lacking: string[] } | null;  // nothing moved: the next rank's unmet items, or (rank null) the Capitolium
+    advisories: RuleId[];
+  };
 }
 export interface OfflineRun { days: number; progress(): number; step(n: number): boolean; report(): AwayReport }
 export type Speed = 1 | 2 | 5 | 10 | 20;
@@ -1283,6 +1292,7 @@ export function setSwitch(s: GameState, id: SwitchId, on: boolean): ActionResult
 export function renameColony(s: GameState, name: string): ActionResult;
 export function nextPath(s: GameState): PathDecisionId | null;
 export function petitionNeeds(s: GameState, v: SimView): { decision: PathDecisionId; rank: RankIndex | null; needs: { label: string; met: boolean }[]; ready: boolean; fee: Cost; affordable: boolean } | null;
+export function nextRankNeeds(s: GameState, v: SimView): { rank: RankIndex; needs: { label: string; met: boolean }[] } | null;   // the next rank's checklist, the charter's line included while it waits; null at Colonia
 export function choosePath(s: GameState, decision: PathDecisionId, option: PathOptionId): ActionResult;   // pays fee × fx(petitionFee), records, rankUp, Colonia → startCapitolium; pushActionFx
 export function rankUp(s: GameState, rank: RankIndex): void;          // rings/territory (invalidate), ceremony paving, log, fx rank
 export function isUnlocked(s: GameState, ref: UnlockRef): boolean;
@@ -1342,6 +1352,12 @@ export function addFasti(e: FastiEntry): void;
 export function offlineDays(awayMs: number): number;                   // min(OFFLINE_MAX_DAYS, floor(awayMs / 1000 × OFFLINE_RATE))
 export function offlineRun(s: GameState, awayMs: number): OfflineRun | null;   // null below OFFLINE_MIN_MS
 export function simulateOffline(s: GameState, awayMs: number): AwayReport | null;
+export const AWAY_CAP_MS: number;                                      // OFFLINE_MAX_DAYS / OFFLINE_RATE × 1000: the real time that fills the cap (≈ 61 min)
+export function awayRule(): string;                                    // How to play's Time away sentence, in real time
+export function awayUnusedMs(r: AwayReport): number;                  // the absence past the cap, when the whole lustrum ran (≥ OFFLINE_MIN_MS, else 0)
+export function capLine(r: AwayReport, dur?: (ms: number) => string): string | null;   // the letter's cap line
+export function readyLine(r: AwayReport): string | null;              // "Rome would hear our petition for Oppidum: ready since …, N days."
+export function stalledLine(r: AwayReport): string | null;            // "Stalled: nothing moved toward Oppidum. Still lacking: …"
 ```
 
 ### 8.6 Guidance (WP-E)
@@ -1524,7 +1540,7 @@ export function offlineDays(awayMs: number): number {
 export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
   if (awayMs < B.time.OFFLINE_MIN_MS) return null;
   const days = offlineDays(awayMs); if (days < 1) return null;
-  const before = snapshot(s);                       // census pop, res, DoH, stats counters
+  const before = snapshot(s);                       // census pop, res, DoH, stats counters, next rank's checklist (met / of), Capitolium progress
   const lowest = { grain: { doh: Infinity, day: s.day }, water: { doh: Infinity, day: s.day } };
   const decided: string[] = []; const highlights: LogEntry[] = [];
   let done = 0, stopped = false;
@@ -1544,6 +1560,9 @@ export function offlineRun(s: GameState, awayMs: number): OfflineRun | null {
     },
     report: () => ({ awayMs, daysPlanned: days, days: done, before, after: snapshot(s), decided, highlights, lowest,
                      awaiting: { petition: readyPetitionRank(s),   // a ready petition is not listed again as augur.petition
+                                 readySince,                       // the augur.petition memo's `since` (its rank the petition's), else null
+                                 stalled,                          // nothing moved (souls, works, homes, checklist, Capitolium) and no petition ready:
+                                                                   // the next rank's unmet items (≤ 3, checklist order), or { rank: null } for a Capitolium that did not rise
                                  advisories: activeAdvisories(s, { forCard: true }).filter(a => petition === null || a.rule !== 'augur.petition').slice(0, 3).map(a => a.rule) } }),
   };
 }

@@ -10,7 +10,10 @@ import {
   DEFAULT_PREFS, KEYS, MIGRATIONS, SAVE_VERSION, addFasti, claimSave, clearSave, deserialize, exportText, fastiEntry, hasSave, importText,
   lastExported, loadFasti, loadGame, loadPrefs, markExported, ownsSave, saveGame, savePrefs, serialize,
 } from '../src/game/save';
-import { decidedLines, describeAway, keepDecided, offlineDays, offlineRun, simulateOffline, wonWhileAway } from '../src/game/offline';
+import {
+  AWAY_CAP_MS, awayRule, awayUnusedMs, capLine, decidedLines, describeAway, keepDecided, offlineDays, offlineRun, readyLine, simulateOffline, stalledLine,
+  wonWhileAway,
+} from '../src/game/offline';
 import type { Decided } from '../src/game/offline';
 import type { LogEntry, LogKind } from '../src/game/types';
 import { petitionNeeds } from '../src/game/decisions';
@@ -437,6 +440,66 @@ describe('offline catch-up', () => {
     expect(rep.awaiting.petition).not.toBeNull();
     expect(activeAdvisories(s, { forCard: true }).some((a) => a.rule === 'augur.petition')).toBe(true);
     expect(rep.awaiting.advisories).not.toContain('augur.petition');
+    // F9: how long it has waited, from the day the Augur raised it (petitions are never made in your name)
+    const since = s.guidance.advisories['augur.petition']!.since;
+    expect(rep.awaiting.readySince).toBe(since);
+    expect(since).toBeLessThanOrEqual(rep.after.day);
+    expect(rep.awaiting.stalled).toBeNull();
+    const n = rep.after.day - since;
+    expect(readyLine(rep)).toMatch(new RegExp(`^Rome would hear our petition for \\w+: ready since .+ AUC [IVXLCDM]+, ${n} days?\\.$`));
+    expect(readyLine({ ...rep, awaiting: { ...rep.awaiting, readySince: null } })).toMatch(/^Rome would hear our petition for \w+\.$/);
+  });
+
+  it('states the cap in real time, and in the letter when an absence ran past it (F9)', () => {
+    expect(AWAY_CAP_MS).toBe((B.time.OFFLINE_MAX_DAYS / B.time.OFFLINE_RATE) * 1000);
+    expect(awayRule()).toBe('Time away passes at half speed: each minute you are gone is 30 days in the colony, up to 5 years. '
+      + 'That takes 61 minutes; time away beyond it is not counted.');
+    const rep = simulateOffline(fresh(3), 200_000)!;
+    expect(awayUnusedMs(rep)).toBe(0);
+    expect(describeAway(rep).cap).toBeNull();
+    const eight = 8 * 3600 * 1000;   // an 8-hour absence runs the same five years as one of 61 minutes
+    expect(offlineDays(eight)).toBe(offlineDays(AWAY_CAP_MS));
+    const capped = { ...rep, awayMs: eight, daysPlanned: B.time.OFFLINE_MAX_DAYS, days: B.time.OFFLINE_MAX_DAYS };
+    expect(awayUnusedMs(capped)).toBe(eight - AWAY_CAP_MS);
+    expect(describeAway(capped).cap).toBe('The colony ran 5 years, the most it runs without you; 6 h 59 min of your absence went uncounted.');
+    expect(capLine({ ...capped, days: 900 })).toBeNull();                         // a dedication stopped the clock first
+    expect(capLine({ ...capped, awayMs: AWAY_CAP_MS + 30_000 })).toBeNull();      // under a minute past the cap: nothing to say
+  });
+
+  it('the progress line: the next rank\'s checklist and the Capitolium, before → after (F9)', () => {
+    const rep = simulateOffline(fresh(42), 60_000)!;
+    expect(rep.before.petition).toEqual({ rank: 1, met: 0, of: 6 });             // the charter's line counts while it waits
+    expect(rep.after.petition).toEqual({ rank: 1, met: 1, of: 6 });              // the horreum is raised
+    expect(rep.before.capitolium).toBeNull();
+    expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 1 of 6 met');
+    expect(rep.awaiting.stalled).toBeNull();                                     // works raised: not stalled
+    const s = fresh();
+    const id = nextId(s);
+    s.buildings.push({ id, type: 'capitolium', x: 47, y: 29, owner: 'player', status: 'building', placed: s.day, progress: 0.99, work: 10, paid: true, order: id, open: true, prio: 1, matUsed: {} });
+    s.people.find((p) => p.work === null && s.day - p.born > 20 * 365)!.work = BUILDER;
+    for (const r of ['stone', 'concrete', 'tiles', 'iron', 'denarii'] as const) s.res[r] += 5000;
+    invalidate(s);
+    const won = simulateOffline(s, 200_000)!;
+    expect(won.before.capitolium).toBe(0.99);
+    expect(won.after.capitolium).toBe(1);
+    expect(describeAway(won).progress).toContain('Capitolium 99% → 100%');
+  });
+
+  it('nothing moved: Awaiting you leads with what holds the next rank (F9)', () => {
+    const s = fresh(42);
+    s.decisions.switches.governAway = false;                                     // the Ordo holds no duty: nothing is raised
+    s.buildings = s.buildings.filter((b) => b.status === 'done');
+    s.res.timber = 0;                                                            // and no home is renovated
+    invalidate(s);
+    const rep = simulateOffline(s, 60_000)!;
+    expect(rep.after.pop).toBe(rep.before.pop);
+    expect(rep.after.built).toBe(rep.before.built);
+    expect(rep.awaiting.petition).toBeNull();
+    expect(rep.awaiting.stalled).toEqual({ rank: 1, lacking: ['Lex coloniae proclaimed', 'Souls: 24 / 50', expect.stringMatching(/^First Hiems weathered/)] });
+    expect(stalledLine(rep)).toMatch(/^Stalled: nothing moved toward Vicus\. Still lacking: Lex coloniae proclaimed · Souls 24 \/ 50 · First Hiems weathered \(.+\)\.$/);
+    expect(describeAway(rep).progress).toBe('Vicus petition: 0 → 0 of 6 met');
+    const cap = { ...rep, after: { ...rep.after, capitolium: 0.344 }, awaiting: { ...rep.awaiting, stalled: { rank: null, lacking: [] } } };
+    expect(stalledLine(cap)).toBe('Stalled: the Capitolium did not rise past 34%.');
   });
 
   it('the lowest point ends in one full stop after a Roman date (R48)', () => {
