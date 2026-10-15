@@ -3,6 +3,8 @@
 // (prefs.tips) › Monitum / Opportunitas advisory › calm line. Signature-diffed; the advisory's title and text re-render once a day; the card is never rebuilt
 // under the pointer within B.ui.CLICK_GUARD_MS of a click, nor while the mouse rests on it (unless to answer a click
 // there): what the player is reading or aiming at is never swapped or moved under the cursor. Only a new item slides in.
+// Nor while a two-step confirm is armed anywhere (modals.ts anyArmed): a tip that unfolds would push the armed button
+// away between the two presses (on a phone the card heads the panel), so it waits until the confirm runs or disarms.
 // On a phone (the SHEET and the DRAWER: layout.ts, sheet.ts) the card is the voice line at the panel's head (afloat at the
 // bottom-left of the map while the DRAWER's pane is closed): folded, its head is two rows (portrait, kicker and title)
 // with the one action chip of voiceAction and a '+n' pip for what else waits; a tap on the line unfolds the card inside
@@ -39,6 +41,7 @@ import { shows, tabShown } from './intro';
 import { CARD_LESSONS, CARD_ROWS, bringTarget, currentHost, hostPointer, isPhone, lessonFolds, registerBringer, revealTarget, routeIntent } from './layout';
 import type { Host, Layout } from './layout';
 import { labourEl } from './tabs/labour';
+import { anyArmed } from './modals';
 
 /** Whether the counsel is drawn as the voice line (pure): its folded two rows with the one action chip and the '+n' pip,
  *  on the phones (the SHEET, the DRAWER) and the tablet's DOCK, whose pane it heads; the desktop keeps the card. */
@@ -304,7 +307,7 @@ export class Counsel {
     const s = g.state;
     const item = pickCounsel(g);
     const sig = counselSig(g, item);
-    if (sig !== this.sig && !this.hold.holds()) {
+    if (sig !== this.sig && !this.hold.holds() && !anyArmed()) {
       this.sig = sig;
       this.item = item;
       this.build(item);

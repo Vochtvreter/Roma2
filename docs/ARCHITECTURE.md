@@ -1922,7 +1922,7 @@ export interface Panel {
 }
 export type Updater = () => void;
 ```
-The **signature-diff pattern** (Hearthlands) applies to every panel, the inspector, the Res Gestae panel and the counsel card: compute the signature at most every 200 ms; if it changed, clear and rebuild (preserving scroll); otherwise run the updaters. Buttons are never rebuilt under the pointer within 300 ms of a click.
+The **signature-diff pattern** (Hearthlands) applies to every panel, the inspector, the Res Gestae panel and the counsel card: compute the signature at most every 200 ms; if it changed, clear and rebuild (preserving scroll); otherwise run the updaters. Buttons are never rebuilt under the pointer within 300 ms of a click, nor while a two-step confirm is armed inside (`armedWithin`); the counsel card waits while any is (`anyArmed`), so no tip unfolds above an armed button.
 
 ### 13.4 Helpers (`src/ui/dom.ts`, scaffold)
 ```ts
@@ -1949,7 +1949,12 @@ Never use `title=` attributes or `innerHTML` with game text (names are data); bu
 // modals.ts
 export function openModal(content: Node, opts?: { kicker?: string; title?: string; closable?: boolean; wide?: boolean;
   parchment?: boolean; onClose?: () => void }): () => void;     // returns close(); stacked; sim paused while any is open; Esc closes the top closable; focus trapped
-export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-click confirm, disarms after 3 s
+export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void;   // two-step confirm: armed while a mouse rests on it (leave, a press elsewhere, Esc disarm), else drains for B.ui.CONFIRM_MS; a press within B.ui.CONFIRM_MIN_MS of arming is ignored
+export interface ChoiceAsk { kicker: string; title: string; lines: readonly string[]; ok: string; cancel: string; danger?: boolean }   // tabs/edicta.ts pathAsk builds the paths' (pure)
+export function confirmChoice(q: ChoiceAsk, fn: () => void): () => void;   // a permanent choice asked by name (charter, paths, abandon, quit unsaved): Cancel (focused) + ok, no timeout, ok ignored for B.ui.CONFIRM_MIN_MS
+export function confirmPress(armedAt: number | null, now: number): 'arm' | 'wait' | 'run';   // pure (tests/confirm.test.ts)
+export function armedWithin(root: Element): boolean;   // an armed confirm inside: the side panel and the inspector hold their rebuilds
+export function anyArmed(): boolean;                    // any armed confirm: the counsel card holds still
 export function openMenu(g: Game): void;
 export function openExportImport(g: Game): void;
 export function openHowTo(g: Game): void;

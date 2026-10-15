@@ -30,7 +30,6 @@ function sheetHost(): boolean {
 
 interface Entry { el: HTMLElement; box: HTMLElement; closable: boolean; close: () => void; prevFocus: Element | null }
 const stack: Entry[] = [];
-const ARM_MS = 3000;
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const EXPORT_DUE_MS = 2 * 24 * 3_600_000;   // real time without an exported copy before the game reminds you to keep one
 
@@ -113,7 +112,9 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   };
   entry.close = close;
   box.querySelector('.modal-x')?.addEventListener('click', close);
-  back.addEventListener('pointerdown', (e) => { if (e.target === back && closable) close(); });
+  // a press on the backdrop closes it, but not the second half of the double-click (or double tap) that opened it
+  const openedAt = performance.now();
+  back.addEventListener('pointerdown', (e) => { if (e.target === back && closable && performance.now() - openedAt >= B.ui.CONFIRM_MIN_MS) close(); });
   box.addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
     const f = focusables(box);
@@ -130,18 +131,110 @@ export function openModal(content: Node, opts?: { kicker?: string; title?: strin
   return close;
 }
 
-/** Two-click confirm: the first click arms the button with `armedLabel` for 3 s, the second runs fn. */
+/** What a press on a two-step confirm does (pure; tests/confirm.test.ts): the first arms it; one within
+ *  B.ui.CONFIRM_MIN_MS of the arming (the second click of a double-click, a double tap) changes nothing; a later one
+ *  runs it. A confirm dialog counts from its opening the same way (confirmChoice). */
+export function confirmPress(armedAt: number | null, now: number): 'arm' | 'wait' | 'run' {
+  if (armedAt === null) return 'arm';
+  return now - armedAt < B.ui.CONFIRM_MIN_MS ? 'wait' : 'run';
+}
+
+const armed = new Map<HTMLButtonElement, () => void>();   // the armed two-step confirms, each with its disarm
+let escWatch = false;
+
+/** Esc disarms the armed confirms before anything else answers it (keys.ts skips a key already handled). Installed with
+ *  the first confirm, so importing this module does no DOM work. */
+function watchEsc(): void {
+  if (escWatch) return;
+  escWatch = true;
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && [...armed.keys()].some((b) => b.isConnected)) { e.preventDefault(); for (const off of [...armed.values()]) off(); }
+  });
+}
+
+/** True while a two-step confirm inside `root` is armed: the side panel and the inspector hold their rebuilds, so the
+ *  armed button keeps its state and its place. */
+export function armedWithin(root: Element): boolean {
+  return [...armed.keys()].some((b) => b.isConnected && root.contains(b));
+}
+
+/** True while any two-step confirm is armed: the counsel card holds still (no tip unfolds above an armed button). */
+export function anyArmed(): boolean {
+  return [...armed.keys()].some((b) => b.isConnected);
+}
+
+/** Two-step confirm (DESIGN §15.5): the first press arms the button with `armedLabel` ('Click again…' says Tap to a
+ *  finger), the second runs fn. A mouse keeps it armed while it rests on the button; it disarms when the mouse leaves,
+ *  at a press anywhere else, or on Esc. Armed with no mouse over it (a finger, a pen, a key) it drains along its foot for
+ *  B.ui.CONFIRM_MS and disarms. A second press within B.ui.CONFIRM_MIN_MS of arming does nothing: a double-click never
+ *  confirms. A button whose armed label wraps it away from a still mouse drains rather than disarming. */
 export function confirm2(btn: HTMLButtonElement, armedLabel: string, fn: () => void): void {
+  watchEsc();
   const label = btn.textContent ?? '';
+  let armedAt: number | null = null;
   let timer = 0;
-  const disarm = (): void => { btn.dataset.armed = ''; btn.textContent = label; btn.classList.remove('armed'); };
+  let over = false;   // a mouse rests on the button
+  let at = '';        // where it last moved there
+  const outside = (e: PointerEvent): void => { if (!(e.target instanceof Node && btn.contains(e.target))) disarm(); };
+  const disarm = (): void => {
+    if (armedAt === null) return;
+    armedAt = null;
+    window.clearTimeout(timer);
+    armed.delete(btn);
+    document.removeEventListener('pointerdown', outside, true);
+    btn.dataset.armed = '';
+    btn.textContent = label;
+    btn.classList.remove('armed', 'draining');
+  };
+  const drain = (): void => {
+    if (armedAt === null || btn.classList.contains('draining')) return;
+    btn.style.setProperty('--drain-ms', `${B.ui.CONFIRM_MS}ms`);
+    btn.classList.add('draining');
+    timer = window.setTimeout(disarm, B.ui.CONFIRM_MS);
+  };
+  const track = (e: PointerEvent): void => { if (e.pointerType === 'mouse') { over = true; at = `${e.clientX},${e.clientY}`; } };
+  btn.addEventListener('pointerenter', track);
+  btn.addEventListener('pointermove', track);
+  btn.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    over = false;
+    if (`${e.clientX},${e.clientY}` === at) drain(); else disarm();
+  });
   btn.addEventListener('click', () => {
-    if (btn.dataset.armed === '1') { window.clearTimeout(timer); disarm(); fn(); return; }
+    const now = performance.now();
+    const step = confirmPress(armedAt, now);
+    if (step === 'wait') return;
+    if (step === 'run') { disarm(); fn(); return; }
+    armedAt = now;
+    armed.set(btn, disarm);
+    document.addEventListener('pointerdown', outside, true);
     btn.dataset.armed = '1';
     btn.textContent = pressWord(armedLabel);   // 'Click again…' says Tap to a finger
     btn.classList.add('armed');
-    timer = window.setTimeout(disarm, ARM_MS);
+    if (!over) drain();
   });
+}
+
+/** A permanent choice asked by name (confirmChoice): the kicker and the question ('Proclaim Colonia veteranorum?'), the
+ *  lines that say what follows, and the two buttons' words. */
+export interface ChoiceAsk { kicker: string; title: string; lines: readonly string[]; ok: string; cancel: string; danger?: boolean }
+
+/** A permanent choice (the charter, a path, abandoning the colony, quitting unsaved) asked as a dialog that names it
+ *  (DESIGN §15.5), with `cancel` (focused) and `ok`, and no timeout; the sim waits while it stands, as under any modal.
+ *  A press on `ok` within B.ui.CONFIRM_MIN_MS of the opening does nothing (the second half of a double-click or a double
+ *  tap that opened it, landing where the button now stands). Returns close(). */
+export function confirmChoice(q: ChoiceAsk, fn: () => void): () => void {
+  const opened = performance.now();
+  let close: () => void = () => undefined;
+  const ok = h('button', { class: `btn ${q.danger ? 'danger' : 'primary'}`, type: 'button', onclick: () => {
+    if (confirmPress(opened, performance.now()) !== 'run') return;
+    close();
+    fn();
+  } }, q.ok);
+  const body = h('div', { class: 'modal-confirm' }, q.lines.map((t) => h('p', { class: 'modal-p' }, t)),
+    h('div', { class: 'modal-actions' }, h('button', { class: 'btn', type: 'button', 'data-autofocus': '', onclick: () => close() }, q.cancel), ok));
+  close = openModal(body, { kicker: q.kicker, title: q.title });
+  return close;
 }
 
 /** A labelled on/off switch row. */
@@ -210,8 +303,10 @@ export function openMenu(g: Game): void {
     oninput: (e: Event) => { const v = Number((e.target as HTMLInputElement).value); g.setPref('volume', v); volLabel.textContent = `${Math.round(v * 100)}%`; },
     onchange: () => g.sfx('coin'),
   });
-  const abandon = h('button', { class: 'btn danger' }, 'Abandon this colony');
-  confirm2(abandon, 'Click again: the colony is lost', () => { close(); g.newGame(); });
+  // for good: asked by name, never on a timer (DESIGN §15.5)
+  const abandon = h('button', { class: 'btn danger', onclick: () => confirmChoice({ kicker: 'RELINQVERE', title: `Abandon ${g.state.name}?`,
+    lines: ['The colony is lost for good: a new one is founded in its place.', 'To keep a copy, choose Export / Import first.'],
+    ok: 'Abandon it', cancel: 'Keep governing', danger: true }, () => { close(); g.newGame(); }) }, 'Abandon this colony');
   const body = h('div', { class: 'modal-menu' },
     h('div', { class: 'modal-col' },
       h('button', { class: 'btn primary', onclick: () => close() }, 'Resume'),
@@ -270,12 +365,13 @@ export function openExportImport(g: Game): void {
   area.select();
 }
 
-/** Save & quit could not save: the colony's text to copy, back to the game, or quit and lose it (two clicks). */
+/** Save & quit could not save: the colony's text to copy, back to the game, or quit and lose it (asked by name). */
 function openUnsaved(g: Game): void {
   let close: () => void = () => undefined;
   const { area, copy, status } = exportBlock(g);
-  const quit = h('button', { class: 'btn danger' }, 'Quit without saving');
-  confirm2(quit, 'Click again: the colony is lost', () => { close(); g.toTitle(); });
+  const quit = h('button', { class: 'btn danger', onclick: () => confirmChoice({ kicker: 'TABVLAE', title: 'Quit without saving?',
+    lines: ['What was not saved is lost for good, unless you copied the colony\'s text.'],
+    ok: 'Quit and lose it', cancel: 'Keep governing', danger: true }, () => { close(); g.toTitle(); }) }, 'Quit without saving');
   const body = h('div', null,
     h('p', { class: 'modal-p' }, 'The colony could not be saved. Copy the text below and keep it: Import a save on the title brings the colony back.'),
     area, h('div', { class: 'modal-foot' }, h('div', { class: 'modal-actions' }, copy, h('button', { class: 'btn primary', 'data-autofocus': '', onclick: () => close() }, 'Keep governing'), quit), status));
